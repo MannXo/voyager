@@ -74,7 +74,7 @@ Choose checks by changed surface. Repeat passing checks only after relevant chan
 | Added, renamed or removed `public/` entries            | `bun run build:all` instead of Chrome only; register every top-level Safari resource in `Voyager/Voyager.xcodeproj/project.pbxproj` |
 | `docs/**/*.md` or `docs/.vitepress/**`                 | `bun run docs:build`; background `bun run docs:dev` when preview is needed before committing                                        |
 
-`bun run lint` (`oxlint --fix`) and `bun run format` apply corrections: inspect their diffs. Read-only reviews use `:check` variants.
+Run tooling through `bun run <script>` or `bunx`; the formatter is oxfmt and the linter is oxlint. `bun run lint` (`oxlint --fix`) and `bun run format` (`oxfmt`) apply corrections: inspect their diffs. Read-only reviews use `:check` variants; for specific files, `bunx oxfmt --check <files>`.
 
 Features and behavior fixes need meaningful tests. Assert observable behavior or data invariants; avoid repeating mocks, private wiring or source spelling. Static checks belong to static contracts such as resource registration or forbidden primitives. Migrate valuable regression assertions with extracted responsibilities. Prose, formatting and other reversible changes without a behavior change need no new tests.
 
