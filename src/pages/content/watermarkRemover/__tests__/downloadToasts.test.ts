@@ -30,7 +30,10 @@ describe('watermarkRemover download toasts', () => {
     document.head.innerHTML = '';
     document.body.innerHTML = '';
     vi.useFakeTimers();
-    vi.mocked(chrome.storage.sync.get).mockImplementation(async () => ({}));
+    vi.mocked(chrome.storage.sync.get).mockImplementation(async () => ({
+      gvWatermarkDownloadEnabled: true,
+      gvWatermarkPreviewEnabled: true,
+    }));
   });
 
   afterEach(() => {

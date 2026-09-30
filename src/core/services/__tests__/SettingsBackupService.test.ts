@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import { resolveWatermarkSettings } from '@/core/utils/watermarkSettings';
 
 import {
   BACKUPABLE_SYNC_SETTINGS_DEFAULTS,
@@ -88,6 +89,20 @@ describe('SettingsBackupService', () => {
       }),
     });
     expect(payload.data).not.toHaveProperty('unknownKey');
+  });
+
+  it('preserves a legacy enabled watermark preference in settings backups', async () => {
+    const storageArea = {
+      get: vi.fn().mockResolvedValue({
+        ...BACKUPABLE_SYNC_SETTINGS_DEFAULTS,
+        [StorageKeys.WATERMARK_REMOVER_ENABLED]: true,
+      }),
+      set: vi.fn(),
+    };
+
+    const payload = await exportBackupableSyncSettings(storageArea);
+
+    expect(resolveWatermarkSettings(payload.data)).toEqual({ download: true, preview: true });
   });
 
   it('restores only whitelisted settings keys', async () => {
