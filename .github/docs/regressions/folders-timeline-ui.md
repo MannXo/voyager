@@ -693,3 +693,24 @@ chat`, `never alarms on a conversation route that has not rendered content`, `po
 verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/owners.test.ts`
   (`does not count a collapsed sidebar as breakage`, `does not probe while chat width is off`,
   `does not count a miss while the conversation is still loading`).
+
+## Conversation placement policies differ by entry point on purpose
+
+- **Trap:** Five Gemini paths and three AI Studio drop handlers each copied the logic to add or
+  move a conversation, and the copies drifted. The multi-select drop threw a TypeError when its
+  source bucket was missing, after pushing into the target, so the drop was neither saved nor
+  rendered. A single drop stored `url: undefined` and accepted a payload without an id. Folding the
+  copies into one rule would silently change behavior users see. Native "Move to folder" puts the
+  conversation at the top, while drops append and the floating panel keeps the stored index. Gemini
+  lets a conversation sit in several folders, while AI Studio moves a prompt out of every other
+  bucket. A move from the floating panel removes the source copy even when the target already
+  holds the conversation; a folder-row drop keeps it.
+- **Rule:** Every add or move goes through `placeConversations`. The caller builds records,
+  guards folder existence and decides save, notify and nudge; the core only places. Change a
+  policy by changing that caller's `placement`, `removeFrom` or `removeWhenPresent` options, not by
+  editing the core for one caller. AI Studio uses `placement: 'keep'` because its records have no
+  `sortIndex`; `append` or `top` would seed one. Placement dedupes by exact `conversationId`;
+  matching any other spelling is `folderConversationIdentity.ts`'s job and a separate decision.
+- **Guard:** `src/pages/content/folder/__tests__/conversationPlacementCharacterization.test.ts`,
+  `src/pages/content/folder/__tests__/aistudioPlacementCharacterization.test.ts` and
+  `src/features/folder/model/__tests__/placeConversations.test.ts`.
