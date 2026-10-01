@@ -11,9 +11,9 @@ import { createResearchPackOwner } from '@/features/researchPack/services/packSt
 
 import { isAllowedSyncContentSender } from './runtimeMessageRouting';
 
+/** Same gate as the Drive sync content messages: this extension, on a Gemini tab. */
 export function isAllowedResearchPackSender(sender: chrome.runtime.MessageSender): boolean {
-  if (sender.id !== chrome.runtime.id) return false;
-  return isAllowedSyncContentSender(sender.url ?? sender.tab?.url, 'gemini');
+  return sender.id === chrome.runtime.id && isAllowedSyncContentSender(sender.tab?.url, 'gemini');
 }
 
 export function startResearchPackOwner(): void {
