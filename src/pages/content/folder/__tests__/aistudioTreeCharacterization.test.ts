@@ -339,6 +339,29 @@ describe('AI Studio folder tree: what it changes', () => {
   });
 });
 
+describe('AI Studio folder tree: stored structure', () => {
+  // The old tree rendered roots by `!folder.parentId`; stored and imported
+  // folders can hold `''` or no parentId at all.
+  it('shows folders whose parent is empty, missing or deleted, with their prompts', async () => {
+    const { parentId: _omitted, ...noParent } = folder('n', 'No parent', { createdAt: 2 });
+    await mount({
+      folders: [
+        folder('e', 'Empty parent', { parentId: '' as unknown as null, createdAt: 1 }),
+        noParent as Folder,
+        folder('o', 'Orphan', { parentId: 'gone', createdAt: 3 }),
+      ],
+      folderContents: {
+        e: [conv('pe', 'In empty')],
+        n: [conv('pn', 'In none')],
+        o: [conv('po', 'In orphan')],
+      },
+    });
+    expect(tree.folderOrder()).toEqual(['Empty parent', 'No parent', 'Orphan']);
+    expect(tree.conversationIds('o')).toEqual(['po']);
+    expect(stored().folders.find((f) => f.id === 'o')?.parentId).toBe('gone');
+  });
+});
+
 describe('AI Studio folder tree: drag and drop', () => {
   it('files a prompt dragged from the native list into a folder', async () => {
     await mount();

@@ -123,8 +123,20 @@ export function getFolderChildren(
   parentId: string | null,
   order?: TreeSiteOptions['folderOrder'],
 ): Folder[] {
-  const children = data.folders.filter((folder) => folder.parentId === parentId);
+  const ids = parentId === null ? new Set(data.folders.map((folder) => folder.id)) : null;
+  const children = data.folders.filter((folder) =>
+    ids ? isRootFolder(folder, ids) : folder.parentId === parentId,
+  );
   return order === 'created' ? sortFoldersByCreation(children) : sortFolders(children);
+}
+
+/**
+ * Whether a folder shows at the root: its parent is unset (`null`, missing or
+ * `''`, all of which stored and imported data hold) or names no folder. Read
+ * only for display; stored data keeps its `parentId`.
+ */
+export function isRootFolder(folder: Folder, folderIds: ReadonlySet<string>): boolean {
+  return !folder.parentId || !folderIds.has(folder.parentId);
 }
 
 /** Which drags a drop target accepts at dragover, when the payload cannot be read yet. */
