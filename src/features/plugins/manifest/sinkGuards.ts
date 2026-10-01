@@ -196,7 +196,7 @@ export function styleValueIssue(value: string): string | null {
  * would bypass addClass's `gv-` rule, `id` / `name` clobber DOM lookups, and
  * any namespaced name (`xlink:href`) is out.
  */
-const ALLOWED_ATTRIBUTES = new Set([
+export const ALLOWED_ATTRIBUTE_NAMES = [
   'title',
   'role',
   'lang',
@@ -207,7 +207,10 @@ const ALLOWED_ATTRIBUTES = new Set([
   'spellcheck',
   'translate',
   'style',
-]);
+] as const;
+const ALLOWED_ATTRIBUTES = new Set<string>(ALLOWED_ATTRIBUTE_NAMES);
+/** Attribute families allowed besides the exact names: `data-*` and `aria-*`. */
+export const ALLOWED_ATTRIBUTE_PREFIXES = ['data-', 'aria-'] as const;
 const ALLOWED_ATTRIBUTE_PATTERN = /^(?:data-[a-z0-9][a-z0-9._-]*|aria-[a-z]+)$/;
 
 /** Problem with an attribute name, or null when a plugin may set it. */

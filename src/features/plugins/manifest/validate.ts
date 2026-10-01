@@ -41,14 +41,16 @@ export interface ManifestIssue {
 }
 
 const TIERS = ['declarative', 'scripted'] as const;
-const OP_KINDS = ['addClass', 'setAttribute', 'setStyle', 'hide', 'native'] as const;
+/** Every `domOps[].op` the validator accepts; the authoring prompt lists these. */
+export const OP_KINDS = ['addClass', 'setAttribute', 'setStyle', 'hide', 'native'] as const;
 /** Bounds on `native` op params (UNTRUSTED configuration, never instructions). */
 const MAX_PARAMS_DEPTH = 4;
 const MAX_PARAMS_KEYS = 50;
 const MAX_PARAM_STRING_LENGTH = 2_000;
 const MAX_REQUIRES_ENTRIES = 50;
 const MAX_CHANGELOG_LENGTH = 500;
-const REQUIRED_STRINGS = [
+/** Top-level fields that must be non-empty strings. */
+export const REQUIRED_STRINGS = [
   'id',
   'name',
   'version',
