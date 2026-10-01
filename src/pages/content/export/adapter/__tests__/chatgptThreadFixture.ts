@@ -6,7 +6,8 @@
  * - `[data-chatgpt-conversation-selection-target]` holds an optional
  *   "Loading older messages" `[role="status"]` spinner, then the virtual list;
  * - the list mounts only the `[data-turn-key]` items near the viewport,
- *   re-creating an item's element each time it mounts again;
+ *   re-creating an item's element each time it mounts again, inside a box as
+ *   tall as the whole loaded list;
  * - older history loads a page at a time once the scroller reaches the top.
  */
 
@@ -15,6 +16,8 @@ export interface FixtureTurn {
   readonly height: number;
   readonly user?: string;
   readonly assistant?: string;
+  /** The reply's message id; `<key>-a` by default. */
+  readonly replyId?: string;
 }
 
 export interface ThreadFixtureOptions {
@@ -27,7 +30,7 @@ export interface ThreadFixtureOptions {
   readonly pageSize?: number;
   /** Delay before a requested history page arrives; Infinity never loads it. */
   readonly historyDelayMs?: number;
-  /** Delay before the list re-renders after a scroll. */
+  /** Delay before the list re-renders after a scroll; Infinity freezes it. */
   readonly renderDelayMs?: number;
   /**
    * Pushes scroll writes (other than to the very top) this much further, as a
@@ -49,6 +52,8 @@ export interface ThreadFixture {
   setOffset(offset: number): void;
   mountedKeys(): string[];
   loadedCount(): number;
+  /** Swap a turn's content in place, as a branch switch does; re-renders it if mounted. */
+  replaceTurn(key: string, changes: Partial<Omit<FixtureTurn, 'key'>>): void;
 }
 
 function renderItem(turn: FixtureTurn): HTMLElement {
@@ -75,7 +80,7 @@ function renderItem(turn: FixtureTurn): HTMLElement {
       `<span hidden data-chatgpt-agent-turn-start=""></span>
        <div data-chatgpt-search-unit-key="${turn.key}-a" data-chatgpt-search-message-ids="${turn.key}-a">
          <h4 data-conversation-role="assistant">ChatGPT said:</h4>
-         <div data-chatgpt-selection-conversation-id="conv" data-chatgpt-selection-message-id="${turn.key}-a">
+         <div data-chatgpt-selection-conversation-id="conv" data-chatgpt-selection-message-id="${turn.replyId ?? `${turn.key}-a`}">
            <div data-markdown-text-style="assistant-message" dir="auto"><p></p></div>
          </div>
        </div>`,
@@ -101,7 +106,7 @@ export function mountThreadFixture(options: ThreadFixtureOptions): ThreadFixture
   const pageSize = options.pageSize ?? 3;
   const historyDelay = options.historyDelayMs ?? 5;
   const renderDelay = options.renderDelayMs ?? 1;
-  const all = options.turns;
+  const all = [...options.turns];
   let loadedFrom = Math.max(0, all.length - (options.initiallyLoaded ?? all.length));
   let scrollTop = 0;
   let overshootsLeft = options.overshootWrites ?? Infinity;
@@ -185,7 +190,7 @@ export function mountThreadFixture(options: ThreadFixtureOptions): ThreadFixture
   }
 
   function scheduleRender(): void {
-    if (renderTimer !== null) return;
+    if (renderTimer !== null || !Number.isFinite(renderDelay)) return;
     renderTimer = window.setTimeout(() => {
       renderTimer = null;
       render();
@@ -223,6 +228,7 @@ export function mountThreadFixture(options: ThreadFixtureOptions): ThreadFixture
   });
   Object.defineProperty(scroller, 'clientHeight', { configurable: true, get: () => viewport });
   scroller.getBoundingClientRect = () => ({ top: 0, height: viewport }) as DOMRect;
+  outer.getBoundingClientRect = () => ({ top: -offset(), height: contentHeight() }) as DOMRect;
 
   render();
 
@@ -240,6 +246,15 @@ export function mountThreadFixture(options: ThreadFixtureOptions): ThreadFixture
         (item) => item.getAttribute('data-turn-key') ?? '',
       ),
     loadedCount: () => all.length - loadedFrom,
+    replaceTurn(key, changes) {
+      const index = all.findIndex((turn) => turn.key === key);
+      all[index] = { ...all[index]!, ...changes };
+      const element = mounted.get(key);
+      if (!element) return;
+      element.remove();
+      mounted.delete(key);
+      render();
+    },
   };
 }
 

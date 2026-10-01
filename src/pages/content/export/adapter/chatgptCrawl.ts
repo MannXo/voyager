@@ -6,6 +6,7 @@ import {
   extractUserMessage,
   findAssistantReply,
   findMountedTurnItem,
+  findThreadExtent,
   findUserBubble,
   hasPendingHistory,
   hasRenderedContent,
@@ -13,6 +14,7 @@ import {
   isEmptyContent,
   isItemGenerating,
   mountedTurnItems,
+  readTurnFingerprint,
   readTurnKey,
   resolveVisibleConversationRoot,
   userMessageId,
@@ -24,20 +26,25 @@ import type { ExportSelectionOptions } from './type';
  * Walk ChatGPT's virtualized thread from its first turn to its last and
  * extract every item while it is mounted.
  *
- * Completeness rests on three checks, and any failure throws rather than
+ * Completeness rests on these checks, and any failure throws rather than
  * returning a shorter list:
- * - start: older history is loaded until ChatGPT's history spinner is gone and
- *   the top of the thread stops changing, so the first mounted item is turn 1;
+ * - settled: a window is read only once its items cover the part of the list
+ *   inside the viewport and hold still, so a window left mounted from an
+ *   earlier scroll position is never taken for the current one;
+ * - start: older history is loaded until ChatGPT's history spinner is gone,
+ *   and the first mounted item starts where the list box starts;
  * - no gaps: every scroll keeps the last recorded item mounted, so each new
  *   window continues the previous one. A window without it is retried with a
  *   shorter step, then fails;
- * - end: the walk stops only at the bottom of the scroller.
+ * - one branch: an item seen again must carry the message ids it was read
+ *   with, so a regenerated reply or a branch switch fails the crawl;
+ * - end: the last mounted item ends where the list box ends.
  */
 
 export interface ChatGptCrawlTiming {
   /** Interval between DOM reads. */
   readonly pollMs: number;
-  /** A window counts as mounted once its keys and the scroll range hold this long. */
+  /** A window counts as mounted once it covers the viewport and holds this long. */
   readonly settleMs: number;
   /** Longest wait for a window to settle or an item's content to appear. */
   readonly mountTimeoutMs: number;
@@ -59,11 +66,20 @@ export const DEFAULT_CHATGPT_CRAWL_TIMING: ChatGptCrawlTiming = {
 
 export interface ChatGptCrawlOptions extends ExportSelectionOptions {
   readonly timing?: Partial<ChatGptCrawlTiming>;
+  /** Called with the number of turns read so far, after each one. */
+  readonly onProgress?: (turns: number) => void;
 }
 
 /** A tall last item is crossed in steps of this share of the viewport. */
 const TALL_ITEM_STEP = 0.9;
 const MAX_GAP_RETRIES = 6;
+/** An item edge this close to the list box's edge touches it. */
+const EDGE_TOLERANCE_PX = 2;
+/**
+ * Largest gap between mounted items, or between them and the visible part of
+ * the list, in a window that covers the viewport (items sit 12px apart live).
+ */
+const COVER_SLACK_PX = 32;
 
 export function normalizedConversationUrl(url: string = location.href): string {
   const parsed = new URL(url, location.href);
@@ -108,28 +124,98 @@ interface CrawlContext {
   readonly timing: ChatGptCrawlTiming;
 }
 
-function windowSignature(context: CrawlContext): string {
-  const keys = mountedTurnItems(context.root).map(readTurnKey).join(',');
-  return `${keys}|${Math.round(context.view.range())}`;
+interface Span {
+  readonly top: number;
+  readonly bottom: number;
 }
 
-/** Wait until the mounted window stops changing, or the mount timeout passes. */
-async function settleWindow(context: CrawlContext): Promise<void> {
-  const { timing, options } = context;
+interface MountedWindow {
+  readonly items: HTMLElement[];
+  readonly spans: Span[];
+  /** The box sized to the whole loaded list, when ChatGPT renders one. */
+  readonly extent: Span | null;
+}
+
+function spanOf(view: ScrollView, element: Element): Span {
+  const top = view.offsetOf(element);
+  return { top, bottom: top + element.getBoundingClientRect().height };
+}
+
+function readWindow(context: CrawlContext): MountedWindow {
+  const items = mountedTurnItems(context.root);
+  const box = items[0] ? findThreadExtent(items[0]) : null;
+  return {
+    items,
+    spans: items.map((item) => spanOf(context.view, item)),
+    extent: box ? spanOf(context.view, box) : null,
+  };
+}
+
+/**
+ * Whether the mounted items cover the part of the list inside the viewport,
+ * as a virtual list does once it has rendered for the current position.
+ */
+function coversViewport(view: ScrollView, mounted: MountedWindow): boolean {
+  const { spans, extent } = mounted;
+  const first = spans[0];
+  const last = spans.at(-1);
+  if (!first || !last) return false;
+  const viewTop = view.offset();
+  const viewBottom = viewTop + view.viewportHeight();
+  if (!extent) return spans.some((span) => span.bottom > viewTop && span.top < viewBottom);
+  const top = Math.max(viewTop, extent.top);
+  const bottom = Math.min(viewBottom, extent.bottom);
+  if (bottom <= top) return false;
+  if (first.top > top + COVER_SLACK_PX || last.bottom < bottom - COVER_SLACK_PX) return false;
+  return spans.every(
+    (span, index) => index === 0 || span.top - spans[index - 1]!.bottom <= COVER_SLACK_PX,
+  );
+}
+
+/** The first mounted item is the conversation's first. */
+function atThreadStart(context: CrawlContext, mounted: MountedWindow): boolean {
+  const first = mounted.items[0];
+  if (!first || hasPendingHistory(context.root, first)) return false;
+  return mounted.extent
+    ? Math.abs(mounted.spans[0]!.top - mounted.extent.top) <= EDGE_TOLERANCE_PX
+    : context.view.offset() <= 1;
+}
+
+/** The last mounted item is the conversation's last. */
+function atThreadEnd(context: CrawlContext, mounted: MountedWindow): boolean {
+  const last = mounted.spans.at(-1);
+  if (!last) return false;
+  return mounted.extent
+    ? Math.abs(last.bottom - mounted.extent.bottom) <= EDGE_TOLERANCE_PX
+    : context.view.offset() >= context.view.range() - 1;
+}
+
+/**
+ * Wait until the mounted window covers the viewport and stops changing.
+ * Throws when it does not within the mount timeout.
+ */
+async function settleWindow(context: CrawlContext): Promise<MountedWindow> {
+  const { view, timing, options } = context;
   const startedAt = Date.now();
-  let signature = windowSignature(context);
-  let stableSince = Date.now();
+  let signature = '';
+  let stableSince = startedAt;
   while (Date.now() - startedAt < timing.mountTimeoutMs) {
     await wait(timing.pollMs, options.signal);
     assertActive(options);
-    const next = windowSignature(context);
-    if (next !== signature) {
+    const mounted = readWindow(context);
+    const next = [
+      mounted.items.map(readTurnKey).join(','),
+      Math.round(view.range()),
+      Math.round(view.offset()),
+    ].join('|');
+    if (next !== signature || !coversViewport(view, mounted)) {
       signature = next;
       stableSince = Date.now();
     } else if (Date.now() - stableSince >= timing.settleMs) {
-      return;
+      return mounted;
     }
   }
+  throw new Error('chatgpt_export_thread_unsettled');
 }
 
 /** Scroll to the top until ChatGPT has no older page left to load. */
@@ -155,8 +241,13 @@ async function loadFullHistory(context: CrawlContext): Promise<void> {
   }
 }
 
+interface CapturedItem {
+  readonly messages: ChatGptThreadMessage[];
+  readonly fingerprint: string;
+}
+
 /** Extract one item's messages, waiting briefly for content that is still mounting. */
-async function captureItem(context: CrawlContext, key: string): Promise<ChatGptThreadMessage[]> {
+async function captureItem(context: CrawlContext, key: string): Promise<CapturedItem> {
   const { root, timing, options } = context;
   const deadline = Date.now() + timing.mountTimeoutMs;
   for (;;) {
@@ -172,11 +263,12 @@ async function captureItem(context: CrawlContext, key: string): Promise<ChatGptT
       (!bubble || hasRenderedContent(bubble)) &&
       (!reply || hasRenderedContent(reply));
     if (ready || Date.now() >= deadline) {
+      const fingerprint = readTurnFingerprint(item);
       if (!bubble && !reply) {
         // Not a message item. One that shows content has a shape this export
         // does not know, so dropping it would lose part of the conversation.
         if (hasRenderedContent(item)) throw new Error(`chatgpt_export_message_unavailable:${key}`);
-        return [];
+        return { messages: [], fingerprint };
       }
       // A bubble or reply still empty after the wait is blank in ChatGPT too.
       const messages: ChatGptThreadMessage[] = [];
@@ -189,6 +281,7 @@ async function captureItem(context: CrawlContext, key: string): Promise<ChatGptT
             role: 'user',
             content,
             host: userSelectionHost(item, bubble),
+            fingerprint,
           });
         }
       }
@@ -201,18 +294,19 @@ async function captureItem(context: CrawlContext, key: string): Promise<ChatGptT
             role: 'assistant',
             content,
             host: reply,
+            fingerprint,
           });
         }
       }
-      return messages;
+      return { messages, fingerprint };
     }
     await wait(timing.pollMs, options.signal);
   }
 }
 
 async function walkThread(context: CrawlContext): Promise<ChatGptThreadMessage[]> {
-  const { root, view, timing } = context;
-  const recorded = new Set<string>();
+  const { root, view, timing, options } = context;
+  const fingerprints = new Map<string, string>();
   const order: string[] = [];
   const messages: ChatGptThreadMessage[] = [];
   let anchoredOffset = 0;
@@ -221,16 +315,19 @@ async function walkThread(context: CrawlContext): Promise<ChatGptThreadMessage[]
   view.scrollTo(0);
   for (let step = 0; ; step++) {
     if (step > timing.maxSteps) throw new Error('chatgpt_export_thread_incomplete');
-    await settleWindow(context);
-    const keys = mountedTurnItems(root).map(readTurnKey);
-    if (keys.length === 0) throw new Error('chatgpt_export_thread_incomplete');
+    const mounted = await settleWindow(context);
+    const keys = mounted.items.map(readTurnKey);
+    mounted.items.forEach((item, index) => {
+      const recorded = fingerprints.get(keys[index]!);
+      if (recorded !== undefined && readTurnFingerprint(item) !== recorded) {
+        throw new Error('chatgpt_export_thread_changed');
+      }
+    });
 
     let start = 0;
     const tail = order.at(-1);
     if (tail === undefined) {
-      if (view.offset() > 1 || hasPendingHistory(root, findMountedTurnItem(root, keys[0]))) {
-        throw new Error('chatgpt_export_thread_incomplete');
-      }
+      if (!atThreadStart(context, mounted)) throw new Error('chatgpt_export_thread_incomplete');
     } else {
       const tailIndex = keys.indexOf(tail);
       if (tailIndex < 0) {
@@ -240,7 +337,7 @@ async function walkThread(context: CrawlContext): Promise<ChatGptThreadMessage[]
         view.scrollTo(anchoredOffset + (view.offset() - anchoredOffset) / 2);
         continue;
       }
-      if (keys.slice(0, tailIndex).some((key) => !recorded.has(key))) {
+      if (keys.slice(0, tailIndex).some((key) => !fingerprints.has(key))) {
         throw new Error('chatgpt_export_thread_order');
       }
       start = tailIndex + 1;
@@ -248,17 +345,23 @@ async function walkThread(context: CrawlContext): Promise<ChatGptThreadMessage[]
     gapRetries = 0;
 
     for (const key of keys.slice(start)) {
-      if (recorded.has(key)) throw new Error('chatgpt_export_thread_order');
-      messages.push(...(await captureItem(context, key)));
-      recorded.add(key);
+      if (fingerprints.has(key)) throw new Error('chatgpt_export_thread_order');
+      const captured = await captureItem(context, key);
+      messages.push(...captured.messages);
+      fingerprints.set(key, captured.fingerprint);
       order.push(key);
+      options.onProgress?.(order.length);
+    }
+
+    const after = readWindow(context);
+    const lastItem = after.items.at(-1);
+    if (lastItem && readTurnKey(lastItem) === order.at(-1) && atThreadEnd(context, after)) {
+      return messages;
     }
 
     const current = view.offset();
-    if (current >= view.range() - 1) return messages;
-
     anchoredOffset = current;
-    const tailItem = findMountedTurnItem(root, order[order.length - 1]);
+    const tailItem = findMountedTurnItem(root, order[order.length - 1]!);
     const tailTop = tailItem ? view.offsetOf(tailItem) : current;
     view.scrollTo(
       tailTop > current + 1 ? tailTop : current + view.viewportHeight() * TALL_ITEM_STEP,
@@ -318,10 +421,15 @@ export async function crawlChatGptThread(
     timing,
   };
   const position = captureReaderPosition(context);
+  let messages: ChatGptThreadMessage[];
   try {
     await loadFullHistory(context);
-    return await walkThread(context);
+    messages = await walkThread(context);
   } finally {
     await position.restore();
   }
+  // Restoring the position cannot be cancelled; a cancel or route change that
+  // arrived meanwhile still wins over the result.
+  assertActive(options);
+  return messages;
 }

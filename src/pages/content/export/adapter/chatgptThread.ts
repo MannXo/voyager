@@ -11,6 +11,12 @@ import {
  *   assistant reply (`[data-chatgpt-selection-message-id]`, at most one per
  *   item and never on the user side). Whole items mount and unmount as the
  *   thread scrolls; only a handful are in the DOM at a time.
+ * - The items sit in a box sized to the whole loaded list (the item's ancestor
+ *   directly under `[data-chatgpt-conversation-selection-target]`): its top is
+ *   the first item's top, its bottom the last item's bottom.
+ * - An item's key is its prompt's message id; the prompt and reply blocks list
+ *   their message ids in `data-chatgpt-search-message-ids`. Regenerating a
+ *   reply keeps the key and changes the reply's id.
  * - Older history is paginated: while more exists, a `[role="status"]` spinner
  *   sits above the first item and the next page loads when it scrolls in.
  * - Conversations opened earlier in the tab stay in the DOM under a
@@ -22,6 +28,8 @@ export const USER_BUBBLE_SELECTOR = '[data-user-message-bubble]';
 /** The block that holds a prompt's bubble, its uploads and its action row. */
 const USER_UNIT_SELECTOR = '[data-chatgpt-search-unit-key]';
 export const ASSISTANT_REPLY_SELECTOR = '[data-chatgpt-selection-message-id]';
+const REPLY_ID_ATTRIBUTE = 'data-chatgpt-selection-message-id';
+const MESSAGE_IDS_ATTRIBUTE = 'data-chatgpt-search-message-ids';
 const HISTORY_PENDING_SELECTOR = '[role="status"]';
 /** The list's own wrapper: the history spinner and the items, nothing of the page around them. */
 const THREAD_LIST_SELECTOR = '[data-chatgpt-conversation-selection-target]';
@@ -55,6 +63,8 @@ export interface ChatGptThreadMessage {
   readonly content: ExtractedContent;
   /** The element that carried the message when it was extracted; may since be unmounted. */
   readonly host: HTMLElement;
+  /** The item's {@link readTurnFingerprint} when it was read. */
+  readonly fingerprint: string;
 }
 
 export function userMessageId(turnKey: string): string {
@@ -109,6 +119,47 @@ export function mountedTurnItems(root: ParentNode): HTMLElement[] {
 
 export function findMountedTurnItem(root: ParentNode, turnKey: string): HTMLElement | null {
   return mountedTurnItems(root).find((item) => readTurnKey(item) === turnKey) ?? null;
+}
+
+/**
+ * The box sized to the whole loaded list, or null when the item is not in one.
+ * The item is mounted at its place in it, so the box shows where unmounted
+ * items lie.
+ */
+export function findThreadExtent(item: Element): HTMLElement | null {
+  const list = item.parentElement?.closest(THREAD_LIST_SELECTOR);
+  if (!list) return null;
+  let node: Element | null = item.parentElement;
+  while (node && node.parentElement !== list) node = node.parentElement;
+  return node instanceof HTMLElement ? node : null;
+}
+
+function hashText(text: string): string {
+  let hash = 5381;
+  for (let index = 0; index < text.length; index++) {
+    hash = ((hash << 5) + hash + text.charCodeAt(index)) | 0;
+  }
+  return (hash >>> 0).toString(36);
+}
+
+/**
+ * Which version of an item is mounted: the message ids of its prompt and
+ * reply, so a regenerated reply or another branch under the same key reads
+ * differently. Falls back to a hash of the text for an item without ids.
+ */
+export function readTurnFingerprint(item: Element): string {
+  const ids = new Set<string>();
+  for (const unit of item.querySelectorAll(`[${MESSAGE_IDS_ATTRIBUTE}]`)) {
+    for (const id of unit.getAttribute(MESSAGE_IDS_ATTRIBUTE)?.split(/\s+/) ?? []) {
+      if (id) ids.add(id);
+    }
+  }
+  for (const reply of item.querySelectorAll(ASSISTANT_REPLY_SELECTOR)) {
+    const id = reply.getAttribute(REPLY_ID_ATTRIBUTE)?.trim();
+    if (id) ids.add(id);
+  }
+  if (ids.size > 0) return `ids:${Array.from(ids).sort().join(' ')}`;
+  return `text:${hashText(item.textContent?.trim() ?? '')}`;
 }
 
 /** Whether a rendered ChatGPT thread (the current DOM) is present. */

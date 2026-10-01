@@ -16,6 +16,7 @@ import {
   findUserBubble,
   hasRenderedThread,
   mountedTurnItems,
+  readTurnFingerprint,
   readTurnKey,
   resolveVisibleConversationRoot,
   userSelectionHost,
@@ -30,6 +31,8 @@ import type { ChatGptTurnContainer, ChatGptTurnRole, ExportSelectionOptions } fr
  * extracted. Selection then reads that snapshot: its ids, roles and content.
  * When the crawl cannot prove the thread complete the snapshot is empty, so
  * the export shows its existing warning instead of offering a partial list.
+ * It is dropped as well once a mounted item no longer matches what was read
+ * (another branch or a regenerated reply under the same key).
  *
  * The earlier DOM (`[data-turn-id-container]`, persistent per-message
  * containers) keeps its own path in `chatgpt.ts` for accounts ChatGPT has not
@@ -38,11 +41,15 @@ import type { ChatGptTurnContainer, ChatGptTurnRole, ExportSelectionOptions } fr
 
 interface ThreadSnapshot {
   readonly route: string;
-  /** null: the crawl started for this route but did not finish. */
+  /** null: the crawl started for this route but did not finish, or the thread changed since. */
   readonly messages: readonly ChatGptThreadMessage[] | null;
+  /** Why `messages` is null, as the export error to raise. */
+  readonly failure: string;
 }
 
 let snapshot: ThreadSnapshot | null = null;
+/** Counts preparations, so only the latest one publishes its crawl. */
+let preparation = 0;
 /**
  * The element each message's checkbox was last bound to. An unmounted message
  * keeps it, so selection mode does not rebind it on every refresh.
@@ -68,11 +75,15 @@ export async function prepareChatGptExport(options: ChatGptCrawlOptions = {}): P
   resetChatGptThreadSnapshot();
   // The earlier DOM keeps its scroll-to-top preparation.
   if (!hasRenderedThread()) return false;
+  const current = ++preparation;
   const route = normalizedConversationUrl(options.expectedUrl ?? location.href);
-  snapshot = { route, messages: null };
+  snapshot = { route, messages: null, failure: 'chatgpt_export_thread_incomplete' };
   try {
     const messages = await crawlChatGptThread(options);
-    if (snapshot?.route === route) snapshot = { route, messages };
+    // A newer preparation owns the snapshot, even when it failed.
+    if (current === preparation && snapshot?.route === route) {
+      snapshot = { route, messages, failure: '' };
+    }
   } catch (error) {
     if (isAbortError(error)) throw error;
     console.warn('[Gemini Voyager] ChatGPT export could not read the whole conversation:', error);
@@ -80,11 +91,24 @@ export async function prepareChatGptExport(options: ChatGptCrawlOptions = {}): P
   return true;
 }
 
+/** Whether a mounted item shows another version than the one that was read. */
+function threadChangedSince(messages: readonly ChatGptThreadMessage[]): boolean {
+  const read = new Map(messages.map((message) => [message.turnKey, message.fingerprint]));
+  return mountedTurnItems(resolveVisibleConversationRoot(document)).some((item) => {
+    const fingerprint = read.get(readTurnKey(item));
+    return fingerprint !== undefined && readTurnFingerprint(item) !== fingerprint;
+  });
+}
+
 function currentSnapshot(): ThreadSnapshot | null {
   if (!snapshot) return null;
-  return snapshot.route === normalizedConversationUrl()
-    ? snapshot
-    : { ...snapshot, messages: null };
+  if (snapshot.route !== normalizedConversationUrl()) {
+    return { ...snapshot, messages: null, failure: 'chatgpt_export_conversation_changed' };
+  }
+  if (snapshot.messages && threadChangedSince(snapshot.messages)) {
+    snapshot = { ...snapshot, messages: null, failure: 'chatgpt_export_thread_changed' };
+  }
+  return snapshot;
 }
 
 /** Where each message's checkbox goes now: its live element, else the one it was read from. */
@@ -130,7 +154,7 @@ function assertActive(options: ExportSelectionOptions): void {
 
 function crawledMessages(selectedIds: ReadonlySet<string>): readonly ChatGptThreadMessage[] {
   const current = currentSnapshot();
-  if (!current?.messages) throw new Error('chatgpt_export_thread_incomplete');
+  if (!current?.messages) throw new Error(current?.failure || 'chatgpt_export_thread_incomplete');
   const known = new Set(current.messages.map((message) => message.id));
   const missing = Array.from(selectedIds).filter((id) => !known.has(id));
   if (missing.length > 0) throw new Error(`chatgpt_export_messages_missing:${missing.join(',')}`);

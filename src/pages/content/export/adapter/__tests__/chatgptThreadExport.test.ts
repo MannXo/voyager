@@ -17,7 +17,7 @@ import { type FixtureTurn, makeTurns, mountThreadFixture } from './chatgptThread
 const FAST: Partial<ChatGptCrawlTiming> = {
   pollMs: 1,
   settleMs: 4,
-  mountTimeoutMs: 60,
+  mountTimeoutMs: 400,
   historyIdleMs: 25,
   historyStallMs: 150,
 };
@@ -171,6 +171,54 @@ describe('crawlChatGptThread', () => {
     await expect(crawlChatGptThread({ timing: FAST })).rejects.toThrow('chatgpt_export_thread_gap');
   });
 
+  it('waits for a window that renders later than it would otherwise count as settled', async () => {
+    // Slower than the settle interval and than the top of the thread takes to
+    // look idle, so the reader's window is still mounted when the walk starts.
+    const turns = makeTurns(8);
+    mountThreadFixture({ turns, renderDelayMs: 40 });
+
+    const messages = await crawlChatGptThread({ timing: FAST });
+
+    expect(messages.map((message) => message.id)).toEqual(ids(turns));
+  });
+
+  it('fails instead of reading a stale window that never moves to the scroll position', async () => {
+    const fixture = mountThreadFixture({ turns: makeTurns(8), renderDelayMs: Infinity });
+    expect(fixture.mountedKeys()).not.toContain('turn-01');
+
+    await expect(crawlChatGptThread({ timing: FAST })).rejects.toThrow(
+      'chatgpt_export_thread_unsettled',
+    );
+  });
+
+  it('fails when a branch switch changes a turn it already read, rather than mixing branches', async () => {
+    const fixture = mountThreadFixture({ turns: makeTurns(8) });
+    let switched = false;
+    const onProgress = (count: number) => {
+      if (count < 3 || switched) return;
+      switched = true;
+      // Regenerating turn 3 keeps its key (the prompt's id) but swaps the
+      // reply, and every later turn with it.
+      fixture.replaceTurn('turn-03', { replyId: 'turn-03-b', assistant: 'Answer 3, branch 2' });
+      fixture.replaceTurn('turn-04', { replyId: 'turn-04-b', assistant: 'Answer 4, branch 2' });
+    };
+
+    await expect(crawlChatGptThread({ timing: FAST, onProgress })).rejects.toThrow(
+      'chatgpt_export_thread_changed',
+    );
+    expect(switched).toBe(true);
+  });
+
+  it('reports how many turns it has read', async () => {
+    const turns = makeTurns(5);
+    mountThreadFixture({ turns });
+    const counts: number[] = [];
+
+    await crawlChatGptThread({ timing: FAST, onProgress: (count) => counts.push(count) });
+
+    expect(counts).toEqual([1, 2, 3, 4, 5]);
+  });
+
   it('refuses a reply that is still streaming', async () => {
     mountThreadFixture({ turns: makeTurns(3) });
     document
@@ -220,6 +268,21 @@ describe('crawlChatGptThread', () => {
     controller.abort();
 
     await expect(crawl).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('stays cancelled when cancelled while it restores the scroll position', async () => {
+    const turns = makeTurns(6);
+    const fixture = mountThreadFixture({ turns });
+    const controller = new AbortController();
+    const onProgress = (count: number) => {
+      if (count === turns.length) controller.abort();
+    };
+
+    await expect(
+      crawlChatGptThread({ signal: controller.signal, timing: FAST, onProgress }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fixture.offset()).toBe(fixture.range());
   });
 });
 
@@ -313,6 +376,53 @@ describe('ChatGPT selection export on the live thread', () => {
         expectedUrl: 'https://chatgpt.com/c/another-conversation',
       }),
     ).rejects.toThrow('chatgpt_export_conversation_changed');
+  });
+
+  it('drops the crawl once a mounted turn switches branch after it was read', async () => {
+    const fixture = mountThreadFixture({ turns: makeTurns(6) });
+    await prepareChatGptExport({ timing: FAST });
+    expect(collectChatGptTurnContainers()).toHaveLength(12);
+
+    // The reader regenerates the last reply, which keeps its turn key.
+    fixture.replaceTurn('turn-06', { replyId: 'turn-06-b', assistant: 'Answer 6, branch 2' });
+
+    await expect(buildChatGptExportTurns(new Set(['turn-06:a']))).rejects.toThrow(
+      'chatgpt_export_thread_changed',
+    );
+    expect(collectChatGptTurnContainers()).toEqual([]);
+  });
+
+  it('does not let a superseded preparation publish over a newer one that failed', async () => {
+    mountThreadFixture({ turns: makeTurns(8) });
+    let newer: Promise<boolean> | null = null;
+    const onProgress = (count: number) => {
+      if (count !== 2 || newer) return;
+      // A newer export starts mid-crawl on the same route and fails at once.
+      const main = document.querySelector<HTMLElement>('[data-app-shell-active-page] main')!;
+      main.insertAdjacentHTML('beforeend', '<button data-testid="stop-button"></button>');
+      newer = prepareChatGptExport({ timing: FAST });
+      main.querySelector('[data-testid="stop-button"]')!.remove();
+    };
+
+    await expect(prepareChatGptExport({ timing: FAST, onProgress })).resolves.toBe(true);
+    await expect(newer).resolves.toBe(true);
+
+    expect(collectChatGptTurnContainers()).toEqual([]);
+  });
+
+  it('does not publish a preparation cancelled while it restores the scroll position', async () => {
+    const turns = makeTurns(6);
+    mountThreadFixture({ turns });
+    const controller = new AbortController();
+    const onProgress = (count: number) => {
+      if (count === turns.length) controller.abort();
+    };
+
+    await expect(
+      prepareChatGptExport({ signal: controller.signal, timing: FAST, onProgress }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+
+    expect(collectChatGptTurnContainers()).toEqual([]);
   });
 
   it('resolves roles from the crawl for role-only selection', async () => {
