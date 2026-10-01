@@ -268,16 +268,18 @@ off a ChatGPT tab`).
 - **Trap:** Research Pack tabs ordered results by when their own requests started. That does not
   order the data: a load started by one write's storage event could read before a second write
   landed, then render after it and bring back the older pack, which Copy and Insert then exported.
-- **Rule:** The single writer stamps every write with a monotonic `revision`; a tab renders a
-  snapshot of the pack on screen only if its revision is at least the displayed one. Storage events
-  carry the written value, so they need no reload. Revisions never go back: the owner stamps
-  `max(previous + 1, clock)`, so a pack recreated after removal is newer than anything before, and
-  a tab shows a removal as an empty pack one past every revision it saw. Resetting the revision on
-  removal let a delayed old snapshot bring the pack back.
+- **Rule:** The single writer sets every write's `revision` to one past the stored one; a tab
+  renders a snapshot of the pack on screen only if its revision is at least the displayed one.
+  Storage events carry the written value, so they need no reload. A removal restarts revisions at 1,
+  so revisions only order snapshots within one generation: a tab starts a new generation when the
+  pack on screen is removed or another pack is put on screen, and drops every load or apply answer
+  asked for in an earlier one. Storage events arrive in order, so the first write after a removal is
+  accepted at any revision. Floors or clock-stamped revisions cannot do this: a clock behind the old
+  revision, or a removal the tab never saw, still lets a stale snapshot win.
 - **Guard:** `src/pages/content/researchPack/__tests__/researchPackScope.test.ts`
   (`never puts an older snapshot back after a newer add has rendered`),
   `src/pages/content/researchPack/__tests__/researchPackRecovery.test.ts`
-  (`never brings back a pack from before it was removed, once it has been recreated`) and
+  (`when the pack is removed`) and
   `src/features/researchPack/services/__tests__/packStore.test.ts`
   (`bumps the revision on every write it makes, and only then`).
 

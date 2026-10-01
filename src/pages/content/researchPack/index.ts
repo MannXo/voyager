@@ -130,10 +130,19 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
   // What the panel shows: the pack under `view.key` at `view.revision`. A null
   // revision means that pack has no snapshot on screen yet, so the panel is locked.
   let view: { key: string | null; revision: number | null } = { key: null, revision: null };
+  // Bumped whenever the pack on screen is removed or another pack is put on
+  // screen. Revisions start again from 1 after a removal, so they only order
+  // snapshots within one generation: a read or write answers only if no
+  // generation started since it was sent. Storage events need no tag because
+  // they arrive in order, after the removal they follow.
+  let generation = 0;
 
-  /** Show a snapshot unless another pack is on screen or a newer revision of it already is. */
-  const offer = (key: string, snapshot: ResearchPack): void => {
-    if (stopped || key !== view.key) return;
+  /**
+   * Show a snapshot unless it was asked for in an earlier generation, another
+   * pack is on screen, or a newer revision of it already is.
+   */
+  const offer = (key: string, snapshot: ResearchPack, askedIn: number): void => {
+    if (stopped || askedIn !== generation || key !== view.key) return;
     if (view.revision !== null && snapshot.revision < view.revision) return;
     const first = view.revision === null;
     view = { key, revision: snapshot.revision };
@@ -145,9 +154,10 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     key: string,
     op: ResearchPackOp,
   ): Promise<ResearchPackApplyResult | null> => {
+    const askedIn = generation;
     try {
       const result = await store.apply(key, op);
-      offer(key, result.pack);
+      offer(key, result.pack, askedIn);
       return result;
     } catch (error) {
       reportError(error);
@@ -161,10 +171,12 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
   };
 
   const load = async (key: string): Promise<void> => {
+    const askedIn = generation;
     try {
-      offer(key, await store.load(key));
+      offer(key, await store.load(key), askedIn);
     } catch {
-      if (!stopped && key === view.key && view.revision === null) showLoadFailure();
+      if (stopped || askedIn !== generation || key !== view.key) return;
+      if (view.revision === null) showLoadFailure();
     }
   };
 
@@ -178,6 +190,7 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     if (view.key !== null && pending !== null) {
       void apply(view.key, { kind: 'setInstruction', instruction: pending });
     }
+    generation += 1;
     view = { key, revision: null };
     pack = createEmptyPack();
     panel.render(pack, markdown(), { replaceInstruction: true, locked: true });
@@ -359,15 +372,17 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
   ): void => {
     const shownKey = view.key;
     if (areaName === 'local' && shownKey !== null && shownKey in changes) {
-      const { newValue, oldValue } = changes[shownKey];
+      const { newValue } = changes[shownKey];
       if (newValue === undefined) {
-        // Removed: show it empty, ahead of every snapshot from before the removal
-        // so none can bring it back. The owner stamps its next write with the
-        // clock, which is past those revisions too.
-        const floor = Math.max(view.revision ?? 0, parsePack(oldValue).revision) + 1;
-        offer(shownKey, { ...createEmptyPack(), revision: floor });
+        // Removed: a new generation starts, shown as the empty pack storage now
+        // holds (revision 0), so its first write is accepted at any revision.
+        const wasShown = view.revision !== null;
+        generation += 1;
+        view = { key: shownKey, revision: 0 };
+        pack = createEmptyPack();
+        panel.render(pack, markdown(), { replaceInstruction: !wasShown });
       } else {
-        offer(shownKey, parsePack(newValue));
+        offer(shownKey, parsePack(newValue), generation);
       }
     }
     if (isIsolationSettingChange(changes, areaName, pageUrl())) {

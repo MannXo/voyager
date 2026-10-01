@@ -77,23 +77,20 @@ describe('research pack owner', () => {
     const second = await owner.apply(KEY, { kind: 'add', draft: draft('two') });
     const duplicate = await owner.apply(KEY, { kind: 'add', draft: draft('two') });
 
-    expect([first.pack.revision, second.pack.revision, duplicate.pack.revision]).toEqual([7, 8, 8]);
-    expect((data.get(KEY) as { revision: number }).revision).toBe(8);
+    expect([first.pack.revision, second.pack.revision, duplicate.pack.revision]).toEqual([1, 2, 2]);
+    expect((data.get(KEY) as { revision: number }).revision).toBe(2);
   });
 
-  it('keeps revisions going forward when the pack is removed and recreated', async () => {
+  it('starts again from revision 1 when the pack is removed and recreated', async () => {
     const { area, data } = memoryArea();
-    let clock = 100;
-    const owner = createResearchPackOwner({ area, now: () => clock });
+    const owner = createResearchPackOwner({ area, now: () => 7 });
     await owner.apply(KEY, { kind: 'add', draft: draft('one') });
     await owner.apply(KEY, { kind: 'add', draft: draft('two') });
-    const removed = (data.get(KEY) as { revision: number }).revision;
-    expect(removed).toBe(101);
 
     data.delete(KEY);
-    clock = 150;
     const recreated = await owner.apply(KEY, { kind: 'add', draft: draft('three') });
-    expect(recreated.pack.revision).toBeGreaterThan(removed);
+    expect(recreated.pack.revision).toBe(1);
+    expect(recreated.pack.items.map((item) => item.text)).toEqual(['three']);
   });
 
   it('continues from revision 0 for a pack stored before revisions existed', async () => {

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { buildScopedStorageKey } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 import type { ResearchPackStore } from '@/features/researchPack/services/packStore';
 
@@ -122,49 +123,159 @@ describe('research pack recovery', () => {
     expect(instructionBox().value).toBe('Keep');
   });
 
-  it('never brings back a pack from before it was removed, once it has been recreated', async () => {
-    // The owner's clock moves on between writes, as it does between user actions.
-    let clock = 1_000;
-    const shared = sharedStorage({}, { now: () => (clock += 10) });
-    stop = startResearchPack({
-      pageUrl: geminiPageUrl,
-      store: shared.store,
-      resolveKey: async () => GLOBAL,
-    });
-    await flush();
-    const before = await shared.store.apply(GLOBAL, {
-      kind: 'add',
-      draft: { ...packOf('old item').items[0] },
-    });
-    for (let i = 0; i < 4; i += 1) {
-      await shared.store.apply(GLOBAL, { kind: 'setInstruction', instruction: `edit ${i}` });
-    }
-    const last = shared.stored(GLOBAL)!;
-    emitStorageChange({ [GLOBAL]: { newValue: last } }, 'local');
-    expect(shownItems()).toEqual(['old item']);
+  describe('when the pack is removed', () => {
+    const ISOLATION = StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED_GEMINI;
+    const ACCOUNT_A = buildScopedStorageKey(StorageKeys.RESEARCH_PACK, 'route:0');
+    const draftOf = (text: string) => ({ ...packOf(text).items[0] });
 
-    // Clearing extension data removes the pack; a new add recreates it.
-    shared.remove(GLOBAL);
-    emitStorageChange({ [GLOBAL]: { oldValue: last } }, 'local');
-    expect(shownItems()).toEqual([]);
-    const recreated = await shared.store.apply(GLOBAL, {
-      kind: 'add',
-      draft: { ...packOf('new item').items[0] },
-    });
-    emitStorageChange({ [GLOBAL]: { newValue: recreated.pack } }, 'local');
-    expect(shownItems()).toEqual(['new item']);
+    /** A store whose next load or apply does its work at once but answers only when released. */
+    const holdable = (inner: ResearchPackStore) => {
+      const holding = { load: false, apply: false };
+      const releases: Array<() => void> = [];
+      const answerLater = async <T>(work: Promise<T>): Promise<T> => {
+        const result = await work;
+        await new Promise<void>((resolve) => releases.push(resolve));
+        return result;
+      };
+      const store: ResearchPackStore = {
+        load: (key) => {
+          if (!holding.load) return inner.load(key);
+          holding.load = false;
+          return answerLater(inner.load(key));
+        },
+        apply: (key, op) => {
+          if (!holding.apply) return inner.apply(key, op);
+          holding.apply = false;
+          return answerLater(inner.apply(key, op));
+        },
+      };
+      return {
+        store,
+        holdNext: (kind: 'load' | 'apply') => {
+          holding[kind] = true;
+        },
+        release: () => releases.shift()?.(),
+      };
+    };
 
-    // A snapshot from before the removal arrives late.
-    emitStorageChange({ [GLOBAL]: { newValue: last } }, 'local');
-    emitStorageChange({ [GLOBAL]: { newValue: before.pack } }, 'local');
-    expect(shownItems()).toEqual(['new item']);
+    const removeShown = (shared: ReturnType<typeof sharedStorage>): void => {
+      const removed = shared.stored(GLOBAL);
+      shared.remove(GLOBAL);
+      emitStorageChange({ [GLOBAL]: { oldValue: removed } }, 'local');
+    };
 
-    // Later writes keep showing.
-    const next = await shared.store.apply(GLOBAL, {
-      kind: 'add',
-      draft: { ...packOf('newer item').items[0] },
+    const recreate = async (shared: ReturnType<typeof sharedStorage>, text: string) => {
+      const result = await shared.store.apply(GLOBAL, { kind: 'add', draft: draftOf(text) });
+      emitStorageChange({ [GLOBAL]: { newValue: result.pack } }, 'local');
+      return result;
+    };
+
+    it('shows the recreated pack, whatever revision it starts again from', async () => {
+      // The pack had reached revision 101 and the owner's clock reads 100.
+      const shared = sharedStorage(
+        { [GLOBAL]: { ...packOf('old item'), revision: 101 } },
+        { now: () => 100 },
+      );
+      stop = startResearchPack({
+        pageUrl: geminiPageUrl,
+        store: shared.store,
+        resolveKey: async () => GLOBAL,
+      });
+      await flush();
+      expect(shownItems()).toEqual(['old item']);
+
+      // Clearing extension data removes the pack; it stays editable while empty.
+      removeShown(shared);
+      expect(shownItems()).toEqual([]);
+      expect(instructionBox().disabled).toBe(false);
+
+      const recreated = await recreate(shared, 'new item');
+      expect(recreated.pack.revision).toBe(1);
+      expect(shownItems()).toEqual(['new item']);
+
+      await recreate(shared, 'newer item');
+      expect(shownItems()).toEqual(['new item', 'newer item']);
     });
-    emitStorageChange({ [GLOBAL]: { newValue: next.pack } }, 'local');
-    expect(shownItems()).toEqual(['new item', 'newer item']);
+
+    it('drops a read that started before the removal', async () => {
+      const shared = sharedStorage({ [GLOBAL]: { ...packOf('old item'), revision: 101 } });
+      const held = holdable(shared.store);
+      held.holdNext('load');
+      stop = startResearchPack({
+        pageUrl: geminiPageUrl,
+        store: held.store,
+        resolveKey: async () => GLOBAL,
+      });
+      await flush();
+
+      removeShown(shared);
+      held.release();
+      await flush();
+      expect(shownItems()).toEqual([]);
+      expect(instructionBox().disabled).toBe(false);
+
+      await recreate(shared, 'new item');
+      expect(shownItems()).toEqual(['new item']);
+    });
+
+    it('drops a write answered after the pack was removed and recreated', async () => {
+      const shared = sharedStorage({ [GLOBAL]: { ...packOf('old item'), revision: 101 } });
+      const held = holdable(shared.store);
+      const host = turn('<p>Added just before the removal.</p>');
+      stop = startResearchPack({
+        pageUrl: geminiPageUrl,
+        store: held.store,
+        resolveKey: async () => GLOBAL,
+      });
+      await flush();
+
+      // Saved as revision 102 just before the removal; the answer is slow.
+      held.holdNext('apply');
+      clickAdd(host);
+      await flush();
+      expect(shared.stored(GLOBAL)?.revision).toBe(102);
+
+      removeShown(shared);
+      await recreate(shared, 'new item');
+      expect(shownItems()).toEqual(['new item']);
+
+      held.release();
+      await flush();
+      expect(shownItems()).toEqual(['new item']);
+    });
+
+    it('drops a read from before switching away once the pack is shown again', async () => {
+      const shared = sharedStorage({
+        [GLOBAL]: { ...packOf('old item'), revision: 101 },
+        [ACCOUNT_A]: packOf('A item'),
+      });
+      const held = holdable(shared.store);
+      held.holdNext('load');
+      let isolated = false;
+      stop = startResearchPack({
+        pageUrl: geminiPageUrl,
+        store: held.store,
+        resolveKey: async () => (isolated ? ACCOUNT_A : GLOBAL),
+      });
+      await flush();
+
+      isolated = true;
+      emitStorageChange({ [ISOLATION]: { newValue: true } }, 'sync');
+      await flush();
+      expect(shownItems()).toEqual(['A item']);
+
+      // Removed and recreated while another pack is on screen.
+      removeShown(shared);
+      await recreate(shared, 'new item');
+
+      isolated = false;
+      emitStorageChange({ [ISOLATION]: { newValue: false } }, 'sync');
+      await flush();
+      expect(shownItems()).toEqual(['new item']);
+
+      held.release();
+      await flush();
+      expect(shownItems()).toEqual(['new item']);
+    });
   });
 });

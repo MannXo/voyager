@@ -69,11 +69,10 @@ export const RESEARCH_PACK_UNSUPPORTED_VERSION = 'unsupported_version';
 
 /**
  * The single writer. Ops are applied one at a time against the freshly read
- * pack and the write is skipped when nothing changed. Each write stamps the
- * revision with the clock (at least one past the previous), so a pack
- * recreated after it was removed is still newer than anything before. A pack written by a
- * newer build is never edited: the op fails rather than reporting a result
- * that was not saved.
+ * pack and the write is skipped when nothing changed. Each write sets the
+ * revision one past the stored one, so a recreated pack starts again from 1;
+ * tabs tell a removal apart themselves. A pack written by a newer build is
+ * never edited: the op fails rather than reporting a result that was not saved.
  */
 export function createResearchPackOwner(options: {
   area: ResearchPackStorageArea;
@@ -97,10 +96,9 @@ export function createResearchPackOwner(options: {
         const raw = stored?.[key];
         if (isNewerPackVersion(raw)) throw new Error(RESEARCH_PACK_UNSUPPORTED_VERSION);
         const current = parsePack(raw);
-        const at = now();
-        const next = applyResearchPackOp(current, op, at);
+        const next = applyResearchPackOp(current, op, now());
         if (next.pack === current) return next;
-        const pack = { ...next.pack, revision: Math.max(current.revision + 1, at) };
+        const pack = { ...next.pack, revision: current.revision + 1 };
         await options.area.set({ [key]: pack });
         return { pack, outcome: next.outcome };
       });
