@@ -75,7 +75,7 @@ describe('research pack markdown', () => {
     const markdown = buildResearchPackMarkdown(pack, NOW);
 
     expect(markdown).toContain('_2 excerpts from earlier AI conversations, assembled 2026-10-01._');
-    expect(markdown).toContain('## 1. Transformers [intro]');
+    expect(markdown).toContain('## 1. Transformers \\[intro\\]');
     expect(markdown).toContain(
       '- From: [Transformers \\[intro\\]](https://gemini.google.com/app/abc) (Gemini)',
     );
@@ -98,6 +98,47 @@ describe('research pack markdown', () => {
     expect(markdown.indexOf('First answer with **bold**.')).toBeLessThan(sourcesAt);
     expect(sourcesAt).toBeLessThan(instructionAt);
     expect(markdown.trimEnd().endsWith('Compare these with the latest survey.')).toBe(true);
+  });
+
+  it('never emits script-capable links or raw HTML from stored metadata', () => {
+    // Shaped like a tampered or foreign storage entry, bypassing addItem.
+    const tampered: ResearchPack = {
+      version: 1,
+      instruction: '',
+      updatedAt: 0,
+      items: [
+        {
+          id: 'rp_x',
+          text: 'Body',
+          excerpt: false,
+          prompt: '<script>alert(1)</script> *bold* [x](javascript:alert(2))',
+          sourceTitle: '<img src=x onerror=alert(3)>',
+          sourceUrl: 'javascript:alert(4)',
+          platform: '<b>gemini</b>',
+          citations: [
+            { url: 'data:text/html;base64,PHNjcmlwdD4=', title: 'data link' },
+            { url: 'vbscript:msgbox(1)', title: 'vb link' },
+            { url: 'JaVaScRiPt:alert(5)', title: '' },
+            { url: 'https://example.com/ok', title: '<i>Fine</i> & [ok]' },
+          ],
+          addedAt: 0,
+        },
+      ],
+    };
+
+    const markdown = buildResearchPackMarkdown(tampered, NOW);
+
+    // No live link or autolink may point at a script-capable scheme.
+    expect(markdown).not.toMatch(/(?<!\\)\]\(\s*(javascript|data|vbscript):/i);
+    expect(markdown).not.toMatch(/(?<!\\)<\s*(javascript|data|vbscript):/i);
+    expect(markdown).not.toMatch(/(?<!\\)<(script|img|b|i)\b/i);
+    expect(markdown).not.toContain('alert(4)');
+    expect(markdown).not.toContain('data link');
+    expect(markdown).not.toContain('vb link');
+    expect(markdown).toContain('\\[x\\](javascript:alert(2))');
+    expect(markdown).toContain('- From: \\<img src=x onerror=alert(3)\\>');
+    expect(markdown).toContain('- Prompt: \\<script\\>alert(1)\\</script\\> \\*bold\\*');
+    expect(markdown).toContain('[\\<i\\>Fine\\</i\\> \\& \\[ok\\]](https://example.com/ok)');
   });
 
   it('omits empty sections', () => {

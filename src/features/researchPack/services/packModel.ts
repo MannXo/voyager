@@ -5,7 +5,7 @@
  */
 import { hashString } from '@/core/utils/hash';
 
-import { dedupeCitations } from './citations';
+import { dedupeCitations, safeHttpUrl } from './citations';
 import {
   type AddItemOutcome,
   RESEARCH_PACK_LIMITS,
@@ -53,7 +53,8 @@ export function addItem(
   const text = clipBody(normalizeBody(draft.text));
   if (!text) return { pack, outcome: 'empty' };
 
-  const id = buildItemId(draft.sourceUrl, text);
+  const sourceUrl = safeHttpUrl(draft.sourceUrl) ?? '';
+  const id = buildItemId(sourceUrl, text);
   if (pack.items.some((item) => item.id === id)) return { pack, outcome: 'duplicate' };
   if (pack.items.length >= RESEARCH_PACK_LIMITS.maxItems) return { pack, outcome: 'full' };
 
@@ -63,7 +64,7 @@ export function addItem(
     excerpt: draft.excerpt,
     prompt: clip(draft.prompt.replace(/\s+/g, ' ').trim(), RESEARCH_PACK_LIMITS.maxPromptChars),
     sourceTitle: clip(draft.sourceTitle.trim(), RESEARCH_PACK_LIMITS.maxTitleChars),
-    sourceUrl: draft.sourceUrl,
+    sourceUrl,
     platform: draft.platform,
     citations: dedupeCitations(draft.citations),
     addedAt: now,
@@ -122,7 +123,8 @@ function parseCitations(value: unknown): ResearchPackCitation[] {
 function parseItem(value: unknown): ResearchPackItem | null {
   if (!isRecord(value)) return null;
   const text = readString(value.text);
-  const sourceUrl = readString(value.sourceUrl);
+  // Stored data is untrusted too: only http(s) source links survive a load.
+  const sourceUrl = safeHttpUrl(readString(value.sourceUrl)) ?? '';
   if (!text.trim()) return null;
   return {
     id: readString(value.id) || buildItemId(sourceUrl, text),

@@ -149,6 +149,25 @@ describe('research pack model', () => {
     expect(parsePack({ version: 2, items: [good.items[0]] }).items).toEqual([]);
   });
 
+  it('keeps only http(s) source URLs, on add and on load', () => {
+    for (const sourceUrl of [
+      'javascript:alert(1)',
+      ' JaVaScRiPt:alert(1)',
+      'data:text/html,<script>alert(1)</script>',
+      'vbscript:msgbox(1)',
+      'file:///etc/passwd',
+    ]) {
+      const { pack } = addItem(createEmptyPack(), draft({ sourceUrl }), 1);
+      expect(pack.items[0].sourceUrl, sourceUrl).toBe('');
+
+      const stored = { ...packWith(['a']), items: [{ ...packWith(['a']).items[0], sourceUrl }] };
+      expect(parsePack(stored).items[0].sourceUrl, sourceUrl).toBe('');
+    }
+    expect(addItem(createEmptyPack(), draft(), 1).pack.items[0].sourceUrl).toBe(
+      'https://gemini.google.com/u/1/app/abc',
+    );
+  });
+
   it('recognizes a pack written by a newer build', () => {
     expect(isNewerPackVersion({ version: 2 })).toBe(true);
     expect(isNewerPackVersion({ version: 1 })).toBe(false);

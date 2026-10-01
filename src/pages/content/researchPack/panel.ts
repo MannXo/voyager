@@ -6,6 +6,7 @@
  * `textContent` / `value`, never `innerHTML`. Styles live in
  * `public/contentStyle.css` under `gv-rp-`.
  */
+import { safeHttpUrl } from '@/features/researchPack/services/citations';
 import { platformLabel } from '@/features/researchPack/services/markdown';
 import type { ResearchPack, ResearchPackItem } from '@/features/researchPack/services/types';
 import type { TranslationKey } from '@/utils/translations';
@@ -50,15 +51,6 @@ function el<K extends keyof HTMLElementTagNameMap>(
   element.className = className;
   if (text !== undefined) element.textContent = text;
   return element;
-}
-
-function safeHttpUrl(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.toString() : null;
-  } catch {
-    return null;
-  }
 }
 
 function snippet(text: string): string {

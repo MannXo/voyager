@@ -32,6 +32,20 @@ function isGoogleRedirect(url: URL): boolean {
 }
 
 /**
+ * The URL as an absolute http(s) string, or null for any other scheme
+ * (`javascript:`, `data:`, `vbscript:`, `file:` ...) or an unparseable value.
+ * Every link that leaves the pack (Markdown, panel) goes through this.
+ */
+export function safeHttpUrl(raw: string): string | null {
+  try {
+    const url = new URL(raw.trim());
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Turn a raw link into the URL a reader should open, or null when it is not a
  * citable external http(s) source. Unwraps Google `/url?q=` redirects, drops
  * the fragment and tracking parameters, and trims a trailing slash so the same
