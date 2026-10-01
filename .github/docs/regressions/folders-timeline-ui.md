@@ -623,6 +623,25 @@ drop, or hover layout.
 locale for every literal key the folder UI translates`, `confirms library drops in words`,
   `reports import results and failures with their values filled in`).
 
+## Listeners outside an extension shadow root see its host, not the element
+
+- **Trap:** Moving the floating folder panel into a shadow root made its name input look like a
+  plain `<div>` to every page-level listener: `event.target` and `document.activeElement` are
+  retargeted to the shadow host. The timeline shortcuts (plain `j`/`k`/`g` in a window
+  capture listener that calls `preventDefault`) and input vim mode's `i` therefore swallowed
+  letters typed into a folder name, and `panel.contains(e.target)` checks treated clicks inside
+  the panel as outside clicks.
+- **Rule:** A guard that skips "the user is typing" reads `composedEventTarget` and
+  `deepActiveElement` from `src/core/utils/composedTarget.ts`. Inside-or-outside checks against
+  a shadow-rooted panel use `event.composedPath()` (`eventPassedThrough` in
+  `folder/shadowHost.ts`), and focus checks read the shadow root's `activeElement`. Read
+  `composedPath()` during dispatch; it is empty afterwards.
+- **Guard:** `src/core/services/__tests__/KeyboardShortcutService.test.ts` (`ignores shortcuts
+typed into an input inside an open shadow root`),
+  `src/pages/content/chatInput/__tests__/vimModeShadowTarget.test.ts`,
+  `src/core/utils/__tests__/composedTarget.test.ts` and
+  `src/pages/content/folder/__tests__/shadowHost.test.ts`.
+
 ## Hide-archived membership checks must not scan every stored conversation per row
 
 - **Trap:** With hide-archived on, every sidebar row asked `FolderStore.isConversationInFolders`,
