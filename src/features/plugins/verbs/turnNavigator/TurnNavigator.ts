@@ -262,14 +262,11 @@ export class TurnNavigator {
   }
 
   private touchesTurn(node: Node): boolean {
+    const { turnSelector, turnKeyAttribute } = this.config;
     const element = this.toElement(node);
-    if (
-      element?.closest(this.config.turnSelector) ||
-      element?.querySelector?.(this.config.turnSelector)
-    )
-      return true;
+    if (element?.closest(turnSelector) || element?.querySelector?.(turnSelector)) return true;
     // A list item whose message is already unloaded still holds a turn.
-    const item = this.config.turnKeyAttribute && `[${this.config.turnKeyAttribute}]`;
+    const item = turnKeyAttribute && `[${turnKeyAttribute}]`;
     return (
       !!item && node instanceof window.Element && (node.matches(item) || !!node.querySelector(item))
     );
@@ -365,7 +362,12 @@ export class TurnNavigator {
     const readText = (element: HTMLElement) => this.extractText(element);
     const centerOf = (element: HTMLElement) => this.computeElementCenter(element);
     const turns = this.snapshot?.collect(document, readText);
-    const mounted = turns ?? this.readMountedTurns(readText);
+    const mounted: MountedTurn[] =
+      turns ??
+      Array.from(document.querySelectorAll<HTMLElement>(this.config.turnSelector), (element) => ({
+        element,
+        summary: readText(element),
+      }));
     if (mounted[0]) this.setScrollTarget(this.getScrollTarget(mounted[0].element));
     this.markers = turns
       ? snapshotMarkers(this.markers, turns, centerOf)
@@ -378,12 +380,6 @@ export class TurnNavigator {
     this.applyStarredState();
     this.refreshActive();
     this.handleHash();
-  }
-
-  private readMountedTurns(readText: (element: HTMLElement) => string): MountedTurn[] {
-    return Array.from(document.querySelectorAll<HTMLElement>(this.config.turnSelector)).map(
-      (element) => ({ element, summary: readText(element) }),
-    );
   }
 
   private resetConversationState(): void {
