@@ -1,7 +1,8 @@
 /**
- * "Move to folder" picker for ChatGPT. Gemini's `openMove` dialog is styled by
- * `contentStyle.css`, which chatgpt.com does not load, so this one carries its
- * own sheet in a shadow surface (scheme, RTL and the key guard come with it).
+ * "Move to folder" picker for ChatGPT. It carries its own sheet in a shadow
+ * surface (scheme, RTL and the key guard come with it), so ChatGPT's page CSS
+ * cannot restyle it. The plugin's dynamic registration does inject
+ * `contentStyle.css` on chatgpt.com, alongside the content script.
  */
 import type { Folder } from '@/core/types/folder';
 import { sortFolders } from '@/features/folder/model/folderData';
