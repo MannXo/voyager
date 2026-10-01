@@ -41,10 +41,11 @@ function normalizePromptItem(value: unknown): PromptItem | null {
     id: typeof item.id === 'string' && item.id ? item.id : generatePromptId(),
     text,
     tags: normalizeTags(item.tags),
+    // An unknown creation time is 0, the oldest edit time a merge can see, so a
+    // timeless copy from an old file never beats a timestamped local edit. It is
+    // not left out: every prompt validator, old and new, requires a number.
     createdAt:
-      typeof item.createdAt === 'number' && Number.isFinite(item.createdAt)
-        ? item.createdAt
-        : Date.now(),
+      typeof item.createdAt === 'number' && Number.isFinite(item.createdAt) ? item.createdAt : 0,
   };
 
   if (typeof item.updatedAt === 'number' && Number.isFinite(item.updatedAt)) {

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
+import { PromptImportExportService } from '@/features/backup/services/PromptImportExportService';
 import type { PromptItem } from '@/features/backup/types/backup';
 
 import { mergeImportedPrompts } from '../mergeImportedPrompts';
+import { parsePromptLibraryOp } from '../promptLibraryMessages';
 import { PROMPT_LIBRARY_KEY, createPromptLibraryOwner } from '../promptLibraryOwner';
 
 const prompt = (id: string, extra: Partial<PromptItem> = {}): PromptItem => ({
@@ -75,6 +77,44 @@ describe('prompts import boundaries', () => {
     const result = await owner.apply({ kind: 'import', items: structuredClone(incoming) });
     expect(result).toMatchObject({ added: 3, skipped: 0, total: 3 });
     expect(library).toEqual(incoming);
+  });
+
+  it('keeps newer local text over an old file without times, and still adds its new prompts', async () => {
+    let library: unknown = [
+      prompt('edited', { text: 'NEW', updatedAt: 20 }),
+      prompt('legacy', { text: 'Legacy, kept', createdAt: 5 }),
+    ];
+    const owner = createPromptLibraryOwner({
+      area: {
+        get: async () => ({ [PROMPT_LIBRARY_KEY]: structuredClone(library) }),
+        set: async (items) => {
+          library = structuredClone(items[PROMPT_LIBRARY_KEY]);
+        },
+      },
+    });
+    // An old backup file: no times, no pins. The popup validates it and sends the op.
+    const file = JSON.parse(
+      JSON.stringify({
+        items: [
+          { id: 'edited', text: 'OLD' },
+          { id: 'legacy', text: 'Legacy, old' },
+          { id: 'fresh', text: 'Fresh' },
+        ],
+      }),
+    );
+    const payload = PromptImportExportService.validatePayload(file);
+    if (!payload.success) throw payload.error;
+    const op = parsePromptLibraryOp({ kind: 'import', items: payload.data.items });
+    if (!op) throw new Error('the op validator rejected the import');
+
+    const result = await owner.apply(op);
+
+    expect(result).toMatchObject({ added: 1, skipped: 2 });
+    expect(library).toEqual([
+      prompt('edited', { text: 'NEW', updatedAt: 20 }),
+      prompt('legacy', { text: 'Legacy, kept', createdAt: 5 }),
+      prompt('fresh', { text: 'Fresh', createdAt: 0 }),
+    ]);
   });
 });
 

@@ -449,6 +449,8 @@ devices: the pusher sets Drive, a puller keeps its own order`).
   elsewhere was rejected, and when two devices edited one prompt, whichever pushed last won rather
   than the later edit. The import also copied only text and name from a newer same-id copy, so
   pins and unpins never travelled through the popup import or the prompts-only Drive merges.
+  The file parser also filled a missing `createdAt` with the time of the import, so a timeless
+  copy from an old backup beat a newer local edit.
 - **Rule:** A prompt's edit time is its own `updatedAt`, else `createdAt`; no merge reads the
   clock, and `applyPromptLibraryOp` takes no time argument. `isNewerPromptCopy`
   (`src/core/utils/promptRevision.ts`) decides the winner for the import and for the full restore
@@ -461,7 +463,9 @@ devices: the pusher sets Drive, a puller keeps its own order`).
   absence as an unpin let one pull from an older device unpin everything. Those versions read
   `null` as unpinned (`isPinned` checks for a number; no validator looks at the field). Do not
   strip `null` in a parser or serializer. Pinning must keep bumping `updatedAt`, or a pin loses
-  to the older copy. An added prompt keeps the times it came with.
+  to the older copy. An added prompt keeps the times it came with. A copy without `createdAt`
+  gets 0 from the file parser, the oldest edit time, so it never beats a timestamped copy; the
+  field stays a number because every prompt validator, old and new, requires one.
 - **Guard:** `src/pages/background/__tests__/promptDriveMergeEdits.test.ts` (`keeps an edit made
 elsewhere after this device merged an unchanged copy`, `changes nothing when the same Drive file
 is merged again`, the pin and unpin round trips), `src/utils/mergePrompts.test.ts` and

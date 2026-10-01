@@ -253,6 +253,31 @@ describe('prompt pins through the prompts-only Drive merges', () => {
     }
   });
 
+  it('keeps newer local text and pin over a Drive copy without times or pins', async () => {
+    // A copy with no edit time is the oldest any merge sees, whenever it runs.
+    const timelessCopy = { items: [{ id: 'a', text: 'OLD', tags: [] }] };
+    const puller = device(library());
+    await puller.edit('a', 'NEW', 20);
+    await puller.pin('a', true, 30);
+    const pusher = device(library());
+    await pusher.edit('a', 'NEW', 20);
+    await pusher.pin('a', true, 30);
+
+    await puller.pull(timelessCopy);
+    const uploaded = await pusher.push(timelessCopy);
+
+    for (const items of [puller.stored(), uploaded.items]) {
+      expect(items.find((item) => item.id === 'a')).toEqual({
+        id: 'a',
+        text: 'NEW',
+        tags: [],
+        createdAt: 1,
+        pinnedAt: 30,
+        updatedAt: 30,
+      });
+    }
+  });
+
   it('carries an explicit unpin through a Drive file', () => {
     const file = JSON.parse(
       JSON.stringify(
