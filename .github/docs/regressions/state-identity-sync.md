@@ -181,14 +181,35 @@ off a ChatGPT tab`).
   applied in memory and repainted while `saveData()` dropped it at the `!session` guard — a folder
   the user created looked saved and was gone on reload. Firefox is the only target that resolves the
   scope through the background page (`AccountIsolationService.shouldResolveScopeInBackground`), so
-  it alone can fail this way, and only Gemini was exposed: `aistudio.ts` recovers through its
-  1200 ms account poller. Nothing self-healed until the next SPA account-route change.
+  it alone can fail this way. `aistudio.ts` recovered through its 1200 ms account poller and now
+  also shares the repository retry. Nothing self-healed until the next SPA account-route change.
 - **Rule:** Retry a failed resolution a bounded number of times with growing gaps, then stop. Never
   fall back to the global `gvFolderData` bucket — an ownerless bucket can belong to another account.
   Clear the pending retry in `destroy()` and let a newer `accountScopeRequest` supersede it.
 - **Guard:** `src/pages/content/folder/FolderStore.test.ts`
   (`retries a failed account-scope resolution instead of staying unbound`,
   `gives up after a bounded number of account-scope retries`).
+
+## AI Studio folders must not inherit Gemini's load-time repairs
+
+- **Trap:** `FolderRepository` was extracted from Gemini's `FolderStore`, whose load repairs data
+  before anyone sees it. On AI Studio data those repairs are destructive. The orphan cleanup keeps
+  only folder ids plus `rootBucketId`, so with Gemini's `__root_conversations__` it deletes AI
+  Studio's `__uncategorized__` bucket, which holds every root-level prompt, and the next save
+  writes that loss. `normalizeFolderData` seeds a missing `sortIndex` by name and dedupes refs, but
+  AI Studio data has no `sortIndex` and renders folders by `createdAt`, so the seed fixes an order
+  users never chose. The default content adapter would also mirror the bucket into page
+  localStorage, which AI Studio never wrote.
+- **Rule:** Platform behavior lives in `PlatformFolderConfig`. `AISTUDIO_FOLDER_CONFIG` keeps
+  `rootBucketId: '__uncategorized__'`, `normalize: keepFolderData`, `pruneOrphanBuckets: false`, a
+  whole-bucket legacy copy, backup recovery for a missing bucket and no write retry, and uses
+  `AIStudioFolderStorageAdapter` (chrome.storage.local only). To normalize AI Studio data later,
+  first seed `sortIndex` from the order users see (pinned, then `createdAt`), and only then
+  normalize. Keys and the `aistudio-folders` backup namespace are frozen.
+- **Guard:** `src/pages/content/folder/__tests__/aistudioPersistenceCharacterization.test.ts`
+  (`loads stored data raw, without normalizing, pruning or writing back`,
+  `saves exactly the loaded content, keeping orphan, root and duplicate buckets`) and
+  `src/pages/content/folder/__tests__/aistudioFolderSync.test.ts`.
 
 ## A native feature's stop must remove everything its start registered
 
