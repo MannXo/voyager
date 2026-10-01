@@ -2,12 +2,13 @@
  * "Continue in ChatGPT / Claude": the background carries a research pack from
  * a Gemini tab to a new chat tab on another model's site.
  *
- * The pack never travels in a URL. When Voyager runs on the target site, the
- * background opens the new chat and keeps a one-shot record bound to that
- * tab's id, with a short expiry. Voyager's content script on that tab claims
- * it once, after the composer exists, and fills the composer without sending.
- * When Voyager cannot run there, the Gemini tab copies the pack inside the
- * click and the background only opens the new chat.
+ * The pack never travels in a URL. When Voyager runs on the target site and
+ * the browser has `storage.session`, the background opens the new chat and
+ * keeps a one-shot record bound to that tab's id, with a short expiry.
+ * Voyager's content script on that tab claims it once, after the composer
+ * exists, and fills the composer without sending.
+ * Otherwise the Gemini tab copies the pack inside the click and the
+ * background only opens the new chat.
  *
  * Same shape as the ChatGPT temporary-chat handoff (one-shot, tab-bound,
  * alarm-backed expiry), but owned by the background: that handoff keys its
@@ -175,7 +176,12 @@ export interface HandoffOpener {
 }
 
 export interface HandoffBrokerDeps {
-  area: HandoffStorageArea;
+  /**
+   * `storage.session`, or null where the browser lacks it. Without it nothing is
+   * stored: every target reports "cannot run" and the click takes the clipboard
+   * path, so the pack never reaches disk.
+   */
+  area: HandoffStorageArea | null;
   /** True only when Voyager's content script will run on the target's new chat page. */
   isReceiverReady: (target: HandoffTarget) => Promise<boolean>;
   /** Open `url` in a new tab and return its id. */
@@ -206,6 +212,7 @@ export interface HandoffBroker {
 
 export function createHandoffBroker(deps: HandoffBrokerDeps): HandoffBroker {
   const now = deps.now ?? Date.now;
+  const area = deps.area;
   // One queue: a new tab's peek can arrive while its record is still being
   // written, and two claims from one tab must not both read it.
   let queue: Promise<unknown> = Promise.resolve();
@@ -216,8 +223,9 @@ export function createHandoffBroker(deps: HandoffBrokerDeps): HandoffBroker {
   };
 
   const stored = async (tabId: number): Promise<unknown> => {
+    if (!area) return undefined;
     const key = handoffStorageKey(tabId);
-    return ((await deps.area.get(key)) ?? {})[key];
+    return ((await area.get(key)) ?? {})[key];
   };
 
   const read = async (tabId: number): Promise<PendingHandoff | null> => {
@@ -226,7 +234,7 @@ export function createHandoffBroker(deps: HandoffBrokerDeps): HandoffBroker {
   };
 
   const drop = async (tabId: number): Promise<void> => {
-    await deps.area.remove(handoffStorageKey(tabId));
+    await area?.remove(handoffStorageKey(tabId));
     try {
       await deps.clearExpiry(tabId);
     } catch {
@@ -249,6 +257,7 @@ export function createHandoffBroker(deps: HandoffBrokerDeps): HandoffBroker {
   };
 
   const readiness = async (target: HandoffTarget): Promise<boolean> => {
+    if (!area) return false;
     try {
       return await deps.isReceiverReady(target);
     } catch {
@@ -267,7 +276,7 @@ export function createHandoffBroker(deps: HandoffBrokerDeps): HandoffBroker {
     open(target, markdown, opener) {
       return serialize(async (): Promise<HandoffOpenResult> => {
         const { newChatUrl } = HANDOFF_TARGETS[target];
-        if (markdown !== undefined && !(await readiness(target))) {
+        if (markdown !== undefined && (!area || !(await readiness(target)))) {
           return { ok: false, reason: 'unavailable' };
         }
         let tabId: number | undefined;
@@ -277,10 +286,10 @@ export function createHandoffBroker(deps: HandoffBrokerDeps): HandoffBroker {
           return { ok: false, reason: 'open_failed' };
         }
         if (markdown === undefined) return { ok: true };
-        if (!isTabId(tabId)) return { ok: false, reason: 'open_failed' };
+        if (!isTabId(tabId) || !area) return { ok: false, reason: 'open_failed' };
         const expiresAt = now() + HANDOFF_TTL_MS;
         try {
-          await deps.area.set({
+          await area.set({
             [handoffStorageKey(tabId)]: {
               target,
               markdown,
@@ -333,12 +342,13 @@ export function createHandoffBroker(deps: HandoffBrokerDeps): HandoffBroker {
 
     sweep() {
       return serialize(async () => {
-        const all = (await deps.area.get(null)) ?? {};
+        if (!area) return;
+        const all = (await area.get(null)) ?? {};
         const stale = Object.entries(all)
           .filter(([key]) => key.startsWith(HANDOFF_STORAGE_PREFIX))
           .filter(([, value]) => !isPendingHandoff(value) || value.expiresAt <= now())
           .map(([key]) => key);
-        if (stale.length > 0) await deps.area.remove(stale);
+        if (stale.length > 0) await area.remove(stale);
       });
     },
   };

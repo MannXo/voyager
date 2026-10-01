@@ -26,14 +26,18 @@ import { getSenderPageUrl } from './runtimeMessageRouting';
 export type GeminiSenderCheck = (sender: chrome.runtime.MessageSender) => boolean;
 
 /**
- * `storage.session` keeps the pack out of disk and, at its default access
- * level, out of reach of content scripts, so a page can only get it by
- * claiming through this owner. Browsers without it fall back to `local`,
- * which the start-up sweep and the expiry alarm keep clean.
+ * `storage.session` keeps the pack in memory only, gone when the browser
+ * closes, and at its default access level out of reach of content scripts, so
+ * a page can only get it by claiming through this owner. There is no
+ * `storage.local` fallback: plaintext there would outlive a failed alarm and a
+ * browser restart. Chrome before 102 and Safari before 16.4 lack it (Firefox
+ * has it from 115, our floor); they get null and take the clipboard path.
  */
-function handoffArea(): HandoffStorageArea {
-  const session = (chrome.storage as { session?: chrome.storage.StorageArea }).session;
-  const area = session ?? chrome.storage.local;
+export function handoffArea(
+  storage: typeof chrome.storage = chrome.storage,
+): HandoffStorageArea | null {
+  const area = (storage as { session?: chrome.storage.StorageArea }).session;
+  if (!area) return null;
   return {
     get: (keys) => area.get(keys),
     set: (items) => area.set(items),

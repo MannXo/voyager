@@ -141,6 +141,32 @@ describe('research pack handoff broker', () => {
     await expect(broker.claim(42, CHATGPT_PAGE)).resolves.toEqual({ ok: true, markdown: PACK });
   });
 
+  it('stores nothing and reports every target unready without storage.session', async () => {
+    const opened: string[] = [];
+    const broker = createHandoffBroker({
+      area: null,
+      isReceiverReady: async () => true,
+      openTab: async (url) => {
+        opened.push(url);
+        return 42;
+      },
+      scheduleExpiry: vi.fn(),
+      clearExpiry: vi.fn(),
+    });
+
+    await expect(broker.status()).resolves.toEqual({ chatgpt: false, claude: false });
+    await expect(broker.open('chatgpt', PACK, GEMINI_TAB)).resolves.toEqual({
+      ok: false,
+      reason: 'unavailable',
+    });
+    expect(opened).toEqual([]);
+    // The clipboard path still opens the new chat.
+    await expect(broker.open('chatgpt', undefined, GEMINI_TAB)).resolves.toEqual({ ok: true });
+    expect(opened).toEqual(['https://chatgpt.com/']);
+    await expect(broker.claim(42, CHATGPT_PAGE)).resolves.toEqual({ ok: false });
+    await expect(broker.sweep()).resolves.toBeUndefined();
+  });
+
   it('answers a peek that arrives while the tab is still being opened', async () => {
     const { broker, deps } = setup();
     let releaseTab!: (tabId: number) => void;

@@ -125,4 +125,28 @@ describe('research pack handoff wired into the background', () => {
       ok: false,
     });
   });
+
+  it('sends every click down the clipboard path in a browser without storage.session', async () => {
+    Object.assign(chrome, { storage: { ...original.storage, session: undefined } });
+    startResearchPackOwner();
+    const gemini = {
+      id: 'voyager-test',
+      frameId: 0,
+      tab: { id: 7, index: 0, windowId: 1, url: 'https://gemini.google.com/app' },
+    } as chrome.runtime.MessageSender;
+
+    await expect(dispatch(listeners, { type: HANDOFF_MESSAGES.status }, gemini)).resolves.toEqual({
+      chatgpt: false,
+      claude: false,
+    });
+    await expect(
+      dispatch(
+        listeners,
+        { type: HANDOFF_MESSAGES.open, target: 'chatgpt', markdown: '# Pack' },
+        gemini,
+      ),
+    ).resolves.toEqual({ ok: false, reason: 'unavailable' });
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+    expect(chrome.storage.local.set).not.toHaveBeenCalled();
+  });
 });

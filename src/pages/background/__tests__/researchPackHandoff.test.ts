@@ -7,7 +7,11 @@ import {
   type HandoffOpenResult,
 } from '@/features/researchPack/services/handoff';
 
-import { handleResearchPackHandoffMessage, isHandoffReceiverReady } from '../researchPackHandoff';
+import {
+  handleResearchPackHandoffMessage,
+  handoffArea,
+  isHandoffReceiverReady,
+} from '../researchPackHandoff';
 
 vi.mock('webextension-polyfill', () => ({ default: {} }));
 
@@ -115,5 +119,18 @@ describe('whether Voyager can receive on the target', () => {
 
   it('reads a browser that cannot list registrations as not ready', async () => {
     await expect(isHandoffReceiverReady('claude', api(true, undefined))).resolves.toBe(false);
+  });
+});
+
+describe('where the pending pack is kept', () => {
+  it('uses storage.session and never falls back to storage.local', () => {
+    const local = { get: vi.fn(), set: vi.fn(), remove: vi.fn() };
+    expect(handoffArea({ local } as unknown as typeof chrome.storage)).toBeNull();
+
+    const session = { get: vi.fn(async () => ({})), set: vi.fn(), remove: vi.fn() };
+    const area = handoffArea({ local, session } as unknown as typeof chrome.storage);
+    void area?.set({ k: 1 });
+    expect(session.set).toHaveBeenCalledWith({ k: 1 });
+    expect(local.set).not.toHaveBeenCalled();
   });
 });
