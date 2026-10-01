@@ -18,6 +18,7 @@ import type { Primitive } from './types';
 export interface TurnNavigatorParams {
   readonly turn?: string;
   readonly turnKey?: string;
+  readonly conversationIdAttribute?: string;
   readonly conversationIdPattern?: string;
   readonly scrollContainer?: string;
   readonly yieldWhen?: string;
@@ -50,6 +51,7 @@ export const turnNavigatorPrimitive: Primitive<TurnNavigatorParams> = {
     const params: {
       turn?: string;
       turnKey?: string;
+      conversationIdAttribute?: string;
       conversationIdPattern?: string;
       scrollContainer?: string;
       yieldWhen?: string;
@@ -83,10 +85,9 @@ export const turnNavigatorPrimitive: Primitive<TurnNavigatorParams> = {
         }
         continue;
       }
-      if (key === 'turnKey') {
-        if (typeof value === 'string' && ATTRIBUTE_NAME.test(value)) params.turnKey = value;
-        else
-          issues.push({ path: 'params.turnKey', message: 'must be a lower-case attribute name' });
+      if (key === 'turnKey' || key === 'conversationIdAttribute') {
+        if (typeof value === 'string' && ATTRIBUTE_NAME.test(value)) params[key] = value;
+        else issues.push({ path: `params.${key}`, message: 'must be a lower-case attribute name' });
         continue;
       }
       if (key === 'position') {
@@ -121,6 +122,7 @@ export const turnNavigatorPrimitive: Primitive<TurnNavigatorParams> = {
       siteLabel: adapter?.label ?? 'Conversation',
       turnSelector,
       turnKeyAttribute: params.turnKey,
+      conversationIdAttribute: params.conversationIdAttribute,
       conversationIdPattern: params.conversationIdPattern ?? adapter?.conversationIdPattern,
       scrollContainerSelector: params.scrollContainer ?? adapter?.selectors.scrollContainer,
       yieldWhenSelector: params.yieldWhen,

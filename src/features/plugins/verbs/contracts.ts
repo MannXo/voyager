@@ -82,6 +82,13 @@ export const PRIMITIVE_CONTRACTS: readonly PrimitiveContract[] = [
         description:
           "Attribute holding the host's own per-turn id on the virtual-list item it keeps mounted for every turn, even while the message inside unloads. The rail is then rebuilt from those items on every refresh, with labels remembered by this id, instead of accumulated.",
       },
+      conversationIdAttribute: {
+        type: 'string',
+        required: false,
+        sinceEngine: '1.5.0',
+        description:
+          'Attribute on an ancestor of each turn holding the conversation id that conversationIdPattern captures from the URL. When a turn has one, a star is written only if it names the current conversation; it must change in the same render that swaps the turns.',
+      },
       conversationIdPattern: {
         type: 'string',
         required: false,

@@ -10,6 +10,11 @@ import {
   stopClaudeTimeline,
   updateClaudeTimelineSettings,
 } from '.';
+import { requireBundledSiteAdapter } from '../../catalog/sites';
+import { PluginScope } from '../../runtime/pluginScope';
+import type { NativeOperation } from '../../types';
+import { turnNavigatorPrimitive } from '../../verbs/turnNavigator';
+import { BUILTIN_PLUGINS } from '../index';
 
 const {
   addStarredMessage,
@@ -363,6 +368,31 @@ describe('Claude timeline', () => {
   });
 
   describe("with Claude's conversation id on the thread", () => {
+    let scope: PluginScope | null = null;
+
+    afterEach(async () => {
+      await scope?.dispose();
+      scope = null;
+    });
+
+    /** Start the timeline the way the plugin runtime does: the shipped manifest's op. */
+    async function mount(): Promise<void> {
+      const manifest = BUILTIN_PLUGINS.find((plugin) => plugin.id === 'voyager.claude-timeline');
+      const op = manifest?.contributes.domOps?.find(
+        (entry): entry is NativeOperation => entry.op === 'native',
+      );
+      const params = turnNavigatorPrimitive.validateParams(op?.params);
+      if (!manifest || !params.success) throw new Error('invalid Claude timeline manifest');
+      scope = new PluginScope();
+      turnNavigatorPrimitive.activate(scope, params.data, {
+        doc: document,
+        adapter: requireBundledSiteAdapter('claude'),
+        pluginId: manifest.id,
+        settings: {},
+        setTargetCounter: () => {},
+      });
+      await flush();
+    }
     function thread(conversation: string | null): HTMLElement {
       const container = document.createElement('div');
       if (conversation) container.setAttribute('data-conv-id', conversation);
@@ -386,8 +416,7 @@ describe('Claude timeline', () => {
     it('refuses a turn Claude files under another conversation, then stars it there', async () => {
       const container = thread('claude-123');
       container.appendChild(createTurn('first'));
-      startClaudeTimeline();
-      await flush();
+      await mount();
 
       // Claude swaps the thread before the URL names the next conversation.
       container.setAttribute('data-conv-id', 'claude-456');
@@ -408,8 +437,7 @@ describe('Claude timeline', () => {
       history.replaceState({}, '', '/new');
       const container = thread(null);
       container.appendChild(createTurn('brand new'));
-      startClaudeTimeline();
-      await flush();
+      await mount();
 
       history.pushState({}, '', '/chat/claude-789');
       container.setAttribute('data-conv-id', 'claude-789');

@@ -78,11 +78,13 @@ describe('turnNavigator primitive', () => {
         yieldWhen: '.panel',
         position: 'left',
         turnKey: 'data-turn-id-container',
+        conversationIdAttribute: 'data-conv-id',
       }),
     ).toEqual({
       success: true,
       data: {
         turnKey: 'data-turn-id-container',
+        conversationIdAttribute: 'data-conv-id',
         turn: '.t',
         conversationIdPattern: '^/c/(\\w+)',
         scrollContainer: '.scroll',
@@ -112,6 +114,9 @@ describe('turnNavigator primitive', () => {
     expect(issues({ turnKey: 'data-x] , *' })).toEqual(['params.turnKey']);
     expect(issues({ turnKey: 'Data-Upper' })).toEqual(['params.turnKey']);
     expect(issues({ turnKey: 42 })).toEqual(['params.turnKey']);
+    expect(issues({ conversationIdAttribute: 'data-x] , *' })).toEqual([
+      'params.conversationIdAttribute',
+    ]);
     expect(issues({ speed: 3 })).toEqual(['params.speed']);
   });
 

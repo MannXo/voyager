@@ -190,7 +190,7 @@ export const BUILTIN_PLUGINS: readonly PluginManifest[] = [
     author: 'voyager-official',
     category: 'productivity',
     license: 'GPL-3.0-or-later',
-    engine: '>=1.4.0',
+    engine: '>=1.5.0',
     tier: 'declarative',
     matches: ['https://claude.ai/*'],
     requires: { handlers: ['turnNavigator'], semantic: ['userTurn'] },
@@ -206,8 +206,13 @@ export const BUILTIN_PLUGINS: readonly PluginManifest[] = [
         {
           op: 'native',
           handler: 'turnNavigator',
-          // Never open the onboarding guide over an active artifact frame.
-          params: { yieldWhen: 'iframe[src*="claudeusercontent.com"]' },
+          params: {
+            // Never open the onboarding guide over an active artifact frame.
+            yieldWhen: 'iframe[src*="claudeusercontent.com"]',
+            // Claude's thread container names its conversation and changes it
+            // in the render that swaps the turns: it decides star writes.
+            conversationIdAttribute: 'data-conv-id',
+          },
         },
       ],
     },
