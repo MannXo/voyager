@@ -5,16 +5,17 @@
  * Import is validate-then-swap: the manifest passes `validateLocalManifest`
  * before anything is written, so a failed re-import leaves the installed
  * version untouched and returns every issue (path + message) for the user.
- * A successful import is written in one step and always lands DISABLED: the
+ * A successful import is written in one storage write together with its
+ * disabled state (`saveLocalPluginRecord`), so it always lands DISABLED: the
  * popup may close at any moment, and a stale `enabled: true` entry (for
- * example restored from Drive) must never switch on code the user has not
- * inspected yet.
+ * example restored from Drive, or the previous version's) must never switch on
+ * code the user has not inspected yet. A failed write reports the failure.
  */
 import type { Result } from '@/core/types/common';
 
 import type { ManifestIssue } from '../manifest/validate';
 import { resolveStyleFileContributions } from '../sources/styleFiles';
-import { removePluginState, setPluginEnabled } from '../storage/pluginState';
+import { removePluginState } from '../storage/pluginState';
 import type { PluginManifest } from '../types';
 import { toLocalPluginId } from './localPluginId';
 import {
@@ -32,8 +33,10 @@ export interface LocalPluginFile {
   readonly text: string;
 }
 
-/** Ceiling on everything one import reads (manifest plus CSS). */
+/** Ceiling on everything one import reads (manifest plus CSS), and on the CSS it expands to. */
 export const MAX_LOCAL_PLUGIN_IMPORT_CHARS = 1_000_000;
+/** Ceiling on `contributes.styles` entries, checked before any file is expanded. */
+export const MAX_LOCAL_PLUGIN_STYLES = 32;
 
 function issue(path: string, message: string): ManifestIssue {
   return { path, message };
@@ -90,14 +93,30 @@ export async function readLocalPluginFiles(
     };
   }
 
+  // A small manifest can name one big file thousands of times: bound the entry
+  // count before expanding, and the CSS the expansion produces while it runs,
+  // so nothing past the import ceiling is ever copied or scanned.
+  const styles = (parsed as { contributes?: { styles?: unknown } } | null)?.contributes?.styles;
+  if (Array.isArray(styles) && styles.length > MAX_LOCAL_PLUGIN_STYLES) {
+    return {
+      success: false,
+      error: [issue('contributes.styles', `at most ${MAX_LOCAL_PLUGIN_STYLES} style entries`)],
+    };
+  }
   const base = dirname(manifestFile.name);
   const cssFiles = files.filter((file) => extension(file.name) === 'css');
+  let expanded = 0;
   const loadCss = async (file: string): Promise<string> => {
     const exact = cssFiles.find((css) => css.name === `${base}${file}` || css.name === file);
-    if (exact) return exact.text;
     const byName = cssFiles.filter((css) => basename(css.name) === basename(file));
-    if (byName.length === 1) return byName[0].text;
-    throw new Error(`style file ${file} was not picked with the manifest`);
+    const match = exact ?? (byName.length === 1 ? byName[0] : undefined);
+    if (!match) throw new Error(`style file ${file} was not picked with the manifest`);
+    const text = match.text;
+    expanded += text.length;
+    if (expanded > MAX_LOCAL_PLUGIN_IMPORT_CHARS) {
+      throw new Error(`style files expand past ${MAX_LOCAL_PLUGIN_IMPORT_CHARS} characters`);
+    }
+    return text;
   };
   try {
     return {
@@ -123,14 +142,13 @@ export type LocalPluginImportResult =
 
 export interface LocalPluginImportDeps {
   readonly loadRecords: () => Promise<LocalPluginRecordMap>;
-  readonly saveRecord: (manifest: Readonly<Record<string, unknown>>) => Promise<void>;
-  readonly setEnabled: (id: string, enabled: boolean) => Promise<void>;
+  /** Store the manifest and switch the plugin off in one write; reject on any failure. */
+  readonly installDisabled: (manifest: Readonly<Record<string, unknown>>) => Promise<void>;
 }
 
 const DEFAULT_DEPS: LocalPluginImportDeps = {
   loadRecords: loadLocalPluginRecords,
-  saveRecord: (manifest) => saveLocalPluginRecord(manifest),
-  setEnabled: setPluginEnabled,
+  installDisabled: (manifest) => saveLocalPluginRecord(manifest),
 };
 
 function recordVersion(record: LocalPluginRecord | undefined): string | undefined {
@@ -155,7 +173,7 @@ export async function importLocalPlugin(
 
   const { manifest } = result.data;
   try {
-    await deps.saveRecord(result.data.raw);
+    await deps.installDisabled(result.data.raw);
   } catch (error) {
     return {
       ok: false,
@@ -163,7 +181,6 @@ export async function importLocalPlugin(
       ...previous,
     };
   }
-  await deps.setEnabled(manifest.id, false);
   return { ok: true, manifest, ...previous };
 }
 

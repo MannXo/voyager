@@ -86,6 +86,36 @@ describe('readLocalPluginFiles', () => {
     });
   });
 
+  it('caps style entries and the expanded CSS before expanding or scanning any of it', async () => {
+    const loads = { count: 0 };
+    const css = {
+      name: 'a.css',
+      get text() {
+        loads.count += 1;
+        return `.gv-a{color:red}${' '.repeat(100_000)}`;
+      },
+    };
+    const many = authored({
+      contributes: { styles: Array.from({ length: 10_000 }, () => ({ file: 'a.css' })) },
+    });
+    const flood = await readLocalPluginFiles([
+      { name: 'plugin.json', text: JSON.stringify(many) },
+      css,
+    ]);
+    expect(!flood.success && flood.error[0].path).toBe('contributes.styles');
+
+    // Few entries, but expanding them would still read far more than one import may.
+    const repeated = authored({
+      contributes: { styles: Array.from({ length: 20 }, () => ({ file: 'a.css' })) },
+    });
+    const expanded = await readLocalPluginFiles([
+      { name: 'plugin.json', text: JSON.stringify(repeated) },
+      { name: 'a.css', text: `.gv-a{color:red}${' '.repeat(100_000)}` },
+    ]);
+    expect(!expanded.success && expanded.error[0].path).toBe('contributes.styles');
+    expect(loads.count).toBeLessThanOrEqual(2);
+  });
+
   it('reports what is wrong with the picked files', async () => {
     const none = await readLocalPluginFiles([{ name: 'a.css', text: '' }]);
     expect(!none.success && none.error[0].path).toBe('file');
@@ -107,12 +137,10 @@ describe('importLocalPlugin', () => {
     const enabled = new Map<string, boolean>();
     const deps: LocalPluginImportDeps = {
       loadRecords: async () => records,
-      saveRecord: vi.fn(async (manifest) => {
+      installDisabled: vi.fn(async (manifest) => {
         const id = manifest.id as string;
         records = { ...records, [id]: { manifest, importedAt: 1, updatedAt: 2 } };
-      }),
-      setEnabled: vi.fn(async (id: string, value: boolean) => {
-        enabled.set(id, value);
+        enabled.set(id, false);
       }),
     };
     return { deps, enabled, records: () => records };
@@ -137,8 +165,7 @@ describe('importLocalPlugin', () => {
     expect(result.previousVersion).toBe('1.0.0');
     expect(result.issues.map((issue) => issue.path)).toContain('contributes.styles[0].css');
     expect(result.issues.every((issue) => issue.message.length > 0)).toBe(true);
-    expect(store.deps.saveRecord).not.toHaveBeenCalled();
-    expect(store.deps.setEnabled).not.toHaveBeenCalled();
+    expect(store.deps.installDisabled).not.toHaveBeenCalled();
     expect(store.records()['local.me.wide-chat'].manifest).toBe(installed);
   });
 

@@ -300,8 +300,10 @@ export class PluginHost {
    * Plan D7: a mounted plugin whose contributions run first-party code (a
    * `native` op) keeps the version it started with; its update is recorded
    * as pending and applies on the next full page load. Declarative plugins
-   * remount immediately. A user-imported (`local.*`) plugin follows the same
-   * rule.
+   * remount immediately when their version or contributions changed; a
+   * re-listed plugin that did not change keeps running untouched, so an
+   * unrelated import or catalog write never restarts it. A user-imported
+   * (`local.*`) plugin follows the same rules.
    */
   private async reloadCatalog(gen: number): Promise<void> {
     const engine = this.engine;
@@ -348,12 +350,15 @@ export class PluginHost {
           this.pushedSettings.delete(id);
         }
       }
+      // Remount only what changed: an unrelated import or a catalog write that
+      // re-lists the same plugin must not restart a running one (a primitive
+      // would lose its state, e.g. the turn navigator or Vim mode).
       for (const manifest of manifests) {
-        if (this.frozen.has(manifest.id)) continue;
-        if (engine.isActive(manifest.id)) {
-          engine.unmount(manifest.id);
-          this.pushedSettings.delete(manifest.id);
-        }
+        if (this.frozen.has(manifest.id) || !engine.isActive(manifest.id)) continue;
+        const mounted = previous.get(manifest.id);
+        if (mounted && isSameMountedPlugin(mounted, manifest)) continue;
+        engine.unmount(manifest.id);
+        this.pushedSettings.delete(manifest.id);
       }
     }
     await this.reconcile(gen);
@@ -457,4 +462,9 @@ export class PluginHost {
 
 function sameContributions(a: PluginManifest, b: PluginManifest): boolean {
   return JSON.stringify(a.contributes) === JSON.stringify(b.contributes);
+}
+
+/** A re-listed plugin the engine can keep running as mounted. */
+function isSameMountedPlugin(mounted: PluginManifest, next: PluginManifest): boolean {
+  return mounted.version === next.version && sameContributions(mounted, next);
 }

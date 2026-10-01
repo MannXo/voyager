@@ -358,6 +358,41 @@ describe('PluginHost remote catalog', () => {
     host.stop();
   });
 
+  it('keeps a running plugin mounted when an unrelated local plugin is imported', async () => {
+    const running: PluginManifest = {
+      ...manifest(['https://claude.ai/*'], 'voyager.native-a'),
+      contributes: {
+        styles: [{ css: '.gv-native-a{color:red}' }],
+      },
+    };
+    const start = vi.fn();
+    const stop = vi.fn();
+    registerNativeHandler('voyager.native-a', { start, stop });
+    mockState({ 'voyager.native-a': { enabled: true, installedAt: 1 } });
+    const imported = manifest(['https://claude.ai/*'], 'local.me.css-only');
+    let listing: readonly PluginManifest[] = [running];
+    const list = vi.fn(async () => listing);
+    const host = new PluginHost({
+      url: 'https://claude.ai/chat/1',
+      sources: [{ id: 'spy', list }],
+      doc: document,
+    });
+    await host.start();
+    expect(start).toHaveBeenCalledTimes(1);
+
+    // A fresh but identical copy of the running plugin, plus a disabled import.
+    listing = [structuredClone(running), imported];
+    const listeners = (chrome.storage.onChanged.addListener as unknown as Mock).mock.calls;
+    for (const [listener] of listeners) {
+      listener({ gvPluginLocalManifests: { newValue: {} } }, 'local');
+    }
+    await flush();
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(stop).not.toHaveBeenCalled();
+    expect(start).toHaveBeenCalledTimes(1);
+    host.stop();
+  });
+
   it('reloads its sources when the user imports, updates or removes a local plugin', async () => {
     mockState({ 'voyager.test': { enabled: true, installedAt: 1 } });
     const list = vi.fn(async () => [manifest(['https://claude.ai/*'])]);

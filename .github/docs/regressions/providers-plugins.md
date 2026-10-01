@@ -423,3 +423,28 @@ while an active plugin has domOps`).
   `src/features/plugins/remote/hostCatalogRefresh.test.ts`
   (`never fetches for Gemini or AI Studio, even on a forced check`),
   `src/features/plugins/runtime/siteRegistration.test.ts` (`native surfaces (Gemini, AI Studio)`).
+
+## Local plugin mutations must be atomic, fail closed and serialized
+
+- **Trap:** Import wrote the manifest and only then disabled the plugin, so a page could mount an
+  uninspected re-import under the old `enabled: true`; the disable write's failure was swallowed.
+  A failed storage read became `{}`, and the next whole-map write deleted every other plugin (the
+  same pattern in `setPluginEnabled` wiped every plugin's enable state). Two popups, or an import
+  racing a remove, overwrote each other's whole-map writes.
+- **Rule:** `saveLocalPluginRecord` writes the manifest and `enabled: false` in one `storage.set`
+  and rejects on failure; every read-modify-write reads strictly (`readPluginStateStrict`, the
+  store's strict map read) and keeps entries it cannot parse; local plugin mutations hold the
+  `gv-local-plugins` Web Lock. Imports cap style entries and expanded CSS before expanding.
+- **Guard:** `src/features/plugins/local/localPluginMutations.test.ts`,
+  `src/features/plugins/local/localPluginImport.test.ts`
+  (`caps style entries and the expanded CSS before expanding or scanning any of it`).
+
+## A catalog reload must not restart plugins that did not change
+
+- **Trap:** Any source change (a CSS-only local import, a catalog bookkeeping write that re-lists
+  the same plugins) unmounted and remounted every active plugin, resetting primitive state such as
+  the turn navigator or Vim mode.
+- **Rule:** `PluginHost.reloadCatalog` remounts only plugins whose version or contributions
+  changed; unchanged ones keep running. D7 freezing for `native` ops is unchanged.
+- **Guard:** `src/features/plugins/runtime/PluginHost.test.ts`
+  (`keeps a running plugin mounted when an unrelated local plugin is imported`).

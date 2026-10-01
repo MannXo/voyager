@@ -127,7 +127,15 @@ export function useLocalPlugins() {
 
   const remove = useCallback(async (id: string) => {
     setResult(null);
-    await removeLocalPlugin(id);
+    try {
+      await removeLocalPlugin(id);
+    } catch (error) {
+      // Storage refused the read or write: nothing was removed; say so.
+      setResult({
+        ok: false,
+        issues: [{ path: id, message: error instanceof Error ? error.message : String(error) }],
+      });
+    }
   }, []);
 
   const exportPlugin = useCallback((entry: LocalPluginEntry) => {

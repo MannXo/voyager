@@ -246,8 +246,14 @@ Ownership and precedence:
   for a catalog check (`remote/hostCatalogPolicy.ts`). A kindless or official
   source cannot serve a `local.*` id either: only `kind: 'local'` does.
 - **Storage.** Manifests live in `chrome.storage.local` under
-  `StorageKeys.PLUGIN_LOCAL_MANIFESTS` (at most 50, 1,000,000 characters per
-  import). They stay on the device: the enable state rides the plugin-state
+  `StorageKeys.PLUGIN_LOCAL_MANIFESTS` (at most 50; per import at most
+  1,000,000 characters read, 32 style entries and 1,000,000 characters of CSS
+  after file expansion, checked before anything is expanded or scanned). An
+  import writes the manifest and its `enabled: false` in one `storage.set`, so
+  no page ever sees the new version enabled. Mutations reject on a failed read
+  (never write back a map rebuilt from nothing), keep entries this build cannot
+  read, and hold the `gv-local-plugins` Web Lock so two popups cannot overwrite
+  each other. They stay on the device: the enable state rides the plugin-state
   Drive backup, but the manifests themselves do not; export them to keep a copy.
 
 ## Primitives (`verbs/`) and the `native` op

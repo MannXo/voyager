@@ -84,12 +84,32 @@ export function sanitizePluginState(value: unknown): PluginStateMap {
   return state;
 }
 
+/**
+ * Read the state map, letting a failed read throw. Every read-modify-write
+ * uses this: falling back to `{}` there would write back a map holding only
+ * the entry being changed and wipe every other plugin's state.
+ */
+export async function readPluginStateStrict(
+  local: chrome.storage.LocalStorageArea,
+): Promise<PluginStateMap> {
+  const result = await local.get({ [KEY]: {} });
+  return sanitizePluginState(result?.[KEY]);
+}
+
+/** The state map with one plugin switched off, keeping its settings. */
+export function withPluginDisabled(state: PluginStateMap, id: string, now: number): PluginStateMap {
+  const previous = state[id];
+  return {
+    ...state,
+    [id]: { ...previous, enabled: false, installedAt: previous?.installedAt ?? now },
+  };
+}
+
 export async function loadPluginState(): Promise<PluginStateMap> {
   const local = localArea();
   if (!local) return {};
   try {
-    const result = await local.get({ [KEY]: {} });
-    return sanitizePluginState(result?.[KEY]);
+    return await readPluginStateStrict(local);
   } catch (error) {
     if (!isExtensionContextInvalidatedError(error)) {
       logger.warn('loadPluginState failed', { error: String(error) });
@@ -128,7 +148,7 @@ export async function setPluginEnabled(id: string, enabled: boolean): Promise<vo
   const local = localArea();
   if (!local) return;
   try {
-    const current = await loadPluginState();
+    const current = await readPluginStateStrict(local);
     const previous = current[id];
     const next: PluginStateMap = {
       ...current,
@@ -147,7 +167,7 @@ export async function removePluginState(id: string): Promise<void> {
   const local = localArea();
   if (!local) return;
   try {
-    const current = await loadPluginState();
+    const current = await readPluginStateStrict(local);
     if (!Object.hasOwn(current, id)) return;
     const next: Record<string, PluginStateEntry> = { ...current };
     delete next[id];
@@ -168,7 +188,7 @@ export async function setPluginSetting(
   const local = localArea();
   if (!local) return;
   try {
-    const current = await loadPluginState();
+    const current = await readPluginStateStrict(local);
     const previous = current[id];
     const next: PluginStateMap = {
       ...current,
