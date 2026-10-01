@@ -196,7 +196,11 @@ Voyager's own accent) or any `native` op (every shipped primitive, the
 timeline, formula copy and Vim, already runs there as a native Voyager
 feature, and a second copy would fight it): CSS and reversible DOM ops only.
 Stored records are re-validated on every read by
-`local/LocalPluginSource.ts`.
+`local/LocalPluginSource.ts`, and at runtime `PluginHost` and the brand theme
+refuse a theme or native op by the page's real host
+(`sites/nativeSurfaces.ts`), whatever the patterns say. By design, a local
+plugin's own CSS can still restyle anything on Gemini, Voyager's UI and its
+`--gv-*` variables included; only `theme` and native ops are refused.
 
 **Gemini and AI Studio.** Only local plugins can target them; the bundled and
 remote catalogs never do. They resolve semantic keys through the native
@@ -258,9 +262,14 @@ Ownership and precedence:
   import writes the manifest and its `enabled: false` in one `storage.set`, so
   no page ever sees the new version enabled. Mutations reject on a failed read
   (never write back a map rebuilt from nothing), keep entries this build cannot
-  read, and hold the `gv-local-plugins` Web Lock so two popups cannot overwrite
-  each other. They stay on the device: the enable state rides the plugin-state
-  Drive backup, but the manifests themselves do not; export them to keep a copy.
+  read, and hold the `gv-local-plugins` Web Lock (`storage/pluginStorageLock.ts`),
+  which every plugin-state writer shares, so neither a second popup nor a late
+  setting toggle or Drive restore can write an old `enabled: true` back over a
+  new version. Content scripts cannot share that lock, so they send setting
+  changes to the background (`requestPluginSetting`). They stay on the device:
+  the enable state rides the plugin-state Drive backup, but the manifests
+  themselves do not, and a restore may switch a local plugin off but never on;
+  export them to keep a copy.
 
 ## Primitives (`verbs/`) and the `native` op
 
