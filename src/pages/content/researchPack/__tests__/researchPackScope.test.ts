@@ -18,6 +18,9 @@ const GLOBAL = StorageKeys.RESEARCH_PACK;
 const ACCOUNT_A = buildScopedStorageKey(StorageKeys.RESEARCH_PACK, 'route:0');
 const ACCOUNT_B = buildScopedStorageKey(StorageKeys.RESEARCH_PACK, 'route:1');
 
+/** jsdom runs on localhost; the pack only knows Gemini pages, so map the jsdom path onto one. */
+const geminiPageUrl = () => `https://gemini.google.com${window.location.pathname}`;
+
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function packOf(text: string): ResearchPack {
@@ -86,6 +89,7 @@ describe('research pack account scope', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
     vi.mocked(chrome.storage.onChanged.addListener).mockClear();
+    vi.mocked(chrome.storage.sync.get).mockClear();
     history.replaceState(null, '', '/u/0/app');
   });
 
@@ -103,6 +107,7 @@ describe('research pack account scope', () => {
     });
     let isolated = false;
     stop = startResearchPack({
+      pageUrl: geminiPageUrl,
       store,
       resolveKey: async () => (isolated ? ACCOUNT_A : GLOBAL),
     });
@@ -130,6 +135,7 @@ describe('research pack account scope', () => {
     });
     let isolated = false;
     stop = startResearchPack({
+      pageUrl: geminiPageUrl,
       store: gated(shared.store, { load: GLOBAL, ms: 40 }),
       resolveKey: async () => (isolated ? ACCOUNT_A : GLOBAL),
     });
@@ -151,6 +157,7 @@ describe('research pack account scope', () => {
     });
     const host = turn('<p>Asked under account 0.</p>');
     stop = startResearchPack({
+      pageUrl: geminiPageUrl,
       store: gated(shared.store, { apply: ACCOUNT_A, ms: 40 }),
       resolveKey,
     });
@@ -173,6 +180,7 @@ describe('research pack account scope', () => {
     });
     let isolated = false;
     stop = startResearchPack({
+      pageUrl: geminiPageUrl,
       store: shared.store,
       resolveKey: async () => (isolated ? ACCOUNT_A : GLOBAL),
     });
@@ -190,10 +198,27 @@ describe('research pack account scope', () => {
     expect(textarea.value).toBe('');
   });
 
+  it('reads and writes nothing on a page outside Gemini', async () => {
+    const store: ResearchPackStore = { load: vi.fn(), apply: vi.fn() };
+    const host = turn('<p>Not a Gemini page.</p>');
+    // The real key resolver: no account platform, so no storage key.
+    stop = startResearchPack({ pageUrl: () => 'https://example.com/u/0/app', store });
+    await flush();
+
+    clickAdd(host);
+    await flush();
+
+    expect(chrome.storage.sync.get).not.toHaveBeenCalled();
+    expect(store.load).not.toHaveBeenCalled();
+    expect(store.apply).not.toHaveBeenCalled();
+    expect(document.querySelector('.gv-rp-toast')!.getAttribute('data-tone')).toBe('error');
+  });
+
   it('reads and writes nothing when the scope cannot be resolved', async () => {
     const store: ResearchPackStore = { load: vi.fn(), apply: vi.fn() };
     const host = turn('<p>Unscoped.</p>');
     stop = startResearchPack({
+      pageUrl: geminiPageUrl,
       store,
       resolveKey: async () => {
         throw new Error('isolation setting unreadable');

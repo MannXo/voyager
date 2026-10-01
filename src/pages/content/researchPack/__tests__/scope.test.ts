@@ -36,6 +36,28 @@ describe('research pack key resolver', () => {
     expect(resolveAccountScope).not.toHaveBeenCalled();
   });
 
+  it('fails closed on a page that belongs to no account platform', async () => {
+    const getSync = vi.fn(async () => ({}));
+    const resolveAccountScope = vi.fn();
+    const resolve = createResearchPackKeyResolver({
+      getSync,
+      resolveAccountScope: resolveAccountScope as never,
+    });
+
+    for (const pageUrl of ['https://chatgpt.com/c/1', 'http://localhost/u/0/app']) {
+      await expect(resolve({ ...context, pageUrl })).rejects.toThrow();
+    }
+    expect(getSync).not.toHaveBeenCalled();
+    expect(resolveAccountScope).not.toHaveBeenCalled();
+    expect(
+      isIsolationSettingChange(
+        { [StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED_GEMINI]: { newValue: true } },
+        'sync',
+        'https://chatgpt.com/c/1',
+      ),
+    ).toBe(false);
+  });
+
   it('uses the global pack while isolation is off', async () => {
     const { resolve } = resolverWith({});
     await expect(resolve(context)).resolves.toBe(StorageKeys.RESEARCH_PACK);

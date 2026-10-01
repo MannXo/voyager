@@ -25,8 +25,7 @@ export interface ResearchPackScopeContext {
   email: string | null;
 }
 
-export function readScopeContext(): ResearchPackScopeContext {
-  const pageUrl = window.location.href;
+export function readScopeContext(pageUrl = window.location.href): ResearchPackScopeContext {
   const { routeUserId, email } = detectAccountContextFromDocument(pageUrl, document);
   return { pageUrl, routeUserId, email };
 }
@@ -43,11 +42,16 @@ export function isDifferentAccount(
   return Boolean(bound.email && current.email && bound.email !== current.email);
 }
 
-function isolationKeys(pageUrl: string): string[] {
-  return [
-    getAccountIsolationStorageKey(detectAccountPlatformFromUrl(pageUrl)),
-    StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED,
-  ];
+/**
+ * The platform flag and the legacy flag that decide isolation for this page,
+ * or null when the page belongs to no account platform (any non-Gemini,
+ * non-AI Studio site). There is deliberately no Gemini fallback: such a page
+ * has no pack scope at all.
+ */
+function isolationKeys(pageUrl: string): [string, string] | null {
+  const platform = detectAccountPlatformFromUrl(pageUrl);
+  if (!platform) return null;
+  return [getAccountIsolationStorageKey(platform), StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED];
 }
 
 /** True when a storage change can flip account isolation for this page. */
@@ -56,7 +60,8 @@ export function isIsolationSettingChange(
   areaName: string,
   pageUrl: string,
 ): boolean {
-  return areaName === 'sync' && isolationKeys(pageUrl).some((key) => key in changes);
+  if (areaName !== 'sync') return false;
+  return isolationKeys(pageUrl)?.some((key) => key in changes) ?? false;
 }
 
 export interface ResearchPackKeyResolverDeps {
@@ -64,12 +69,17 @@ export interface ResearchPackKeyResolverDeps {
   resolveAccountScope: (hints: AccountScopeHints) => Promise<AccountScope>;
 }
 
-/** Same precedence as the isolation service (platform flag, then legacy flag), but a read failure rejects. */
+/**
+ * Same precedence as the isolation service (platform flag, then legacy flag),
+ * but a read failure, or a page with no account platform, rejects.
+ */
 export async function readIsolationEnabledStrict(
   pageUrl: string,
   getSync: ResearchPackKeyResolverDeps['getSync'],
 ): Promise<boolean> {
-  const [platformKey, legacyKey] = isolationKeys(pageUrl);
+  const keys = isolationKeys(pageUrl);
+  if (!keys) throw new Error('This page has no research pack scope');
+  const [platformKey, legacyKey] = keys;
   const stored = await getSync([platformKey, legacyKey]);
   if (typeof stored?.[platformKey] === 'boolean') return stored[platformKey] === true;
   if (typeof stored?.[legacyKey] === 'boolean') return stored[legacyKey] === true;

@@ -79,6 +79,8 @@ export interface StartResearchPackOptions {
   store?: ResearchPackStore;
   /** Storage key for an account context; rejects when the scope cannot be known. */
   resolveKey?: (context: ResearchPackScopeContext) => Promise<string>;
+  /** The page URL scopes are read from (defaults to `location.href`). */
+  pageUrl?: () => string;
 }
 
 /**
@@ -93,6 +95,8 @@ interface BoundScope {
 export function startResearchPack(options: StartResearchPackOptions = {}): StopNativeFeature {
   const store = options.store ?? createChromeClient();
   const resolveKey = options.resolveKey ?? createChromeKeyResolver();
+  const pageUrl = options.pageUrl ?? (() => window.location.href);
+  const readContext = (): ResearchPackScopeContext => readScopeContext(pageUrl());
   const t = getTranslationSync;
   let stopped = false;
   let pack: ResearchPack = createEmptyPack();
@@ -117,7 +121,7 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     key.catch(() => undefined);
     return { context, key };
   };
-  let scope = bind(readScopeContext());
+  let scope = bind(readContext());
   // Results for a scope that is no longer shown are dropped, not rendered.
   const isCurrent = (bound: BoundScope): boolean => !stopped && bound === scope;
 
@@ -161,14 +165,14 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     const previous = scope;
     const pending = panel.takePendingInstruction();
     if (pending !== null) void applyIn(previous, { kind: 'setInstruction', instruction: pending });
-    scope = bind(readScopeContext());
+    scope = bind(readContext());
     show(createEmptyPack(), true);
     void loadScope(scope, true);
   };
 
   /** The scope for something the user does now; rebinds first if the page changed accounts. */
   const scopeForAction = (): { bound: BoundScope; switched: boolean } => {
-    if (!isDifferentAccount(scope.context, readScopeContext())) {
+    if (!isDifferentAccount(scope.context, readContext())) {
       return { bound: scope, switched: false };
     }
     switchScope();
@@ -268,7 +272,7 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
   const scan = (): void => {
     if (stopped) return;
     // In-app navigation can move the page to another /u/<index>/ account.
-    if (isDifferentAccount(scope.context, readScopeContext())) switchScope();
+    if (isDifferentAccount(scope.context, readContext())) switchScope();
     ensureAddButtons(document, addButtonOptions);
   };
 
@@ -297,7 +301,7 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     if (areaName === 'local' && Object.keys(changes).some(isResearchPackStorageKey)) {
       void loadScope(scope, false);
     }
-    if (isIsolationSettingChange(changes, areaName, window.location.href)) {
+    if (isIsolationSettingChange(changes, areaName, pageUrl())) {
       switchScope();
     }
     if ((areaName === 'sync' || areaName === 'local') && changes[StorageKeys.LANGUAGE]) {
