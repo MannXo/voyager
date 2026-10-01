@@ -261,6 +261,43 @@ describe('AI Studio folder sync across contexts', () => {
   });
 });
 
+describe('AI Studio library archive visibility across contexts', () => {
+  function libraryRow(id: string): HTMLElement {
+    const row = document.createElement('tr');
+    row.className = 'mat-mdc-row';
+    row.innerHTML = `<td><a class="name-btn" href="/prompts/${id}">${id}</a></td>`;
+    document.body.appendChild(row);
+    return row;
+  }
+
+  function filed(id: string): FolderData {
+    const data = folderData('Mine');
+    data.folderContents.Mine = [
+      { conversationId: id, title: id, url: `/prompts/${id}`, addedAt: 1 },
+    ];
+    return data;
+  }
+
+  it('archives and unarchives existing rows when another tab moves prompts', async () => {
+    (
+      globalThis as unknown as { jsdom: { reconfigure(options: { url: string }): void } }
+    ).jsdom.reconfigure({ url: 'https://aistudio.google.com/library' });
+    sync[StorageKeys.FOLDER_HIDE_ARCHIVED_CONVERSATIONS_AISTUDIO] = true;
+    local[GLOBAL_KEY] = filed('p1');
+    const first = libraryRow('p1');
+    const second = libraryRow('p2');
+    await mount();
+    expect(first.classList.contains('gv-conversation-archived')).toBe(true);
+    expect(second.classList.contains('gv-conversation-archived')).toBe(false);
+
+    writeFromElsewhere({ [GLOBAL_KEY]: filed('p2') });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(first.classList.contains('gv-conversation-archived')).toBe(false);
+    expect(second.classList.contains('gv-conversation-archived')).toBe(true);
+  });
+});
+
 describe('AI Studio account scope retry', () => {
   it('binds before the next poll and later polls keep the bound account', async () => {
     sync[StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED] = true;

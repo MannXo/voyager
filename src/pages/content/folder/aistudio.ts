@@ -224,7 +224,7 @@ export class AIStudioFolderManager {
       onChange: (reason) => this.handleRepositoryChange(reason),
       onRecovery: (result) => this.announceRecovery(result),
       onExternalChange: () => {
-        if (this.folderEnabled) void this.load();
+        if (this.folderEnabled) void this.load().then(() => this.applyHideArchivedToLibraryTable());
       },
       onAccountReleased: () => this.releaseAccountUi(),
       isEnabled: () => this.folderEnabled,

@@ -81,6 +81,16 @@ off a ChatGPT tab`).
   session because the listener ignores events for their old storage key.
 - **Guard:** `src/pages/content/folder/FolderStore.test.ts` ("consumes one mirror echo per write and then applies an external update" and "applies an external update when no local write has armed echo suppression"), `src/pages/content/folder/__tests__/folderStorePersistenceCharacterization.test.ts` ("storage echo and cross-tab reload"), `src/pages/content/folder/__tests__/aistudioFolderSync.test.ts` (Chrome-like storage mock: no event for unchanged or rejected writes, sorted keys), `src/pages/content/folder/storage/__tests__/StorageEchoTracker.test.ts`
 
+## AI Studio external folder reloads must reapply library archive classes
+
+- **Trap:** A cross-tab folder reload repainted the AI Studio sidebar, but `render()` does not
+  touch the `/library` table, so rows moved into or out of folders in another tab kept a stale
+  `gv-conversation-archived` class until the next local mutation.
+- **Rule:** The repository's `onExternalChange` hook in `aistudio.ts` runs
+  `applyHideArchivedToLibraryTable()` after the reload settles, alongside `onPersistSettled` for
+  local writes.
+- **Guard:** `src/pages/content/folder/__tests__/aistudioFolderSync.test.ts` ("archives and unarchives existing rows when another tab moves prompts")
+
 ## Folder recovery and pending writes belong to an account session
 
 - **Trap:** Live folder storage used stable account keys, but both managers shared platform-wide
