@@ -17,6 +17,7 @@ import { getTranslationSyncUnsafe as t, initI18n } from '@/utils/i18n';
 import { isTemporaryChat } from '../chatgptTemporaryHandoff/handoff';
 import { ChatGptFolderStore } from './ChatGptFolderStore';
 import { ChatGptFolderSection } from './chatgptFolderSection';
+import { ChatGptHideFiled, HIDE_FILED_SETTING } from './chatgptHideFiled';
 import { openChatGptConversation, readCurrentConversation } from './chatgptPage';
 import { ChatGptSidebarWatcher } from './chatgptSidebarWatcher';
 import { syncSidebarTitles } from './chatgptTitleSync';
@@ -236,7 +237,7 @@ class ChatGptFoldersView {
 
 export async function activateChatGptFolders(
   scope: PluginScope,
-  _settings: PluginSettings = {},
+  settings: PluginSettings = {},
 ): Promise<void> {
   await initI18n();
   if (scope.isDisposed) return;
@@ -253,8 +254,16 @@ export async function activateChatGptFolders(
   });
   scope.effect(() => store.subscribe(() => sidebar.schedule()), 'chatgpt-folders:sidebar-sync');
   sidebar.start();
+  const hideFiled = settings[HIDE_FILED_SETTING] === true ? new ChatGptHideFiled(scope) : null;
+  if (hideFiled) {
+    scope.effect(
+      () => store.subscribe(() => hideFiled.update(store.filedIds())),
+      'chatgpt-folders:hide-filed-sync',
+    );
+  }
   await store.init();
   if (scope.isDisposed) return;
   view.refresh();
+  hideFiled?.update(store.filedIds());
   sidebar.schedule();
 }
