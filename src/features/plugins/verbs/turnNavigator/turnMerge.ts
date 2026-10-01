@@ -236,12 +236,17 @@ function alignRun(
  * that marker's text has slack, so it never jumps past a marker another turn
  * of the run still needs; a text with no slack pairs in order, which no
  * uniform shift can upset. Among the markers with its text it may reach, a
- * turn takes the nearest by position (earliest on a tie), searched on
- * running-max centres: a stale centre that lags behind re-measured
- * neighbours keeps the estimates sorted, as in `computeMarkerCenters`.
+ * turn takes the nearest by position (earliest on a tie). A turn that can
+ * reach none skips the blocking marker for the next one with its text only
+ * when it sits nearer to that one, so a turn that went missing does not
+ * shift every turn after it onto its neighbour's id.
+ *
+ * Positions are searched on estimates sorted in DOM order (`sortedCenters`),
+ * so a stale centre out of order cannot attract a turn far from its place.
  *
  * The reachable bound only moves forward, so finding it is linear overall;
- * each turn adds a binary search. Cost: (run + markers) x log(markers).
+ * each turn and the estimates add binary searches. Cost: (run + markers) x
+ * log(markers).
  */
 function alignInOrder(
   known: readonly Marker[],
@@ -250,13 +255,10 @@ function alignInOrder(
   hi: number,
   drifts: readonly number[],
 ): number[] {
-  const estimate = new Float64Array(hi - lo);
-  let highest = -Infinity;
+  const estimate = sortedCenters(known, lo, hi);
   const indexesByHash = new Map<string, number[]>();
   const markersLeft = new Map<string, number>();
   for (let j = lo; j < hi; j++) {
-    highest = Math.max(highest, known[j].center);
-    estimate[j - lo] = highest;
     const { hash } = known[j];
     const indexes = indexesByHash.get(hash);
     if (indexes) indexes.push(j);
@@ -296,9 +298,12 @@ function alignInOrder(
     if (indexes) {
       const from = lowerBound(indexes, next);
       const to = lowerBound(indexes, reach + 1);
-      if (from < to) {
-        const target = entry.center - drifts[r];
-        const at = (k: number): number => estimate[indexes[k] - lo];
+      const target = entry.center - drifts[r];
+      const at = (k: number): number => estimate[indexes[k] - lo];
+      if (from === to && to < indexes.length && reach < hi) {
+        const blocker = estimate[reach - lo];
+        if (Math.abs(at(to) - target) < Math.abs(blocker - target)) pick = indexes[to];
+      } else if (from < to) {
         // First candidate at or past the target; the one before it is the other contender.
         const above = searchCenters(from, to, (k) => at(k) >= target);
         let k = above;
@@ -315,6 +320,41 @@ function alignInOrder(
     if (pick !== -1) passMarkersBefore(pick + 1);
     return pick;
   });
+}
+
+/**
+ * Remembered centres of `known[lo, hi)` made non-decreasing in DOM order.
+ * The longest non-decreasing subsequence is kept as it is: the fewest
+ * centres to distrust. A distrusted centre, stale behind or ahead of its
+ * neighbours, takes the kept one before it (or, at the start, the first
+ * kept one), so one outlier at either end moves no other estimate.
+ */
+function sortedCenters(known: readonly Marker[], lo: number, hi: number): Float64Array {
+  const n = hi - lo;
+  // tails[l]: index of the smallest last centre of a kept sequence of length l + 1.
+  const tails: number[] = [];
+  const before = new Int32Array(n).fill(-1);
+  for (let i = 0; i < n; i++) {
+    const center = known[lo + i].center;
+    let low = 0;
+    let high = tails.length;
+    while (low < high) {
+      const mid = (low + high) >> 1;
+      if (known[lo + tails[mid]].center <= center) low = mid + 1;
+      else high = mid;
+    }
+    if (low > 0) before[i] = tails[low - 1];
+    tails[low] = i;
+  }
+  const kept = new Uint8Array(n);
+  for (let i = tails.length ? tails[tails.length - 1] : -1; i !== -1; i = before[i]) kept[i] = 1;
+  const estimate = new Float64Array(n);
+  let previous = n ? known[lo + kept.indexOf(1)].center : 0;
+  for (let i = 0; i < n; i++) {
+    if (kept[i]) previous = known[lo + i].center;
+    estimate[i] = previous;
+  }
+  return estimate;
 }
 
 /** First position in `[low, high)` where `reached` holds, for a predicate that stays true once true. */

@@ -194,6 +194,60 @@ describe('mergeMountedTurns without a turn key', () => {
     );
   });
 
+  it('files a deep window by position past a stale remembered centre ahead of the run', () => {
+    const known = merge(
+      [],
+      Array.from(
+        { length: 700 },
+        (_, index) => ['continue', index === 1 ? 100_000 : 100 * (index + 1)] as const,
+      ),
+    );
+    const ids = known.map((marker) => marker.id);
+    const window = render(
+      Array.from({ length: 400 }, (_, r) => ['continue', 100 * (300 + r + 1)] as const),
+    );
+
+    mergeMountedTurns(known, window, (element) => centers.get(element) ?? 0);
+
+    expect(window.map((turn) => turn.element.getAttribute('data-gv-turn-id'))).toEqual(
+      ids.slice(300),
+    );
+  });
+
+  it('keeps every id when the first turn of a mixed run unmounts as a new one arrives', () => {
+    const turns = Array.from(
+      { length: 600 },
+      (_, index) => [index % 2 ? 'B' : 'A', 100 * (index + 1)] as const,
+    );
+    const known = merge([], turns);
+    const ids = known.map((marker) => marker.id);
+    const window = render([...turns.slice(1), ['A', 60_100]]);
+
+    const next = mergeMountedTurns(known, window, (element) => centers.get(element) ?? 0);
+
+    expect(next).toHaveLength(601);
+    const filed = window.map((turn) => turn.element.getAttribute('data-gv-turn-id'));
+    expect(filed.slice(0, -1)).toEqual(ids.slice(1));
+    expect(ids).not.toContain(filed[filed.length - 1]);
+  });
+
+  it('adds a turn loaded above a mixed run without shifting the run', () => {
+    const turns = Array.from(
+      { length: 600 },
+      (_, index) => [index % 2 ? 'B' : 'A', 100 * (index + 1)] as const,
+    );
+    const known = merge([], turns);
+    const ids = known.map((marker) => marker.id);
+    const window = render([['B', 50], ...turns]);
+
+    const next = mergeMountedTurns(known, window, (element) => centers.get(element) ?? 0);
+
+    expect(next).toHaveLength(601);
+    const filed = window.map((turn) => turn.element.getAttribute('data-gv-turn-id'));
+    expect(filed.slice(1)).toEqual(ids);
+    expect(ids).not.toContain(filed[0]);
+  });
+
   it('does not file a turn under a far-off remembered centre that is out of order', () => {
     const known = merge(
       [],

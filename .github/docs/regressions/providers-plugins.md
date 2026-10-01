@@ -71,8 +71,14 @@ and turn ids`).
   together: a turn may skip a marker only while that marker's text has more markers left than
   turns left, so it never jumps past a marker another turn still needs, and a text without spare
   markers pairs in order, which no uniform shift can upset. Among the markers it may reach, a turn
-  takes the nearest by position, by binary search on running-max centres (earliest on a tie), so
-  a stale centre out of DOM order cannot attract it. (A nearest-centre scan per turn was quadratic
+  takes the nearest by position (earliest on a tie); a turn that can reach none skips the blocking
+  marker only when it sits nearer the next one with its text, else it is new. Positions are
+  searched on centres made sorted in DOM order: the longest non-decreasing run of remembered
+  centres is kept and each other centre takes the kept one before it, so a stale centre ahead of
+  or behind its neighbours moves no other estimate (a running max let one high centre near the
+  start pull a deep window to the front). Known limit: when a turn unmounts, a new one arrives
+  and the rest slide by exactly one turn's height, the two readings tie and the first turn may
+  come out new. (A nearest-centre scan per turn was quadratic
   on equal centres, and after an anchorless +100px shift it matched the first turn to the second
   marker and made the last one a new dot. A fixed 32-marker lookahead misfiled a window mounted
   deep in a long run. Reserving markers per text let a turn skip other texts' markers, so a
@@ -88,8 +94,10 @@ of repeats after a shift, past the alignment budget`, `keeps every turn of a lon
 after a uniform shift with no anchor`, `reads a bounded number of remembered positions`, `files a
 window mounted deep in a long identical run by position`, `keeps other texts in place when a
 long mixed run remounts shifted without one turn`, `files a deep window by position past a stale
-remembered centre mid-run`, `does not file a turn under a far-off remembered centre that is out of
-order`),
+remembered centre mid-run`, `files a deep window by position past a stale remembered centre ahead
+of the run`, `keeps every id when the first turn of a mixed run unmounts as a new one arrives`,
+  `adds a turn loaded above a mixed run without shifting the run`, `does not file a turn under a
+far-off remembered centre that is out of order`),
   `src/features/plugins/builtin/chatgptTimeline.test.ts` (`keeps repeated identical prompts
 apart`, `folds a turn ChatGPT briefly renders twice`, `follows a turn whose list id ChatGPT
 renames`, `updates the dot when a prompt is edited in place`, `does not treat a wrapper around
