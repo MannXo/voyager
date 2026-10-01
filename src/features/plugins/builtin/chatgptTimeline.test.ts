@@ -465,6 +465,12 @@ describe('ChatGPT timeline', () => {
     await settle(ROUTE_SETTLE_MS);
     expect(labels()).toEqual(['Prompt B']);
     expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('chatgpt:conv:second');
+
+    // The swap before the URL change shows these turns are the new conversation's.
+    await longPress(dots()[0]);
+    expect(starStore.get('chatgpt:conv:second')?.map((message) => message.content)).toEqual([
+      'Prompt B',
+    ]);
   });
 
   it('keeps the previous conversation off the rail when a star change lands mid-switch', async () => {
@@ -538,6 +544,80 @@ describe('ChatGPT timeline', () => {
     expect(starStore.get('chatgpt:conv:other')?.map((message) => message.content)).toEqual([
       'Other prompt',
     ]);
+  });
+
+  it('ignores a star press in the moment between a URL change and the next refresh', async () => {
+    addExchange(1, 'Prompt A');
+    await mount();
+
+    dots()[0].dispatchEvent(new Event('pointerdown'));
+    await vi.advanceTimersByTimeAsync(549);
+    history.pushState({}, '', '/c/second');
+    await settle(ROUTE_SETTLE_MS);
+
+    expect(addStarredMessage).not.toHaveBeenCalled();
+  });
+
+  it('cannot star while the previous conversation is on screen, then stars the new one', async () => {
+    const old = addExchange(1, 'Prompt A');
+    await mount();
+
+    history.pushState({}, '', '/c/second');
+    await settle(ROUTE_SETTLE_MS);
+    expect(labels()).toEqual(['Prompt A']);
+    await longPress(dots()[0]);
+    thread.append(turnShell('user-9', 'user', 'Prompt B'));
+    await settle();
+    // A is still on screen: the URL alone does not say which thread this is.
+    await longPress(dots()[1]);
+    expect(addStarredMessage).not.toHaveBeenCalled();
+
+    old.nextElementSibling?.remove();
+    old.remove();
+    await settle();
+    await longPress(dots()[0]);
+
+    expect(starStore.get('chatgpt:conv:second')?.map((message) => message.content)).toEqual([
+      'Prompt B',
+    ]);
+  });
+
+  it('drops a press begun in the previous conversation when the next one has the same prompt', async () => {
+    addExchange(1, 'Same prompt');
+    await mount();
+
+    dots()[0].dispatchEvent(new Event('pointerdown'));
+    await vi.advanceTimersByTimeAsync(100);
+    thread.replaceChildren(turnShell('user-9', 'user', 'Same prompt'));
+    history.pushState({}, '', '/c/second');
+    await settle(ROUTE_SETTLE_MS);
+
+    expect(addStarredMessage).not.toHaveBeenCalled();
+  });
+
+  it('drops a star press whose read was still pending when the user moved on', async () => {
+    addExchange(1, 'Same prompt');
+    await mount();
+    let release!: (messages: StarredMessage[]) => void;
+    getStarredMessagesForConversation.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    dots()[0].dispatchEvent(new Event('pointerdown'));
+    await vi.advanceTimersByTimeAsync(549);
+    history.pushState({}, '', '/c/second');
+    await vi.advanceTimersByTimeAsync(1);
+    // The next conversation opens with the same prompt before that read lands.
+    history.pushState({}, '', '/c/third');
+    thread.replaceChildren(turnShell('user-c', 'user', 'Same prompt'));
+    await settle(ROUTE_SETTLE_MS);
+    release?.([]);
+    await settle();
+
+    expect(addStarredMessage).not.toHaveBeenCalled();
   });
 
   it('clears the rail when leaving for a page without turns', async () => {

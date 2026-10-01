@@ -24,6 +24,8 @@ export interface SnapshotTurn {
   readonly summary: string;
   /** The mounted message, which carries the turn-id stamp; null while unloaded. */
   readonly content: HTMLElement | null;
+  /** The host's id for the turn, when it sits in its own list item. */
+  readonly key: string | null;
 }
 
 export class TurnSnapshot {
@@ -45,7 +47,8 @@ export class TurnSnapshot {
     }
     const turns: SnapshotTurn[] = [];
     const indexByKey = new Map<string, number>();
-    const add = (turn: SnapshotTurn, key: string | null): void => {
+    const add = (turn: SnapshotTurn): void => {
+      const { key } = turn;
       const seen = key === null ? undefined : indexByKey.get(key);
       // ChatGPT can briefly keep two items with one id: the first sets the
       // position, the copy with a mounted message supplies it.
@@ -62,14 +65,14 @@ export class TurnSnapshot {
         const key = owner && this.isTurnItem(owner) ? this.keyOf(owner) : null;
         const summary = readText(node);
         if (key !== null) this.remember(key, summary);
-        add({ element: node, summary, content: node }, key);
+        add({ element: node, summary, content: node, key });
         continue;
       }
       // An item with its message unloaded: a user turn only if we saw it as one.
       const key = this.keyOf(node);
       if (key === null || node.querySelector(this.turnSelector) || !this.isTurnItem(node)) continue;
       const summary = this.labels.get(key);
-      if (summary !== undefined) add({ element: node, summary, content: null }, key);
+      if (summary !== undefined) add({ element: node, summary, content: null, key });
     }
     return turns;
   }
