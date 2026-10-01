@@ -836,8 +836,8 @@ storage.session`) and `src/pages/background/__tests__/researchPackHandoffWiring.
 ## A research pack template file can only add new prompts
 
 - **Trap:** Templates are prompts tagged `research-pack` in `gvPromptItems`, and their file is the
-  prompts export format. The prompt library's own import (`PromptImportExportService.importFromPayload`)
-  matches stored prompts by id first and lets a newer `updatedAt` overwrite text and name, so a
+  prompts export format. The prompt library's own import (the owner's `import` op, via
+  `mergeImportedPrompts`) matches stored prompts by id first and lets a newer `updatedAt` overwrite text and name, so a
   shared template file sent through it could rewrite a prompt the user already has. A template
   shown as HTML, or a file read before its size is checked, would also trust the file.
 - **Rule:** The pack panel's import checks `file.size` before reading, accepts only the prompts

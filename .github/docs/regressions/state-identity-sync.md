@@ -339,27 +339,37 @@ off a ChatGPT tab`).
 ## Prompt library writes go through its background owner
 
 - **Trap:** `gvPromptItems` had many writers that each read the whole list, changed it and wrote
-  it back. A research pack template saved on one tab, a popup import and a Drive prompts merge
-  could each roll back a prompt another had just written, or drop the other's new prompts.
-- **Rule:** Writers send ops (`gv.promptLibrary.apply`: add, update, delete, reorder, import) to
-  `src/pages/background/promptLibraryOwner.ts`, which applies them in order against the library as
-  stored at that moment and never overwrites a value that is not a list. The background's Drive
-  merges (`promptDriveMerge.ts`) join the same queue in-process. The template panel, the popup
-  import and both prompts-only Drive merges are routed; Prompt Manager's own writers and the
-  localStorage migration in `src/pages/content/prompt/index.ts` are the next step. The stored
-  format is unchanged.
+  it back. A research pack template saved on one tab, a Prompt Manager edit on another, a popup
+  import and a Drive prompts merge could each roll back a prompt another had just written, or drop
+  the other's new prompts.
+- **Rule:** Writers send ops (`gv.promptLibrary.apply`: add, update, delete, reorder, import, seed)
+  to `src/pages/background/promptLibraryOwner.ts`, which applies them in order against the library
+  as stored at that moment and never overwrites a value that is not a list. The background's Drive
+  merges (`promptDriveMerge.ts`) join the same queue in-process. Prompt Manager
+  (`src/pages/content/prompt/promptLibraryState.ts`), the template panel, the popup import and both
+  prompts-only Drive merges are routed; Prompt Manager's legacy localStorage library is a `seed`
+  op that only fills an empty library. The stored format is unchanged.
+  Prompt Manager shows each change at once by applying the same op to its copy, then adopts the
+  owner's list. While its ops are in flight it holds storage echoes back (they can be older than
+  what it shows); when the last op settles it re-reads storage if a write failed or another
+  writer's change came in meanwhile, and drops that read if the user acted again during it.
+  The queue lives in the service worker's memory. If the worker restarts, queued ops are dropped,
+  and an op that was written but whose reply was lost reads as failed in the tab, which then
+  re-reads storage. There is no exactly-once guarantee: do not retry an op on failure without
+  checking the stored library first.
   These whole-key writers stay on purpose; do not route them through the owner without a plan
-  for what replaces their atomicity:
-  - The cloud restore in `src/pages/popup/components/CloudSyncSettings.tsx`, the folder Drive
-    merge in `src/pages/content/folder/FolderTransferController.ts` and the AI Studio folder save
-    (`persistDataSession` in `src/pages/content/folder/aistudio.ts`) write prompts in one
-    `chrome.storage.local.set` together with folders, starred messages or the timeline hierarchy.
-    They are rare bulk operations, and keeping those keys consistent with each other is worth more
-    than the lock. Splitting prompts into an owner op would let the other keys land without them.
-  - `PromptImportExportService.savePrompts` (and `importFromPayload`, which calls it) falls back to
-    `localStorage` outside the extension, where there is no background. No extension writer calls
-    them any more; use an owner op instead.
+  for what replaces their atomicity: the cloud restore in
+  `src/pages/popup/components/CloudSyncSettings.tsx`, the folder Drive merge in
+  `src/pages/content/folder/FolderTransferController.ts` and the AI Studio folder save
+  (`persistDataSession` in `src/pages/content/folder/aistudio.ts`) write prompts in one
+  `chrome.storage.local.set` together with folders, starred messages or the timeline hierarchy.
+  They are rare bulk operations, and keeping those keys consistent with each other is worth more
+  than the lock. Splitting prompts into an owner op would let the other keys land without them.
 - **Guard:** `src/features/prompt/library/__tests__/promptLibraryOwner.test.ts`,
+  `src/pages/content/prompt/__tests__/promptLibraryInterleaving.test.ts` (`keeps a Prompt Manager
+edit and a template saved in another tab`, `keeps edits that two Prompt Manager tabs make to
+different prompts`), `src/pages/content/prompt/__tests__/promptLibraryState.test.ts` (`holds back
+echoes while its ops are in flight, then shows what the owner wrote`),
   `src/features/researchPack/services/__tests__/templates.test.ts` (`keeps both templates when two
 tabs save at the same moment`), `src/pages/background/__tests__/promptDriveMerge.test.ts` and
   `src/pages/popup/hooks/__tests__/usePromptDataTransfer.test.tsx` (`keeps a template saved on a
