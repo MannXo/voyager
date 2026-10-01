@@ -22,6 +22,12 @@ export interface PrimitiveParamSpec {
   readonly type: PrimitiveParamType;
   readonly required: boolean;
   readonly description: string;
+  /**
+   * Engine version that added the param, when later than its primitive's
+   * `sinceEngine`. An older engine rejects an unknown param and skips the whole
+   * op, so a manifest setting it needs an `engine` floor at least this high.
+   */
+  readonly sinceEngine?: string;
 }
 
 export interface PrimitiveContract {
@@ -72,6 +78,7 @@ export const PRIMITIVE_CONTRACTS: readonly PrimitiveContract[] = [
       turnKey: {
         type: 'string',
         required: false,
+        sinceEngine: '1.5.0',
         description:
           "Attribute holding the host's own per-turn id, read from the turn or its nearest ancestor (a virtual-list item). Tells repeated prompts apart and folds a turn rendered twice into one marker.",
       },

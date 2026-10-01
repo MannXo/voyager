@@ -218,6 +218,36 @@ describe('plugin-check', () => {
     expect(result.issues.join('\n')).toMatch(/admits builds older than 1\.3\.0.*"formulaCopy"/s);
   });
 
+  it('reports an engine range that admits builds older than a primitive param it sets', async () => {
+    const usingTurnKey = (engine: string) =>
+      makeFixturePlugin({
+        selectors: { userTurn: '.turn' },
+        manifest: {
+          engine,
+          contributes: {
+            styles: [{ file: 'style.css' }],
+            domOps: [
+              {
+                op: 'native',
+                handler: 'turnNavigator',
+                params: { turnKey: 'data-turn-id-container' },
+              },
+            ],
+          },
+        },
+      });
+
+    // A 1.4.0 engine skips a native op whose params it does not know.
+    const old = await checkPluginDir(usingTurnKey('>=1.4.0'));
+    expect(old.ok).toBe(false);
+    expect(old.issues.join('\n')).toMatch(
+      /admits builds older than 1\.5\.0.*"turnNavigator" param "turnKey"/s,
+    );
+
+    const current = await checkPluginDir(usingTurnKey('>=1.5.0'));
+    expect(current.issues).toEqual([]);
+  });
+
   it('reports a semantic key the site does not define', async () => {
     const result = await checkPluginDir(
       makeFixturePlugin({

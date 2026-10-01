@@ -271,7 +271,7 @@ export const BUILTIN_PLUGINS: readonly PluginManifest[] = [
     author: 'voyager-official',
     category: 'productivity',
     license: 'GPL-3.0-or-later',
-    engine: '>=1.4.0',
+    engine: '>=1.5.0',
     tier: 'declarative',
     matches: ['https://chatgpt.com/*', 'https://chat.openai.com/*'],
     requires: { handlers: ['turnNavigator'], semantic: ['userTurn'] },

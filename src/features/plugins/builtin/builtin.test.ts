@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { checkPrimitivesAreShippable } from '../../../../scripts/lib/pluginChecks';
 import { validateManifest } from '../manifest/validate';
 import { BUILTIN_PLUGINS } from './index';
 
@@ -7,6 +8,12 @@ describe('BUILTIN_PLUGINS', () => {
   it('every builtin manifest passes validation', () => {
     for (const m of BUILTIN_PLUGINS) {
       expect(validateManifest(m).success).toBe(true);
+    }
+  });
+
+  it('every builtin engine floor covers the primitives and params it uses', () => {
+    for (const m of BUILTIN_PLUGINS) {
+      expect(checkPrimitivesAreShippable(m, `builtin ${m.id}`)).toEqual([]);
     }
   });
 

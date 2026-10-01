@@ -33,6 +33,9 @@ function laterVersion(a: string, b: string): string {
  * range must exclude every build that predates them. Getting the range right
  * is what makes an old Voyager report `needs-engine` ("update Voyager")
  * instead of `needs-handler`, which is meant to mean a configuration mistake.
+ *
+ * A param added after its primitive shipped raises the floor the same way: an
+ * older engine rejects params it does not know and skips the whole op.
  */
 export function primitiveShippabilityIssues(manifest: PluginManifest): ManifestIssue[] {
   const issues: ManifestIssue[] = [];
@@ -50,9 +53,22 @@ export function primitiveShippabilityIssues(manifest: PluginManifest): ManifestI
   }
   if (issues.length > 0 || contracts.length === 0) return issues;
 
-  const floor = contracts.reduce(
-    (highest, contract) => laterVersion(highest, contract.sinceEngine),
-    contracts[0].sinceEngine,
+  const needs = contracts.map((contract) => ({
+    version: contract.sinceEngine,
+    source: `primitive "${contract.name}"`,
+  }));
+  for (const op of manifest.contributes.domOps ?? []) {
+    if (op.op !== 'native') continue;
+    const contract = getPrimitiveContract(op.handler);
+    for (const param of Object.keys(op.params ?? {})) {
+      const since = contract?.params[param]?.sinceEngine;
+      if (since)
+        needs.push({ version: since, source: `primitive "${op.handler}" param "${param}"` });
+    }
+  }
+  const floor = needs.reduce(
+    (highest, need) => laterVersion(highest, need.version),
+    needs[0].version,
   );
   const minimum = engineRangeMinimum(manifest.engine);
   if (minimum === null) {
@@ -63,10 +79,10 @@ export function primitiveShippabilityIssues(manifest: PluginManifest): ManifestI
     return issues;
   }
   if (!engineSatisfied(`>=${floor}`, minimum)) {
-    const source = contracts.find((contract) => contract.sinceEngine === floor);
+    const source = needs.find((need) => need.version === floor)?.source ?? floor;
     issues.push({
       path: 'engine',
-      message: `engine "${manifest.engine}" admits builds older than ${floor}, the sinceEngine of primitive "${source?.name ?? floor}" — set engine to ">=${floor}"`,
+      message: `engine "${manifest.engine}" admits builds older than ${floor}, the sinceEngine of ${source} — set engine to ">=${floor}"`,
     });
   }
   return issues;
