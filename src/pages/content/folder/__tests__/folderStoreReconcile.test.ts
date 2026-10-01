@@ -222,6 +222,21 @@ describe('FolderStore reconciles external writes after local work settles', () =
     }
   });
 
+  it('holds a debounced save that falls due while the reload read is in flight', async () => {
+    store.toggleFolder('Alpha');
+    await vi.advanceTimersByTimeAsync(290);
+    const read = deferred<FolderData | null>();
+    vi.mocked(adapter.loadData).mockImplementationOnce(() => read.promise);
+    writeFromElsewhere(folders('Alpha', 'From another tab'));
+
+    await vi.advanceTimersByTimeAsync(20); // the debounce falls due during the read
+    read.resolve(structuredClone(stored ?? null));
+    await vi.advanceTimersByTimeAsync(350);
+
+    expectMerged(store.data);
+    expectMerged(stored);
+  });
+
   it('merges a debounced edit made while the reload read was in flight', async () => {
     const read = deferred<FolderData | null>();
     vi.mocked(adapter.loadData).mockImplementationOnce(() => read.promise);

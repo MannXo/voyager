@@ -8,6 +8,7 @@ export class FolderDataSession {
   data: FolderData = { folders: [], folderContents: {} };
   ready = false;
   loadVersion = 0;
+  loadsInFlight = 0;
   saveInProgress = false;
   activeSave: Promise<boolean> | null = null;
   replacingData = false;

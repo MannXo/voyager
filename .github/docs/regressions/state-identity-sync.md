@@ -95,7 +95,8 @@ off a ChatGPT tab`).
   `replaceData` resume it), then calls the owner's reload hook. Every load merges edits still
   waiting on the debounce onto the fresh data with `mergeDebouncedEdits`, against
   `session.baseline` (what this tab last read or wrote), so debounced edits may only touch
-  expand/collapse and conversation timestamps. Echo suppression is only an optimisation: a wrongly
+  expand/collapse and conversation timestamps. A debounce that falls due while a load is in
+  flight re-arms instead of saving, so it cannot supersede that read. Echo suppression is only an optimisation: a wrongly
   unsuppressed echo costs one reload of this tab's own data. Limit: an immediate save issued while
   the reload read is in flight, or a snapshot already queued behind an in-flight write, is still
   whole-snapshot last-writer-wins.

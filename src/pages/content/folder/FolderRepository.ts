@@ -240,6 +240,7 @@ export class FolderRepository {
     const version = ++session.loadVersion;
     const isCurrent = () =>
       this.dataSession === session && session.loadVersion === version && !this.destroyed;
+    session.loadsInFlight += 1;
     try {
       // On Safari, restore recovery backups from the durable mirror before any
       // recoverFromBackup() can run (localStorage may have been ITP-evicted).
@@ -306,6 +307,7 @@ export class FolderRepository {
       // Instead, try to recover from backup or keep existing data
       await this.attemptDataRecovery(error, session);
     } finally {
+      session.loadsInFlight -= 1;
       if (isCurrent() && session.ready) {
         this.hooks.onChange('loaded');
       }
@@ -393,10 +395,18 @@ export class FolderRepository {
     if (this.saveDebounceTimer !== null) {
       window.clearTimeout(this.saveDebounceTimer);
     }
-    this.saveDebounceTimer = window.setTimeout(() => {
-      this.saveDebounceTimer = null;
-      void this.saveData();
-    }, SAVE_DEBOUNCE_MS);
+    this.saveDebounceTimer = window.setTimeout(() => this.fireDebouncedSave(), SAVE_DEBOUNCE_MS);
+  }
+
+  private fireDebouncedSave(): void {
+    // Saving now would supersede a read in flight and overwrite what it found;
+    // keep the timer armed so that load merges this edit, then save.
+    if (this.dataSession?.loadsInFlight) {
+      this.saveDebounceTimer = window.setTimeout(() => this.fireDebouncedSave(), SAVE_DEBOUNCE_MS);
+      return;
+    }
+    this.saveDebounceTimer = null;
+    void this.saveData();
   }
 
   /**
