@@ -204,7 +204,8 @@ with any AI the user already uses, while Voyager itself stays offline:
 - `local/pluginPreview.ts` describes the result in plain terms (sites, each
   change, warnings for hidden content via `hide`, `hidden` or a hiding inline
   style, raw selectors, a replaced version, a
-  site other than the one the prompt was written for, and a `theme` or `native`
+  reply that misses the selected site (the active tab's, or the user's pick;
+  recomputed when the picker changes, no prompt needed), and a `theme` or `native`
   op the prompt asked the AI to leave out). CSS is not summarized: its full
   source is shown with a plain warning that it can change anything, hiding
   included, since reading its effect would be a guess. It builds on `inspectPlugin`, and

@@ -245,6 +245,34 @@ describe('describe a change → prompt → pasted reply → preview → import',
     ).toBe(false);
   });
 
+  it('compares a pasted reply with the selected site, live, without a prompt in this popup', async () => {
+    // Fresh popup on Gemini: the site defaults to the active tab, no prompt was written here.
+    await openComposer('https://gemini.google.com/app');
+    await checkReply(fenced(AUTHORED));
+    const warnings = () =>
+      container.querySelector('[data-testid="local-plugin-warnings"]')?.textContent ?? '';
+    expect(warnings()).toContain('localPluginWarnNotOnSite');
+
+    // Picking the reply's own site clears the mismatch; the preview stays.
+    const select = container.querySelector('select') as HTMLSelectElement;
+    await act(async () => setValue(select, 'claude'));
+    expect(container.querySelector('[data-testid="local-plugin-preview"]')).not.toBeNull();
+    expect(warnings()).not.toContain('localPluginWarnNotOnSite');
+
+    await act(async () => setValue(select, 'chatgpt'));
+    expect(warnings()).toContain('localPluginWarnNotOnSite');
+  });
+
+  it('does not claim a mismatch with a site nobody picked', async () => {
+    // No supported active tab and an untouched picker.
+    await openComposer('chrome://newtab/');
+    await checkReply(fenced(AUTHORED));
+    expect(container.querySelector('[data-testid="local-plugin-preview"]')).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="local-plugin-warnings"]')?.textContent,
+    ).not.toContain('localPluginWarnNotOnSite');
+  });
+
   it('warns when the reply does not run on the site the prompt was written for', async () => {
     await openComposer('https://chatgpt.com/');
     await act(async () =>

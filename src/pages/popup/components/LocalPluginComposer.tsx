@@ -10,7 +10,6 @@ import {
 } from '@/features/plugins/local/pluginAuthoringPrompt';
 import { previewPlugin } from '@/features/plugins/local/pluginPreview';
 import { type CheckedPluginReply, checkPluginReply } from '@/features/plugins/local/pluginReply';
-import type { SiteAdapter } from '@/features/plugins/types';
 import type { TranslationKey } from '@/utils/translations';
 
 import { Button } from '../../../components/ui/button';
@@ -43,10 +42,14 @@ export function LocalPluginComposer({
 }) {
   const sites = authoringSites();
   const [request, setRequest] = useState('');
-  const [siteId, setSiteId] = useState(
-    () => authoringSiteForUrl(activeUrl)?.id ?? sites[0]?.id ?? '',
-  );
-  const [prompt, setPrompt] = useState<{ text: string; site: SiteAdapter } | null>(null);
+  // The site a reply is checked against: the active tab's, or the user's pick.
+  // With neither, the picker only shows a default and nothing is compared.
+  const [picked, setPicked] = useState(() => {
+    const activeSite = authoringSiteForUrl(activeUrl);
+    return { id: activeSite?.id ?? sites[0]?.id ?? '', chosen: activeSite !== null };
+  });
+  const siteId = picked.id;
+  const [prompt, setPrompt] = useState<string | null>(null);
   const [copy, setCopy] = useState<CopyState>('idle');
   const [reply, setReply] = useState('');
   const [checked, setChecked] = useState<CheckedPluginReply | null>(null);
@@ -55,27 +58,28 @@ export function LocalPluginComposer({
   const checkRun = useRef(0);
 
   const site = sites.find((candidate) => candidate.id === siteId) ?? null;
+  const targetSite = picked.chosen ? site : null;
   const preview = useMemo(
     () =>
       checked?.ok
         ? previewPlugin(checked.manifest, {
             previousVersion: checked.previousVersion,
-            targetSite: prompt?.site ?? null,
+            targetSite,
           })
         : null,
-    [checked, prompt],
+    [checked, targetSite],
   );
 
   const writePrompt = (): void => {
     if (!site || request.trim() === '') return;
-    setPrompt({ text: buildPluginAuthoringPrompt(request, site), site });
+    setPrompt(buildPluginAuthoringPrompt(request, site));
     setCopy('idle');
   };
 
   const copyPrompt = async (): Promise<void> => {
     if (!prompt) return;
     try {
-      await navigator.clipboard.writeText(prompt.text);
+      await navigator.clipboard.writeText(prompt);
       setCopy('copied');
     } catch {
       setCopy('failed');
@@ -143,7 +147,7 @@ export function LocalPluginComposer({
           <select
             value={siteId}
             onChange={(event) => {
-              setSiteId(event.target.value);
+              setPicked({ id: event.target.value, chosen: true });
               setPrompt(null);
             }}
             className="bg-background border-border focus:ring-primary/50 rounded-md border px-2 py-1 text-[11px] transition-all focus:ring-2 focus:outline-none"
@@ -181,7 +185,7 @@ export function LocalPluginComposer({
           </div>
           <textarea
             readOnly
-            value={prompt.text}
+            value={prompt}
             rows={5}
             aria-label={t('localPluginDescribePromptLabel')}
             spellCheck={false}
