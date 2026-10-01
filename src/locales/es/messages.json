@@ -218,6 +218,10 @@
     "message": "No se pudo guardar el cambio, así que se ha deshecho.",
     "description": "Prompt Manager notice: a change could not be saved and was rolled back"
   },
+  "pm_edit_target_deleted": {
+    "message": "Este prompt se eliminó en otro lugar. Guarda de nuevo para conservarlo como un prompt nuevo.",
+    "description": "Prompt Manager hint: the prompt being edited was deleted in another tab; saving again adds the draft as a new prompt"
+  },
   "pm_edit": {
     "message": "Editar",
     "description": "Edit prompt"

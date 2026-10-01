@@ -7,7 +7,11 @@ import {
   createPromptLibraryOwner,
 } from '@/features/prompt/library/promptLibraryOwner';
 
-import { createPromptLibraryState, parseLegacyPromptLibrary } from '../promptLibraryState';
+import {
+  createPromptLibraryState,
+  parseLegacyPromptLibrary,
+  readPromptLibrary,
+} from '../promptLibraryState';
 
 const KEY = StorageKeys.PROMPT_ITEMS;
 
@@ -43,15 +47,21 @@ async function tab(initial: unknown, legacy: string | null = null) {
   const owner = createPromptLibraryOwner({ area, now: () => 500 });
   const gates = new Map<number, Promise<void>>();
   let readGate: Promise<void> | null = null;
+  let failRead = false;
   const lost = new Set<number>();
   const deliveries = new Map<number, Promise<void>>();
   const sent: PromptLibraryOp[] = [];
   const onReconcile = vi.fn();
   const onWriteFailed = vi.fn();
+  const onReadFailed = vi.fn();
   let clock = 100;
   let id = 0;
   const state = createPromptLibraryState({
     read: async () => {
+      if (failRead) {
+        failRead = false;
+        throw new Error('Extension context invalidated.');
+      }
       const value = ((await area.get())[KEY] ?? []) as PromptItem[];
       const gate = readGate;
       readGate = null;
@@ -71,6 +81,7 @@ async function tab(initial: unknown, legacy: string | null = null) {
     readLegacy: () => legacy,
     onReconcile,
     onWriteFailed,
+    onReadFailed,
     now: () => clock++,
     makeId: () => `new-${++id}`,
   });
@@ -80,6 +91,7 @@ async function tab(initial: unknown, legacy: string | null = null) {
     sent,
     onReconcile,
     onWriteFailed,
+    onReadFailed,
     stored: () => stored,
     /** Another writer changes the library behind this tab's back. */
     setStored: (value: unknown) => {
@@ -87,6 +99,10 @@ async function tab(initial: unknown, legacy: string | null = null) {
     },
     failNext: () => {
       failWrite = true;
+    },
+    /** Makes the tab's next read of storage fail. */
+    failNextRead: () => {
+      failRead = true;
     },
     hold: (later = 0) => {
       let release!: () => void;
@@ -382,6 +398,84 @@ describe('Prompt Manager library state', () => {
     await flush();
     expect(stored()).toEqual([prompt('b', 'B')]);
     expect(state.items).toEqual(stored());
+  });
+
+  it('does not let a re-read older than a library received meanwhile replace it', async () => {
+    const { state, failNext, holdRead } = await tab([prompt('a', 'A'), prompt('b', 'B')]);
+
+    failNext();
+    // The re-read after the failed drop fetches the library, then is slow to return.
+    const releaseRead = holdRead();
+    state.reorder([state.items[1], state.items[0]]);
+    await flush();
+    const fromAnotherTab = [prompt('a', 'A'), prompt('b', 'B'), prompt('t', 'Template')];
+    expect(state.receive(fromAnotherTab)).toBe(true);
+    releaseRead();
+    await flush();
+
+    expect(state.items).toEqual(fromAnotherTab);
+  });
+
+  it('shows the last library it knew, not an empty one, when a re-read fails', async () => {
+    const { state, failNext, failNextRead, onReadFailed, onWriteFailed } = await tab([
+      prompt('a', 'A'),
+      prompt('b', 'B'),
+    ]);
+
+    failNext();
+    failNextRead();
+    state.reorder([state.items[1], state.items[0]]);
+    await flush();
+
+    expect(state.items).toEqual([prompt('a', 'A'), prompt('b', 'B')]);
+    expect(onWriteFailed).toHaveBeenCalledTimes(1);
+    expect(onReadFailed).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a library received while it was loading', async () => {
+    let finishRead!: () => void;
+    const state = createPromptLibraryState({
+      read: async () => {
+        await new Promise<void>((resolve) => (finishRead = resolve));
+        return [prompt('old', 'Old')];
+      },
+      apply: async () => {
+        throw new Error('unused');
+      },
+    });
+    const loading = state.load();
+    await flush();
+    state.receive([prompt('new', 'New')]);
+    finishRead();
+    await loading;
+
+    expect(state.items).toEqual([prompt('new', 'New')]);
+  });
+
+  it('starts empty and reports it when the first read fails', async () => {
+    const onReadFailed = vi.fn();
+    const state = createPromptLibraryState({
+      read: () => Promise.reject(new Error('Extension context invalidated.')),
+      apply: async () => {
+        throw new Error('unused');
+      },
+      onReadFailed,
+    });
+
+    await expect(state.load()).resolves.toEqual([]);
+    expect(onReadFailed).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells a missing library apart from a failed or unusable read', async () => {
+    const area = (value: unknown) => ({
+      get: async () => (value === undefined ? {} : { [KEY]: value }),
+    });
+    await expect(readPromptLibrary(area(undefined))).resolves.toEqual([]);
+    await expect(readPromptLibrary(area([prompt('a', 'A')]))).resolves.toEqual([prompt('a', 'A')]);
+    await expect(readPromptLibrary(area({ not: 'a list' }))).rejects.toThrow();
+    await expect(
+      readPromptLibrary({ get: () => Promise.reject(new Error('Extension context invalidated.')) }),
+    ).rejects.toThrow();
   });
 
   it('seeds a legacy localStorage library on load, only into an empty one', async () => {

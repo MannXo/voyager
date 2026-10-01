@@ -218,6 +218,10 @@
     "message": "無法儲存變更，已復原。",
     "description": "Prompt Manager notice: a change could not be saved and was rolled back"
   },
+  "pm_edit_target_deleted": {
+    "message": "該 prompt 已在其他地方刪除。再次儲存即可另存為新的 prompt。",
+    "description": "Prompt Manager hint: the prompt being edited was deleted in another tab; saving again adds the draft as a new prompt"
+  },
   "pm_edit": {
     "message": "編輯",
     "description": "編輯 prompt"

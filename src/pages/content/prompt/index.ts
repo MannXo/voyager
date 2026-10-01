@@ -71,11 +71,12 @@ import {
 } from './PromptTemplateFill';
 import { extractPlainTitle } from './compactTitle';
 import { activatePromptText } from './promptClickAction';
-import { createPromptLibraryState } from './promptLibraryState';
+import { createPromptLibraryState, readPromptLibrary } from './promptLibraryState';
 import { getPromptNameConflictIds, isPromptNameTaken, normalizePromptName } from './promptName';
 import { isPinned, pinGroupOf, sortPinnedFirst } from './promptPinning';
 import { createPromptReorder } from './promptReorder';
 import { createPromptRowSurfaces } from './promptRowConfirm';
+import { collectAllTags, dedupeTags } from './promptTags';
 import { getScrollHintState } from './scrollHint';
 import { formatStarredMessageTime } from './starredLibrary';
 import { sanitizeSelectedTags } from './tagFilterState';
@@ -377,26 +378,6 @@ function renderSupportLinkLabel(link: HTMLAnchorElement, label: string): void {
   const labelEl = createEl('span', 'gv-pm-support-label');
   labelEl.textContent = label;
   link.replaceChildren(createSponsorHeartIcon(), labelEl);
-}
-
-function dedupeTags(tags: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const raw of tags) {
-    const t = raw.trim().toLowerCase();
-    if (!t) continue;
-    if (!seen.has(t)) {
-      seen.add(t);
-      out.push(t);
-    }
-  }
-  return out;
-}
-
-function collectAllTags(items: PromptItem[]): string[] {
-  const set = new Set<string>();
-  for (const it of items) for (const t of it.tags || []) set.add(String(t).toLowerCase());
-  return Array.from(set).sort();
 }
 
 function copyText(text: string): Promise<void> {
@@ -1012,11 +993,13 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
 
     // State
     const library = createPromptLibraryState({
-      read: () => readStorage<PromptItem[]>(STORAGE_KEYS.items, []),
+      read: () => readPromptLibrary(browser.storage.local),
       apply: createRuntimePromptLibraryClient().apply,
       readLegacy: () => localStorage.getItem(STORAGE_KEYS.items),
       onReconcile: (reason) => showLibrary(reason === 'changed'),
       onWriteFailed: () => setNotice(i18n.t('pm_save_failed') || "Couldn't save", 'err'),
+      onReadFailed: (error) =>
+        isExtensionContextInvalidatedError(error) || pmLogger.warn('Prompt read failed', { error }),
     });
     await library.load();
     let open = false;
@@ -2514,8 +2497,12 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
         return;
       }
       if (outcome === 'failed') return; // Not saved: keep the form open with what was typed.
-      if (outcome === 'saved') setNotice(i18n.t('pm_saved') || 'Saved', 'ok');
       editingId = null;
+      if (outcome === 'missing') {
+        // Deleted elsewhere: keep the draft; saving again adds it as a new prompt.
+        return setInlineHint(i18n.t('pm_edit_target_deleted') || 'Deleted elsewhere', 'err');
+      }
+      if (outcome === 'saved') setNotice(i18n.t('pm_saved') || 'Saved', 'ok');
       (addForm.querySelector('.gv-pm-input-name') as HTMLInputElement).value = '';
       (addForm.querySelector('.gv-pm-input-text') as HTMLTextAreaElement).value = '';
       syncConvertBracesVisibility();

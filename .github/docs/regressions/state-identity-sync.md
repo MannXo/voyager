@@ -356,6 +356,10 @@ off a ChatGPT tab`).
   A failed change is rolled back with the `pm_save_failed` notice; "Deleted" waits for the
   owner's reply. A tab sends its next op only after the previous reply, so the owner applies one
   tab's ops in the order the user made them without trusting the transport's delivery order.
+  A read started before a library value arrives from `storage.onChanged` is stale and is dropped.
+  A failed read is not an empty library: `readPromptLibrary` returns `[]` only when nothing is
+  stored, and the panel keeps the last library it knew when a read fails. An edit whose prompt
+  another tab deleted keeps its draft open and saves again as a new prompt.
   The queue lives in the service worker's memory. If the worker restarts, queued ops are dropped,
   and an op that was written but whose reply was lost reads as failed in the tab, which then
   re-reads storage. There is no exactly-once guarantee: do not retry an op on failure without

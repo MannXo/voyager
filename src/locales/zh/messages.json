@@ -218,6 +218,10 @@
     "message": "无法保存更改，已撤销。",
     "description": "Prompt Manager notice: a change could not be saved and was rolled back"
   },
+  "pm_edit_target_deleted": {
+    "message": "该 prompt 已在别处删除。再次保存即可另存为新的 prompt。",
+    "description": "Prompt Manager hint: the prompt being edited was deleted in another tab; saving again adds the draft as a new prompt"
+  },
   "pm_edit": {
     "message": "编辑",
     "description": "编辑 prompt"

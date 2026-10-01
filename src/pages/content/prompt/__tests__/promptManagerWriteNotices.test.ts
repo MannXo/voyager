@@ -138,4 +138,76 @@ describe('Prompt Manager write notices', () => {
     expect(form.classList.contains('gv-hidden')).toBe(false);
     expect(form.querySelector<HTMLTextAreaElement>('.gv-pm-input-text')!.value).toBe('Gamma body');
   });
+
+  it('keeps an edit whose prompt another tab deleted, and saves it as a new prompt', async () => {
+    const ops: Array<{ kind: string }> = [];
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation(((message: {
+      type?: string;
+      op?: { kind: string; items?: unknown[] };
+    }) => {
+      if (message.type !== 'gv.promptLibrary.apply' || !message.op) return Promise.resolve();
+      ops.push(message.op);
+      // Another tab deleted Alpha just before this edit arrived.
+      const items =
+        message.op.kind === 'add' ? [...(message.op.items ?? []), prompts[1]] : [prompts[1]];
+      const added = message.op.kind === 'add' ? 1 : 0;
+      return Promise.resolve({
+        ok: true,
+        result: { added, skipped: 0, total: items.length, nameConflicts: 0, items },
+      });
+    }) as never);
+    await openPanel();
+
+    document.querySelector<HTMLButtonElement>('.gv-pm-item .gv-pm-edit')!.click();
+    const form = document.querySelector<HTMLFormElement>('.gv-pm-add-form')!;
+    const text = form.querySelector<HTMLTextAreaElement>('.gv-pm-input-text')!;
+    text.value = 'Alpha body, edited';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(ops.map((op) => op.kind)).toEqual(['update']);
+    expect(form.classList.contains('gv-hidden')).toBe(false);
+    expect(text.value).toBe('Alpha body, edited');
+    expect(form.querySelector('.gv-pm-inline-hint')!.textContent).toBe(
+      'This prompt was deleted elsewhere. Save again to keep it as a new prompt.',
+    );
+    expect(rowIds()).toEqual(['Beta']);
+
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(ops.map((op) => op.kind)).toEqual(['update', 'add']);
+    expect(ops[1]).toMatchObject({
+      items: [expect.objectContaining({ name: 'Alpha', text: 'Alpha body, edited' })],
+    });
+    expect(form.classList.contains('gv-hidden')).toBe(true);
+    expect(rowIds()).toEqual(['Alpha', 'Beta']);
+  });
+
+  it('keeps the library on screen when it cannot be read back after a failed change', async () => {
+    let failReads = false;
+    const read = storageGet({ [StorageKeys.PROMPT_ITEMS]: prompts });
+    vi.mocked(chrome.storage.local.get).mockImplementation(((
+      keys: string | string[] | Record<string, unknown> | null,
+      callback?: (items: Record<string, unknown>) => void,
+    ) => {
+      const asksLibrary =
+        keys === StorageKeys.PROMPT_ITEMS ||
+        (Array.isArray(keys) && keys.includes(StorageKeys.PROMPT_ITEMS));
+      if (failReads && asksLibrary) {
+        return Promise.reject(new Error('Extension context invalidated.'));
+      }
+      return (read as (k: typeof keys, cb?: typeof callback) => Promise<unknown>)(keys, callback);
+    }) as never);
+    vi.mocked(chrome.runtime.sendMessage).mockRejectedValue(
+      new Error('Extension context invalidated.'),
+    );
+    await openPanel();
+    failReads = true;
+
+    await deleteFirstPrompt();
+
+    expect(rowIds()).toEqual(['Alpha', 'Beta']);
+    expect(notices).toEqual(["Couldn't save your change. It was undone."]);
+  });
 });

@@ -19,6 +19,7 @@
  */
 import type { PromptItem } from '@/core/types/sync';
 import {
+  PROMPT_LIBRARY_KEY,
   type PromptLibraryOp,
   type PromptLibraryResult,
   applyPromptLibraryOp,
@@ -37,7 +38,10 @@ export type PromptAddOutcome = 'added' | 'duplicate' | 'failed';
 export type PromptEditOutcome = 'saved' | 'duplicate' | 'missing' | 'failed';
 
 export interface PromptLibraryStateDeps {
-  /** The stored library, or an empty one. */
+  /**
+   * The stored library: an empty one only when nothing is stored. Rejects when
+   * the read fails, so a failure is never shown as an empty library.
+   */
   read: () => Promise<PromptItem[]>;
   /** Sends an op to the library's owner. */
   apply: (op: PromptLibraryOp) => Promise<PromptLibraryResult>;
@@ -50,6 +54,8 @@ export interface PromptLibraryStateDeps {
   onReconcile?: (reason: 'changed' | 'failed') => void;
   /** One or more changes were not saved and the panel was rolled back; called once per settle. */
   onWriteFailed?: () => void;
+  /** Reading the library failed; the panel keeps the last library it knew. */
+  onReadFailed?: (error: unknown) => void;
   now?: () => number;
   makeId?: () => string;
 }
@@ -96,6 +102,20 @@ function promptId(): string {
   return (h >>> 0).toString(36);
 }
 
+/**
+ * Reads the library from the storage area the owner writes. Nothing stored is
+ * an empty library; a failed read, or a stored value that is not a list,
+ * rejects instead.
+ */
+export async function readPromptLibrary(area: {
+  get(key: string): Promise<Record<string, unknown>>;
+}): Promise<PromptItem[]> {
+  const value = (await area.get(PROMPT_LIBRARY_KEY))?.[PROMPT_LIBRARY_KEY];
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error('The stored prompt library is not a list');
+  return value as PromptItem[];
+}
+
 /** A legacy localStorage value worth seeding: a list of prompt records. */
 export function parseLegacyPromptLibrary(raw: string | null): unknown[] | null {
   if (raw === null) return null;
@@ -124,6 +144,22 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
   let lastReply: Promise<unknown> = Promise.resolve();
   /** The last storage echo held back while ops were in flight. */
   let heldEcho: unknown[] | null = null;
+  /** Counts library values received from storage; a read started before one is stale. */
+  let received = 0;
+  /** The last library known to be stored, kept for when a read fails. */
+  let lastKnown: PromptItem[] = [];
+
+  /** The stored library, or null when it could not be read or a newer one came in meanwhile. */
+  const readFresh = async (): Promise<PromptItem[] | null> => {
+    const generation = received;
+    try {
+      const stored = await deps.read();
+      return received === generation ? stored : null;
+    } catch (error) {
+      deps.onReadFailed?.(error);
+      return null;
+    }
+  };
 
   const adopt = (next: PromptItem[], reason: 'changed' | 'failed'): void => {
     if (sameList(next, items)) return;
@@ -136,6 +172,7 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
     const result = newest;
     const reason = failed ? 'failed' : 'changed';
     const mustRead = failed || !result || (heldEcho !== null && !sameList(heldEcho, result.items));
+    if (result) lastKnown = result.items;
     newest = null;
     failed = false;
     heldEcho = null;
@@ -144,15 +181,13 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
       adopt(result.items, reason);
       return;
     }
-    let stored: PromptItem[];
-    try {
-      stored = await deps.read();
-    } catch {
-      // The extension was reloaded or storage failed; keep what is shown.
-      return;
-    }
+    const stored = await readFresh();
     // An op sent meanwhile settles again and reconciles then.
-    if (issued === epoch && pending === 0) adopt(stored, reason);
+    if (issued !== epoch || pending !== 0) return;
+    if (stored) lastKnown = stored;
+    // A failed read, or one older than a library received meanwhile, shows the
+    // last library known to be stored, never an empty one.
+    adopt(stored ?? lastKnown, reason);
   };
 
   /** Shows `op` at once, then sends it. Resolves after the panel is reconciled. */
@@ -185,7 +220,8 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
       const legacy = parseLegacyPromptLibrary(deps.readLegacy?.() ?? null);
       // Unseeded, the library loads as stored; the next start tries again.
       if (legacy) await deps.apply({ kind: 'seed', items: legacy }).catch(() => undefined);
-      items = await deps.read();
+      const stored = await readFresh();
+      if (stored) items = lastKnown = stored;
       return items;
     },
     async add(draft) {
@@ -234,10 +270,12 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
     },
     receive(newValue) {
       if (!Array.isArray(newValue)) return false;
+      received += 1;
       if (pending > 0) {
         heldEcho = newValue;
         return false;
       }
+      lastKnown = newValue;
       if (sameList(newValue, items)) return false;
       items = newValue;
       return true;

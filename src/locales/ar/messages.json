@@ -218,6 +218,10 @@
     "message": "تعذّر حفظ التغيير، فتم التراجع عنه.",
     "description": "Prompt Manager notice: a change could not be saved and was rolled back"
   },
+  "pm_edit_target_deleted": {
+    "message": "حُذفت هذه المطالبة في مكان آخر. احفظ مرة أخرى للاحتفاظ بها كمطالبة جديدة.",
+    "description": "Prompt Manager hint: the prompt being edited was deleted in another tab; saving again adds the draft as a new prompt"
+  },
   "pm_edit": {
     "message": "تعديل",
     "description": "Edit prompt"

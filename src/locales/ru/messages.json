@@ -218,6 +218,10 @@
     "message": "Не удалось сохранить изменение, поэтому оно отменено.",
     "description": "Prompt Manager notice: a change could not be saved and was rolled back"
   },
+  "pm_edit_target_deleted": {
+    "message": "Этот промпт удалён в другом месте. Сохраните ещё раз, чтобы оставить его как новый.",
+    "description": "Prompt Manager hint: the prompt being edited was deleted in another tab; saving again adds the draft as a new prompt"
+  },
   "pm_edit": {
     "message": "Редактировать",
     "description": "Edit prompt"
