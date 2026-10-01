@@ -34,7 +34,7 @@ mirrors, clear markers, or Drive sync.
   or a positive `=== 'gemini'` check.
 - **Guard:** `src/features/folder/__tests__/platforms.test.ts`,
   `src/core/services/__tests__/AccountIsolationService.test.ts` (`never resolves a non-Gemini site
-to a Gemini or AI Studio folder platform`), `src/pages/content/prompt/__tests__/localBackup.test.ts`,
+to a Gemini or AI Studio folder platform`),
   `src/pages/background/__tests__/runtimeMessageRouting.test.ts`,
   `src/core/services/__tests__/GoogleDriveSyncPlatform.test.ts`,
   `src/pages/popup/components/__tests__/CloudSyncSettingsPlatform.test.tsx`,
