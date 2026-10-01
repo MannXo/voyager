@@ -2,11 +2,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   FLOATING_PANEL_CLASS,
-  type FloatingPanelHandle,
-  type FloatingPanelMountArgs,
-  mountFloatingPanel,
-} from './floatingPanel';
-import type { ConversationReference, Folder, FolderData } from './types';
+  click,
+  contextMenu,
+  createConversation,
+  createData,
+  createDataTransfer,
+  createDragEvent,
+  createFolder,
+  destroyMountedPanels,
+  folderHeader,
+  installResizeObserverMock,
+  keydown,
+  mountPanel,
+  panelRoot,
+  pointerEvent,
+  requireElement,
+  setElementRect,
+  setWindowSize,
+  stubPointerCapture,
+} from './__tests__/floatingPanelHarness';
 
 const mockIsSafari = vi.hoisted(() => vi.fn(() => false));
 
@@ -18,203 +32,12 @@ vi.mock('@/utils/i18n', () => ({
   getTranslationSyncUnsafe: (key: string) => key,
 }));
 
-let mountedHandles: FloatingPanelHandle[] = [];
 let originalResizeObserver: typeof ResizeObserver | undefined;
 let originalInnerWidth: number;
 let originalInnerHeight: number;
 
-function createFolder(
-  id: string,
-  name: string,
-  parentId: string | null,
-  sortIndex: number,
-  overrides: Partial<Folder> = {},
-): Folder {
-  return {
-    id,
-    name,
-    parentId,
-    isExpanded: true,
-    sortIndex,
-    createdAt: 1,
-    updatedAt: 1,
-    ...overrides,
-  };
-}
-
-function createConversation(
-  conversationId: string,
-  title: string,
-  overrides: Partial<ConversationReference> = {},
-): ConversationReference {
-  return {
-    conversationId,
-    title,
-    url: `https://gemini.google.com/app/${conversationId}`,
-    addedAt: 1,
-    ...overrides,
-  };
-}
-
-function createData(): FolderData {
-  return {
-    folders: [
-      createFolder('folder-a', 'Alpha', null, 0),
-      createFolder('folder-b', 'Beta', null, 1),
-    ],
-    folderContents: {
-      'folder-a': [createConversation('conv-a', 'Conversation A', { starred: true })],
-      'folder-b': [],
-    },
-  };
-}
-
-function setWindowSize(width: number, height: number): void {
-  Object.defineProperty(window, 'innerWidth', {
-    configurable: true,
-    value: width,
-  });
-  Object.defineProperty(window, 'innerHeight', {
-    configurable: true,
-    value: height,
-  });
-}
-
-function mountPanel(args: Partial<FloatingPanelMountArgs> = {}): FloatingPanelHandle {
-  const handle = mountFloatingPanel({
-    ...args,
-    data: args.data ?? createData(),
-  });
-  mountedHandles.push(handle);
-  return handle;
-}
-
-function installResizeObserverMock(): {
-  emit: () => void;
-} {
-  let callback: ResizeObserverCallback | null = null;
-
-  class MockResizeObserver implements ResizeObserver {
-    constructor(nextCallback: ResizeObserverCallback) {
-      callback = nextCallback;
-    }
-
-    observe(): void {}
-    unobserve(): void {}
-    disconnect(): void {}
-  }
-
-  globalThis.ResizeObserver = MockResizeObserver;
-
-  return {
-    emit: () => callback?.([], {} as ResizeObserver),
-  };
-}
-
-function setElementRect(element: HTMLElement, width: number, height: number): void {
-  element.getBoundingClientRect = () =>
-    ({
-      x: 0,
-      y: 0,
-      top: 0,
-      left: 0,
-      right: width,
-      bottom: height,
-      width,
-      height,
-      toJSON: () => ({}),
-    }) as DOMRect;
-}
-
-function requireElement<T extends Element>(root: ParentNode, selector: string): T {
-  const element = root.querySelector<T>(selector);
-  if (!element) {
-    throw new Error(`Expected element for selector: ${selector}`);
-  }
-  return element;
-}
-
-function keydown(element: Element, key: string): void {
-  element.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-}
-
-function click(element: Element): void {
-  element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-}
-
-function contextMenu(element: Element): void {
-  element.dispatchEvent(
-    new MouseEvent('contextmenu', {
-      bubbles: true,
-      cancelable: true,
-      clientX: 24,
-      clientY: 32,
-    }),
-  );
-}
-
-function createDataTransfer(): DataTransfer {
-  const store = new Map<string, string>();
-  const transfer = {
-    dropEffect: 'none' as DataTransfer['dropEffect'],
-    effectAllowed: 'uninitialized' as DataTransfer['effectAllowed'],
-    files: [] as unknown as FileList,
-    items: [] as unknown as DataTransferItemList,
-    // Browsers expose `types` as a live view of stored MIME keys. The mock
-    // regenerates it on read so dragover checks (which can't read values
-    // for security) still observe what setData put in.
-    get types(): readonly string[] {
-      return Array.from(store.keys());
-    },
-    clearData: (format?: string) => {
-      if (format) {
-        store.delete(format);
-      } else {
-        store.clear();
-      }
-    },
-    getData: (format: string) => store.get(format) ?? '',
-    setData: (format: string, value: string) => {
-      store.set(format, value);
-    },
-    setDragImage: () => {},
-  };
-  return transfer as unknown as DataTransfer;
-}
-
-function createDragEvent(type: string, dataTransfer: DataTransfer): DragEvent {
-  const event = new Event(type, { bubbles: true, cancelable: true }) as DragEvent;
-  Object.defineProperty(event, 'dataTransfer', {
-    value: dataTransfer,
-  });
-  return event;
-}
-
-function pointerEvent(type: string, init: MouseEventInit): Event {
-  // jsdom has no PointerEvent constructor; MouseEvent carries everything the
-  // drag handlers read (button, clientX/Y).
-  return new MouseEvent(type, { bubbles: true, cancelable: true, ...init });
-}
-
-function stubPointerCapture(element: HTMLElement): void {
-  Object.assign(element, {
-    setPointerCapture: () => {},
-    releasePointerCapture: () => {},
-  });
-}
-
-function folderHeader(root: ParentNode, folderId: string): HTMLElement {
-  return requireElement<HTMLElement>(
-    root,
-    `.${FLOATING_PANEL_CLASS}__folder-header[data-folder-id="${folderId}"]`,
-  );
-}
-
 afterEach(() => {
-  for (const handle of mountedHandles) {
-    handle.destroy();
-  }
-  mountedHandles = [];
+  destroyMountedPanels();
   document.body.innerHTML = '';
   vi.restoreAllMocks();
   mockIsSafari.mockReturnValue(false);
@@ -233,11 +56,11 @@ describe('mountFloatingPanel', () => {
     const onNavigate = vi.fn();
     const handle = mountPanel({ onNavigate });
 
-    expect(handle.element.textContent).toContain('Alpha');
-    expect(handle.element.textContent).toContain('Conversation A');
+    expect(panelRoot(handle).textContent).toContain('Alpha');
+    expect(panelRoot(handle).textContent).toContain('Conversation A');
 
     const title = requireElement<HTMLButtonElement>(
-      handle.element,
+      panelRoot(handle),
       `.${FLOATING_PANEL_CLASS}__conv-title`,
     );
     click(title);
@@ -254,12 +77,14 @@ describe('mountFloatingPanel', () => {
     const handle = mountPanel({ data });
     const getOrder = () =>
       Array.from(
-        handle.element.querySelectorAll<HTMLElement>(`.${FLOATING_PANEL_CLASS}__conv`),
+        panelRoot(handle).querySelectorAll<HTMLElement>(`.${FLOATING_PANEL_CLASS}__conv`),
       ).map((row) => row.dataset.conversationId);
 
     expect(getOrder()).toEqual(['manual-first', 'recent-first']);
 
-    expect(handle.element.querySelector(`.${FLOATING_PANEL_CLASS}__icon-button--sort`)).toBeNull();
+    expect(
+      panelRoot(handle).querySelector(`.${FLOATING_PANEL_CLASS}__icon-button--sort`),
+    ).toBeNull();
 
     handle.update(data, 'recent');
     expect(getOrder()).toEqual(['recent-first', 'manual-first']);
@@ -269,7 +94,7 @@ describe('mountFloatingPanel', () => {
     const handle = mountPanel();
 
     const hint = requireElement<HTMLElement>(
-      handle.element,
+      panelRoot(handle),
       `.${FLOATING_PANEL_CLASS}__hint-stack`,
     );
 
@@ -282,13 +107,13 @@ describe('mountFloatingPanel', () => {
     const handle = mountPanel({ onCreateFolder });
 
     const createButton = requireElement<HTMLButtonElement>(
-      handle.element,
+      panelRoot(handle),
       `.${FLOATING_PANEL_CLASS}__icon-button--create`,
     );
     click(createButton);
 
     const input = requireElement<HTMLInputElement>(
-      handle.element,
+      panelRoot(handle),
       `.${FLOATING_PANEL_CLASS}__inline-input`,
     );
     input.value = 'New root';
@@ -302,13 +127,13 @@ describe('mountFloatingPanel', () => {
     const handle = mountPanel({ onCreateFolder });
 
     const addChildButton = requireElement<HTMLButtonElement>(
-      folderHeader(handle.element, 'folder-a'),
+      folderHeader(panelRoot(handle), 'folder-a'),
       `.${FLOATING_PANEL_CLASS}__icon-button--add-child`,
     );
     click(addChildButton);
 
     const input = requireElement<HTMLInputElement>(
-      handle.element,
+      panelRoot(handle),
       `.${FLOATING_PANEL_CLASS}__inline-input`,
     );
     input.value = 'Nested';
@@ -322,13 +147,13 @@ describe('mountFloatingPanel', () => {
     const handle = mountPanel({ onRenameFolder });
 
     const name = requireElement<HTMLElement>(
-      folderHeader(handle.element, 'folder-a'),
+      folderHeader(panelRoot(handle), 'folder-a'),
       `.${FLOATING_PANEL_CLASS}__folder-name`,
     );
     name.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
 
     const input = requireElement<HTMLInputElement>(
-      handle.element,
+      panelRoot(handle),
       `.${FLOATING_PANEL_CLASS}__inline-input`,
     );
     input.value = 'Renamed';
@@ -342,27 +167,27 @@ describe('mountFloatingPanel', () => {
     const onDeleteFolder = vi.fn();
     const handle = mountPanel({ onToggleFolderPinned, onDeleteFolder });
 
-    contextMenu(folderHeader(handle.element, 'folder-a'));
+    contextMenu(folderHeader(panelRoot(handle), 'folder-a'));
     const pinButton = requireElement<HTMLButtonElement>(
-      handle.element,
+      panelRoot(handle),
       `.${FLOATING_PANEL_CLASS}__menu-item`,
     );
     click(pinButton);
     expect(onToggleFolderPinned).toHaveBeenCalledWith('folder-a');
 
-    contextMenu(folderHeader(handle.element, 'folder-a'));
+    contextMenu(folderHeader(panelRoot(handle), 'folder-a'));
     const deleteButton = requireElement<HTMLButtonElement>(
-      handle.element,
+      panelRoot(handle),
       `.${FLOATING_PANEL_CLASS}__menu-item--danger`,
     );
     click(deleteButton);
 
     const confirmDeleteButton = requireElement<HTMLButtonElement>(
-      handle.element,
+      panelRoot(handle),
       `.${FLOATING_PANEL_CLASS}__menu-item--danger`,
     );
     const confirmMenu = requireElement<HTMLElement>(
-      handle.element,
+      panelRoot(handle),
       `.${FLOATING_PANEL_CLASS}__context-menu--confirming`,
     );
     const confirmButtons = confirmMenu.querySelectorAll(`.${FLOATING_PANEL_CLASS}__menu-item`);
@@ -371,7 +196,7 @@ describe('mountFloatingPanel', () => {
     click(confirmDeleteButton);
 
     expect(onDeleteFolder).toHaveBeenCalledWith('folder-a');
-    expect(handle.element.textContent).toContain('Alpha');
+    expect(panelRoot(handle).textContent).toContain('Alpha');
   });
 
   it('fires conversation star and remove callbacks from row action buttons', () => {
@@ -379,7 +204,7 @@ describe('mountFloatingPanel', () => {
     const onRemoveConversation = vi.fn();
     const handle = mountPanel({ onToggleStar, onRemoveConversation });
 
-    const row = requireElement<HTMLElement>(handle.element, `.${FLOATING_PANEL_CLASS}__conv`);
+    const row = requireElement<HTMLElement>(panelRoot(handle), `.${FLOATING_PANEL_CLASS}__conv`);
     click(requireElement<HTMLButtonElement>(row, `.${FLOATING_PANEL_CLASS}__icon-button--star`));
     click(requireElement<HTMLButtonElement>(row, `.${FLOATING_PANEL_CLASS}__icon-button--remove`));
 
@@ -391,10 +216,10 @@ describe('mountFloatingPanel', () => {
     const onMoveConversation = vi.fn();
     const handle = mountPanel({ onMoveConversation });
     const row = requireElement<HTMLElement>(
-      handle.element,
+      panelRoot(handle),
       `.${FLOATING_PANEL_CLASS}__conv[data-conversation-id="conv-a"]`,
     );
-    const target = folderHeader(handle.element, 'folder-b');
+    const target = folderHeader(panelRoot(handle), 'folder-b');
     const dataTransfer = createDataTransfer();
 
     row.dispatchEvent(createDragEvent('dragstart', dataTransfer));
@@ -415,7 +240,7 @@ describe('mountFloatingPanel', () => {
     // is where native payloads (no `sourceFolderId`) are actually rejected.
     const onMoveConversation = vi.fn();
     const handle = mountPanel({ onMoveConversation });
-    const target = folderHeader(handle.element, 'folder-b');
+    const target = folderHeader(panelRoot(handle), 'folder-b');
     const dataTransfer = createDataTransfer();
     dataTransfer.setData(
       'application/json',
@@ -450,13 +275,13 @@ describe('mountFloatingPanel', () => {
     });
 
     expect(
-      folderHeader(handle.element, 'grandchild').querySelector(
+      folderHeader(panelRoot(handle), 'grandchild').querySelector(
         `.${FLOATING_PANEL_CLASS}__icon-button--add-child`,
       ),
     ).toBeNull();
 
-    contextMenu(folderHeader(handle.element, 'grandchild'));
-    expect(handle.element.textContent).not.toContain('floatingPanelCreateSubfolder');
+    contextMenu(folderHeader(panelRoot(handle), 'grandchild'));
+    expect(panelRoot(handle).textContent).not.toContain('floatingPanelCreateSubfolder');
   });
 
   it('cancels create and rename inline forms on outside mousedown', () => {
@@ -466,22 +291,26 @@ describe('mountFloatingPanel', () => {
 
     click(
       requireElement<HTMLButtonElement>(
-        handle.element,
+        panelRoot(handle),
         `.${FLOATING_PANEL_CLASS}__icon-button--create`,
       ),
     );
-    expect(handle.element.querySelector(`.${FLOATING_PANEL_CLASS}__inline-input`)).not.toBeNull();
+    expect(
+      panelRoot(handle).querySelector(`.${FLOATING_PANEL_CLASS}__inline-input`),
+    ).not.toBeNull();
     document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-    expect(handle.element.querySelector(`.${FLOATING_PANEL_CLASS}__inline-input`)).toBeNull();
+    expect(panelRoot(handle).querySelector(`.${FLOATING_PANEL_CLASS}__inline-input`)).toBeNull();
     expect(onCreateFolder).not.toHaveBeenCalled();
 
     requireElement<HTMLElement>(
-      folderHeader(handle.element, 'folder-a'),
+      folderHeader(panelRoot(handle), 'folder-a'),
       `.${FLOATING_PANEL_CLASS}__folder-name`,
     ).dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-    expect(handle.element.querySelector(`.${FLOATING_PANEL_CLASS}__inline-input`)).not.toBeNull();
+    expect(
+      panelRoot(handle).querySelector(`.${FLOATING_PANEL_CLASS}__inline-input`),
+    ).not.toBeNull();
     document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-    expect(handle.element.querySelector(`.${FLOATING_PANEL_CLASS}__inline-input`)).toBeNull();
+    expect(panelRoot(handle).querySelector(`.${FLOATING_PANEL_CLASS}__inline-input`)).toBeNull();
     expect(onRenameFolder).not.toHaveBeenCalled();
   });
 
@@ -489,9 +318,9 @@ describe('mountFloatingPanel', () => {
     const onSetFolderColor = vi.fn();
     const handle = mountPanel({ onSetFolderColor });
 
-    contextMenu(folderHeader(handle.element, 'folder-a'));
+    contextMenu(folderHeader(panelRoot(handle), 'folder-a'));
     const redSwatch = requireElement<HTMLButtonElement>(
-      handle.element,
+      panelRoot(handle),
       `.${FLOATING_PANEL_CLASS}__color-swatch[aria-label="folder_color_red"]`,
     );
     click(redSwatch);
@@ -512,11 +341,11 @@ describe('mountFloatingPanel', () => {
     });
 
     const uploadButton = requireElement<HTMLButtonElement>(
-      handle.element,
+      panelRoot(handle),
       `.${FLOATING_PANEL_CLASS}__icon-button--cloud-upload`,
     );
     const syncButton = requireElement<HTMLButtonElement>(
-      handle.element,
+      panelRoot(handle),
       `.${FLOATING_PANEL_CLASS}__icon-button--cloud-sync`,
     );
 
@@ -542,10 +371,10 @@ describe('mountFloatingPanel', () => {
     });
 
     expect(
-      handle.element.querySelector(`.${FLOATING_PANEL_CLASS}__icon-button--cloud-upload`),
+      panelRoot(handle).querySelector(`.${FLOATING_PANEL_CLASS}__icon-button--cloud-upload`),
     ).toBeNull();
     expect(
-      handle.element.querySelector(`.${FLOATING_PANEL_CLASS}__icon-button--cloud-sync`),
+      panelRoot(handle).querySelector(`.${FLOATING_PANEL_CLASS}__icon-button--cloud-sync`),
     ).toBeNull();
   });
 
@@ -571,7 +400,10 @@ describe('mountFloatingPanel', () => {
 
   it('ignores non-primary-button pointerdown on the header (no right/middle drags)', () => {
     const handle = mountPanel();
-    const header = requireElement<HTMLElement>(handle.element, `.${FLOATING_PANEL_CLASS}__header`);
+    const header = requireElement<HTMLElement>(
+      panelRoot(handle),
+      `.${FLOATING_PANEL_CLASS}__header`,
+    );
     stubPointerCapture(header);
     setElementRect(handle.element, 320, 420);
     const initialLeft = handle.element.style.left;
@@ -597,12 +429,12 @@ describe('mountFloatingPanel', () => {
 
     click(
       requireElement<HTMLButtonElement>(
-        handle.element,
+        panelRoot(handle),
         `.${FLOATING_PANEL_CLASS}__icon-button--create`,
       ),
     );
     const input = requireElement<HTMLInputElement>(
-      handle.element,
+      panelRoot(handle),
       `.${FLOATING_PANEL_CLASS}__inline-input`,
     );
     input.value = 'Half-typed name';
@@ -614,28 +446,28 @@ describe('mountFloatingPanel', () => {
 
     // The form (and the user's typed value) must survive the background update.
     const inputAfter = requireElement<HTMLInputElement>(
-      handle.element,
+      panelRoot(handle),
       `.${FLOATING_PANEL_CLASS}__inline-input`,
     );
     expect(inputAfter).toBe(input);
     expect(inputAfter.value).toBe('Half-typed name');
-    expect(handle.element.textContent).toContain('Alpha');
-    expect(handle.element.textContent).not.toContain('Alpha Renamed');
+    expect(panelRoot(handle).textContent).toContain('Alpha');
+    expect(panelRoot(handle).textContent).not.toContain('Alpha Renamed');
 
     // Closing the form applies the deferred data.
     keydown(input, 'Enter');
-    expect(handle.element.textContent).toContain('Alpha Renamed');
+    expect(panelRoot(handle).textContent).toContain('Alpha Renamed');
   });
 
   it('rebuilds immediately when the folder being renamed was deleted by the update', () => {
     const handle = mountPanel();
 
     requireElement<HTMLElement>(
-      folderHeader(handle.element, 'folder-a'),
+      folderHeader(panelRoot(handle), 'folder-a'),
       `.${FLOATING_PANEL_CLASS}__folder-name`,
     ).dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     const input = requireElement<HTMLInputElement>(
-      handle.element,
+      panelRoot(handle),
       `.${FLOATING_PANEL_CLASS}__inline-input`,
     );
     input.focus();
@@ -645,8 +477,8 @@ describe('mountFloatingPanel', () => {
       folderContents: { 'folder-b': [] },
     });
 
-    expect(handle.element.querySelector(`.${FLOATING_PANEL_CLASS}__inline-input`)).toBeNull();
-    expect(handle.element.textContent).not.toContain('Alpha');
+    expect(panelRoot(handle).querySelector(`.${FLOATING_PANEL_CLASS}__inline-input`)).toBeNull();
+    expect(panelRoot(handle).textContent).not.toContain('Alpha');
   });
 
   it.each(['create-root', 'create-child', 'rename'] as const)(
@@ -663,19 +495,21 @@ describe('mountFloatingPanel', () => {
       const geometry = handle.element.style.cssText;
       if (mode === 'rename') {
         requireElement<HTMLElement>(
-          folderHeader(handle.element, 'folder-a'),
+          folderHeader(panelRoot(handle), 'folder-a'),
           `.${FLOATING_PANEL_CLASS}__folder-name`,
         ).dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
       } else {
         click(
           requireElement<HTMLButtonElement>(
-            mode === 'create-root' ? handle.element : folderHeader(handle.element, 'folder-a'),
+            mode === 'create-root'
+              ? panelRoot(handle)
+              : folderHeader(panelRoot(handle), 'folder-a'),
             `.${FLOATING_PANEL_CLASS}__icon-button--${mode === 'create-root' ? 'create' : 'add-child'}`,
           ),
         );
       }
       const input = requireElement<HTMLInputElement>(
-        handle.element,
+        panelRoot(handle),
         `.${FLOATING_PANEL_CLASS}__inline-input`,
       );
       input.value = 'Account A private draft';
@@ -683,9 +517,9 @@ describe('mountFloatingPanel', () => {
 
       handle.reset({ folders: [], folderContents: {} });
 
-      expect(handle.element.querySelector(`.${FLOATING_PANEL_CLASS}__inline-input`)).toBeNull();
-      expect(handle.element.querySelector(`.${FLOATING_PANEL_CLASS}__folder`)).toBeNull();
-      expect(handle.element.textContent).not.toContain('Conversation A');
+      expect(panelRoot(handle).querySelector(`.${FLOATING_PANEL_CLASS}__inline-input`)).toBeNull();
+      expect(panelRoot(handle).querySelector(`.${FLOATING_PANEL_CLASS}__folder`)).toBeNull();
+      expect(panelRoot(handle).textContent).not.toContain('Conversation A');
       expect(handle.element.style.cssText).toBe(geometry);
       expect(onCreateFolder).not.toHaveBeenCalled();
       expect(onRenameFolder).not.toHaveBeenCalled();
@@ -695,34 +529,38 @@ describe('mountFloatingPanel', () => {
 
       click(
         requireElement<HTMLButtonElement>(
-          handle.element,
+          panelRoot(handle),
           `.${FLOATING_PANEL_CLASS}__icon-button--create`,
         ),
       );
       expect(
-        requireElement<HTMLInputElement>(handle.element, `.${FLOATING_PANEL_CLASS}__inline-input`)
-          .value,
+        requireElement<HTMLInputElement>(
+          panelRoot(handle),
+          `.${FLOATING_PANEL_CLASS}__inline-input`,
+        ).value,
       ).toBe('');
     },
   );
 
   it('clears the previous account menu and expansion when the next account reuses folder ids', () => {
     const handle = mountPanel();
-    click(folderHeader(handle.element, 'folder-a'));
-    contextMenu(folderHeader(handle.element, 'folder-a'));
-    expect(handle.element.querySelector(`.${FLOATING_PANEL_CLASS}__context-menu`)).not.toBeNull();
+    click(folderHeader(panelRoot(handle), 'folder-a'));
+    contextMenu(folderHeader(panelRoot(handle), 'folder-a'));
+    expect(
+      panelRoot(handle).querySelector(`.${FLOATING_PANEL_CLASS}__context-menu`),
+    ).not.toBeNull();
 
     const next = createData();
     next.folders[0].name = 'Other account';
     next.folderContents['folder-a'] = [];
     handle.reset(next);
 
-    expect(handle.element.querySelector(`.${FLOATING_PANEL_CLASS}__context-menu`)).toBeNull();
-    expect(handle.element.textContent).toContain('Other account');
-    expect(handle.element.textContent).not.toContain('Conversation A');
+    expect(panelRoot(handle).querySelector(`.${FLOATING_PANEL_CLASS}__context-menu`)).toBeNull();
+    expect(panelRoot(handle).textContent).toContain('Other account');
+    expect(panelRoot(handle).textContent).not.toContain('Conversation A');
     expect(
       requireElement<HTMLElement>(
-        folderHeader(handle.element, 'folder-a').parentElement!,
+        folderHeader(panelRoot(handle), 'folder-a').parentElement!,
         `.${FLOATING_PANEL_CLASS}__folder-body`,
       ).style.display,
     ).not.toBe('none');
