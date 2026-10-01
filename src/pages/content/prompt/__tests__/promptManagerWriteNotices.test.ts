@@ -298,4 +298,53 @@ describe('Prompt Manager write notices', () => {
     expect(form.classList.contains('gv-hidden')).toBe(false);
     expect(form.querySelector<HTMLTextAreaElement>('.gv-pm-input-text')!.value).toBe('Gamma body');
   });
+
+  it('refuses edits until the library loads, and shows it once it can be read', async () => {
+    const { ops } = useLibrary();
+    const read = vi.mocked(chrome.storage.local.get).getMockImplementation()!;
+    let readFails = true;
+    vi.mocked(chrome.storage.local.get).mockImplementation(((keys: unknown, callback?: never) =>
+      readFails && keys === StorageKeys.PROMPT_ITEMS
+        ? Promise.reject(new Error('Extension context invalidated.'))
+        : (read as (k: unknown, cb?: never) => Promise<unknown>)(keys, callback)) as never);
+    await openPanel();
+    expect(rowIds()).toEqual([]);
+
+    document.querySelector<HTMLButtonElement>('.gv-pm-add')!.click();
+    const form = document.querySelector<HTMLFormElement>('.gv-pm-add-form')!;
+    form.querySelector<HTMLInputElement>('.gv-pm-input-name')!.value = 'Alpha';
+    form.querySelector<HTMLTextAreaElement>('.gv-pm-input-text')!.value = 'Alpha body';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.advanceTimersByTimeAsync(1);
+    expect(ops).toEqual([]);
+    expect(notices).toEqual(["Couldn't load your prompts. Trying again; retry in a moment."]);
+    expect(form.querySelector<HTMLTextAreaElement>('.gv-pm-input-text')!.value).toBe('Alpha body');
+
+    // Opening the panel again reads it again.
+    readFails = false;
+    const trigger = document.querySelector<HTMLButtonElement>('#gv-pm-trigger')!;
+    trigger.click();
+    trigger.click();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(rowIds()).toEqual(['Alpha', 'Beta']);
+  });
+
+  it('shows and says nothing after teardown, though a reply and the watchdog come later', async () => {
+    let reply!: () => void;
+    useLibrary({ reply: () => new Promise((resolve) => (reply = resolve)) });
+    await openPanel();
+    await deleteFirstPrompt();
+    const list = document.querySelector('.gv-pm-list')!;
+    const rendered = vi.fn();
+    new MutationObserver(rendered).observe(list, { childList: true, subtree: true });
+
+    manager!.destroy();
+    manager = undefined;
+    await vi.advanceTimersByTimeAsync(15_000);
+    reply();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(notices).toEqual([]);
+    expect(rendered).not.toHaveBeenCalled();
+  });
 });

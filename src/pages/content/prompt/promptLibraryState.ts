@@ -49,6 +49,17 @@ export type PromptEditOutcome = 'saved' | 'duplicate' | 'missing' | 'failed' | '
 /** How long an op's reply may take before the library counts as unavailable. */
 export const PROMPT_LIBRARY_WATCHDOG_MS = 15_000;
 
+type StorageChangeListener = (
+  changes: Record<string, { newValue?: unknown }>,
+  area: string,
+) => void;
+
+/** The `storage.onChanged` event, or anything that delivers the same changes. */
+export interface StorageChangeEvent {
+  addListener(listener: StorageChangeListener): void;
+  removeListener(listener: StorageChangeListener): void;
+}
+
 export interface PromptLibraryStateDeps {
   /**
    * The stored library: an empty one only when nothing is stored. Rejects when
@@ -59,8 +70,14 @@ export interface PromptLibraryStateDeps {
   apply: (op: PromptLibraryOp) => Promise<PromptLibraryResult>;
   /** The library this page once kept in localStorage, as stored there. */
   readLegacy?: () => string | null;
-  /** The shown library changed when a change was answered or rolled back. */
+  /** `storage.onChanged`: `load` subscribes before it reads, `dispose` unsubscribes. */
+  changes?: StorageChangeEvent;
+  /** Storage showed a library that changes what the panel shows. */
+  onChanged?: () => void;
+  /** The shown library changed when a change was answered or rolled back, or a retry read it. */
   onReconcile?: () => void;
+  /** An edit was refused because the library has not loaded; a new read has started. */
+  onNotLoaded?: () => void;
   /** A change was not saved and was rolled back. */
   onWriteFailed?: () => void;
   /** Reading the library failed; the panel keeps the library it has. */
@@ -77,11 +94,23 @@ export interface PromptLibraryState {
   /** True while a sent op's reply is overdue; edits are refused meanwhile. */
   readonly unavailable: boolean;
   /**
-   * Reads the library, first copying in a legacy localStorage one through the
-   * owner, which stores it only if no library is stored yet. Subscribe to
-   * `storage.onChanged` before calling it.
+   * True once the library was read or storage reported it. Until then the
+   * panel cannot tell an empty library from an unread one, so edits are refused.
+   */
+  readonly loaded: boolean;
+  /**
+   * Subscribes to `changes`, then reads the library, first copying in a legacy
+   * localStorage one through the owner, which stores it only if no library is
+   * stored yet.
    */
   load(): Promise<PromptItem[]>;
+  /** Reads the library again if it has not loaded yet. */
+  retry(): Promise<void>;
+  /**
+   * Stops reporting anything. Ops already sent still reach the owner; their
+   * calls resolve as failed so the page shows nothing for them.
+   */
+  dispose(): void;
   /** Adds a prompt ahead of the library unless its text is already there. */
   add(draft: PromptDraft): Promise<PromptAddOutcome>;
   /** Changes a prompt in place unless another prompt has the same text. */
@@ -92,17 +121,11 @@ export interface PromptLibraryState {
   /** Takes the order a drag or key move produced. */
   reorder(next: PromptItem[]): void;
   /**
-   * A `storage.onChanged` value for the library. Returns true when the shown
-   * library changed; the panel's own writes echo back unchanged.
+   * A `storage.onChanged` value for the library; `undefined`, a removed
+   * library, is an empty one. Returns true when the shown library changed; the
+   * panel's own writes echo back unchanged.
    */
   receive(newValue: unknown): boolean;
-  /**
-   * A `storage.onChanged` listener that passes library changes to `receive`
-   * and calls `onShownChange` when the shown library changed.
-   */
-  listener(
-    onShownChange: () => void,
-  ): (changes: Record<string, { newValue?: unknown }>, area: string) => void;
 }
 
 /** How Prompt Manager tells two prompt bodies apart: trimmed, ignoring case. */
@@ -166,6 +189,15 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
   /** The reply to the last request sent; the next one leaves after it. */
   let lastReply: Promise<unknown> = Promise.resolve();
   let unavailable = false;
+  let loaded = false;
+  let stopped = false;
+  /** The watchdog for the request in flight; requests leave one at a time. */
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  /** Calls a page callback unless the panel was disposed. */
+  const tell = <A extends unknown[]>(fn: ((...args: A) => void) | undefined, ...args: A) => {
+    if (!stopped) fn?.(...args);
+  };
 
   /** Recomputes the shown library; true when it changed. */
   const derive = (): boolean => {
@@ -182,12 +214,40 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
   const setUnavailable = (value: boolean): void => {
     if (unavailable === value) return;
     unavailable = value;
-    deps.onUnavailable?.(value);
+    tell(deps.onUnavailable, value);
   };
 
-  /** Refuses an edit while a reply is overdue, saying so again. */
+  /**
+   * Reads the library into `base`; true when the shown library changed. Reads
+   * may overlap: one that started before a storage value arrived is dropped.
+   */
+  const readBase = async (): Promise<boolean> => {
+    const before = received;
+    try {
+      const stored = await deps.read();
+      // A change received during the read is newer than what it returned.
+      if (received !== before) return false;
+      base = stored;
+      loaded = true;
+      return derive();
+    } catch (error) {
+      tell(deps.onReadFailed, error);
+      return false;
+    }
+  };
+
+  const retry = async (): Promise<void> => {
+    if (!loaded && !stopped && (await readBase())) tell(deps.onReconcile);
+  };
+
+  /** Refuses an edit before the library loaded or while a reply is overdue, saying so. */
   const refused = (): boolean => {
-    if (unavailable) deps.onUnavailable?.(true);
+    if (!loaded) {
+      tell(deps.onNotLoaded);
+      void retry();
+      return true;
+    }
+    if (unavailable) tell(deps.onUnavailable, true);
     return unavailable;
   };
 
@@ -197,7 +257,7 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
    */
   const request = (op: PromptLibraryOp, onOverdue?: () => void): Promise<PromptLibraryResult> => {
     const reply = lastReply.then(() => {
-      const timer = setTimeout(() => {
+      timer = setTimeout(() => {
         setUnavailable(true);
         onOverdue?.();
       }, watchdogMs);
@@ -223,16 +283,22 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
     pending = pending.filter((other) => other !== op);
     // The reply's list may be older than `base`, so the panel never shows it;
     // storage's echo brings the write in.
-    if (derive()) deps.onReconcile?.();
-    if (!result) deps.onWriteFailed?.();
-    return result;
+    if (derive()) tell(deps.onReconcile);
+    if (!result) tell(deps.onWriteFailed);
+    return stopped ? null : result;
   };
 
   const receive = (newValue: unknown): boolean => {
-    if (!Array.isArray(newValue)) return false;
+    if (newValue !== undefined && !Array.isArray(newValue)) return false;
     received += 1;
-    base = newValue as PromptItem[];
+    loaded = true;
+    base = (newValue ?? []) as PromptItem[];
     return derive();
+  };
+
+  const listener: StorageChangeListener = (changes, area) => {
+    const change = area === 'local' ? changes[PROMPT_LIBRARY_KEY] : undefined;
+    if (change && receive(change.newValue)) tell(deps.onChanged);
   };
 
   return {
@@ -242,7 +308,11 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
     get unavailable() {
       return unavailable;
     },
+    get loaded() {
+      return loaded;
+    },
     async load() {
+      deps.changes?.addListener(listener);
       const legacy = parseLegacyPromptLibrary(deps.readLegacy?.() ?? null);
       // Unseeded, the library loads as stored and the next start tries again.
       // An overdue seed stops holding up the read; its echo brings it in.
@@ -252,18 +322,14 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
           request({ kind: 'seed', items: legacy }, done).then(done, done);
         });
       }
-      const before = received;
-      try {
-        const stored = await deps.read();
-        // A change received during the read is newer than what it returned.
-        if (received === before) {
-          base = stored;
-          derive();
-        }
-      } catch (error) {
-        deps.onReadFailed?.(error);
-      }
+      await readBase();
       return items;
+    },
+    retry,
+    dispose() {
+      stopped = true;
+      clearTimeout(timer);
+      deps.changes?.removeListener(listener);
     },
     async add(draft) {
       if (refused()) return 'unavailable';
@@ -314,11 +380,5 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
       void send({ kind: 'reorder', ids: next.map((item) => item.id) });
     },
     receive,
-    listener(onShownChange) {
-      return (changes, area) => {
-        const change = area === 'local' ? changes[PROMPT_LIBRARY_KEY] : undefined;
-        if (change && receive(change.newValue)) onShownChange();
-      };
-    },
   };
 }

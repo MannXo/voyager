@@ -524,6 +524,133 @@ describe('Prompt Manager library state', () => {
     expect(onUnavailable).toHaveBeenCalledWith(true);
   });
 
+  it('refuses edits until the library has loaded, and shows it once a retry reads it', async () => {
+    let readFails = true;
+    const sent: PromptLibraryOp[] = [];
+    const onNotLoaded = vi.fn();
+    const onReconcile = vi.fn();
+    const state = createPromptLibraryState({
+      read: async () => {
+        if (readFails) throw new Error('Extension context invalidated.');
+        return [prompt('p', 'P')];
+      },
+      apply: async (op) => {
+        sent.push(op);
+        throw new Error('unused');
+      },
+      onNotLoaded,
+      onReconcile,
+    });
+    await state.load();
+    expect(state.loaded).toBe(false);
+
+    // Re-adding a stored prompt to an unread library would be a no-op the panel never sees.
+    await expect(state.add({ name: 'P', text: 'P', tags: [] })).resolves.toBe('unavailable');
+    await expect(state.remove('p')).resolves.toBe(false);
+    state.reorder([]);
+    expect(onNotLoaded).toHaveBeenCalledTimes(3);
+    expect(sent).toEqual([]);
+    expect(state.items).toEqual([]);
+
+    readFails = false;
+    await state.retry();
+    expect(state.loaded).toBe(true);
+    expect(state.items).toEqual([prompt('p', 'P')]);
+    expect(onReconcile).toHaveBeenCalledTimes(1);
+    await expect(state.add({ name: 'P', text: 'P', tags: [] })).resolves.toBe('duplicate');
+    expect(sent).toEqual([]);
+  });
+
+  it('reads again when an edit is refused before the library loaded', async () => {
+    let readFails = true;
+    const onReconcile = vi.fn();
+    const state = createPromptLibraryState({
+      read: async () => {
+        if (readFails) throw new Error('Extension context invalidated.');
+        return [prompt('p', 'P')];
+      },
+      apply: async () => {
+        throw new Error('unused');
+      },
+      onReconcile,
+    });
+    await state.load();
+    readFails = false;
+
+    await expect(state.add({ name: 'Q', text: 'Q', tags: [] })).resolves.toBe('unavailable');
+    await flush();
+    expect(state.items).toEqual([prompt('p', 'P')]);
+    expect(onReconcile).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts a library storage reported as loaded, a removed one as empty', async () => {
+    const listeners = new Set<
+      (changes: Record<string, { newValue?: unknown }>, area: string) => void
+    >();
+    const changes = {
+      addListener: (
+        listener: (changes: Record<string, { newValue?: unknown }>, area: string) => void,
+      ) => listeners.add(listener),
+      removeListener: (
+        listener: (changes: Record<string, { newValue?: unknown }>, area: string) => void,
+      ) => listeners.delete(listener),
+    };
+    const emit = (change: { newValue?: unknown; oldValue?: unknown }, area = 'local') => {
+      for (const listener of listeners) listener({ [KEY]: change }, area);
+    };
+    const onChanged = vi.fn();
+    const state = createPromptLibraryState({
+      read: () => Promise.reject(new Error('Extension context invalidated.')),
+      apply: async () => {
+        throw new Error('unused');
+      },
+      changes,
+      onChanged,
+    });
+    await state.load();
+    expect(state.loaded).toBe(false);
+
+    emit({ newValue: [prompt('a', 'A')] }, 'sync');
+    expect(state.loaded).toBe(false);
+    emit({ newValue: [prompt('a', 'A')] });
+    expect(state.loaded).toBe(true);
+    expect(state.items).toEqual([prompt('a', 'A')]);
+
+    emit({ oldValue: [prompt('a', 'A')] });
+    expect(state.items).toEqual([]);
+    expect(onChanged).toHaveBeenCalledTimes(2);
+
+    state.dispose();
+    expect(listeners.size).toBe(0);
+  });
+
+  it('reports nothing once disposed, though a reply and the watchdog come later', async () => {
+    vi.useFakeTimers();
+    let reply!: (result: PromptLibraryResult) => void;
+    const callbacks = {
+      onReconcile: vi.fn(),
+      onWriteFailed: vi.fn(),
+      onUnavailable: vi.fn(),
+      onChanged: vi.fn(),
+    };
+    const state = createPromptLibraryState({
+      read: async () => [prompt('a', 'A'), prompt('b', 'B')],
+      apply: () => new Promise((resolve) => (reply = resolve)),
+      ...callbacks,
+    });
+    await state.load();
+
+    const removing = state.remove('a');
+    await vi.advanceTimersByTimeAsync(0);
+    state.dispose();
+    await vi.advanceTimersByTimeAsync(PROMPT_LIBRARY_WATCHDOG_MS);
+    expect(state.unavailable).toBe(false);
+    reply({ added: 0, skipped: 0, total: 1, nameConflicts: 0, items: [prompt('b', 'B')] });
+
+    await expect(removing).resolves.toBe(false);
+    for (const callback of Object.values(callbacks)) expect(callback).not.toHaveBeenCalled();
+  });
+
   it('keeps a library received while it was loading', async () => {
     let finishRead!: () => void;
     const state = createPromptLibraryState({

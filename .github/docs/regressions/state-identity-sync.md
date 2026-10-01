@@ -356,9 +356,13 @@ off a ChatGPT tab`).
   rollback, with the `pm_save_failed` notice; "Deleted" waits for the owner's reply. Earlier
   attempts that held echoes back and re-read storage after a settle kept losing a change under
   some reply/echo/read interleaving; do not reintroduce them. The panel subscribes before its
-  first read and drops that read if a change arrived during it, and it never reads again, so a
-  failing read cannot blank the list. `readPromptLibrary` returns `[]` only when nothing is
-  stored. A tab sends its next op only after the previous reply, so the owner applies one tab's
+  first read and drops that read if a change arrived during it. A removed library (a change with
+  no `newValue`) is an empty one. Until a read succeeds or storage reports the library, the panel
+  cannot tell an empty library from an unread one: an op on it can be a silent no-op at the owner
+  (a re-add the owner dedupes writes nothing and sends no echo), so edits are refused with
+  `pm_library_load_failed` and the library is read again on that refusal and on each panel open.
+  `readPromptLibrary` returns `[]` only when nothing is stored. Teardown calls `dispose()`, after
+  which late replies and the watchdog report nothing. A tab sends its next op only after the previous reply, so the owner applies one tab's
   ops in the order the user made them without trusting the transport's delivery order. A reply
   overdue by 15 s marks the library unavailable (`pm_library_unavailable`): new edits are
   refused, queued ops stay queued and are never sent ahead of it, and it recovers when the reply
@@ -382,7 +386,8 @@ edit and a template saved in another tab`, `keeps edits that two Prompt Manager 
 different prompts`), `src/pages/content/prompt/__tests__/promptLibraryState.test.ts` (`shows the
 newest library when a reply comes after another writer changed it`, `sends a tab's ops one at a
 time, so a late message cannot reorder them`, `marks the library unavailable while a reply is
-overdue, refusing edits until it comes`),
+overdue, refusing edits until it comes`, `refuses edits until the library has loaded, and shows it
+once a retry reads it`),
   `src/pages/content/prompt/__tests__/promptManagerWriteNotices.test.ts`,
   `src/features/researchPack/services/__tests__/templates.test.ts` (`keeps both templates when two
 tabs save at the same moment`), `src/pages/background/__tests__/promptDriveMerge.test.ts` and

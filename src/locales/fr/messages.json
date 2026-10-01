@@ -226,6 +226,10 @@
     "message": "Les prompts ne répondent pas. Votre dernière modification est toujours en cours d'enregistrement ; réessayez dans un instant.",
     "description": "Prompt Manager notice: an earlier change is still waiting for a reply, so new edits are refused until it arrives"
   },
+  "pm_library_load_failed": {
+    "message": "Impossible de charger vos prompts. Nouvelle tentative en cours ; réessayez dans un instant.",
+    "description": "Prompt Manager notice: the prompt library could not be read yet, so an edit was refused and a new read started"
+  },
   "pm_edit": {
     "message": "Éditer",
     "description": "Edit prompt"

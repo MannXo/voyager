@@ -226,6 +226,10 @@
     "message": "プロンプトが応答していません。直前の変更をまだ保存中です。しばらくしてからもう一度お試しください。",
     "description": "Prompt Manager notice: an earlier change is still waiting for a reply, so new edits are refused until it arrives"
   },
+  "pm_library_load_failed": {
+    "message": "プロンプトを読み込めませんでした。再読み込みしています。少し待ってからもう一度お試しください。",
+    "description": "Prompt Manager notice: the prompt library could not be read yet, so an edit was refused and a new read started"
+  },
   "pm_edit": {
     "message": "編集",
     "description": "Edit prompt"

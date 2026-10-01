@@ -226,6 +226,10 @@
     "message": "المطالبات لا تستجيب. ما زال حفظ تغييرك الأخير جارياً؛ حاول مرة أخرى بعد قليل.",
     "description": "Prompt Manager notice: an earlier change is still waiting for a reply, so new edits are refused until it arrives"
   },
+  "pm_library_load_failed": {
+    "message": "تعذّر تحميل المطالبات. جارٍ إعادة المحاولة؛ حاول مرة أخرى بعد قليل.",
+    "description": "Prompt Manager notice: the prompt library could not be read yet, so an edit was refused and a new read started"
+  },
   "pm_edit": {
     "message": "تعديل",
     "description": "Edit prompt"

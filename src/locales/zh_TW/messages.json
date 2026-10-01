@@ -226,6 +226,10 @@
     "message": "Prompt 暫無回應，上一次變更仍在儲存中，請稍後再試。",
     "description": "Prompt Manager notice: an earlier change is still waiting for a reply, so new edits are refused until it arrives"
   },
+  "pm_library_load_failed": {
+    "message": "無法載入 prompt，正在重試，請稍後再試。",
+    "description": "Prompt Manager notice: the prompt library could not be read yet, so an edit was refused and a new read started"
+  },
   "pm_edit": {
     "message": "編輯",
     "description": "編輯 prompt"

@@ -992,19 +992,20 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
     panel.appendChild(notice);
 
     // State
+    let libraryShown = false; // Library changes render once the panel is built.
     const library = createPromptLibraryState({
       read: () => readPromptLibrary(browser.storage.local),
       apply: createRuntimePromptLibraryClient().apply,
       readLegacy: () => localStorage.getItem(STORAGE_KEYS.items),
+      changes: browser.storage.onChanged,
+      onChanged: () => libraryShown && showLibrary(true),
       onReconcile: () => showLibrary(false),
+      onNotLoaded: () => setNotice(i18n.t('pm_library_load_failed'), 'err'),
       onWriteFailed: () => setNotice(i18n.t('pm_save_failed') || "Couldn't save", 'err'),
       onUnavailable: (down) => down && setNotice(i18n.t('pm_library_unavailable'), 'err'),
       onReadFailed: (error) =>
         isExtensionContextInvalidatedError(error) || pmLogger.warn('Prompt read failed', { error }),
     });
-    let libraryShown = false; // Subscribed before the first read so a change made during it is kept.
-    const onLibraryChange = library.listener(() => libraryShown && showLibrary(true));
-    browser.storage.onChanged.addListener(onLibraryChange);
     await library.load();
     let open = false;
     // Restore the tag filter saved in a previous session (#729), reconciled
@@ -1735,7 +1736,6 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
         confirmLabel: i18n.t('pm_delete') || 'Delete',
         cancelLabel: i18n.t('pm_cancel') || 'Cancel',
         onConfirm: () => {
-          // Shown removed at once; "Deleted" waits for the owner, a failure says so instead.
           void library.remove(it.id).then((ok) => ok && setNotice(i18n.t('pm_deleted'), 'ok'));
           renderTags();
           renderList();
@@ -2014,6 +2014,7 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
 
     function openPanel(): void {
       open = true;
+      void library.retry();
       panel.classList.remove('gv-hidden');
       if (locked && savedPos) {
         // Clamp the saved position to the current viewport. Without this, a
@@ -2487,7 +2488,6 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
         return;
       }
       if (!text.trim()) return;
-      // Duplicate text is refused case-insensitively, ignoring surrounding space.
       const outcome = editingId
         ? await library.edit(editingId, { name, text, tags })
         : await library.add({ name, text, tags });
@@ -2563,7 +2563,7 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
           tagsWrap.removeEventListener('scroll', syncTagScrollHint);
 
           chrome.storage?.onChanged?.removeListener(storageChangeHandler);
-          browser.storage.onChanged.removeListener(onLibraryChange);
+          library.dispose();
 
           // Tear down the fast-tooltip singleton: cancel pending timer, remove
           // the DOM element, and detach the capture-phase scroll listeners

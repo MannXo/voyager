@@ -226,6 +226,10 @@
     "message": "Prompts are not responding. Your last change is still being saved; try again shortly.",
     "description": "Prompt Manager notice: an earlier change is still waiting for a reply, so new edits are refused until it arrives"
   },
+  "pm_library_load_failed": {
+    "message": "Couldn't load your prompts. Trying again; retry in a moment.",
+    "description": "Prompt Manager notice: the prompt library could not be read yet, so an edit was refused and a new read started"
+  },
   "pm_edit": {
     "message": "Edit",
     "description": "Edit prompt"
