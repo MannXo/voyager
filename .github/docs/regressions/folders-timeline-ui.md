@@ -928,3 +928,18 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
   (`keeps focus in the picker's search after Radix hands focus back to the trigger`, with and
   without exit frames, and `opens no picker when turned off while the menu is still closing`).
   The fixture's menu models Radix's close order.
+
+## A sidebar host for the floating tree must reset the panel host under its scheme selector
+
+- **Trap:** AI Studio's sidebar tree reuses the floating panel stylesheet in its own shadow root,
+  where `:host` paints a fixed, shadowed, bordered card. An override sheet appended after it with a
+  bare `:host` rule still lost to the panel's `:host([data-gv-scheme='light'])` background, border
+  and shadow, because the attribute selector is more specific than `:host` regardless of order, so
+  the inline tree turned into a white floating card in light mode only.
+- **Rule:** Reset every host property under both `:host` and `:host([data-gv-scheme])`, each
+  declaration `!important` so page CSS reaching the light-DOM host cannot restyle it either. Keep
+  the context menu inside the tree's shadow root; it escapes the nav's `overflow` through
+  `position: fixed`, and Voyager must not give the nav or its folder container a containing block
+  (`transform`, `filter`, `will-change`, `contain`, `perspective`), which would clip it.
+- **Guard:** `src/pages/content/folder/__tests__/floatingPanelHostCss.test.ts`
+  (`AI Studio sidebar tree host stylesheet`).

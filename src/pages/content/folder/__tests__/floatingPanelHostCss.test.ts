@@ -45,7 +45,7 @@ describe('AI Studio sidebar tree host stylesheet', () => {
     expect(declarations.filter((text) => !text.endsWith('!important'))).toEqual([]);
   });
 
-  // The panel's `:host([data-gv-scheme='dark'])` paints a background and shadow
+  // The panel's `:host([data-gv-scheme='light'])` paints a background and shadow
   // with the same specificity as a bare attribute host selector; the sidebar
   // sheet comes after it, so it must reset those under that selector too.
   it('resets the floating geometry under the scheme host selector as well', () => {
