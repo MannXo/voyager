@@ -270,8 +270,23 @@ off a ChatGPT tab`).
   landed, then render after it and bring back the older pack, which Copy and Insert then exported.
 - **Rule:** The single writer stamps every write with a monotonic `revision`; a tab renders a
   snapshot of the pack on screen only if its revision is at least the displayed one. Storage events
-  carry the written value, so they need no reload. A removed pack resets the displayed revision.
+  carry the written value, so they need no reload. Revisions never go back: the owner stamps
+  `max(previous + 1, clock)`, so a pack recreated after removal is newer than anything before, and
+  a tab shows a removal as an empty pack one past every revision it saw. Resetting the revision on
+  removal let a delayed old snapshot bring the pack back.
 - **Guard:** `src/pages/content/researchPack/__tests__/researchPackScope.test.ts`
-  (`never puts an older snapshot back after a newer add has rendered`) and
+  (`never puts an older snapshot back after a newer add has rendered`),
+  `src/pages/content/researchPack/__tests__/researchPackRecovery.test.ts`
+  (`never brings back a pack from before it was removed, once it has been recreated`) and
   `src/features/researchPack/services/__tests__/packStore.test.ts`
   (`bumps the revision on every write it makes, and only then`).
+
+## A failed scope or load must stay retryable
+
+- **Trap:** Research Pack cached a scope that failed to resolve as settled, so after storage
+  recovered no scan or Add tried again, and a failed first load left the panel locked with no way
+  out.
+- **Rule:** Fail closed, but not for good. A user action (Add, Retry) resolves a failed scope
+  again; a failed load shows an error with Retry, and editing stays blocked until a snapshot
+  renders. Scans do not retry, so a broken setting is not hammered on every DOM change.
+- **Guard:** `src/pages/content/researchPack/__tests__/researchPackRecovery.test.ts`.
