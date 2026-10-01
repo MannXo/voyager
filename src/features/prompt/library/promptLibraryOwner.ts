@@ -1,0 +1,231 @@
+/**
+ * The single writer of the prompt library (`gvPromptItems`).
+ *
+ * chrome.storage has no compare-and-set, so two writers that each read the
+ * whole list, change it and write it back drop each other's edits: a template
+ * saved on one tab rolls back a prompt edited on another, and two tabs saving
+ * at once keep only one. The background therefore applies every routed edit
+ * through one queue, re-reading the stored list inside it, as the research
+ * pack's owner does.
+ *
+ * The stored format is unchanged: the same array of prompt objects under the
+ * same key. Prompts an op does not touch are written back exactly as read.
+ * A stored value that is not a list is never overwritten.
+ */
+import { StorageKeys } from '@/core/types/common';
+import { getPromptNameComparisonKey, getPromptNameConflictIds } from '@/core/utils/promptName';
+import {
+  type PromptImportStats,
+  mergeImportedPrompts,
+} from '@/features/backup/services/PromptImportExportService';
+import type { PromptItem } from '@/features/backup/types/backup';
+
+export const PROMPT_LIBRARY_KEY = StorageKeys.PROMPT_ITEMS;
+
+export interface PromptLibraryArea {
+  get(key: string): Promise<Record<string, unknown>>;
+  set(items: Record<string, unknown>): Promise<void>;
+}
+
+/** Fields an update may change. `pinnedAt: null` unpins. */
+export interface PromptChanges {
+  name?: string;
+  text?: string;
+  tags?: string[];
+  pinnedAt?: number | null;
+  updatedAt?: number;
+}
+
+export type PromptLibraryOp =
+  /** Add new prompts ahead of the library; any whose id, text or name is taken is skipped. */
+  | { kind: 'add'; items: PromptItem[] }
+  | { kind: 'update'; id: string; changes: PromptChanges }
+  | { kind: 'delete'; id: string }
+  /** Put the listed prompts in this order, in the places they hold; others stay put. */
+  | { kind: 'reorder'; ids: string[] }
+  /** The prompts import: merge by id or text, as `mergeImportedPrompts` does. */
+  | { kind: 'import'; items: PromptItem[] };
+
+export interface PromptLibraryResult {
+  /** Prompts the op added. */
+  added: number;
+  /** Prompts the op skipped (add) or merged into stored ones (import). */
+  skipped: number;
+  /** Prompts in the library after the op. */
+  total: number;
+  /** Prompts whose name another prompt also uses, after the op. */
+  nameConflicts: number;
+}
+
+export interface PromptLibraryOwner {
+  apply(op: PromptLibraryOp): Promise<PromptLibraryResult>;
+  /** The library as stored now, read in turn with the writes. */
+  read(): Promise<unknown[]>;
+  /**
+   * Run `change` on the freshly read library inside the queue. It returns the
+   * list to store, or null to leave storage untouched, and a result.
+   */
+  transact<T>(change: (stored: unknown[]) => { items: unknown[] | null; result: T }): Promise<T>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** How Prompt Manager tells two prompt bodies apart: trimmed, ignoring case. */
+export function promptTextKey(text: string): string {
+  return text.trim().toLowerCase();
+}
+
+function namedPrompts(items: unknown[]): Array<{ id: string; name?: string }> {
+  return items.flatMap((item) =>
+    isRecord(item) && typeof item.id === 'string'
+      ? [{ id: item.id, name: typeof item.name === 'string' ? item.name : undefined }]
+      : [],
+  );
+}
+
+function summarize(items: unknown[], added: number, skipped: number): PromptLibraryResult {
+  return {
+    added,
+    skipped,
+    total: items.length,
+    nameConflicts: getPromptNameConflictIds(namedPrompts(items)).size,
+  };
+}
+
+function addPrompts(stored: unknown[], incoming: PromptItem[]) {
+  const records = stored.filter(isRecord);
+  const ids = new Set(records.flatMap((item) => (typeof item.id === 'string' ? [item.id] : [])));
+  const texts = new Set(
+    records.flatMap((item) => (typeof item.text === 'string' ? [promptTextKey(item.text)] : [])),
+  );
+  const names = new Set(
+    records.flatMap((item) =>
+      typeof item.name === 'string' && item.name.trim()
+        ? [getPromptNameComparisonKey(item.name)]
+        : [],
+    ),
+  );
+  const added: PromptItem[] = [];
+  for (const item of incoming) {
+    const text = promptTextKey(item.text);
+    const name = item.name?.trim() ? getPromptNameComparisonKey(item.name) : null;
+    if (ids.has(item.id) || texts.has(text) || (name !== null && names.has(name))) continue;
+    ids.add(item.id);
+    texts.add(text);
+    if (name !== null) names.add(name);
+    added.push(item);
+  }
+  if (added.length === 0) return { items: null, result: summarize(stored, 0, incoming.length) };
+  // Ahead of the library, as Prompt Manager adds a prompt, in the order given.
+  const items = [...added, ...stored];
+  return { items, result: summarize(items, added.length, incoming.length - added.length) };
+}
+
+function updatePrompt(stored: unknown[], id: string, changes: PromptChanges) {
+  const index = stored.findIndex((item) => isRecord(item) && item.id === id);
+  if (index < 0) return { items: null, result: summarize(stored, 0, 0) };
+  const next: Record<string, unknown> = { ...(stored[index] as Record<string, unknown>) };
+  for (const [field, value] of Object.entries(changes)) {
+    if (value === undefined) continue;
+    if (field === 'pinnedAt' && value === null) delete next.pinnedAt;
+    else next[field] = value;
+  }
+  const items = stored.slice();
+  items[index] = next;
+  return { items, result: summarize(items, 0, 0) };
+}
+
+function deletePrompt(stored: unknown[], id: string) {
+  const items = stored.filter((item) => !(isRecord(item) && item.id === id));
+  if (items.length === stored.length) return { items: null, result: summarize(stored, 0, 0) };
+  return { items, result: summarize(items, 0, 0) };
+}
+
+function reorderPrompts(stored: unknown[], ids: string[]) {
+  const order = new Map(ids.map((id, position) => [id, position]));
+  const rank = (item: unknown): number | undefined =>
+    isRecord(item) && typeof item.id === 'string' ? order.get(item.id) : undefined;
+  const slots = stored.flatMap((item, index) => (rank(item) === undefined ? [] : [index]));
+  const listed = slots.map((index) => stored[index]).sort((a, b) => rank(a)! - rank(b)!);
+  const items = stored.slice();
+  slots.forEach((slot, position) => {
+    items[slot] = listed[position];
+  });
+  const changed = items.some((item, index) => item !== stored[index]);
+  return { items: changed ? items : null, result: summarize(items, 0, 0) };
+}
+
+function importPrompts(stored: unknown[], incoming: PromptItem[], now: number) {
+  // The import has always treated the stored list as prompts; that is unchanged.
+  const merged: PromptImportStats & { items: PromptItem[] } = mergeImportedPrompts(
+    stored as PromptItem[],
+    incoming,
+    now,
+  );
+  return {
+    items: merged.items,
+    result: {
+      added: merged.imported,
+      skipped: merged.duplicates,
+      total: merged.total,
+      nameConflicts: merged.nameConflicts,
+    },
+  };
+}
+
+export function applyPromptLibraryOp(
+  stored: unknown[],
+  op: PromptLibraryOp,
+  now: number,
+): { items: unknown[] | null; result: PromptLibraryResult } {
+  switch (op.kind) {
+    case 'add':
+      return addPrompts(stored, op.items);
+    case 'update':
+      return updatePrompt(stored, op.id, op.changes);
+    case 'delete':
+      return deletePrompt(stored, op.id);
+    case 'reorder':
+      return reorderPrompts(stored, op.ids);
+    case 'import':
+      return importPrompts(stored, op.items, now);
+  }
+}
+
+export function createPromptLibraryOwner(options: {
+  area: PromptLibraryArea;
+  now?: () => number;
+}): PromptLibraryOwner {
+  const now = options.now ?? Date.now;
+  let queue: Promise<unknown> = Promise.resolve();
+
+  const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
+    const next = queue.then(operation, operation);
+    queue = next.catch(() => undefined);
+    return next;
+  };
+
+  const readStored = async (): Promise<unknown[]> => {
+    const stored = (await options.area.get(PROMPT_LIBRARY_KEY))?.[PROMPT_LIBRARY_KEY];
+    if (stored === undefined) return [];
+    if (!Array.isArray(stored)) throw new Error('The prompt library is not a list');
+    return stored;
+  };
+
+  const transact = <T>(
+    change: (stored: unknown[]) => { items: unknown[] | null; result: T },
+  ): Promise<T> =>
+    serialize(async () => {
+      const { items, result } = change(await readStored());
+      if (items) await options.area.set({ [PROMPT_LIBRARY_KEY]: items });
+      return result;
+    });
+
+  return {
+    apply: (op) => transact((stored) => applyPromptLibraryOp(stored, op, now())),
+    read: () => serialize(readStored),
+    transact,
+  };
+}
