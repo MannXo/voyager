@@ -290,6 +290,7 @@ export async function activateChatGptFolders(
     onMove: (conversation) => view.pickFolderFor(conversation),
   });
   const titles = new ChatGptTitleSync(store);
+  scope.effect(() => () => moveMenu.cancel(), 'chatgpt-folders:move-menu');
   sidebar.onChange((nav) => {
     view.placeSection(nav);
     titles.sync(nav);

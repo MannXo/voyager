@@ -122,6 +122,7 @@ describe('"Move to folder" in a sidebar row menu', () => {
     });
     entry.click();
     expect(escapes).toHaveBeenCalledTimes(1);
+    await nextPass();
 
     pick('Trips');
     await settle(20);
@@ -172,6 +173,7 @@ describe('"Move to folder" in a sidebar row menu', () => {
       press('ArrowUp');
       press('Enter');
       expect(radixSaw).toEqual(['ArrowUp', 'Escape']);
+      await nextPass();
       expect(document.querySelector(PICKER)).not.toBeNull();
     } finally {
       document.removeEventListener('keydown', radix);
@@ -190,12 +192,11 @@ describe('"Move to folder" in a sidebar row menu', () => {
       const menu = sidebar.openMenu(TARGET.id);
       await nextPass();
       menu.querySelector<HTMLElement>(ENTRY)!.click();
+      await nextPass();
       pick('Work');
       await settle(20);
       expect(status().hidden).toBe(false);
       expect(status().textContent).toBe(expected);
-      // Radix unmounts a closed menu; the fixture leaves that to the test.
-      menu.closest('body > *')!.remove();
     }
   });
 
@@ -203,6 +204,7 @@ describe('"Move to folder" in a sidebar row menu', () => {
     const menu = sidebar.openMenu(TARGET.id);
     await nextPass();
     menu.querySelector<HTMLElement>(ENTRY)!.click();
+    await nextPass();
 
     const fromOtherTab = structuredClone(DATA);
     fromOtherTab.folders = fromOtherTab.folders.filter((folder) => folder.id !== 'f2');
@@ -224,12 +226,44 @@ describe('"Move to folder" in a sidebar row menu', () => {
     expect(status.textContent).toBe('Could not save folder changes. Please try again.');
   });
 
+  it.each([0, 2])(
+    "keeps focus in the picker's search after Radix hands focus back to the trigger (exit frames: %i)",
+    async (exitFrames) => {
+      const menu = sidebar.openMenu(TARGET.id, { exitFrames });
+      await nextPass();
+      const trigger = sidebar.row(TARGET.id).querySelector('button[aria-haspopup="menu"]');
+
+      menu.querySelector<HTMLElement>(ENTRY)!.click();
+      // The picker waits until the closed menu has returned focus to the trigger.
+      expect(document.querySelector(PICKER)).toBeNull();
+      for (let frame = 0; frame <= exitFrames; frame += 1) await nextPass();
+
+      const host = document.querySelector(PICKER);
+      expect(document.activeElement).toBe(host);
+      expect(picker().activeElement).toBe(picker().querySelector('.search'));
+      expect(document.activeElement).not.toBe(trigger);
+    },
+  );
+
+  it('opens no picker when turned off while the menu is still closing', async () => {
+    const menu = sidebar.openMenu(TARGET.id);
+    await nextPass();
+    menu.querySelector<HTMLElement>(ENTRY)!.click();
+
+    await scope.dispose();
+    await nextPass();
+    await nextPass();
+
+    expect(document.querySelector(PICKER)).toBeNull();
+  });
+
   it('keeps the Project route of a row inside a Project', async () => {
     sidebar.move(TARGET.id, `/g/g-p-67ab12cd34-trip/c/${TARGET.id}`);
     const menu = sidebar.openMenu(TARGET.id);
     await nextPass();
 
     menu.querySelector<HTMLElement>(ENTRY)!.click();
+    await nextPass();
     pick('Work');
     await settle(20);
 
@@ -265,6 +299,7 @@ describe('"Move to folder" in a sidebar row menu', () => {
     const menu = sidebar.openMenu(TARGET.id);
     await nextPass();
     menu.querySelector<HTMLElement>(ENTRY)!.click();
+    await nextPass();
     const writes = memory.writes.length;
 
     picker()
@@ -280,6 +315,7 @@ describe('"Move to folder" in a sidebar row menu', () => {
     const menu = sidebar.openMenu(TARGET.id);
     await nextPass();
     menu.querySelector<HTMLElement>(ENTRY)!.click();
+    await nextPass();
 
     const search = picker().querySelector<HTMLInputElement>('.search')!;
     search.value = 'work / tri';
@@ -295,11 +331,16 @@ describe('"Move to folder" in a sidebar row menu', () => {
     const menu = sidebar.openMenu(TARGET.id);
     await nextPass();
     menu.querySelector<HTMLElement>(ENTRY)!.click();
+    await nextPass();
     expect(document.querySelector(PICKER)).not.toBeNull();
+    // Another row's menu, open with its entry when the plugin turns off.
+    const open = sidebar.openMenu(ROWS[1].id);
+    await nextPass();
+    expect(open.querySelector(ENTRY)).not.toBeNull();
 
     await scope.dispose();
 
-    expect(menu.querySelector(ENTRY)).toBeNull();
+    expect(open.querySelector(ENTRY)).toBeNull();
     expect(document.querySelector(PICKER)).toBeNull();
   });
 });

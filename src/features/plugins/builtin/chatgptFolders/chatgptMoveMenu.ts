@@ -130,6 +130,8 @@ export interface MoveMenuOptions {
 
 /** Frames to wait for a menu whose content was not rendered with its trigger. */
 const MENU_WAIT_FRAMES = 10;
+/** Frames to wait for a closed menu to hand focus back to its trigger. */
+const CLOSE_WAIT_FRAMES = 30;
 
 /**
  * Adds the entry to a row's open "Chat actions" menu. `check` runs after every
@@ -140,6 +142,7 @@ const MENU_WAIT_FRAMES = 10;
 export class ChatGptMoveMenu {
   private waitingFor: Element | null = null;
   private waitedFrames = 0;
+  private pendingMove: number | null = null;
 
   constructor(
     private readonly options: MoveMenuOptions,
@@ -165,11 +168,39 @@ export class ChatGptMoveMenu {
       return this.waitedFrames <= MENU_WAIT_FRAMES;
     }
     this.waitingFor = null;
-    if (!menu.querySelector(`[${MOVE_ENTRY_ATTR}]`)) this.inject(menu);
+    if (!menu.querySelector(`[${MOVE_ENTRY_ATTR}]`)) this.inject(menu, trigger);
     return false;
   }
 
-  private inject(menu: HTMLElement): void {
+  /** Drops a move that is still waiting for its menu to close. */
+  cancel(): void {
+    if (this.pendingMove !== null) cancelAnimationFrame(this.pendingMove);
+    this.pendingMove = null;
+  }
+
+  /**
+   * Runs `move` once Radix has returned focus to the closed menu's trigger,
+   * which it does a task after unmounting the menu (later still while an exit
+   * animation runs). A picker opened before that loses its search box's focus
+   * to the trigger. The wait is bounded in case focus never comes back.
+   */
+  private afterClose(trigger: HTMLElement, move: () => void): void {
+    this.cancel();
+    let frames = 0;
+    const tick = (): void => {
+      this.pendingMove = null;
+      frames += 1;
+      const settled = this.doc.activeElement === trigger || !trigger.isConnected;
+      if (settled || frames >= CLOSE_WAIT_FRAMES) {
+        move();
+        return;
+      }
+      this.pendingMove = requestAnimationFrame(tick);
+    };
+    this.pendingMove = requestAnimationFrame(tick);
+  }
+
+  private inject(menu: HTMLElement, trigger: HTMLElement): void {
     const row = readMenuConversation(menu, this.doc);
     if (!row) return;
     const items = [...menu.querySelectorAll<HTMLElement>(ITEM_SELECTOR)].filter(
@@ -187,7 +218,7 @@ export class ChatGptMoveMenu {
     const entry = buildEntry(template, this.options.label());
     const activate = (): void => {
       closeMenu(menu);
-      this.options.onMove({ ...conversation, addedAt: Date.now() });
+      this.afterClose(trigger, () => this.options.onMove({ ...conversation, addedAt: Date.now() }));
     };
     entry.addEventListener('click', (event) => {
       event.preventDefault();

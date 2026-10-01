@@ -241,7 +241,11 @@ export interface SidebarFixture {
   replaceSidebar(): HTMLElement;
   removeSidebar(): void;
   /** Opens a row's "Chat actions" Radix menu in a portal under `body`. */
-  openMenu(id: string): HTMLElement;
+  /**
+   * Opens a row's "Chat actions" menu. `exitFrames` keeps a closed menu mounted
+   * for that many frames, as Radix does while an exit animation runs.
+   */
+  openMenu(id: string, options?: { exitFrames?: number }): HTMLElement;
   destroy(): void;
 }
 
@@ -309,7 +313,7 @@ export function mountSidebarFixture(rows: readonly FixtureRow[]): SidebarFixture
     removeSidebar() {
       fixture.sidebar.remove();
     },
-    openMenu(id) {
+    openMenu(id, { exitFrames = 0 } = {}) {
       const trigger = fixture.row(id).querySelector<HTMLElement>('button[aria-haspopup="menu"]')!;
       trigger.setAttribute('aria-expanded', 'true');
       trigger.setAttribute('data-state', 'open');
@@ -329,6 +333,22 @@ export function mountSidebarFixture(rows: readonly FixtureRow[]): SidebarFixture
         {},
         el('div', {}, el('div', { 'data-radix-popper-content-wrapper': '' }, menu)),
       );
+      // Radix (observed live): Escape unmounts the menu, then returns focus to
+      // the trigger a task later.
+      menu.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.setAttribute('data-state', 'closed');
+        const unmount = (framesLeft: number): void => {
+          if (framesLeft > 0) {
+            requestAnimationFrame(() => unmount(framesLeft - 1));
+            return;
+          }
+          portal.remove();
+          setTimeout(() => trigger.focus(), 0);
+        };
+        unmount(exitFrames);
+      });
       document.body.append(portal);
       portals.push(portal);
       return menu;

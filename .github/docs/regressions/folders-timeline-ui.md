@@ -907,3 +907,17 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
   (`files nothing into a folder that no longer exists`) and
   `src/features/plugins/builtin/chatgptFolders/__tests__/moveToFolder.test.ts`
   (`refuses a folder another tab deleted while the picker was open, and says so`).
+
+## The ChatGPT folder picker opens only after Radix hands focus back
+
+- **Trap:** "Move to folder" closes ChatGPT's Radix menu with Escape and then opens the folder
+  picker. The picker focused its search box at once, but Radix unmounts the menu and returns focus
+  to the row's trigger a task later (later still during an exit animation). Focus left the picker,
+  so typing went to the page.
+- **Rule:** `ChatGptMoveMenu` opens the picker on the first frame where the trigger holds focus
+  again (or the trigger is gone), waiting at most `CLOSE_WAIT_FRAMES`. Plugin teardown cancels a
+  pending open.
+- **Guard:** `src/features/plugins/builtin/chatgptFolders/__tests__/moveToFolder.test.ts`
+  (`keeps focus in the picker's search after Radix hands focus back to the trigger`, with and
+  without exit frames, and `opens no picker when turned off while the menu is still closing`).
+  The fixture's menu models Radix's close order.
