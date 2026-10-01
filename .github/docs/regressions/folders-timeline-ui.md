@@ -664,7 +664,9 @@ drop, or hover layout.
   composer; drafts kept saving while the setting was off, and a second cleanup returned early.
 - **Rule:** `restoreDraft` captures `restoreGeneration`, which enable and disable bump, and every
   continuation (after the load, each retry, the route-change timer) stops unless the feature is
-  still enabled in the same generation.
+  still enabled in the same generation. The startup settings read is a continuation too: a toggle
+  event that arrives while it is pending wins over its result.
 - **Guard:** `src/pages/content/draftSave/__tests__/draftSave.test.ts`
   (`does not rebind or restore when a retry fires after stopping`,
-  `does not rebind or restore when the draft load resolves after stopping`).
+  `does not rebind or restore when the draft load resolves after stopping`,
+  `ignores a slow startup read once the user has changed the setting`).

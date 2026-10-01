@@ -449,6 +449,34 @@ describe('draftSave', () => {
     cleanup();
   });
 
+  it('ignores a slow startup read once the user has changed the setting', async () => {
+    setupMocks(true);
+    let answerStartupRead: (() => void) | null = null;
+    (chrome.storage.sync.get as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (defaults: Record<string, unknown>, callback: (value: Record<string, unknown>) => void) => {
+        answerStartupRead = () => callback({ ...defaults, [StorageKeys.DRAFT_AUTO_SAVE]: true });
+      },
+    );
+    const input = createContentEditable();
+    input.textContent = '';
+
+    const { startDraftSave } = await import('../index');
+    const starting = startDraftSave();
+    for (const listener of storageChangeListeners) {
+      listener({ [StorageKeys.DRAFT_AUTO_SAVE]: { oldValue: false, newValue: true } }, 'sync');
+      listener({ [StorageKeys.DRAFT_AUTO_SAVE]: { oldValue: true, newValue: false } }, 'sync');
+    }
+    answerStartupRead!();
+    const cleanup = await starting;
+
+    input.textContent = 'typed after turning auto-save off';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(3000);
+
+    expect(Object.keys(localStore).filter((key) => key.startsWith('gvDraft_'))).toEqual([]);
+    cleanup();
+  });
+
   it('cleans up listeners on cleanup call', async () => {
     setupMocks(true);
     createContentEditable();

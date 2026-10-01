@@ -77,6 +77,8 @@ let inputLookupFrame: number | null = null;
 let composerFocusListener: ((event: Event) => void) | null = null;
 /** Bumped on enable and disable so restores started earlier stop at their next step. */
 let restoreGeneration = 0;
+/** Bumped by every toggle event so a slower startup read cannot override it. */
+let settingsChangeCount = 0;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let sendCheckTimer: ReturnType<typeof setInterval> | null = null;
 let stopRouteWatcher: (() => void) | null = null;
@@ -714,6 +716,7 @@ function setupStorageListener(): void {
     if (areaName !== 'sync') return;
     if (!(StorageKeys.DRAFT_AUTO_SAVE in changes)) return;
 
+    settingsChangeCount += 1;
     const newValue = changes[StorageKeys.DRAFT_AUTO_SAVE].newValue === true;
 
     if (newValue && !isEnabled) {
@@ -758,8 +761,9 @@ function cleanup(): void {
 export async function startDraftSave(): Promise<() => void> {
   setupStorageListener();
 
+  const changesBeforeRead = settingsChangeCount;
   const initialEnabled = await loadSettings();
-  if (initialEnabled) {
+  if (initialEnabled && settingsChangeCount === changesBeforeRead) {
     enableFeature();
   }
 
