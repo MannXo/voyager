@@ -66,6 +66,7 @@ type ConversationRowProps = {
 
 function ConversationRow({ tree, conv, folderId, depth }: ConversationRowProps) {
   const untitled = t('floatingPanelUntitled');
+  const remove = () => tree.actions.onRemoveConversation?.(folderId, conv.conversationId);
   return (
     <div
       class={cls('conv')}
@@ -117,7 +118,9 @@ function ConversationRow({ tree, conv, folderId, depth }: ConversationRowProps) 
         text="×"
         onClick={(e) => {
           e.stopPropagation();
-          tree.actions.onRemoveConversation?.(folderId, conv.conversationId);
+          const confirm = tree.actions.confirmConversationRemoval;
+          if (confirm) confirm(conv.title || untitled, e.currentTarget as HTMLElement, remove);
+          else remove();
         }}
       />
     </div>
@@ -293,10 +296,15 @@ function FolderNode({ tree, folder, depth }: FolderNodeProps) {
 }
 
 export function FolderTree(tree: TreeProps) {
-  const { data, inlineEditor } = tree;
+  const { data, inlineEditor, rootBucketId } = tree;
   const creatingRoot = inlineEditor?.mode === 'create' && inlineEditor.parentId === null;
+  const rootConversations = data.folderContents[rootBucketId] ?? [];
 
-  if (data.folders.length === 0 && inlineEditor?.mode !== 'create') {
+  if (
+    data.folders.length === 0 &&
+    rootConversations.length === 0 &&
+    inlineEditor?.mode !== 'create'
+  ) {
     return <EmptyState />;
   }
 
@@ -310,6 +318,16 @@ export function FolderTree(tree: TreeProps) {
           extraClass={cls('inline-form--root')}
         />
       )}
+      {/* Like the sidebar: conversations filed at the root come first. */}
+      {sortConversationsByPriority(rootConversations, tree.conversationSortMode).map((conv) => (
+        <ConversationRow
+          key={`${rootBucketId}:${conv.conversationId}`}
+          tree={tree}
+          conv={conv}
+          folderId={rootBucketId}
+          depth={-1}
+        />
+      ))}
       {getFolderChildren(data, null).map((folder) => (
         <FolderNode key={folder.id} tree={tree} folder={folder} depth={0} />
       ))}

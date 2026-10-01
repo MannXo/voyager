@@ -28,6 +28,7 @@ import {
   part,
   pointerEvent,
   queryPart,
+  requireElement,
   setElementRect,
   setWindowSize,
   stubPointerCapture,
@@ -53,43 +54,155 @@ function folderBody(handle: ReturnType<typeof mountPanel>, folderId: string): HT
   )!;
 }
 
-describe('floating panel drifts from the sidebar tree, as they stand', () => {
-  it('does not show conversations stored at the root', () => {
+describe('floating panel parity with the sidebar tree', () => {
+  function withRootConversation() {
     const data = createData();
-    data.folderContents[ROOT_CONVERSATIONS_ID] = [createConversation('root-conv', 'Root chat')];
-    const handle = mountPanel({ data });
+    data.folderContents[ROOT_CONVERSATIONS_ID] = [
+      createConversation('root-conv', 'Root chat', { starred: true }),
+    ];
+    return data;
+  }
 
-    expect(panelRoot(handle).textContent).not.toContain('Root chat');
-    expect(panelRoot(handle).querySelector(`[data-conversation-id="root-conv"]`)).toBeNull();
+  it('lists conversations stored at the root ahead of the folders', () => {
+    const onToggleStar = vi.fn();
+    const handle = mountPanel({ data: withRootConversation(), onToggleStar });
+    const root = panelRoot(handle);
+
+    const row = requireElement<HTMLElement>(root, '[data-conversation-id="root-conv"]');
+    expect(row.dataset.folderId).toBe(ROOT_CONVERSATIONS_ID);
+    expect(row.textContent).toContain('Root chat');
+    expect(
+      root.querySelector(
+        `[data-folder-id="${ROOT_CONVERSATIONS_ID}"].${FLOATING_PANEL_CLASS}__folder-header`,
+      ),
+    ).toBeNull();
+    const firstFolder = folderHeader(root, 'folder-a');
+    expect(
+      row.compareDocumentPosition(firstFolder) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    click(requireElement(row, `.${FLOATING_PANEL_CLASS}__icon-button--star`));
+    expect(onToggleStar).toHaveBeenCalledWith(ROOT_CONVERSATIONS_ID, 'root-conv');
   });
 
-  it('keeps folder expansion local to the mounted panel', () => {
+  it('moves a root conversation into a folder by drag', () => {
+    const onMoveConversation = vi.fn();
+    const handle = mountPanel({ data: withRootConversation(), onMoveConversation });
+    const root = panelRoot(handle);
+    const transfer = createDataTransfer();
+
+    requireElement(root, '[data-conversation-id="root-conv"]').dispatchEvent(
+      createDragEvent('dragstart', transfer),
+    );
+    folderHeader(root, 'folder-b').dispatchEvent(createDragEvent('drop', transfer));
+
+    expect(onMoveConversation).toHaveBeenCalledWith('root-conv', ROOT_CONVERSATIONS_ID, 'folder-b');
+  });
+
+  it('shows root conversations instead of the empty state when there are no folders', () => {
+    const handle = mountPanel({
+      data: {
+        folders: [],
+        folderContents: { [ROOT_CONVERSATIONS_ID]: [createConversation('root-conv', 'Root chat')] },
+      },
+    });
+
+    expect(queryPart(handle, 'empty')).toBeNull();
+    expect(panelRoot(handle).textContent).toContain('Root chat');
+  });
+
+  it('persists folder expansion through the store when it can', () => {
     const data = createData();
-    const callbacks = {
-      onCreateFolder: vi.fn(),
-      onRenameFolder: vi.fn(),
-      onToggleFolderPinned: vi.fn(),
-      onMoveConversation: vi.fn(),
-    };
-    const handle = mountPanel({ data, ...callbacks });
+    let handle: ReturnType<typeof mountPanel> | null = null;
+    const onToggleFolderExpanded = vi.fn((folderId: string) => {
+      const folder = data.folders.find((candidate) => candidate.id === folderId)!;
+      folder.isExpanded = !folder.isExpanded;
+      handle?.update(data);
+    });
+    handle = mountPanel({ data, onToggleFolderExpanded });
 
     click(folderHeader(panelRoot(handle), 'folder-a'));
+    expect(onToggleFolderExpanded).toHaveBeenCalledWith('folder-a');
+    expect(data.folders[0].isExpanded).toBe(false);
     expect(folderBody(handle, 'folder-a').style.display).toBe('none');
-    for (const callback of Object.values(callbacks)) expect(callback).not.toHaveBeenCalled();
-    expect(data.folders[0].isExpanded).toBe(true);
 
-    const remounted = mountPanel({ data });
+    const remounted = mountPanel({ data, onToggleFolderExpanded });
+    expect(folderBody(remounted, 'folder-a').style.display).toBe('none');
+
+    data.folders[0].isExpanded = true;
+    remounted.update(data);
     expect(folderBody(remounted, 'folder-a').style.display).not.toBe('none');
   });
 
-  it('removes a conversation without asking for confirmation', () => {
+  it('expands a collapsed folder through the store before adding a subfolder', () => {
+    const data = createData();
+    data.folders[1].isExpanded = false;
+    let handle: ReturnType<typeof mountPanel> | null = null;
+    const onToggleFolderExpanded = vi.fn((folderId: string) => {
+      const folder = data.folders.find((candidate) => candidate.id === folderId)!;
+      folder.isExpanded = !folder.isExpanded;
+      handle?.update(data);
+    });
+    handle = mountPanel({ data, onToggleFolderExpanded });
+
+    click(
+      requireElement(
+        folderHeader(panelRoot(handle), 'folder-a'),
+        `.${FLOATING_PANEL_CLASS}__icon-button--add-child`,
+      ),
+    );
+    expect(onToggleFolderExpanded).not.toHaveBeenCalled();
+
+    click(
+      requireElement(
+        folderHeader(panelRoot(handle), 'folder-b'),
+        `.${FLOATING_PANEL_CLASS}__icon-button--add-child`,
+      ),
+    );
+    expect(onToggleFolderExpanded).toHaveBeenCalledTimes(1);
+    expect(onToggleFolderExpanded).toHaveBeenCalledWith('folder-b');
+    expect(data.folders[1].isExpanded).toBe(true);
+    expect(
+      folderBody(handle, 'folder-b').querySelector(`.${FLOATING_PANEL_CLASS}__inline-input`),
+    ).not.toBeNull();
+  });
+
+  it('keeps expansion local when no store callback is given', () => {
+    const data = createData();
+    const handle = mountPanel({ data });
+
+    click(folderHeader(panelRoot(handle), 'folder-a'));
+    expect(folderBody(handle, 'folder-a').style.display).toBe('none');
+    expect(data.folders[0].isExpanded).toBe(true);
+  });
+
+  it('asks before removing a conversation from a folder', () => {
     const onRemoveConversation = vi.fn();
-    const handle = mountPanel({ onRemoveConversation });
+    const confirmConversationRemoval = vi.fn();
+    const handle = mountPanel({ onRemoveConversation, confirmConversationRemoval });
+    const remove = part(handle, 'icon-button--remove');
+
+    click(remove);
+
+    expect(onRemoveConversation).not.toHaveBeenCalled();
+    expect(confirmConversationRemoval).toHaveBeenCalledWith(
+      'Conversation A',
+      remove,
+      expect.any(Function),
+    );
+    confirmConversationRemoval.mock.calls[0][2]();
+    expect(onRemoveConversation).toHaveBeenCalledWith('folder-a', 'conv-a');
+  });
+
+  it('names an untitled conversation the way its row does when asking', () => {
+    const data = createData();
+    data.folderContents['folder-a'] = [createConversation('conv-x', '')];
+    const confirmConversationRemoval = vi.fn();
+    const handle = mountPanel({ data, confirmConversationRemoval });
 
     click(part(handle, 'icon-button--remove'));
 
-    expect(onRemoveConversation).toHaveBeenCalledWith('folder-a', 'conv-a');
-    expect(document.querySelector('.gv-pm-confirm, .gv-folder-confirm-dialog')).toBeNull();
+    expect(confirmConversationRemoval.mock.calls[0][0]).toBe('floatingPanelUntitled');
   });
 });
 

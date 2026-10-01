@@ -37,8 +37,12 @@ export type TreeActions = {
   onRenameFolder?: (folderId: string, newName: string) => void;
   onDeleteFolder?: (folderId: string) => void;
   onRemoveConversation?: (folderId: string, conversationId: string) => void;
+  /** Asks before `onRemoveConversation`; without it, removal is immediate. */
+  confirmConversationRemoval?: (title: string, anchor: HTMLElement, onConfirm: () => void) => void;
   onToggleStar?: (folderId: string, conversationId: string) => void;
   onToggleFolderPinned?: (folderId: string) => void;
+  /** Persists a folder's expansion; without it, expansion stays local to the panel. */
+  onToggleFolderExpanded?: (folderId: string) => void;
   onMoveConversation?: (conversationId: string, fromFolderId: string, toFolderId: string) => void;
   onSetFolderColor?: (folderId: string, color: string) => void;
 };
@@ -52,6 +56,8 @@ export type TreeChange = {
 
 export type TreeProps = {
   data: FolderData;
+  /** The `folderContents` bucket holding conversations filed at the root. */
+  rootBucketId: string;
   conversationSortMode: ConversationSortMode;
   actions: TreeActions;
   inlineEditor: InlineEditorState | null;

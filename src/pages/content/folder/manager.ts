@@ -24,6 +24,7 @@ import {
   type FloatingPanelSize,
   mountFloatingPanel,
 } from './floatingPanel';
+import { createFloatingTreeStoreActions } from './floatingPanelActions';
 import { createFolderDialogs } from './folderDialogs';
 import { createFolderHeaderMenus } from './headerMenus';
 import {
@@ -445,40 +446,7 @@ export class FolderManager {
           this.navigation.navigate(conv);
         }
       },
-      onCreateFolder: (name, parentId) => {
-        this.store.createFolder(name, parentId);
-      },
-      onRenameFolder: (folderId, name) => this.store.renameFolder(folderId, name),
-      onDeleteFolder: (folderId) => this.store.removeFolder(folderId),
-      // These delegate to the shared data paths, which persist via saveData —
-      // and saveData's centralised hook already pushes the fresh snapshot into
-      // the floating panel, so no explicit update calls are needed here.
-      onRemoveConversation: (folderId, conversationId) => {
-        // Reuse the existing data-only removal path; it already calls saveData
-        // + refresh (sidebar refresh is a no-op when the sidebar isn't mounted).
-        this.store.removeConversationFromFolder(folderId, conversationId);
-      },
-      onToggleStar: (folderId, conversationId) => {
-        this.store.toggleConversationStar(folderId, conversationId);
-      },
-      onToggleFolderPinned: (folderId) => {
-        this.store.togglePinFolder(folderId);
-      },
-      // Intra-panel conversation move: user dragged a conversation row from
-      // folder A to folder B inside the floating panel. Cross-document drag
-      // (native Gemini row → panel) is intentionally NOT wired — that path
-      // proved unreliable; the user files new conversations via the native
-      // ⋮ → "Move to folder" menu instead.
-      onMoveConversation: (conversationId, fromFolderId, toFolderId) => {
-        const conv = this.store.data.folderContents[fromFolderId]?.find(
-          (c) => c.conversationId === conversationId,
-        );
-        if (!conv) return;
-        this.store.moveConversationToFolder(fromFolderId, toFolderId, conv);
-      },
-      onSetFolderColor: (folderId, color) => {
-        this.store.changeFolderColor(folderId, color);
-      },
+      ...createFloatingTreeStoreActions(this.store, this.dialogs),
       // Cloud sync / upload — mirror what the sidebar's header buttons do.
       // Only wire on non-Safari; the floating panel hides these buttons on
       // Safari because our Drive OAuth2 flow is not supported there yet. The

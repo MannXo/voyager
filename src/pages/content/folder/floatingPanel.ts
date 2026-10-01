@@ -1,5 +1,6 @@
 import { CLOUD_SYNC_PATH, CLOUD_UPLOAD_PATH } from '@/core/icons/cloudSyncPaths';
 import { isSafari } from '@/core/utils/browser';
+import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import type { ConversationSortMode } from '@/features/folder/model/folderData';
 
 import panelCss from './floatingPanel.css?raw';
@@ -13,7 +14,7 @@ import {
   t,
 } from './floatingTree/shared';
 import { attachShadowSurface, eventPassedThrough } from './shadowHost';
-import type { FolderData } from './types';
+import type { Folder, FolderData } from './types';
 
 export { FLOATING_PANEL_CLASS };
 
@@ -22,6 +23,8 @@ export type FloatingPanelSize = { w: number; h: number };
 
 export type MountArgs = TreeActions & {
   data: FolderData;
+  /** Defaults to Gemini's root bucket. */
+  rootBucketId?: string;
   dataReady?: boolean;
   conversationSortMode?: ConversationSortMode;
   storedPos?: FloatingPanelPos | null;
@@ -148,21 +151,6 @@ function updateTooltipOnHover(
   });
 }
 
-function createEmptyFolderIcon(): SVGSVGElement {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.classList.add(`${FLOATING_PANEL_CLASS}__empty-icon`);
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('aria-hidden', 'true');
-
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute(
-    'd',
-    'M4.75 6.5c0-.69.56-1.25 1.25-1.25h4.16c.36 0 .69.15.93.41l1.12 1.23c.14.15.34.24.55.24H18c.69 0 1.25.56 1.25 1.25v1.12H4.75v-3Zm0 4.25h14.5v6.75c0 .69-.56 1.25-1.25 1.25H6c-.69 0-1.25-.56-1.25-1.25v-6.75Z',
-  );
-  svg.appendChild(path);
-  return svg;
-}
-
 function createHintRow(key: string, iconText: string): HTMLElement {
   const row = document.createElement('div');
   row.className = `${FLOATING_PANEL_CLASS}__move-hint`;
@@ -193,6 +181,7 @@ export function mountFloatingPanel({
   data,
   dataReady = true,
   conversationSortMode = 'manual',
+  rootBucketId = ROOT_CONVERSATIONS_ID,
   storedPos,
   storedSize,
   onPosChange,
@@ -205,6 +194,8 @@ export function mountFloatingPanel({
   onRemoveConversation,
   onToggleStar,
   onToggleFolderPinned,
+  onToggleFolderExpanded,
+  confirmConversationRemoval,
   onMoveConversation,
   onSetFolderColor,
   onCloudUpload,
@@ -389,10 +380,27 @@ export function mountFloatingPanel({
     onRenameFolder,
     onDeleteFolder,
     onRemoveConversation,
+    confirmConversationRemoval,
     onToggleStar,
     onToggleFolderPinned,
+    onToggleFolderExpanded,
     onMoveConversation,
     onSetFolderColor,
+  };
+
+  // With a store callback, expansion is the folder's persisted `isExpanded`,
+  // shared with the sidebar; without one it stays local to this panel.
+  const isExpanded = (folder: Folder): boolean =>
+    onToggleFolderExpanded
+      ? folder.isExpanded
+      : (expandedFolders.get(folder.id) ?? folder.isExpanded);
+  const setExpanded = (folderId: string, expanded: boolean): void => {
+    if (!onToggleFolderExpanded) {
+      expandedFolders.set(folderId, expanded);
+      return;
+    }
+    const folder = currentData.folders.find((candidate) => candidate.id === folderId);
+    if (folder && folder.isExpanded !== expanded) onToggleFolderExpanded(folderId);
   };
 
   const render = () => {
@@ -404,11 +412,12 @@ export function mountFloatingPanel({
 
     renderFolderTree(body, {
       data: currentData,
+      rootBucketId,
       conversationSortMode: currentConversationSortMode,
       actions,
       inlineEditor,
       contextMenu,
-      isExpanded: (folder) => expandedFolders.get(folder.id) ?? folder.isExpanded,
+      isExpanded,
       apply,
     });
   };
@@ -416,7 +425,7 @@ export function mountFloatingPanel({
   function apply(change: TreeChange, effect?: () => void): void {
     if (change.inlineEditor !== undefined) inlineEditor = change.inlineEditor;
     if (change.contextMenu !== undefined) contextMenu = change.contextMenu;
-    if (change.expand) expandedFolders.set(change.expand.folderId, change.expand.expanded);
+    if (change.expand) setExpanded(change.expand.folderId, change.expand.expanded);
     effect?.();
     render();
   }
