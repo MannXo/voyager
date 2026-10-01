@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 const STYLESHEETS = [
   'public/contentStyle.css',
   'src/pages/content/defaultModel/styles.css',
+  'src/pages/content/folder/floatingPanel.css',
   'src/features/plugins/catalog/sites/chatgpt/plugins/reading-width/style.css',
   'src/features/plugins/catalog/sites/claude/plugins/reading-width/style.css',
   'src/features/plugins/catalog/sites/claude/plugins/cjk-render-fix/style.css',

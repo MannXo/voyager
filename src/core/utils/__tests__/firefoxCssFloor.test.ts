@@ -23,6 +23,7 @@ import manifestChrome from '../../../../manifest.json';
 const STATIC_CONTENT_STYLESHEETS = [
   'public/contentStyle.css',
   'src/pages/content/defaultModel/styles.css',
+  'src/pages/content/folder/floatingPanel.css',
 ] as const;
 
 /**
