@@ -332,6 +332,37 @@ describe('ChatGPT timeline', () => {
     expect(scroller.scrollTo).toHaveBeenCalledWith({ top: 430, behavior: 'smooth' });
   });
 
+  it('homes in on an unmounted older turn through the column-reverse thread', async () => {
+    const scroller = makeScroller({ reverse: true });
+    // At rest the view starts 1400px in: the older turn is centred 780px in,
+    // the two newer ones are on screen.
+    const older = exchange('Older question');
+    bubble(older).getBoundingClientRect = rect(-640);
+    const middle = exchange('Middle question');
+    bubble(middle).getBoundingClientRect = rect(100);
+    bubble(exchange('Newest question')).getBoundingClientRect = rect(400);
+    await mount();
+    // Scrolled away: ChatGPT unmounts the whole item.
+    older.remove();
+    await settle();
+
+    dots()[0].click();
+    // Towards the older end, where the remembered centre puts it.
+    expect(scroller.scrollTo).toHaveBeenLastCalledWith({ top: -890, behavior: 'instant' });
+
+    // The jump landed: the item is back, the newer ones are out of view.
+    Object.defineProperty(scroller, 'scrollTop', { configurable: true, value: -890 });
+    bubble(middle).getBoundingClientRect = rect(990);
+    const remounted = exchange('Older question');
+    middle.before(remounted);
+    bubble(remounted).getBoundingClientRect = rect(300);
+    await settle(1_000);
+
+    // Aimed at the mounted bubble: centred 510 + 300 + 20 = 830px in.
+    expect(scroller.scrollTo).toHaveBeenLastCalledWith({ top: -840, behavior: 'smooth' });
+    expect(labels()).toEqual(['Older question', 'Middle question', 'Newest question']);
+  });
+
   it('adds a dot when a new prompt is sent', async () => {
     exchange('First question');
     await mount();
