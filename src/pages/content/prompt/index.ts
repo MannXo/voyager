@@ -39,6 +39,7 @@ import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContex
 import { migrateFromLocalStorage } from '@/core/utils/storageMigration';
 import { shouldShowUpdateReminderForCurrentVersion } from '@/core/utils/updateReminder';
 import { compareVersions } from '@/core/utils/version';
+import { createRuntimePromptLibraryClient } from '@/features/prompt/library/promptLibraryMessages';
 import { renderPromptHtmlAsText } from '@/features/prompt/model/promptMarkdown';
 import { convertLegacyBraces, isPromptTemplate } from '@/features/prompt/model/promptTemplate';
 import {
@@ -556,12 +557,8 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
 
     // Migrate data from localStorage to chrome.storage.local (one-time migration)
     try {
-      const keysToMigrate = [
-        STORAGE_KEYS.items,
-        STORAGE_KEYS.locked,
-        STORAGE_KEYS.position,
-        STORAGE_KEYS.triggerPos,
-      ];
+      // The prompt library itself is seeded through its owner below.
+      const keysToMigrate = [STORAGE_KEYS.locked, STORAGE_KEYS.position, STORAGE_KEYS.triggerPos];
 
       const migrationResult = await migrateFromLocalStorage(keysToMigrate, promptStorageService, {
         deleteAfterMigration: false, // Keep localStorage as backup
@@ -1027,7 +1024,10 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
     // State
     const library = createPromptLibraryState({
       read: () => readStorage<PromptItem[]>(STORAGE_KEYS.items, []),
-      write: (next) => writeStorage(STORAGE_KEYS.items, next),
+      apply: createRuntimePromptLibraryClient().apply,
+      readLegacy: () => localStorage.getItem(STORAGE_KEYS.items),
+      // A failed write just shows the stored library again; there is no error notice for it.
+      onReconcile: (reason) => showLibrary(reason === 'changed'),
       makeId: uid,
     });
     await library.load();
@@ -2407,18 +2407,9 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
           }
         })();
       }
-      // Handle prompt data changes from cloud sync (local storage)
+      // Another writer changed the library; the panel's own echoes are dropped by `receive`.
       if (area === 'local' && changes?.gvPromptItems) {
-        const newItems = changes.gvPromptItems.newValue;
-        // The panel's own writes echo back through this listener. Rebuilding
-        // the list and flashing "Synced" for data the panel already holds is
-        // noise, and reordering writes on every drop.
-        if (library.receive(newItems)) {
-          pmLogger.info('Prompt data changed in chrome.storage.local, reloading...');
-          renderTags();
-          renderActiveList();
-          setNotice(i18n.t('syncSuccess') || 'Synced', 'ok');
-        }
+        if (library.receive(changes.gvPromptItems.newValue)) showLibrary(true);
       }
       if (
         area === 'local' &&
@@ -2429,6 +2420,12 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
         void loadStarredMessages();
       }
     };
+
+    function showLibrary(changedElsewhere: boolean): void {
+      renderTags();
+      renderActiveList();
+      if (changedElsewhere) setNotice(i18n.t('syncSuccess') || 'Synced', 'ok');
+    }
 
     try {
       browser.storage.onChanged.addListener(storageChangeHandler);
@@ -2526,6 +2523,7 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
         setInlineHint(i18n.t('pm_duplicate') || 'Duplicate prompt', 'err');
         return;
       }
+      if (outcome === 'failed') return; // Not saved: keep the form open with what was typed.
       if (outcome === 'saved') setNotice(i18n.t('pm_saved') || 'Saved', 'ok');
       editingId = null;
       (addForm.querySelector('.gv-pm-input-name') as HTMLInputElement).value = '';
