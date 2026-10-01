@@ -15,13 +15,13 @@ const {
   addStarredMessage,
   getStarredMessagesForConversation,
   removeStarredMessage,
-  setPluginSetting,
+  requestPluginSetting,
   showTimelineStyleCoachmark,
 } = vi.hoisted(() => ({
   addStarredMessage: vi.fn().mockResolvedValue(undefined),
   getStarredMessagesForConversation: vi.fn().mockResolvedValue([]),
   removeStarredMessage: vi.fn().mockResolvedValue(undefined),
-  setPluginSetting: vi.fn().mockResolvedValue(undefined),
+  requestPluginSetting: vi.fn().mockResolvedValue(undefined),
   showTimelineStyleCoachmark: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -38,7 +38,7 @@ vi.mock('@/pages/content/timeline/StarredMessagesService', () => ({
   },
 }));
 
-vi.mock('@/features/plugins/storage/pluginState', () => ({ setPluginSetting }));
+vi.mock('@/features/plugins/storage/pluginSettingRequest', () => ({ requestPluginSetting }));
 
 vi.mock('@/pages/content/timeline/timelineStyleCoachmark', () => ({
   showTimelineStyleCoachmark,
@@ -92,7 +92,7 @@ describe('Claude timeline', () => {
     getStarredMessagesForConversation.mockResolvedValue([]);
     addStarredMessage.mockClear();
     removeStarredMessage.mockClear();
-    setPluginSetting.mockClear();
+    requestPluginSetting.mockClear();
     showTimelineStyleCoachmark.mockClear();
     HTMLElement.prototype.scrollIntoView = vi.fn();
     window.scrollTo = vi.fn();
@@ -144,7 +144,11 @@ describe('Claude timeline', () => {
 
     await options.onStyleChange(true);
 
-    expect(setPluginSetting).toHaveBeenCalledWith('voyager.claude-timeline', 'compactView', true);
+    expect(requestPluginSetting).toHaveBeenCalledWith(
+      'voyager.claude-timeline',
+      'compactView',
+      true,
+    );
     expect(
       document.querySelector('.gemini-timeline-bar')?.classList.contains('timeline-style-compact'),
     ).toBe(true);

@@ -58,28 +58,11 @@ describe('background runtime message routing', () => {
     expect(isHandledBackgroundRuntimeMessage(null)).toBe(false);
   });
 
-  it('routes explicit plugin registration repair through the serialized background sync', () => {
+  it('routes plugin messages through the serialized sync and the single catalog refresher', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/pages/background/index.ts'), 'utf8');
-    const repairBranch =
-      source.match(
-        /if \(message\?\.type === PLUGIN_CONTENT_SCRIPT_SYNC_MESSAGE\) \{[\s\S]*?\n\s*\}/,
-      )?.[0] ?? '';
-
-    expect(repairBranch).toContain('await syncPluginContentScripts()');
-    expect(repairBranch).toContain('sendResponse({ ok: true })');
-  });
-
-  it('routes remote plugin catalog checks through the single background refresher', () => {
-    const source = readFileSync(resolve(process.cwd(), 'src/pages/background/index.ts'), 'utf8');
-    const branch =
-      source.match(
-        /if \(message\?\.type === PLUGIN_CATALOG_REFRESH_MESSAGE\) \{[\s\S]*?\n {6}\}/,
-      )?.[0] ?? '';
-
-    expect(branch).toContain('parseHostCatalogRefreshPayload(message.payload)');
-    expect(branch).toContain(
-      'hostCatalogRefresher.refresh(request.host, { force: request.force })',
-    );
+    expect(source).toContain('handlePluginRuntimeMessage(message, {');
+    expect(source).toContain('syncContentScripts: syncPluginContentScripts');
+    expect(source).toContain('hostCatalogRefresher.refresh(host, { force })');
     expect(source.match(/new HostCatalogRefresher\(/g)?.length).toBe(1);
   });
 

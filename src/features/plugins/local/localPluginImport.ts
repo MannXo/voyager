@@ -15,7 +15,6 @@ import type { Result } from '@/core/types/common';
 
 import type { ManifestIssue } from '../manifest/validate';
 import { resolveStyleFileContributions } from '../sources/styleFiles';
-import { removePluginState } from '../storage/pluginState';
 import type { PluginManifest } from '../types';
 import { toLocalPluginId } from './localPluginId';
 import {
@@ -197,7 +196,6 @@ export async function importLocalPluginFiles(
 /** Remove a local plugin together with its enable state and settings. */
 export async function removeLocalPlugin(id: string): Promise<void> {
   await removeLocalPluginRecord(id);
-  await removePluginState(id);
 }
 
 /** The stored manifest as a re-importable `plugin.json` (CSS inlined). */

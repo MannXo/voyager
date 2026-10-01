@@ -16,7 +16,7 @@
 import { StorageKeys, type TimelineStyle } from '@/core/types/common';
 import { hashString } from '@/core/utils/hash';
 import { type Dispose, PluginScope } from '@/features/plugins/runtime/pluginScope';
-import { setPluginSetting } from '@/features/plugins/storage/pluginState';
+import { requestPluginSetting } from '@/features/plugins/storage/pluginSettingRequest';
 import type { PluginSettings } from '@/features/plugins/types';
 import { StarredMessagesService } from '@/pages/content/timeline/StarredMessagesService';
 import { TimelinePreviewPanel } from '@/pages/content/timeline/TimelinePreviewPanel';
@@ -256,7 +256,7 @@ export class TurnNavigator {
       onStyleChange: async (compact) => {
         if (this.disposed) return;
         this.updateSettings({ [COMPACT_VIEW_SETTING]: compact });
-        await setPluginSetting(this.config.pluginId, COMPACT_VIEW_SETTING, compact);
+        await requestPluginSetting(this.config.pluginId, COMPACT_VIEW_SETTING, compact);
       },
     });
   }

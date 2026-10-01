@@ -14,15 +14,21 @@
  *   - a failed read rejects the mutation instead of writing back a map built
  *     from `{}` (which would delete every other plugin);
  *   - entries this build cannot read are written back untouched;
- *   - every mutation holds the `gv-local-plugins` Web Lock, shared by every
- *     extension page of this origin, so two popups (or an import racing a
- *     remove) run one after the other instead of overwriting each other.
+ *   - every mutation holds the plugin-storage lock (`pluginStorageLock.ts`),
+ *     shared with every plugin-state writer, so two popups, an import racing a
+ *     remove, or a late setting toggle run one after the other instead of
+ *     overwriting each other.
  */
 import { logger } from '@/core/services/LoggerService';
 import { StorageKeys } from '@/core/types/common';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
 
-import { readPluginStateStrict, withPluginDisabled } from '../storage/pluginState';
+import {
+  type PluginStateEntry,
+  readPluginStateStrict,
+  withPluginDisabled,
+} from '../storage/pluginState';
+import { withPluginStorageLock } from '../storage/pluginStorageLock';
 import { isLocalPluginId } from './localPluginId';
 
 export interface LocalPluginRecord {
@@ -37,24 +43,6 @@ export type LocalPluginRecordMap = Readonly<Record<string, LocalPluginRecord>>;
 export const MAX_LOCAL_PLUGINS = 50;
 
 const KEY = StorageKeys.PLUGIN_LOCAL_MANIFESTS;
-const LOCK_NAME = 'gv-local-plugins';
-
-interface LockManagerLike {
-  request<T>(name: string, callback: () => Promise<T>): Promise<T>;
-}
-
-/** Same-context fallback where Web Locks are missing (tests, old engines). */
-let fallbackChain: Promise<unknown> = Promise.resolve();
-
-/** Run one mutation at a time across every extension page that shares the lock. */
-function withMutationLock<T>(work: () => Promise<T>): Promise<T> {
-  const locks = (globalThis.navigator as { locks?: LockManagerLike } | undefined)?.locks;
-  if (locks && typeof locks.request === 'function') return locks.request(LOCK_NAME, work);
-  const run = fallbackChain.then(work, work);
-  fallbackChain = run.catch(() => undefined);
-  return run;
-}
-
 function localArea(): chrome.storage.LocalStorageArea | undefined {
   const g = globalThis as { chrome?: typeof chrome };
   return g.chrome?.storage?.local;
@@ -128,7 +116,7 @@ export async function saveLocalPluginRecord(
   }
   const local = localArea();
   if (!local) throw new Error('extension storage is unavailable');
-  await withMutationLock(async () => {
+  await withPluginStorageLock(async () => {
     const stored = await readStoredMapStrict(local);
     const state = await readPluginStateStrict(local);
     const current = sanitizeLocalPluginRecords(stored);
@@ -148,16 +136,23 @@ export async function saveLocalPluginRecord(
   });
 }
 
-/** Delete one record; rejects, writing nothing, when the read or write fails. */
+/**
+ * Delete one record together with its enable state and settings, in one write
+ * so no toggle can slip in between. Rejects, writing nothing, when a read or
+ * the write fails.
+ */
 export async function removeLocalPluginRecord(id: string): Promise<void> {
   const local = localArea();
   if (!local) return;
-  await withMutationLock(async () => {
+  await withPluginStorageLock(async () => {
     const stored = await readStoredMapStrict(local);
-    if (!Object.hasOwn(stored, id)) return;
+    const state = await readPluginStateStrict(local);
+    if (!Object.hasOwn(stored, id) && !Object.hasOwn(state, id)) return;
     const next: Record<string, unknown> = { ...stored };
     delete next[id];
-    await local.set({ [KEY]: next });
+    const nextState: Record<string, PluginStateEntry> = { ...state };
+    delete nextState[id];
+    await local.set({ [KEY]: next, [StorageKeys.PLUGINS_STATE]: nextState });
   });
 }
 

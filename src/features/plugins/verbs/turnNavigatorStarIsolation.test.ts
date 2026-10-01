@@ -25,8 +25,8 @@ vi.mock('@/pages/content/timeline/StarredMessagesService', () => ({
     removeStarredMessage: vi.fn().mockResolvedValue(undefined),
   },
 }));
-vi.mock('@/features/plugins/storage/pluginState', () => ({
-  setPluginSetting: vi.fn().mockResolvedValue(undefined),
+vi.mock('@/features/plugins/storage/pluginSettingRequest', () => ({
+  requestPluginSetting: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('@/pages/content/timeline/timelineStyleCoachmark', () => ({
   showTimelineStyleCoachmark,

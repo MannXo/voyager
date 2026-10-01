@@ -7,13 +7,18 @@
  * (purchased/locked) is intentionally NOT stored here; that comes from the
  * `EntitlementProvider` so it can be server-driven later.
  *
- * Content scripts use `chrome.storage` directly per the content-script rules.
+ * Content scripts READ this directly per the content-script rules, but never
+ * write it: every writer here holds the plugin-storage lock, which a content
+ * script cannot share (see `pluginStorageLock.ts`), so a page sends a setting
+ * change to the background through `requestPluginSetting`.
  */
 import { logger } from '@/core/services/LoggerService';
 import { StorageKeys } from '@/core/types/common';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
 
+import { isLocalPluginId } from '../local/localPluginId';
 import type { PluginSettingValue, PluginSettings } from '../types';
+import { withPluginStorageLock } from './pluginStorageLock';
 
 export interface PluginStateEntry {
   readonly enabled: boolean;
@@ -119,10 +124,29 @@ export async function loadPluginState(): Promise<PluginStateMap> {
 }
 
 /**
- * Restore plugin state downloaded from Drive. Cloud entries win on merge.
+ * A local plugin's enable state is a review decision on this device: the cloud
+ * copy may switch one off, never on. Otherwise restoring an older backup would
+ * enable a newer, unreviewed version imported since that upload.
+ */
+function clampLocalPluginsEnabled(
+  restored: PluginStateMap,
+  current: PluginStateMap,
+): PluginStateMap {
+  const next: Record<string, PluginStateEntry> = { ...restored };
+  for (const [id, entry] of Object.entries(restored)) {
+    if (!isLocalPluginId(id) || !entry.enabled || current[id]?.enabled === true) continue;
+    next[id] = { ...entry, enabled: false };
+  }
+  return next;
+}
+
+/**
+ * Restore plugin state downloaded from Drive. Cloud entries win on merge,
+ * except that a local plugin is never switched on (`clampLocalPluginsEnabled`).
  * A merge reads local state strictly: if that read fails the restore rejects
  * and writes nothing, rather than writing the cloud entries alone and dropping
- * every local-only plugin's state.
+ * every local-only plugin's state. An overwrite whose read fails still runs,
+ * with every local plugin switched off.
  */
 export async function restorePluginState(
   value: unknown,
@@ -138,50 +162,48 @@ export async function restorePluginState(
   if (Object.keys(value).length > 0 && Object.keys(cloudState).length === 0) {
     return loadPluginState();
   }
-  const next =
-    mode === 'overwrite'
-      ? cloudState
-      : {
-          ...(await readPluginStateStrict(local)),
-          ...cloudState,
-        };
-  await local.set({ [KEY]: next });
-  return next;
+  return withPluginStorageLock(async () => {
+    const current =
+      mode === 'overwrite'
+        ? await readPluginStateStrict(local).catch((): PluginStateMap => ({}))
+        : await readPluginStateStrict(local);
+    const restored = mode === 'overwrite' ? cloudState : { ...current, ...cloudState };
+    const next = clampLocalPluginsEnabled(restored, current);
+    await local.set({ [KEY]: next });
+    return next;
+  });
+}
+
+/**
+ * Read-modify-write the state map under the plugin-storage lock. A failed read
+ * or write is logged and writes nothing.
+ */
+async function updatePluginState(
+  label: string,
+  context: Record<string, unknown>,
+  update: (current: PluginStateMap) => PluginStateMap,
+): Promise<void> {
+  const local = localArea();
+  if (!local) return;
+  try {
+    await withPluginStorageLock(async () => {
+      await local.set({ [KEY]: update(await readPluginStateStrict(local)) });
+    });
+  } catch (error) {
+    if (!isExtensionContextInvalidatedError(error)) {
+      logger.warn(`${label} failed`, { ...context, error: String(error) });
+    }
+  }
 }
 
 export async function setPluginEnabled(id: string, enabled: boolean): Promise<void> {
-  const local = localArea();
-  if (!local) return;
-  try {
-    const current = await readPluginStateStrict(local);
+  await updatePluginState('setPluginEnabled', { id }, (current) => {
     const previous = current[id];
-    const next: PluginStateMap = {
+    return {
       ...current,
       [id]: { ...previous, enabled, installedAt: previous?.installedAt ?? Date.now() },
     };
-    await local.set({ [KEY]: next });
-  } catch (error) {
-    if (!isExtensionContextInvalidatedError(error)) {
-      logger.warn('setPluginEnabled failed', { id, error: String(error) });
-    }
-  }
-}
-
-/** Forget a plugin's enable state and settings (a removed local plugin). */
-export async function removePluginState(id: string): Promise<void> {
-  const local = localArea();
-  if (!local) return;
-  try {
-    const current = await readPluginStateStrict(local);
-    if (!Object.hasOwn(current, id)) return;
-    const next: Record<string, PluginStateEntry> = { ...current };
-    delete next[id];
-    await local.set({ [KEY]: next });
-  } catch (error) {
-    if (!isExtensionContextInvalidatedError(error)) {
-      logger.warn('removePluginState failed', { id, error: String(error) });
-    }
-  }
+  });
 }
 
 /** Persist a single setting value for a plugin (preserving enabled state + other settings). */
@@ -190,12 +212,9 @@ export async function setPluginSetting(
   key: string,
   value: PluginSettingValue,
 ): Promise<void> {
-  const local = localArea();
-  if (!local) return;
-  try {
-    const current = await readPluginStateStrict(local);
+  await updatePluginState('setPluginSetting', { id, key }, (current) => {
     const previous = current[id];
-    const next: PluginStateMap = {
+    return {
       ...current,
       [id]: {
         enabled: previous?.enabled ?? false,
@@ -203,12 +222,7 @@ export async function setPluginSetting(
         settings: { ...previous?.settings, [key]: value },
       },
     };
-    await local.set({ [KEY]: next });
-  } catch (error) {
-    if (!isExtensionContextInvalidatedError(error)) {
-      logger.warn('setPluginSetting failed', { id, key, error: String(error) });
-    }
-  }
+  });
 }
 
 const COLLAPSED_KEY = StorageKeys.PLUGIN_UI_COLLAPSED;

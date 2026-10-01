@@ -73,14 +73,7 @@ import {
 } from '@/features/plugins/builtin/chatgptTemporaryHandoff/background';
 import { CHATGPT_HANDOFF_GET_TAB_ID_MESSAGE } from '@/features/plugins/builtin/chatgptTemporaryHandoff/storage';
 import { computeNudgeDomains, normalizeIconResourcePath } from '@/features/plugins/promptNudge';
-import {
-  HostCatalogRefresher,
-  parseHostCatalogRefreshPayload,
-} from '@/features/plugins/remote/hostCatalogRefresh';
-import {
-  PLUGIN_CATALOG_REFRESH_MESSAGE,
-  PLUGIN_CONTENT_SCRIPT_SYNC_MESSAGE,
-} from '@/features/plugins/runtime/messages';
+import { HostCatalogRefresher } from '@/features/plugins/remote/hostCatalogRefresh';
 import {
   partitionPluginOriginPatterns,
   pluginsToOriginPatterns,
@@ -102,6 +95,7 @@ import type { TranslationKey } from '@/utils/translations';
 
 import { unregisterRegisteredContentScripts } from './contentScriptRegistration';
 import { resolveOptionalHighlightSetting } from './highlightOptionalSetting';
+import { handlePluginRuntimeMessage } from './pluginRuntimeMessages';
 import { startResearchPackOwner } from './researchPackOwner';
 import {
   canSenderPageUseSyncPlatform,
@@ -1989,19 +1983,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
 
-      if (message?.type === PLUGIN_CONTENT_SCRIPT_SYNC_MESSAGE) {
-        await syncPluginContentScripts();
-        sendResponse({ ok: true });
-        return;
-      }
-
-      if (message?.type === PLUGIN_CATALOG_REFRESH_MESSAGE) {
-        const request = parseHostCatalogRefreshPayload(message.payload);
-        if (!request) {
-          sendResponse({ ok: false, error: 'invalid_payload' });
-          return;
-        }
-        sendResponse(await hostCatalogRefresher.refresh(request.host, { force: request.force }));
+      const pluginResponse = handlePluginRuntimeMessage(message, {
+        syncContentScripts: syncPluginContentScripts,
+        refreshCatalog: (host, force) => hostCatalogRefresher.refresh(host, { force }),
+      });
+      if (pluginResponse) {
+        sendResponse(await pluginResponse);
         return;
       }
 

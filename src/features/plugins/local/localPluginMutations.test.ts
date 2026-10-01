@@ -48,6 +48,8 @@ let memory: Record<string, unknown>;
 let failGet: ((keys: string[]) => boolean) | null;
 let failSet: ((items: Record<string, unknown>) => boolean) | null;
 let hangSetAfter: number | null;
+/** While set, a write of plugin state alone waits for this gate (a slow late writer). */
+let holdStateOnlySet: Promise<void> | null;
 let setCalls: number;
 let snapshots: Array<Record<string, unknown>>;
 
@@ -58,6 +60,7 @@ beforeEach(() => {
   failGet = null;
   failSet = null;
   hangSetAfter = null;
+  holdStateOnlySet = null;
   setCalls = 0;
   snapshots = [];
   (chrome.storage.local.get as unknown as Mock).mockImplementation(
@@ -75,6 +78,8 @@ beforeEach(() => {
     async (items: Record<string, unknown>) => {
       setCalls += 1;
       if (hangSetAfter !== null && setCalls > hangSetAfter) return new Promise(() => {});
+      const keys = Object.keys(items);
+      if (holdStateOnlySet && keys.length === 1 && keys[0] === STATE) await holdStateOnlySet;
       await tick();
       if (failSet?.(items)) throw new Error('set failed');
       Object.assign(memory, structuredClone(items));
@@ -236,5 +241,102 @@ describe('two popups mutating at once', () => {
       'local.me.a',
       'local.me.b',
     ]);
+  });
+});
+
+/** Fresh module instances, as in two popups (or a popup and the background). */
+async function freshContexts() {
+  vi.resetModules();
+  const importer = await import('./localPluginImport');
+  vi.resetModules();
+  const state = await import('../storage/pluginState');
+  return { importer, state };
+}
+
+describe('a plugin-state write racing a re-import', () => {
+  let release: () => void;
+
+  beforeEach(() => {
+    installSharedLocks();
+    memory[RECORDS] = { [ID]: stored(ID) };
+    memory[STATE] = { [ID]: { enabled: true, installedAt: 1 } };
+    holdStateOnlySet = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+  });
+
+  /** Start `write` (it reads the old enabled state), then import v2, then let `write` land. */
+  async function race(write: () => Promise<unknown>) {
+    const { importer } = await freshContexts();
+    const late = write();
+    for (let i = 0; i < 5; i += 1) await tick();
+    const imported = importer.importLocalPlugin(authored({ version: '2.0.0' }));
+    for (let i = 0; i < 10; i += 1) await tick();
+    release();
+    await Promise.all([late, imported]);
+  }
+
+  it('keeps the new version disabled when a setting toggle lands late', async () => {
+    const { state } = await freshContexts();
+    await race(() => state.setPluginSetting(ID, 'compact', true));
+    expect(versionIn(memory)).toBe('2.0.0');
+    expect(enabledIn(memory)).toBe(false);
+    const entry = (memory[STATE] as Record<string, { settings?: Record<string, unknown> }>)[ID];
+    expect(entry.settings).toEqual({ compact: true });
+  });
+
+  it('keeps the new version disabled when an enable toggle for another plugin lands late', async () => {
+    const { state } = await freshContexts();
+    await race(() => state.setPluginEnabled('voyager.vim', true));
+    expect(versionIn(memory)).toBe('2.0.0');
+    expect(enabledIn(memory)).toBe(false);
+  });
+
+  it('keeps the new version disabled when a Drive merge restore lands late', async () => {
+    const { state } = await freshContexts();
+    await race(() =>
+      state.restorePluginState({ 'voyager.vim': { enabled: true, installedAt: 2 } }, 'merge'),
+    );
+    expect(versionIn(memory)).toBe('2.0.0');
+    expect(enabledIn(memory)).toBe(false);
+  });
+});
+
+describe('restoring plugin state from Drive', () => {
+  beforeEach(() => {
+    memory[RECORDS] = { [ID]: stored(ID, '2.0.0') };
+    // v2 was just imported, so it is off until the user reviews it.
+    memory[STATE] = { [ID]: { enabled: false, installedAt: 1 } };
+  });
+
+  it.each(['merge', 'overwrite'] as const)(
+    'never switches on a local plugin the cloud copy has enabled (%s)',
+    async (mode) => {
+      const { restorePluginState } = await import('../storage/pluginState');
+      await restorePluginState(
+        {
+          [ID]: { enabled: true, installedAt: 1, settings: { compact: true } },
+          'voyager.vim': { enabled: true, installedAt: 1 },
+        },
+        mode,
+      );
+      const state = memory[STATE] as Record<string, { enabled: boolean; settings?: unknown }>;
+      expect(state[ID]).toEqual({ enabled: false, installedAt: 1, settings: { compact: true } });
+      expect(state['voyager.vim'].enabled).toBe(true);
+    },
+  );
+
+  it('lets the cloud copy switch a local plugin off', async () => {
+    memory[STATE] = { [ID]: { enabled: true, installedAt: 1 } };
+    const { restorePluginState } = await import('../storage/pluginState');
+    await restorePluginState({ [ID]: { enabled: false, installedAt: 1 } }, 'merge');
+    expect(enabledIn(memory)).toBe(false);
+  });
+
+  it('keeps a local plugin enabled when both copies have it on', async () => {
+    memory[STATE] = { [ID]: { enabled: true, installedAt: 1 } };
+    const { restorePluginState } = await import('../storage/pluginState');
+    await restorePluginState({ [ID]: { enabled: true, installedAt: 1 } }, 'overwrite');
+    expect(enabledIn(memory)).toBe(true);
   });
 });
