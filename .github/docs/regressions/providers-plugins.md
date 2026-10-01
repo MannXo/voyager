@@ -545,3 +545,16 @@ say`), `src/pages/content/platformTheme/__tests__/platformTheme.test.ts`.
 - **Guard:** `src/pages/background/__tests__/pluginRuntimeMessages.test.ts`
   (`refuses a sender that is …`, `rejects a setting the plugin does not declare that way`,
   `reports a failed storage write instead of ok`).
+
+## A partial Drive restore names only parts it actually wrote
+
+- **Trap:** The settings step counted as restored even when the backup had no settings (the restore
+  was a no-op), and the overwrite refusal for a backup without folder data returned early with a
+  plain message although the background had already restored highlights.
+- **Rule:** Each step in `applyCloudRestore` (`popup/components/cloudRestore.ts`) reports whether
+  it wrote; only those parts are named as restored. The missing-folders overwrite refusal is a
+  `CloudRestoreError` thrown before any popup write, so restored highlights are named; with nothing
+  restored it keeps the plain `syncOverwriteMissingFolders` text.
+- **Guard:** `src/pages/popup/components/__tests__/CloudSyncSettingsRestore.test.tsx`
+  (`does not name parts the backup had nothing for as restored`,
+  `names restored highlights when an overwrite stops for missing folder data`).

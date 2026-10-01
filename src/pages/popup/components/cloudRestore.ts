@@ -7,7 +7,10 @@
  * not instead of a bare "sync failed".
  */
 import { restoreBackupableSyncSettings } from '@/core/services/SettingsBackupService';
-import { restorePluginState } from '@/features/plugins/storage/pluginState';
+import {
+  isRestorablePluginState,
+  restorePluginState,
+} from '@/features/plugins/storage/pluginState';
 import type { TranslationKey } from '@/utils/translations';
 
 export type CloudRestorePart = 'highlights' | 'plugins' | 'settings' | 'folders' | 'prompts';
@@ -21,12 +24,16 @@ const PART_LABELS: Readonly<Record<CloudRestorePart, TranslationKey>> = {
   prompts: 'promptDataMigration',
 };
 
-/** A restore that stopped partway: `restored` landed, `failed` did not. */
+/**
+ * A restore that stopped partway: `restored` landed, `failed` did not.
+ * `reason` names a refusal the popup explains in the user's language.
+ */
 export class CloudRestoreError extends Error {
   constructor(
     readonly restored: readonly CloudRestorePart[],
     readonly failed: readonly CloudRestorePart[],
     cause: unknown,
+    readonly reason?: TranslationKey,
   ) {
     super(cause instanceof Error ? cause.message : String(cause));
     this.name = 'CloudRestoreError';
@@ -43,37 +50,62 @@ export interface CloudRestoreInput {
   /** Folders, plus prompts, starred and hierarchy on Gemini: one storage write. */
   readonly storageUpdate: Record<string, unknown>;
   readonly includesPrompts: boolean;
+  /** The backup has no folder data; an overwrite then writes nothing. */
+  readonly foldersMissing: boolean;
 }
 
 interface RestoreStep {
   readonly parts: readonly CloudRestorePart[];
-  readonly run: () => Promise<unknown>;
+  /** Resolves true when it wrote something. */
+  readonly run: () => Promise<boolean>;
 }
 
-/** Run the restore writes in order; on a failure throw `CloudRestoreError`. */
+/**
+ * Run the restore writes in order, counting a part as restored only when its
+ * step wrote something. On a failure, or an overwrite refused for missing
+ * folder data, throw `CloudRestoreError` naming what landed and what did not.
+ */
 export async function applyCloudRestore(input: CloudRestoreInput): Promise<void> {
   const steps: RestoreStep[] = [];
-  if (input.plugins !== undefined) {
-    steps.push({ parts: ['plugins'], run: () => restorePluginState(input.plugins, input.mode) });
+  if (isRestorablePluginState(input.plugins)) {
+    const plugins = input.plugins;
+    steps.push({
+      parts: ['plugins'],
+      run: async () => {
+        await restorePluginState(plugins, input.mode);
+        return true;
+      },
+    });
   }
   steps.push({
     parts: ['settings'],
-    run: () => restoreBackupableSyncSettings(input.settings, undefined, input.mode),
+    run: async () =>
+      Object.keys(await restoreBackupableSyncSettings(input.settings, undefined, input.mode))
+        .length > 0,
   });
   steps.push({
     parts: input.includesPrompts ? ['folders', 'prompts'] : ['folders'],
-    run: () => chrome.storage.local.set(input.storageUpdate),
+    run: async () => {
+      await chrome.storage.local.set(input.storageUpdate);
+      return true;
+    },
   });
 
   const restored: CloudRestorePart[] = input.highlightsRestored ? ['highlights'] : [];
+  if (input.mode === 'overwrite' && input.foldersMissing) {
+    const failed = steps.flatMap((step) => step.parts);
+    const reason = 'syncOverwriteMissingFolders';
+    throw new CloudRestoreError(restored, failed, new Error('No folder data to overwrite'), reason);
+  }
   for (const [index, step] of steps.entries()) {
+    let wrote: boolean;
     try {
-      await step.run();
+      wrote = await step.run();
     } catch (error) {
       const failed = steps.slice(index).flatMap((pending) => pending.parts);
       throw new CloudRestoreError(restored, failed, error);
     }
-    restored.push(...step.parts);
+    if (wrote) restored.push(...step.parts);
   }
 }
 
@@ -85,9 +117,10 @@ export function cloudRestoreFailureText(
   t: (key: TranslationKey) => string,
   error: unknown,
 ): string {
-  const message = error instanceof Error ? error.message : 'Download failed';
+  const reason = error instanceof CloudRestoreError ? error.reason : undefined;
+  const message = reason ? t(reason) : error instanceof Error ? error.message : 'Download failed';
   if (!(error instanceof CloudRestoreError) || error.restored.length === 0) {
-    return t('syncError').replace('{error}', message);
+    return reason ? message : t('syncError').replace('{error}', message);
   }
   const list = (parts: readonly CloudRestorePart[]) =>
     parts.map((part) => t(PART_LABELS[part])).join(', ');

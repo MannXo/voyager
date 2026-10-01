@@ -67,6 +67,35 @@ async function flushMicrotasks(): Promise<void> {
   });
 }
 
+type DownloadData = Record<string, unknown>;
+
+function downloadResponder(data: DownloadData, highlightsSynced: boolean) {
+  return vi.fn().mockImplementation((message: { type?: string }) => {
+    if (message.type === 'gv.sync.getState') {
+      return Promise.resolve({ ok: true, state: baseState });
+    }
+    if (message.type === 'gv.sync.download') {
+      return Promise.resolve({
+        ok: true,
+        state: { ...baseState, isAuthenticated: true },
+        ...(highlightsSynced ? { highlights: { synced: true, count: 2 } } : {}),
+        data,
+      });
+    }
+    return Promise.resolve({ ok: true });
+  });
+}
+
+async function clickRestore(container: HTMLElement, label: string): Promise<void> {
+  const button = Array.from(container.querySelectorAll('button')).find((btn) =>
+    (btn.textContent || '').includes(label),
+  );
+  await act(async () => {
+    button?.click();
+  });
+  await flushMicrotasks();
+}
+
 describe('CloudSyncSettings restore failures', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -218,5 +247,93 @@ describe('CloudSyncSettings restore failures', () => {
       'Restored: storageQuotaHighlights, pluginsTitle, storageQuotaSync. ' +
         'Not restored: folder_title, promptDataMigration (folders write failed)',
     );
+  });
+
+  it('does not name parts the backup had nothing for as restored', async () => {
+    const sendMessageMock = downloadResponder(
+      {
+        folders: { data: { folders: [], folderContents: {} } },
+        prompts: { items: [] },
+        // No settings and no plugin state in this backup.
+        starred: { data: { messages: {} } },
+      },
+      true,
+    );
+    const chromeMock = createChromeMock(sendMessageMock);
+    (chromeMock.storage.local.set as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async (items: Record<string, unknown>) => {
+        if ('gvFolderData' in items) throw new Error('folders write failed');
+      },
+    );
+    (globalThis as { chrome: MockedChrome }).chrome = chromeMock;
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<CloudSyncSettings />);
+    });
+    await flushMicrotasks();
+    await clickRestore(container, 'syncMerge');
+
+    expect(chromeMock.storage.sync.set).not.toHaveBeenCalled();
+    expect(container.textContent).toContain(
+      'Restored: storageQuotaHighlights. ' +
+        'Not restored: folder_title, promptDataMigration (folders write failed)',
+    );
+  });
+
+  it('names restored highlights when an overwrite stops for missing folder data', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const sendMessageMock = downloadResponder(
+      {
+        prompts: { items: [] },
+        settings: {
+          format: 'gemini-voyager.settings.v1',
+          exportedAt: new Date().toISOString(),
+          version: '1.0.0',
+          data: { [StorageKeys.MERMAID_ENABLED]: false },
+        },
+        starred: { data: { messages: {} } },
+      },
+      true,
+    );
+    const chromeMock = createChromeMock(sendMessageMock);
+    (globalThis as { chrome: MockedChrome }).chrome = chromeMock;
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<CloudSyncSettings />);
+    });
+    await flushMicrotasks();
+    await clickRestore(container, 'syncOverwrite');
+
+    expect(chromeMock.storage.local.set).not.toHaveBeenCalled();
+    expect(chromeMock.storage.sync.set).not.toHaveBeenCalled();
+    expect(container.textContent).toContain(
+      'Restored: storageQuotaHighlights. ' +
+        'Not restored: storageQuotaSync, folder_title, promptDataMigration ' +
+        '(syncOverwriteMissingFolders)',
+    );
+  });
+
+  it('keeps the plain missing-folders message when nothing was restored', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const sendMessageMock = downloadResponder(
+      { prompts: { items: [] }, starred: { data: { messages: {} } } },
+      false,
+    );
+    const chromeMock = createChromeMock(sendMessageMock);
+    (globalThis as { chrome: MockedChrome }).chrome = chromeMock;
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<CloudSyncSettings />);
+    });
+    await flushMicrotasks();
+    await clickRestore(container, 'syncOverwrite');
+
+    expect(chromeMock.storage.local.set).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('syncOverwriteMissingFolders');
+    expect(container.textContent).not.toContain('Restored:');
+    expect(container.textContent).not.toContain('syncError');
   });
 });

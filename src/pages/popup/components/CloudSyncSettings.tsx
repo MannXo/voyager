@@ -742,11 +742,6 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
         }
 
         const shouldOverwrite = mode === 'overwrite';
-        if (shouldOverwrite && !hasCloudFolderData) {
-          setStatusMessage({ text: t('syncOverwriteMissingFolders'), kind: 'err' });
-          setIsDownloading(false);
-          return;
-        }
 
         const nextFolders = shouldOverwrite
           ? cloudFolderData
@@ -804,6 +799,8 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
           settings: cloudSettingsPayload?.data,
           storageUpdate,
           includesPrompts: platform === 'gemini',
+          // An overwrite without folder data is refused before any write.
+          foldersMissing: !hasCloudFolderData,
         });
 
         // Notify content script to reload folders

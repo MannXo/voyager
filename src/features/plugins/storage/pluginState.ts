@@ -155,6 +155,15 @@ function clampLocalPluginsEnabled(
  * every local-only plugin's state. An overwrite whose read fails still runs,
  * with every local plugin switched off.
  */
+/**
+ * True when `restorePluginState` would write `value`: a state map that is empty
+ * or keeps at least one valid entry. Anything else leaves local state as is.
+ */
+export function isRestorablePluginState(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value)) return false;
+  return Object.keys(value).length === 0 || Object.keys(sanitizePluginState(value)).length > 0;
+}
+
 export async function restorePluginState(
   value: unknown,
   mode: PluginStateRestoreMode = 'merge',
@@ -162,13 +171,10 @@ export async function restorePluginState(
   const local = localArea();
   if (!local) return {};
 
-  if (!isRecord(value)) {
+  if (!isRestorablePluginState(value)) {
     return loadPluginState();
   }
   const cloudState = sanitizePluginState(value);
-  if (Object.keys(value).length > 0 && Object.keys(cloudState).length === 0) {
-    return loadPluginState();
-  }
   return withPluginStorageLock(async () => {
     const current =
       mode === 'overwrite'
@@ -183,9 +189,8 @@ export async function restorePluginState(
 
 /**
  * Read-modify-write the state map under the plugin-storage lock. A failed read
- * or write is logged and writes nothing.
+ * or write is logged, writes nothing and resolves false.
  */
-/** Locked read-modify-write of the state map; false when it was not written. */
 async function updatePluginState(
   label: string,
   context: Record<string, unknown>,
