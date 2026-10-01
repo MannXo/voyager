@@ -1,13 +1,15 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
 import type { PromptItem } from '@/core/types/sync';
 import {
   type PromptLibraryOp,
+  type PromptLibraryResult,
   createPromptLibraryOwner,
 } from '@/features/prompt/library/promptLibraryOwner';
 
 import {
+  PROMPT_LIBRARY_WATCHDOG_MS,
   createPromptLibraryState,
   parseLegacyPromptLibrary,
   readPromptLibrary,
@@ -26,14 +28,20 @@ const prompt = (id: string, text: string, extra: Partial<PromptItem> = {}): Prom
 
 /**
  * A Prompt Manager tab over an in-memory library and its owner, with a clock
- * that counts up from 100. `hold(later)` keeps the reply to the op sent
- * `later` ops from now from reaching the tab until released, `holdRead()` the
- * tab's next read of storage; `failNext()` makes the next write fail and
- * `lose(later)` a reply go missing after the write.
+ * that counts up from 100. Every write reaches the tab as a `storage.onChanged`
+ * value before the owner replies, as it normally does; `echoLater()` holds the
+ * next write's value back until released. `write` is another writer's change,
+ * which the tab hears of; `setStored` one it has not heard of yet.
+ * `hold(later)` keeps the reply to the op sent `later` ops from now from
+ * reaching the tab until released, `delay(later)` keeps the op itself from
+ * reaching the owner; `failNext()` makes the next write fail and `lose(later)`
+ * a reply go missing after the write.
  */
 async function tab(initial: unknown, legacy: string | null = null) {
   let stored: unknown = structuredClone(initial);
   let failWrite = false;
+  let echoGate: Promise<void> | null = null;
+  const echo = (value: unknown) => state.receive(structuredClone(value));
   const area = {
     get: async () => (stored === undefined ? {} : { [KEY]: structuredClone(stored) }),
     set: async (items: Record<string, unknown>) => {
@@ -42,11 +50,15 @@ async function tab(initial: unknown, legacy: string | null = null) {
         throw new Error('quota');
       }
       stored = structuredClone(items[KEY]);
+      const value = stored;
+      const gate = echoGate;
+      echoGate = null;
+      if (gate) void gate.then(() => echo(value));
+      else echo(value);
     },
   };
   const owner = createPromptLibraryOwner({ area, now: () => 500 });
   const gates = new Map<number, Promise<void>>();
-  let readGate: Promise<void> | null = null;
   let failRead = false;
   const lost = new Set<number>();
   const deliveries = new Map<number, Promise<void>>();
@@ -62,11 +74,7 @@ async function tab(initial: unknown, legacy: string | null = null) {
         failRead = false;
         throw new Error('Extension context invalidated.');
       }
-      const value = ((await area.get())[KEY] ?? []) as PromptItem[];
-      const gate = readGate;
-      readGate = null;
-      if (gate) await gate;
-      return value;
+      return ((await area.get())[KEY] ?? []) as PromptItem[];
     },
     apply: async (op) => {
       const index = sent.length;
@@ -86,6 +94,11 @@ async function tab(initial: unknown, legacy: string | null = null) {
     makeId: () => `new-${++id}`,
   });
   await state.load();
+  const gate = () => {
+    let release!: () => void;
+    const promise = new Promise<void>((resolve) => (release = resolve));
+    return { promise, release };
+  };
   return {
     state,
     sent,
@@ -93,9 +106,21 @@ async function tab(initial: unknown, legacy: string | null = null) {
     onWriteFailed,
     onReadFailed,
     stored: () => stored,
-    /** Another writer changes the library behind this tab's back. */
+    /** Another writer changes the library; the tab hears of it. */
+    write: (value: unknown) => {
+      stored = structuredClone(value);
+      echo(stored);
+    },
+    /** Another writer changes the library; the tab has not heard of it yet. */
     setStored: (value: unknown) => {
       stored = structuredClone(value);
+    },
+    /** The tab hears of the library as stored now. */
+    echoStored: () => echo(stored),
+    echoLater: () => {
+      const { promise, release } = gate();
+      echoGate = promise;
+      return release;
     },
     failNext: () => {
       failWrite = true;
@@ -105,19 +130,14 @@ async function tab(initial: unknown, legacy: string | null = null) {
       failRead = true;
     },
     hold: (later = 0) => {
-      let release!: () => void;
-      gates.set(sent.length + later, new Promise<void>((resolve) => (release = resolve)));
-      return release;
-    },
-    holdRead: () => {
-      let release!: () => void;
-      readGate = new Promise<void>((resolve) => (release = resolve));
+      const { promise, release } = gate();
+      gates.set(sent.length + later, promise);
       return release;
     },
     /** Holds the op sent `later` ops from now on its way to the owner. */
     delay: (later = 0) => {
-      let release!: () => void;
-      deliveries.set(sent.length + later, new Promise<void>((resolve) => (release = resolve)));
+      const { promise, release } = gate();
+      deliveries.set(sent.length + later, promise);
       return release;
     },
     /** The op sent `later` ops from now is written, but its reply is lost. */
@@ -128,6 +148,10 @@ async function tab(initial: unknown, legacy: string | null = null) {
 }
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('Prompt Manager library state', () => {
   it('adds a prompt ahead of the library, refusing text it already has', async () => {
@@ -145,11 +169,15 @@ describe('Prompt Manager library state', () => {
   });
 
   it('reports an add the owner refused because another tab took the text first', async () => {
-    const { state, stored, setStored } = await tab([prompt('a', 'Alpha')]);
+    const { state, stored, setStored, echoStored, sent } = await tab([prompt('a', 'Alpha')]);
     setStored([prompt('z', 'Beta'), prompt('a', 'Alpha')]);
 
     await expect(state.add({ name: 'B', text: 'beta', tags: [] })).resolves.toBe('duplicate');
+    expect(sent.map((op) => op.kind)).toEqual(['add']);
     expect(stored()).toEqual([prompt('z', 'Beta'), prompt('a', 'Alpha')]);
+    // The refused prompt is gone at once; the other tab's arrives with its change.
+    expect(state.items).toEqual([prompt('a', 'Alpha')]);
+    echoStored();
     expect(state.items).toEqual(stored());
   });
 
@@ -174,11 +202,15 @@ describe('Prompt Manager library state', () => {
   });
 
   it('reports an edit of a prompt another tab deleted meanwhile as missing', async () => {
-    const { state, stored, setStored } = await tab([prompt('a', 'Alpha'), prompt('b', 'Beta')]);
+    const { state, stored, setStored, echoStored } = await tab([
+      prompt('a', 'Alpha'),
+      prompt('b', 'Beta'),
+    ]);
     setStored([prompt('a', 'Alpha')]);
 
     await expect(state.edit('b', { name: 'B', text: 'Beta 2', tags: [] })).resolves.toBe('missing');
     expect(stored()).toEqual([prompt('a', 'Alpha')]);
+    echoStored();
     expect(state.items).toEqual(stored());
   });
 
@@ -214,12 +246,12 @@ describe('Prompt Manager library state', () => {
     expect(state.items).toEqual([prompt('z', 'From another tab')]);
   });
 
-  it('holds back echoes while its ops are in flight, then shows what the owner wrote', async () => {
+  it('keeps showing its unanswered ops over an older library from storage', async () => {
     const { state, stored, hold, onReconcile } = await tab([prompt('a', 'A'), prompt('b', 'B')]);
     const release = hold();
 
     state.reorder([state.items[1], state.items[0]]);
-    // An echo of the library from before the drop must not undo it.
+    // A value from before the drop must not undo it while the drop is unanswered.
     expect(state.receive([prompt('a', 'A'), prompt('b', 'B')])).toBe(false);
     expect(state.items.map((item) => item.id)).toEqual(['b', 'a']);
 
@@ -230,25 +262,22 @@ describe('Prompt Manager library state', () => {
     expect(onReconcile).not.toHaveBeenCalled();
   });
 
-  it("takes another writer's change that arrived while its op was in flight", async () => {
-    const { state, stored, setStored, hold, onReconcile } = await tab([prompt('a', 'A')]);
-    const release = hold();
+  it("shows another writer's change under its op before the owner has the op", async () => {
+    const { state, stored, write, delay } = await tab([prompt('a', 'A')]);
+    const deliver = delay();
 
     state.togglePin('a');
-    setStored([prompt('a', 'A'), prompt('t', 'Template')]);
-    state.receive([prompt('a', 'A'), prompt('t', 'Template')]);
-    release();
-    await flush();
+    write([prompt('a', 'A'), prompt('t', 'Template')]);
+    const expected = [prompt('a', 'A', { pinnedAt: 100, updatedAt: 100 }), prompt('t', 'Template')];
+    expect(state.items).toEqual(expected);
 
-    expect(stored()).toEqual([
-      prompt('a', 'A', { pinnedAt: 100, updatedAt: 100 }),
-      prompt('t', 'Template'),
-    ]);
+    deliver();
+    await flush();
+    expect(stored()).toEqual(expected);
     expect(state.items).toEqual(stored());
-    expect(onReconcile).toHaveBeenCalledWith('changed');
   });
 
-  it('rolls back to the stored library when a write fails, and keeps working', async () => {
+  it('rolls back when a write fails, says so, and keeps working', async () => {
     const { state, stored, failNext, onReconcile, onWriteFailed } = await tab([
       prompt('a', 'A'),
       prompt('b', 'B'),
@@ -259,7 +288,7 @@ describe('Prompt Manager library state', () => {
     expect(state.items.map((item) => item.id)).toEqual(['b', 'a']);
     await flush();
     expect(state.items).toEqual([prompt('a', 'A'), prompt('b', 'B')]);
-    expect(onReconcile).toHaveBeenCalledWith('failed');
+    expect(onReconcile).toHaveBeenCalledTimes(1);
     expect(onWriteFailed).toHaveBeenCalledTimes(1);
 
     failNext();
@@ -276,6 +305,22 @@ describe('Prompt Manager library state', () => {
     expect(stored()).toEqual([prompt('b', 'B')]);
     expect(state.items).toEqual(stored());
     expect(onWriteFailed).toHaveBeenCalledTimes(3);
+  });
+
+  it('rolls back only the failed op, keeping a later one still unanswered', async () => {
+    const { state, stored, failNext, hold } = await tab([prompt('a', 'A'), prompt('b', 'B')]);
+
+    failNext();
+    state.togglePin('a');
+    const releaseDelete = hold(1);
+    state.remove('b');
+    await flush();
+    expect(state.items).toEqual([prompt('a', 'A')]);
+
+    releaseDelete();
+    await flush();
+    expect(stored()).toEqual([prompt('a', 'A')]);
+    expect(state.items).toEqual(stored());
   });
 
   it("sends a tab's ops one at a time, so a late message cannot reorder them", async () => {
@@ -310,7 +355,7 @@ describe('Prompt Manager library state', () => {
 
     await expect(state.edit('a', { name: 'A', text: 'A 2', tags: [] })).resolves.toBe('failed');
     expect(state.items).toEqual([prompt('a', 'A'), prompt('b', 'B')]);
-    expect(onReconcile).toHaveBeenCalledWith('failed');
+    expect(onReconcile).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the newest drop when overlapping drops settle', async () => {
@@ -324,8 +369,9 @@ describe('Prompt Manager library state', () => {
     state.reorder([state.items[2], state.items[0], state.items[1]]);
     state.reorder([state.items[1], state.items[0], state.items[2]]);
     expect(state.items.map((item) => item.id)).toEqual(['a', 'c', 'b']);
-    // The second drop's reply comes back first; the first drop's reply is older.
     await flush();
+    // The first drop is written and its value is in; the second still shows.
+    expect(state.items.map((item) => item.id)).toEqual(['a', 'c', 'b']);
     releaseFirst();
     await flush();
 
@@ -340,7 +386,6 @@ describe('Prompt Manager library state', () => {
     state.togglePin('b');
     state.remove('a');
     await flush();
-    // The pin's reply is in, from before the delete: the delete still shows.
     expect(state.items.map((item) => item.id)).toEqual(['b']);
 
     releaseSecond();
@@ -349,24 +394,57 @@ describe('Prompt Manager library state', () => {
     expect(state.items).toEqual(stored());
   });
 
-  it("takes another writer's change made after its op was written, before the reply", async () => {
-    const { state, stored, setStored, hold, onReconcile } = await tab([prompt('a', 'A')]);
+  it('shows the newest library when a reply comes after another writer changed it', async () => {
+    // The owner writes the pin, its reply is slow, another tab writes on top,
+    // then the reply comes; a read now would fail. The tab never reads again.
+    const { state, stored, write, hold, failNextRead, onReadFailed, onReconcile } = await tab([
+      prompt('a', 'A'),
+    ]);
     const release = hold();
 
     state.togglePin('a');
     await flush();
     const later = [...(stored() as PromptItem[]), prompt('d', 'From Drive')];
-    setStored(later);
-    expect(state.receive(later)).toBe(false);
+    write(later);
+    expect(state.items).toEqual(later);
+    failNextRead();
     release();
     await flush();
 
     expect(state.items).toEqual(later);
-    expect(onReconcile).toHaveBeenCalledWith('changed');
+    expect(stored()).toEqual(later);
+    expect(onReadFailed).not.toHaveBeenCalled();
+    expect(onReconcile).not.toHaveBeenCalled();
+  });
+
+  it('does not show a reply older than the library storage reported since', async () => {
+    const { state, write, hold } = await tab([prompt('a', 'A'), prompt('b', 'B')]);
+    const release = hold();
+
+    state.remove('b');
+    await flush();
+    // Another tab deleted A after the owner wrote this tab's delete.
+    write([]);
+    release();
+    await flush();
+
+    expect(state.items).toEqual([]);
+  });
+
+  it('shows its change once the value arrives when the reply came first', async () => {
+    const { state, stored, echoLater } = await tab([prompt('a', 'A'), prompt('b', 'B')]);
+    const deliverEcho = echoLater();
+
+    await expect(state.remove('a')).resolves.toBe(true);
+    deliverEcho();
+    await flush();
+
+    expect(stored()).toEqual([prompt('b', 'B')]);
+    expect(state.items).toEqual(stored());
   });
 
   it('shows a change whose reply was lost though it was written', async () => {
-    const { state, stored, lose } = await tab([prompt('a', 'A'), prompt('b', 'B')]);
+    const { state, stored, lose, onWriteFailed } = await tab([prompt('a', 'A'), prompt('b', 'B')]);
     // The worker restarted after writing the delete, so its reply never came.
     lose(1);
 
@@ -375,61 +453,75 @@ describe('Prompt Manager library state', () => {
     await flush();
     expect(stored()).toEqual([prompt('a', 'A', { pinnedAt: 100, updatedAt: 100 })]);
     expect(state.items).toEqual(stored());
-  });
-
-  it('does not let a re-read that started before a new change overwrite it', async () => {
-    const { state, stored, failNext, hold, holdRead } = await tab([
-      prompt('a', 'A'),
-      prompt('b', 'B'),
-    ]);
-
-    failNext();
-    const releaseRead = holdRead();
-    state.reorder([state.items[1], state.items[0]]);
-    await flush();
-    // The failed drop is re-reading storage; meanwhile the user deletes a prompt.
-    const releaseDelete = hold();
-    state.remove('a');
-    releaseRead();
-    await flush();
-    expect(state.items.map((item) => item.id)).toEqual(['b']);
-
-    releaseDelete();
-    await flush();
-    expect(stored()).toEqual([prompt('b', 'B')]);
-    expect(state.items).toEqual(stored());
-  });
-
-  it('does not let a re-read older than a library received meanwhile replace it', async () => {
-    const { state, failNext, holdRead } = await tab([prompt('a', 'A'), prompt('b', 'B')]);
-
-    failNext();
-    // The re-read after the failed drop fetches the library, then is slow to return.
-    const releaseRead = holdRead();
-    state.reorder([state.items[1], state.items[0]]);
-    await flush();
-    const fromAnotherTab = [prompt('a', 'A'), prompt('b', 'B'), prompt('t', 'Template')];
-    expect(state.receive(fromAnotherTab)).toBe(true);
-    releaseRead();
-    await flush();
-
-    expect(state.items).toEqual(fromAnotherTab);
-  });
-
-  it('shows the last library it knew, not an empty one, when a re-read fails', async () => {
-    const { state, failNext, failNextRead, onReadFailed, onWriteFailed } = await tab([
-      prompt('a', 'A'),
-      prompt('b', 'B'),
-    ]);
-
-    failNext();
-    failNextRead();
-    state.reorder([state.items[1], state.items[0]]);
-    await flush();
-
-    expect(state.items).toEqual([prompt('a', 'A'), prompt('b', 'B')]);
+    // The panel cannot tell a lost reply from a failed write.
     expect(onWriteFailed).toHaveBeenCalledTimes(1);
-    expect(onReadFailed).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks the library unavailable while a reply is overdue, refusing edits until it comes', async () => {
+    vi.useFakeTimers();
+    const replies: Array<(result: PromptLibraryResult) => void> = [];
+    const sent: PromptLibraryOp[] = [];
+    const onUnavailable = vi.fn();
+    const state = createPromptLibraryState({
+      read: async () => [prompt('a', 'A'), prompt('b', 'B')],
+      apply: (op) => {
+        sent.push(op);
+        return new Promise((resolve) => replies.push(resolve));
+      },
+      onUnavailable,
+      now: () => 100,
+    });
+    await state.load();
+
+    state.togglePin('a');
+    state.remove('b');
+    await vi.advanceTimersByTimeAsync(PROMPT_LIBRARY_WATCHDOG_MS - 1);
+    expect(state.unavailable).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(state.unavailable).toBe(true);
+    expect(onUnavailable).toHaveBeenLastCalledWith(true);
+
+    // New edits are refused and said so; the queued delete still waits its turn.
+    await expect(state.add({ name: 'C', text: 'C', tags: [] })).resolves.toBe('unavailable');
+    await expect(state.edit('a', { name: 'A', text: 'A 2', tags: [] })).resolves.toBe(
+      'unavailable',
+    );
+    await expect(state.remove('a')).resolves.toBe(false);
+    state.reorder([...state.items].reverse());
+    state.togglePin('a');
+    expect(onUnavailable).toHaveBeenCalledTimes(6);
+    expect(sent.map((op) => op.kind)).toEqual(['update']);
+    expect(state.items).toEqual([prompt('a', 'A', { pinnedAt: 100, updatedAt: 100 })]);
+
+    const result = { added: 0, skipped: 0, total: 0, nameConflicts: 0, items: [] };
+    replies[0](result);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(state.unavailable).toBe(false);
+    expect(onUnavailable).toHaveBeenLastCalledWith(false);
+    expect(sent.map((op) => op.kind)).toEqual(['update', 'delete']);
+
+    replies[1](result);
+    await vi.advanceTimersByTimeAsync(0);
+    state.add({ name: 'C', text: 'C', tags: [] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent.map((op) => op.kind)).toEqual(['update', 'delete', 'add']);
+  });
+
+  it('loads the stored library when the seed goes unanswered, marking it unavailable', async () => {
+    vi.useFakeTimers();
+    const onUnavailable = vi.fn();
+    const state = createPromptLibraryState({
+      read: async () => [prompt('a', 'A')],
+      apply: () => new Promise<never>(() => {}),
+      readLegacy: () => '[{"id":"legacy","text":"Old"}]',
+      onUnavailable,
+    });
+    const loading = state.load();
+    await vi.advanceTimersByTimeAsync(PROMPT_LIBRARY_WATCHDOG_MS);
+
+    await expect(loading).resolves.toEqual([prompt('a', 'A')]);
+    expect(state.unavailable).toBe(true);
+    expect(onUnavailable).toHaveBeenCalledWith(true);
   });
 
   it('keeps a library received while it was loading', async () => {

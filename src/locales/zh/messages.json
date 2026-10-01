@@ -222,6 +222,10 @@
     "message": "该 prompt 已在别处删除。再次保存即可另存为新的 prompt。",
     "description": "Prompt Manager hint: the prompt being edited was deleted in another tab; saving again adds the draft as a new prompt"
   },
+  "pm_library_unavailable": {
+    "message": "Prompt 暂无响应，上一次更改仍在保存中，请稍后再试。",
+    "description": "Prompt Manager notice: an earlier change is still waiting for a reply, so new edits are refused until it arrives"
+  },
   "pm_edit": {
     "message": "编辑",
     "description": "编辑 prompt"

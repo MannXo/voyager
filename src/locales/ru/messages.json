@@ -222,6 +222,10 @@
     "message": "Этот промпт удалён в другом месте. Сохраните ещё раз, чтобы оставить его как новый.",
     "description": "Prompt Manager hint: the prompt being edited was deleted in another tab; saving again adds the draft as a new prompt"
   },
+  "pm_library_unavailable": {
+    "message": "Промпты не отвечают. Последнее изменение ещё сохраняется — попробуйте ещё раз чуть позже.",
+    "description": "Prompt Manager notice: an earlier change is still waiting for a reply, so new edits are refused until it arrives"
+  },
   "pm_edit": {
     "message": "Редактировать",
     "description": "Edit prompt"

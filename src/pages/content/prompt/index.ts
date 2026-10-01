@@ -996,11 +996,15 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
       read: () => readPromptLibrary(browser.storage.local),
       apply: createRuntimePromptLibraryClient().apply,
       readLegacy: () => localStorage.getItem(STORAGE_KEYS.items),
-      onReconcile: (reason) => showLibrary(reason === 'changed'),
+      onReconcile: () => showLibrary(false),
       onWriteFailed: () => setNotice(i18n.t('pm_save_failed') || "Couldn't save", 'err'),
+      onUnavailable: (down) => down && setNotice(i18n.t('pm_library_unavailable'), 'err'),
       onReadFailed: (error) =>
         isExtensionContextInvalidatedError(error) || pmLogger.warn('Prompt read failed', { error }),
     });
+    let libraryShown = false; // Subscribed before the first read so a change made during it is kept.
+    const onLibraryChange = library.listener(() => libraryShown && showLibrary(true));
+    browser.storage.onChanged.addListener(onLibraryChange);
     await library.load();
     let open = false;
     // Restore the tag filter saved in a previous session (#729), reconciled
@@ -1732,9 +1736,7 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
         cancelLabel: i18n.t('pm_cancel') || 'Cancel',
         onConfirm: () => {
           // Shown removed at once; "Deleted" waits for the owner, a failure says so instead.
-          void library.remove(it.id).then((removed) => {
-            if (removed) setNotice(i18n.t('pm_deleted') || 'Deleted', 'ok');
-          });
+          void library.remove(it.id).then((ok) => ok && setNotice(i18n.t('pm_deleted'), 'ok'));
           renderTags();
           renderList();
         },
@@ -2380,10 +2382,6 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
           }
         })();
       }
-      // Another writer changed the library; the panel's own echoes are dropped by `receive`.
-      if (area === 'local' && changes?.gvPromptItems) {
-        if (library.receive(changes.gvPromptItems.newValue)) showLibrary(true);
-      }
       if (
         area === 'local' &&
         (changes[StorageKeys.TIMELINE_STARRED_MESSAGES] ||
@@ -2400,6 +2398,7 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
       if (changedElsewhere) setNotice(i18n.t('syncSuccess') || 'Synced', 'ok');
     }
 
+    libraryShown = true;
     try {
       browser.storage.onChanged.addListener(storageChangeHandler);
     } catch {}
@@ -2496,7 +2495,7 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
         setInlineHint(i18n.t('pm_duplicate') || 'Duplicate prompt', 'err');
         return;
       }
-      if (outcome === 'failed') return; // Not saved: keep the form open with what was typed.
+      if (outcome === 'failed' || outcome === 'unavailable') return; // Keep what was typed.
       editingId = null;
       if (outcome === 'missing') {
         // Deleted elsewhere: keep the draft; saving again adds it as a new prompt.
@@ -2564,6 +2563,7 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
           tagsWrap.removeEventListener('scroll', syncTagScrollHint);
 
           chrome.storage?.onChanged?.removeListener(storageChangeHandler);
+          browser.storage.onChanged.removeListener(onLibraryChange);
 
           // Tear down the fast-tooltip singleton: cancel pending timer, remove
           // the DOM element, and detach the capture-phase scroll listeners

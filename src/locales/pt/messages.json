@@ -222,6 +222,10 @@
     "message": "Este prompt foi excluído em outro lugar. Salve novamente para mantê-lo como um novo prompt.",
     "description": "Prompt Manager hint: the prompt being edited was deleted in another tab; saving again adds the draft as a new prompt"
   },
+  "pm_library_unavailable": {
+    "message": "Os prompts não estão respondendo. Sua última alteração ainda está sendo salva; tente novamente em instantes.",
+    "description": "Prompt Manager notice: an earlier change is still waiting for a reply, so new edits are refused until it arrives"
+  },
   "pm_edit": {
     "message": "Editar",
     "description": "Edit prompt"

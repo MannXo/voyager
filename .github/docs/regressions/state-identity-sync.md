@@ -349,21 +349,25 @@ off a ChatGPT tab`).
   (`src/pages/content/prompt/promptLibraryState.ts`), the template panel, the popup import and both
   prompts-only Drive merges are routed; Prompt Manager's legacy localStorage library is a `seed`
   op that only fills an empty library. The stored format is unchanged.
-  Prompt Manager shows each change at once by applying the same op to its copy, then adopts the
-  owner's list. While its ops are in flight it holds storage echoes back (they can be older than
-  what it shows); when the last op settles it re-reads storage if a write failed or another
-  writer's change came in meanwhile, and drops that read if the user acted again during it.
-  A failed change is rolled back with the `pm_save_failed` notice; "Deleted" waits for the
-  owner's reply. A tab sends its next op only after the previous reply, so the owner applies one
-  tab's ops in the order the user made them without trusting the transport's delivery order.
-  A read started before a library value arrives from `storage.onChanged` is stale and is dropped.
-  A failed read is not an empty library: `readPromptLibrary` returns `[]` only when nothing is
-  stored, and the panel keeps the last library it knew when a read fails. An edit whose prompt
-  another tab deleted keeps its draft open and saves again as a new prompt.
+  Prompt Manager shows a base plus pending ops: the base is the newest library seen from
+  `storage.onChanged` (events arrive in write order), and its unanswered ops are reapplied on top
+  with the owner's own `applyPromptLibraryOp`. A reply only removes its op; the reply's list is
+  never shown, since it can be older than the base. A failed op is removed too, which is the
+  rollback, with the `pm_save_failed` notice; "Deleted" waits for the owner's reply. Earlier
+  attempts that held echoes back and re-read storage after a settle kept losing a change under
+  some reply/echo/read interleaving; do not reintroduce them. The panel subscribes before its
+  first read and drops that read if a change arrived during it, and it never reads again, so a
+  failing read cannot blank the list. `readPromptLibrary` returns `[]` only when nothing is
+  stored. A tab sends its next op only after the previous reply, so the owner applies one tab's
+  ops in the order the user made them without trusting the transport's delivery order. A reply
+  overdue by 15 s marks the library unavailable (`pm_library_unavailable`): new edits are
+  refused, queued ops stay queued and are never sent ahead of it, and it recovers when the reply
+  comes. An edit whose prompt another tab deleted keeps its draft open and saves again as a new
+  prompt.
   The queue lives in the service worker's memory. If the worker restarts, queued ops are dropped,
-  and an op that was written but whose reply was lost reads as failed in the tab, which then
-  re-reads storage. There is no exactly-once guarantee: do not retry an op on failure without
-  checking the stored library first.
+  and an op that was written but whose reply was lost reads as failed in the tab, while the
+  echo still shows the write. There is no exactly-once guarantee: do not retry an op on failure
+  without checking the stored library first.
   These whole-key writers stay on purpose; do not route them through the owner without a plan
   for what replaces their atomicity: the cloud restore in
   `src/pages/popup/components/CloudSyncSettings.tsx`, the folder Drive merge in
@@ -375,9 +379,10 @@ off a ChatGPT tab`).
 - **Guard:** `src/features/prompt/library/__tests__/promptLibraryOwner.test.ts`,
   `src/pages/content/prompt/__tests__/promptLibraryInterleaving.test.ts` (`keeps a Prompt Manager
 edit and a template saved in another tab`, `keeps edits that two Prompt Manager tabs make to
-different prompts`), `src/pages/content/prompt/__tests__/promptLibraryState.test.ts` (`holds back
-echoes while its ops are in flight, then shows what the owner wrote`, `sends a tab's ops one at a
-time, so a late message cannot reorder them`),
+different prompts`), `src/pages/content/prompt/__tests__/promptLibraryState.test.ts` (`shows the
+newest library when a reply comes after another writer changed it`, `sends a tab's ops one at a
+time, so a late message cannot reorder them`, `marks the library unavailable while a reply is
+overdue, refusing edits until it comes`),
   `src/pages/content/prompt/__tests__/promptManagerWriteNotices.test.ts`,
   `src/features/researchPack/services/__tests__/templates.test.ts` (`keeps both templates when two
 tabs save at the same moment`), `src/pages/background/__tests__/promptDriveMerge.test.ts` and

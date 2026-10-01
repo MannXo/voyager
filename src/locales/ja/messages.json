@@ -222,6 +222,10 @@
     "message": "このプロンプトは別の場所で削除されました。もう一度保存すると、新しいプロンプトとして残せます。",
     "description": "Prompt Manager hint: the prompt being edited was deleted in another tab; saving again adds the draft as a new prompt"
   },
+  "pm_library_unavailable": {
+    "message": "プロンプトが応答していません。直前の変更をまだ保存中です。しばらくしてからもう一度お試しください。",
+    "description": "Prompt Manager notice: an earlier change is still waiting for a reply, so new edits are refused until it arrives"
+  },
   "pm_edit": {
     "message": "編集",
     "description": "Edit prompt"

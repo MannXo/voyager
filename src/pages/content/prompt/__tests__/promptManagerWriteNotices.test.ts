@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import {
+  type PromptLibraryOp,
+  createPromptLibraryOwner,
+} from '@/features/prompt/library/promptLibraryOwner';
 
 import { startPromptManager } from '../index';
 
@@ -38,6 +42,60 @@ function storageGet(values: Record<string, unknown>): typeof chrome.storage.sync
     return Promise.resolve(result);
   };
   return get as typeof chrome.storage.sync.get;
+}
+
+/** Tells every `storage.onChanged` listener Prompt Manager registered about a library value. */
+function emitLibrary(value: unknown): void {
+  for (const [listener] of vi.mocked(chrome.storage.onChanged.addListener).mock.calls) {
+    (listener as (changes: object, area: string) => void)(
+      { [StorageKeys.PROMPT_ITEMS]: { newValue: structuredClone(value) } },
+      'local',
+    );
+  }
+}
+
+/**
+ * Backs the library with storage and a real owner: each write reaches the page
+ * as a change before the owner replies. `beforeApply` runs as an op arrives;
+ * `reply` stands between the write and its reply.
+ */
+function useLibrary(
+  options: {
+    beforeApply?: (op: PromptLibraryOp) => void;
+    reply?: () => Promise<void>;
+  } = {},
+) {
+  const disk: Record<string, unknown> = { [StorageKeys.PROMPT_ITEMS]: prompts };
+  vi.mocked(chrome.storage.local.get).mockImplementation(storageGet(disk));
+  const owner = createPromptLibraryOwner({
+    area: {
+      get: async () => ({ [StorageKeys.PROMPT_ITEMS]: structuredClone(disk.gvPromptItems) }),
+      set: async (items) => {
+        disk.gvPromptItems = structuredClone(items[StorageKeys.PROMPT_ITEMS]);
+        emitLibrary(disk.gvPromptItems);
+      },
+    },
+  });
+  const ops: PromptLibraryOp[] = [];
+  vi.mocked(chrome.runtime.sendMessage).mockImplementation((async (message: {
+    type?: string;
+    op?: PromptLibraryOp;
+  }) => {
+    if (message.type !== 'gv.promptLibrary.apply' || !message.op) return undefined;
+    ops.push(message.op);
+    options.beforeApply?.(message.op);
+    const result = await owner.apply(message.op);
+    await options.reply?.();
+    return { ok: true, result };
+  }) as never);
+  return {
+    ops,
+    /** Another tab writes the library. */
+    write: (value: unknown) => {
+      disk.gvPromptItems = structuredClone(value);
+      emitLibrary(value);
+    },
+  };
 }
 
 async function openPanel(): Promise<void> {
@@ -90,10 +148,8 @@ afterEach(() => {
 
 describe('Prompt Manager write notices', () => {
   it('says "Deleted" only once the owner has removed the prompt', async () => {
-    let reply!: (response: unknown) => void;
-    vi.mocked(chrome.runtime.sendMessage).mockImplementation(
-      () => new Promise((resolve) => (reply = resolve)) as never,
-    );
+    let reply!: () => void;
+    useLibrary({ reply: () => new Promise((resolve) => (reply = resolve)) });
     await openPanel();
     expect(rowIds()).toEqual(['Alpha', 'Beta']);
 
@@ -101,10 +157,7 @@ describe('Prompt Manager write notices', () => {
     expect(rowIds()).toEqual(['Beta']);
     expect(notices).toEqual([]);
 
-    reply({
-      ok: true,
-      result: { added: 0, skipped: 0, total: 1, nameConflicts: 0, items: [prompts[1]] },
-    });
+    reply();
     await vi.advanceTimersByTimeAsync(1);
     expect(notices).toEqual(['Deleted']);
     expect(rowIds()).toEqual(['Beta']);
@@ -140,22 +193,11 @@ describe('Prompt Manager write notices', () => {
   });
 
   it('keeps an edit whose prompt another tab deleted, and saves it as a new prompt', async () => {
-    const ops: Array<{ kind: string }> = [];
-    vi.mocked(chrome.runtime.sendMessage).mockImplementation(((message: {
-      type?: string;
-      op?: { kind: string; items?: unknown[] };
-    }) => {
-      if (message.type !== 'gv.promptLibrary.apply' || !message.op) return Promise.resolve();
-      ops.push(message.op);
+    const library = useLibrary({
       // Another tab deleted Alpha just before this edit arrived.
-      const items =
-        message.op.kind === 'add' ? [...(message.op.items ?? []), prompts[1]] : [prompts[1]];
-      const added = message.op.kind === 'add' ? 1 : 0;
-      return Promise.resolve({
-        ok: true,
-        result: { added, skipped: 0, total: items.length, nameConflicts: 0, items },
-      });
-    }) as never);
+      beforeApply: (op) => op.kind === 'update' && library.write([prompts[1]]),
+    });
+    const { ops } = library;
     await openPanel();
 
     document.querySelector<HTMLButtonElement>('.gv-pm-item .gv-pm-edit')!.click();
@@ -184,30 +226,76 @@ describe('Prompt Manager write notices', () => {
     expect(rowIds()).toEqual(['Alpha', 'Beta']);
   });
 
-  it('keeps the library on screen when it cannot be read back after a failed change', async () => {
-    let failReads = false;
+  it("shows another tab's change that lands while a delete awaits its reply", async () => {
+    let reply!: () => void;
+    const gamma = { id: 'g', name: 'Gamma', text: 'Gamma body', tags: [], createdAt: 3 };
+    const { write } = useLibrary({ reply: () => new Promise((resolve) => (reply = resolve)) });
+    await openPanel();
+
+    await deleteFirstPrompt();
+    write([gamma, prompts[1]]);
+    expect(rowIds()).toEqual(['Gamma', 'Beta']);
+    // Nothing is read back: a read failing now cannot blank the list.
+    vi.mocked(chrome.storage.local.get).mockRejectedValue(
+      new Error('Extension context invalidated.'),
+    );
+    reply();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(rowIds()).toEqual(['Gamma', 'Beta']);
+    expect(notices).toEqual(['✓ Synced successfully', 'Deleted']);
+  });
+
+  it('keeps a change another tab made while the library was first being read', async () => {
+    let finishRead!: () => void;
     const read = storageGet({ [StorageKeys.PROMPT_ITEMS]: prompts });
     vi.mocked(chrome.storage.local.get).mockImplementation(((
       keys: string | string[] | Record<string, unknown> | null,
       callback?: (items: Record<string, unknown>) => void,
     ) => {
-      const asksLibrary =
-        keys === StorageKeys.PROMPT_ITEMS ||
-        (Array.isArray(keys) && keys.includes(StorageKeys.PROMPT_ITEMS));
-      if (failReads && asksLibrary) {
-        return Promise.reject(new Error('Extension context invalidated.'));
-      }
-      return (read as (k: typeof keys, cb?: typeof callback) => Promise<unknown>)(keys, callback);
+      const value = (read as (k: typeof keys, cb?: typeof callback) => Promise<unknown>)(
+        keys,
+        callback,
+      );
+      if (keys !== StorageKeys.PROMPT_ITEMS) return value;
+      // The read has its value; another tab's change lands before it returns.
+      emitLibrary([prompts[1]]);
+      return new Promise((resolve) => (finishRead = () => resolve(value)));
     }) as never);
-    vi.mocked(chrome.runtime.sendMessage).mockRejectedValue(
-      new Error('Extension context invalidated.'),
-    );
+
+    const starting = startPromptManager();
+    await vi.advanceTimersByTimeAsync(1);
+    finishRead();
+    manager = await starting;
+    document.querySelector<HTMLButtonElement>('#gv-pm-trigger')!.click();
+
+    expect(rowIds()).toEqual(['Beta']);
+  });
+
+  it('says the library is not responding and refuses edits while a reply is overdue', async () => {
+    const { ops } = useLibrary({ reply: () => new Promise(() => {}) });
     await openPanel();
-    failReads = true;
 
     await deleteFirstPrompt();
+    await vi.advanceTimersByTimeAsync(15_000);
+    const unavailable =
+      'Prompts are not responding. Your last change is still being saved; try again shortly.';
+    expect(notices).toEqual([unavailable]);
 
-    expect(rowIds()).toEqual(['Alpha', 'Beta']);
-    expect(notices).toEqual(["Couldn't save your change. It was undone."]);
+    await deleteFirstPrompt();
+    expect(rowIds()).toEqual(['Beta']);
+    expect(ops.map((op) => op.kind)).toEqual(['delete']);
+    expect(notices).toEqual([unavailable, unavailable]);
+
+    document.querySelector<HTMLButtonElement>('.gv-pm-add')!.click();
+    const form = document.querySelector<HTMLFormElement>('.gv-pm-add-form')!;
+    form.querySelector<HTMLInputElement>('.gv-pm-input-name')!.value = 'Gamma';
+    form.querySelector<HTMLTextAreaElement>('.gv-pm-input-text')!.value = 'Gamma body';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(ops.map((op) => op.kind)).toEqual(['delete']);
+    expect(form.classList.contains('gv-hidden')).toBe(false);
+    expect(form.querySelector<HTMLTextAreaElement>('.gv-pm-input-text')!.value).toBe('Gamma body');
   });
 });

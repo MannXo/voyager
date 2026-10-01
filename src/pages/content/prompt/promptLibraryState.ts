@@ -5,17 +5,23 @@
  *
  * Each change is sent as an op to the background owner, which applies it to
  * the library as stored at that moment, so an edit in another tab, a template
- * save, an import or a Drive merge is never written over. The panel shows the
- * change at once by applying the same op to its own copy, then adopts the list
- * the owner wrote. While ops are in flight, storage echoes are held back: they
- * may be older than the panel's copy. When the last op settles, the panel takes
- * the owner's list, or re-reads storage if a write failed or another writer's
- * change arrived meanwhile.
+ * save, an import or a Drive merge is never written over.
+ *
+ * The panel shows `base` with its pending ops applied on top:
+ * - `base` is the newest library seen in storage. `storage.onChanged` reports
+ *   writes in the order they happened, so its last value is the newest; the
+ *   first read only fills `base` if no change has arrived since it started.
+ * - `pending` holds this tab's ops, in the order sent, until their replies
+ *   come. A failed op just leaves, which is the rollback. The reply's list is
+ *   never shown: it can be older than `base`. Storage's echo shows the write.
+ * Every change to either recomputes the shown library. Ops are idempotent, so
+ * reapplying one that `base` already holds changes nothing.
  *
  * Ops leave one at a time, each after the previous one's reply, so the owner
  * applies a tab's ops in the order the user made them even if the transport
- * would deliver two messages out of order. The panel is already showing them,
- * so the wait is not visible.
+ * would deliver two messages out of order. A reply that does not come within
+ * `watchdogMs` marks the library unavailable: new edits are refused until it
+ * comes, and nothing queued behind it is sent early.
  */
 import type { PromptItem } from '@/core/types/sync';
 import {
@@ -33,9 +39,15 @@ export interface PromptDraft {
   tags: string[];
 }
 
-/** `failed`: the library was not changed and the panel shows it as stored. */
-export type PromptAddOutcome = 'added' | 'duplicate' | 'failed';
-export type PromptEditOutcome = 'saved' | 'duplicate' | 'missing' | 'failed';
+/**
+ * `failed`: not saved, and the panel shows the library without it.
+ * `unavailable`: refused while an earlier change is still unanswered.
+ */
+export type PromptAddOutcome = 'added' | 'duplicate' | 'failed' | 'unavailable';
+export type PromptEditOutcome = 'saved' | 'duplicate' | 'missing' | 'failed' | 'unavailable';
+
+/** How long an op's reply may take before the library counts as unavailable. */
+export const PROMPT_LIBRARY_WATCHDOG_MS = 15_000;
 
 export interface PromptLibraryStateDeps {
   /**
@@ -47,41 +59,50 @@ export interface PromptLibraryStateDeps {
   apply: (op: PromptLibraryOp) => Promise<PromptLibraryResult>;
   /** The library this page once kept in localStorage, as stored there. */
   readLegacy?: () => string | null;
-  /**
-   * The panel's copy changed after the fact: `changed` when another writer's
-   * change came in, `failed` when a write failed and the stored library is shown.
-   */
-  onReconcile?: (reason: 'changed' | 'failed') => void;
-  /** One or more changes were not saved and the panel was rolled back; called once per settle. */
+  /** The shown library changed when a change was answered or rolled back. */
+  onReconcile?: () => void;
+  /** A change was not saved and was rolled back. */
   onWriteFailed?: () => void;
-  /** Reading the library failed; the panel keeps the last library it knew. */
+  /** Reading the library failed; the panel keeps the library it has. */
   onReadFailed?: (error: unknown) => void;
+  /** `true` when a reply is overdue or an edit was refused for it; `false` once it came. */
+  onUnavailable?: (unavailable: boolean) => void;
   now?: () => number;
   makeId?: () => string;
+  watchdogMs?: number;
 }
 
 export interface PromptLibraryState {
   readonly items: PromptItem[];
+  /** True while a sent op's reply is overdue; edits are refused meanwhile. */
+  readonly unavailable: boolean;
   /**
    * Reads the library, first copying in a legacy localStorage one through the
-   * owner, which stores it only if no library is stored yet.
+   * owner, which stores it only if no library is stored yet. Subscribe to
+   * `storage.onChanged` before calling it.
    */
   load(): Promise<PromptItem[]>;
   /** Adds a prompt ahead of the library unless its text is already there. */
   add(draft: PromptDraft): Promise<PromptAddOutcome>;
   /** Changes a prompt in place unless another prompt has the same text. */
   edit(id: string, draft: PromptDraft): Promise<PromptEditOutcome>;
-  /** Resolves true once the owner has removed it, false if the delete failed. */
+  /** Resolves true once the owner has removed it, false if the delete failed or was refused. */
   remove(id: string): Promise<boolean>;
   togglePin(id: string): void;
   /** Takes the order a drag or key move produced. */
   reorder(next: PromptItem[]): void;
   /**
-   * A `storage.onChanged` value for the library. Returns true when it differs
-   * from the panel's copy and was adopted; the panel's own writes echo back
-   * equal and are ignored.
+   * A `storage.onChanged` value for the library. Returns true when the shown
+   * library changed; the panel's own writes echo back unchanged.
    */
   receive(newValue: unknown): boolean;
+  /**
+   * A `storage.onChanged` listener that passes library changes to `receive`
+   * and calls `onShownChange` when the shown library changed.
+   */
+  listener(
+    onShownChange: () => void,
+  ): (changes: Record<string, { newValue?: unknown }>, area: string) => void;
 }
 
 /** How Prompt Manager tells two prompt bodies apart: trimmed, ignoring case. */
@@ -133,98 +154,119 @@ export function parseLegacyPromptLibrary(raw: string | null): unknown[] | null {
 export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLibraryState {
   const now = deps.now ?? Date.now;
   const makeId = deps.makeId ?? promptId;
-  let items: PromptItem[] = [];
+  const watchdogMs = deps.watchdogMs ?? PROMPT_LIBRARY_WATCHDOG_MS;
 
-  let issued = 0;
-  let pending = 0;
-  /** The owner's list from the newest op that succeeded since the last settle. */
-  let newest: { seq: number; items: PromptItem[] } | null = null;
-  let failed = false;
-  /** The reply to the last op sent; the next op leaves after it. */
-  let lastReply: Promise<unknown> = Promise.resolve();
-  /** The last storage echo held back while ops were in flight. */
-  let heldEcho: unknown[] | null = null;
-  /** Counts library values received from storage; a read started before one is stale. */
+  /** The newest library seen in storage. */
+  let base: PromptItem[] = [];
+  /** This tab's unanswered ops, in the order sent. */
+  let pending: PromptLibraryOp[] = [];
+  /** Counts storage values received; a read that started before one is stale. */
   let received = 0;
-  /** The last library known to be stored, kept for when a read fails. */
-  let lastKnown: PromptItem[] = [];
+  let items: PromptItem[] = [];
+  /** The reply to the last request sent; the next one leaves after it. */
+  let lastReply: Promise<unknown> = Promise.resolve();
+  let unavailable = false;
 
-  /** The stored library, or null when it could not be read or a newer one came in meanwhile. */
-  const readFresh = async (): Promise<PromptItem[] | null> => {
-    const generation = received;
-    try {
-      const stored = await deps.read();
-      return received === generation ? stored : null;
-    } catch (error) {
-      deps.onReadFailed?.(error);
-      return null;
-    }
-  };
-
-  const adopt = (next: PromptItem[], reason: 'changed' | 'failed'): void => {
-    if (sameList(next, items)) return;
+  /** Recomputes the shown library; true when it changed. */
+  const derive = (): boolean => {
+    const next = pending.reduce<unknown[]>(
+      // Every timestamp travels in the op; the time argument only serves imports.
+      (list, op) => applyPromptLibraryOp(list, op, Date.now()).items ?? list,
+      base,
+    ) as PromptItem[];
+    if (sameList(next, items)) return false;
     items = next;
-    deps.onReconcile?.(reason);
+    return true;
   };
 
-  const settle = async (): Promise<void> => {
-    const epoch = issued;
-    const result = newest;
-    const reason = failed ? 'failed' : 'changed';
-    const mustRead = failed || !result || (heldEcho !== null && !sameList(heldEcho, result.items));
-    if (result) lastKnown = result.items;
-    newest = null;
-    failed = false;
-    heldEcho = null;
-    if (reason === 'failed') deps.onWriteFailed?.();
-    if (!mustRead) {
-      adopt(result.items, reason);
-      return;
-    }
-    const stored = await readFresh();
-    // An op sent meanwhile settles again and reconciles then.
-    if (issued !== epoch || pending !== 0) return;
-    if (stored) lastKnown = stored;
-    // A failed read, or one older than a library received meanwhile, shows the
-    // last library known to be stored, never an empty one.
-    adopt(stored ?? lastKnown, reason);
+  const setUnavailable = (value: boolean): void => {
+    if (unavailable === value) return;
+    unavailable = value;
+    deps.onUnavailable?.(value);
   };
 
-  /** Shows `op` at once, then sends it. Resolves after the panel is reconciled. */
-  const send = async (op: PromptLibraryOp): Promise<PromptLibraryResult | null> => {
-    // Every timestamp travels in the op; the time argument only serves imports.
-    const optimistic = applyPromptLibraryOp(items, op, Date.now()).items;
-    if (optimistic) items = optimistic as PromptItem[];
-    const seq = ++issued;
-    pending += 1;
-    let result: PromptLibraryResult | null = null;
-    const reply = lastReply.then(() => deps.apply(op));
+  /** Refuses an edit while a reply is overdue, saying so again. */
+  const refused = (): boolean => {
+    if (unavailable) deps.onUnavailable?.(true);
+    return unavailable;
+  };
+
+  /**
+   * Sends a request after the previous one's reply. While its reply is overdue
+   * the library is unavailable; `onOverdue` hears when that starts.
+   */
+  const request = (op: PromptLibraryOp, onOverdue?: () => void): Promise<PromptLibraryResult> => {
+    const reply = lastReply.then(() => {
+      const timer = setTimeout(() => {
+        setUnavailable(true);
+        onOverdue?.();
+      }, watchdogMs);
+      return deps.apply(op).finally(() => {
+        clearTimeout(timer);
+        setUnavailable(false);
+      });
+    });
     lastReply = reply.catch(() => undefined);
+    return reply;
+  };
+
+  /** Shows `op` at once and sends it; resolves to the owner's result, or null if it failed. */
+  const send = async (op: PromptLibraryOp): Promise<PromptLibraryResult | null> => {
+    pending.push(op);
+    derive();
+    let result: PromptLibraryResult | null = null;
     try {
-      result = await reply;
-      if (!newest || seq > newest.seq) newest = { seq, items: result.items as PromptItem[] };
+      result = await request(op);
     } catch {
-      failed = true;
-    } finally {
-      pending -= 1;
+      // Rolled back below by dropping it from `pending`.
     }
-    if (pending === 0) await settle();
+    pending = pending.filter((other) => other !== op);
+    // The reply's list may be older than `base`, so the panel never shows it;
+    // storage's echo brings the write in.
+    if (derive()) deps.onReconcile?.();
+    if (!result) deps.onWriteFailed?.();
     return result;
+  };
+
+  const receive = (newValue: unknown): boolean => {
+    if (!Array.isArray(newValue)) return false;
+    received += 1;
+    base = newValue as PromptItem[];
+    return derive();
   };
 
   return {
     get items() {
       return items;
     },
+    get unavailable() {
+      return unavailable;
+    },
     async load() {
       const legacy = parseLegacyPromptLibrary(deps.readLegacy?.() ?? null);
-      // Unseeded, the library loads as stored; the next start tries again.
-      if (legacy) await deps.apply({ kind: 'seed', items: legacy }).catch(() => undefined);
-      const stored = await readFresh();
-      if (stored) items = lastKnown = stored;
+      // Unseeded, the library loads as stored and the next start tries again.
+      // An overdue seed stops holding up the read; its echo brings it in.
+      if (legacy) {
+        await new Promise<void>((resolve) => {
+          const done = () => resolve();
+          request({ kind: 'seed', items: legacy }, done).then(done, done);
+        });
+      }
+      const before = received;
+      try {
+        const stored = await deps.read();
+        // A change received during the read is newer than what it returned.
+        if (received === before) {
+          base = stored;
+          derive();
+        }
+      } catch (error) {
+        deps.onReadFailed?.(error);
+      }
       return items;
     },
     async add(draft) {
+      if (refused()) return 'unavailable';
       if (items.some((x) => sameText(x.text, draft.text))) return 'duplicate';
       const item: PromptItem = {
         id: makeId(),
@@ -239,6 +281,7 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
       return result.added > 0 ? 'added' : 'duplicate';
     },
     async edit(id, draft) {
+      if (refused()) return 'unavailable';
       if (items.some((x) => x.id !== id && sameText(x.text, draft.text))) return 'duplicate';
       if (!items.some((x) => x.id === id)) return 'missing';
       const changes = { text: draft.text, tags: draft.tags, name: draft.name, updatedAt: now() };
@@ -250,11 +293,12 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
         : 'missing';
     },
     async remove(id) {
+      if (refused()) return false;
       return (await send({ kind: 'delete', id })) !== null;
     },
     togglePin(id) {
       const item = items.find((x) => x.id === id);
-      if (!item) return;
+      if (!item || refused()) return;
       // The pin bumps updatedAt so the cloud merge carries it; see promptPinning.ts.
       const at = now();
       void send({
@@ -266,19 +310,15 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
       });
     },
     reorder(next) {
+      if (refused()) return;
       void send({ kind: 'reorder', ids: next.map((item) => item.id) });
     },
-    receive(newValue) {
-      if (!Array.isArray(newValue)) return false;
-      received += 1;
-      if (pending > 0) {
-        heldEcho = newValue;
-        return false;
-      }
-      lastKnown = newValue;
-      if (sameList(newValue, items)) return false;
-      items = newValue;
-      return true;
+    receive,
+    listener(onShownChange) {
+      return (changes, area) => {
+        const change = area === 'local' ? changes[PROMPT_LIBRARY_KEY] : undefined;
+        if (change && receive(change.newValue)) onShownChange();
+      };
     },
   };
 }
