@@ -128,12 +128,17 @@ class ChatGptFoldersView {
     this.picker = openFolderPicker(this.store.data.folders, (folderId) => {
       this.picker = null;
       const outcome = this.store.addConversation(folderId, conversation);
-      if (outcome === 'closed') return;
-      // The menu sits in the sidebar, so the section is where the user is looking.
-      const message = t(ADD_OUTCOME_KEYS[outcome]);
-      this.section?.flash(message);
-      this.panel?.flash(message);
+      if (outcome !== 'closed') this.flashTree(t(ADD_OUTCOME_KEYS[outcome]));
     });
+  }
+
+  /**
+   * Confirms a filing in both trees. The sidebar section, the panel and a row's
+   * menu can all start one, and the panel may be closed.
+   */
+  private flashTree(message: string): void {
+    this.section?.flash(message);
+    this.panel?.flash(message);
   }
 
   private setOpen(open: boolean): void {
@@ -220,12 +225,12 @@ class ChatGptFoldersView {
       ? null
       : readCurrentConversation(t('chatgptFoldersUntitled'));
     if (!conversation) {
-      this.panel?.flash(t('chatgptFoldersNoConversation'));
+      this.flashTree(t('chatgptFoldersNoConversation'));
       return;
     }
     if (!this.store.ready) return;
     const outcome = this.store.addConversation(folderId, conversation);
-    if (outcome !== 'closed') this.panel?.flash(t(ADD_OUTCOME_KEYS[outcome]));
+    if (outcome !== 'closed') this.flashTree(t(ADD_OUTCOME_KEYS[outcome]));
   }
 
   private exportFolders(): void {

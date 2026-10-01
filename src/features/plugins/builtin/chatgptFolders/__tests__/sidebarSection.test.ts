@@ -204,6 +204,41 @@ describe('ChatGPT folder section in the sidebar', () => {
     expect(section().shadowRoot?.textContent).toContain('Ideas');
   });
 
+  it('confirms "Add current conversation here" in the section while the panel is closed', async () => {
+    await activate();
+    const root = section().shadowRoot!;
+    const status = root.querySelector<HTMLElement>('[role="status"]')!;
+    const addCurrentHere = async (): Promise<void> => {
+      root
+        .querySelector('[data-folder-id="f1"]')!
+        .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      await settle(5);
+      [...root.querySelectorAll<HTMLElement>('[role="menu"] button')]
+        .find((button) => button.textContent?.includes('Add current conversation here'))!
+        .click();
+      await settle(20);
+    };
+    expect(document.querySelector('.gv-floating-folder-panel')).toBeNull();
+
+    history.pushState(null, '', `/c/${ROWS[2].id}`);
+    try {
+      await addCurrentHere();
+      expect(status.hidden).toBe(false);
+      expect(status.textContent).toBe('Added to folder.');
+      const saved = memory.values.local.get(StorageKeys.FOLDER_DATA_CHATGPT) as FolderData;
+      expect(saved.folderContents.f1.map((c) => c.conversationId)).toContain(
+        `chatgpt:conv:${ROWS[2].id}`,
+      );
+    } finally {
+      history.pushState(null, '', '/');
+    }
+
+    await addCurrentHere();
+    expect(status.textContent).toBe(
+      "Open a saved conversation first. Temporary chats can't be filed.",
+    );
+  });
+
   it('opens a filed conversation through its sidebar link', async () => {
     await activate();
     const link = sidebar.row(FILED.id).querySelector('a')!;
