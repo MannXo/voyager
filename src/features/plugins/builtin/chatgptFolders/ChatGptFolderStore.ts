@@ -1,5 +1,10 @@
 import { MAX_FOLDER_DEPTH } from '@/features/folder/constants';
-import { getFolderDepth, removeFolder } from '@/features/folder/model/folderData';
+import {
+  getFolderDepth,
+  ownBucket,
+  removeFolder,
+  setBucket,
+} from '@/features/folder/model/folderData';
 import { placeConversations } from '@/features/folder/model/placeConversations';
 import { FolderRepository } from '@/pages/content/folder/FolderRepository';
 import { AIStudioFolderStorageAdapter } from '@/pages/content/folder/storage/AIStudioFolderStorageAdapter';
@@ -61,7 +66,7 @@ export class ChatGptFolderStore {
     };
     this.commit(() => {
       this.data.folders.push(folder);
-      this.data.folderContents[folder.id] = [];
+      setBucket(this.data.folderContents, folder.id, []);
     });
   }
   renameFolder(folderId: string, name: string): void {
@@ -81,22 +86,24 @@ export class ChatGptFolderStore {
   }
 
   toggleStar(folderId: string, conversationId: string): void {
-    const conversation = this.data.folderContents[folderId]?.find(
+    const conversation = ownBucket(this.data.folderContents, folderId)?.find(
       (c) => c.conversationId === conversationId,
     );
     if (conversation) this.commit(() => (conversation.starred = !conversation.starred));
   }
   removeConversation(folderId: string, conversationId: string): void {
-    const bucket = this.data.folderContents[folderId];
+    const bucket = ownBucket(this.data.folderContents, folderId);
     if (!bucket) return;
     this.commit(() => {
-      this.data.folderContents[folderId] = bucket.filter(
-        (c) => c.conversationId !== conversationId,
+      setBucket(
+        this.data.folderContents,
+        folderId,
+        bucket.filter((c) => c.conversationId !== conversationId),
       );
     });
   }
   moveConversation(conversationId: string, fromFolderId: string, toFolderId: string): void {
-    const conversation = this.data.folderContents[fromFolderId]?.find(
+    const conversation = ownBucket(this.data.folderContents, fromFolderId)?.find(
       (c) => c.conversationId === conversationId,
     );
     if (!conversation) return;

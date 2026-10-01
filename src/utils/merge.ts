@@ -1,5 +1,6 @@
 import type { PromptItem } from '@/core/types/sync';
 import { getPromptNameConflictIds } from '@/core/utils/promptName';
+import { setBucket } from '@/features/folder/model/folderData';
 import type { ForkNode, ForkNodesData } from '@/pages/content/fork/forkTypes';
 import type {
   TimelineHierarchyConversationData,
@@ -127,14 +128,16 @@ export function mergeFolderData<
     addConversations(cloudToMergedId.get(folderId) ?? folderId, conversations, 'cloud');
   });
 
+  // Own-property writes: a folder stored as `__proto__` would otherwise set
+  // the result's prototype and lose its bucket.
   const folderContents: Record<string, TConversation[]> = {};
   folderOrder.forEach((folderId) => {
-    folderContents[folderId] = Array.from(mergedContents.get(folderId)?.values() ?? []);
+    setBucket(folderContents, folderId, Array.from(mergedContents.get(folderId)?.values() ?? []));
   });
 
   mergedContents.forEach((conversationMap, folderId) => {
-    if (!folderContents[folderId]) {
-      folderContents[folderId] = Array.from(conversationMap.values());
+    if (!Object.hasOwn(folderContents, folderId)) {
+      setBucket(folderContents, folderId, Array.from(conversationMap.values()));
     }
   });
 

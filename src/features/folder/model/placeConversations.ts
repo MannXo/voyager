@@ -1,6 +1,6 @@
 import type { ConversationReference, FolderData } from '@/core/types/folder';
 
-import { normalizeFolderData } from './folderData';
+import { normalizeFolderData, ownBucket, setBucket } from './folderData';
 
 /** How placed records are ordered in the target bucket. */
 export type ConversationPlacement =
@@ -50,7 +50,7 @@ export function placeConversations(
   options: PlaceConversationsOptions,
 ): ConversationPlacementResult {
   const { target, placement, removeFrom, removeWhenPresent = false, keysOf = exactId } = options;
-  const held = new Set((data.folderContents[target] ?? []).flatMap((c) => keysOf(c)));
+  const held = new Set((ownBucket(data.folderContents, target) ?? []).flatMap((c) => keysOf(c)));
   const added: ConversationReference[] = [];
   const leaving = new Set<string>();
   for (const record of records) {
@@ -71,17 +71,17 @@ export function placeConversations(
   // numeric index, so `?? 0` cannot fold unindexed records onto the old 0.
   const base = placement === 'top' && added.length > 0 ? normalizeFolderData(data) : data;
   const folderContents = { ...base.folderContents };
-  const existing = folderContents[target] ?? [];
+  const existing = ownBucket(folderContents, target) ?? [];
   if (placement === 'append') {
     let max = existing.reduce((highest, c) => Math.max(highest, c.sortIndex ?? -1), -1);
     for (const record of added) record.sortIndex = ++max;
-    folderContents[target] = [...existing, ...added];
+    setBucket(folderContents, target, [...existing, ...added]);
   } else if (placement === 'top' && added.length > 0) {
     added.forEach((record, index) => (record.sortIndex = index));
     const shifted = existing.map((c) => ({ ...c, sortIndex: (c.sortIndex ?? 0) + added.length }));
-    folderContents[target] = [...shifted, ...added];
+    setBucket(folderContents, target, [...shifted, ...added]);
   } else {
-    folderContents[target] = [...existing, ...added];
+    setBucket(folderContents, target, [...existing, ...added]);
   }
 
   const sources =
@@ -92,7 +92,11 @@ export function placeConversations(
         : [];
   for (const source of sources) {
     if (source === target) continue;
-    folderContents[source] = folderContents[source].filter((c) => !leaving.has(c.conversationId));
+    setBucket(
+      folderContents,
+      source,
+      folderContents[source].filter((c) => !leaving.has(c.conversationId)),
+    );
   }
 
   return { data: { ...base, folderContents }, added };

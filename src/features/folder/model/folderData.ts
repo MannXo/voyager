@@ -168,7 +168,7 @@ export function reorderConversations(
   mode: ConversationSortMode = 'manual',
 ): FolderData {
   const uniqueIds = [...new Set(conversationIds)];
-  const source = data.folderContents[sourceParentId] ?? [];
+  const source = ownBucket(data.folderContents, sourceParentId) ?? [];
   if (!source.some((conversation) => uniqueIds.includes(conversation.conversationId))) return data;
 
   const folderContents = {
@@ -176,8 +176,12 @@ export function reorderConversations(
     [sourceParentId]: source.map((conversation) => ({ ...conversation })),
   };
   if (sourceParentId !== targetParentId) {
-    folderContents[targetParentId] = (data.folderContents[targetParentId] ?? []).map(
-      (conversation) => ({ ...conversation }),
+    setBucket(
+      folderContents,
+      targetParentId,
+      (ownBucket(data.folderContents, targetParentId) ?? []).map((conversation) => ({
+        ...conversation,
+      })),
     );
   }
   const moving = uniqueIds.flatMap((id) => {
@@ -204,8 +208,12 @@ export function reorderConversations(
   }
 
   const removeSet = new Set(conversationIds);
-  folderContents[sourceParentId] = folderContents[sourceParentId].filter(
-    (conversation) => !removeSet.has(conversation.conversationId),
+  setBucket(
+    folderContents,
+    sourceParentId,
+    folderContents[sourceParentId].filter(
+      (conversation) => !removeSet.has(conversation.conversationId),
+    ),
   );
   if (sourceParentId !== targetParentId) {
     sortConversationsByPriority(folderContents[sourceParentId], mode).forEach(
@@ -231,7 +239,7 @@ export function reorderConversations(
   otherGroup.forEach((conversation, index) => {
     if (conversation.sortIndex == null) conversation.sortIndex = index;
   });
-  folderContents[targetParentId] = [...sameGroup, ...otherGroup];
+  setBucket(folderContents, targetParentId, [...sameGroup, ...otherGroup]);
   return { ...data, folderContents };
 }
 
@@ -241,10 +249,11 @@ export function normalizeFolderData(data: FolderData): FolderData {
   const originalFolders = data.folders ?? [];
   const folderContents = { ...data.folderContents };
   for (const folder of originalFolders) {
-    // Own and array-valued: `folderContents.__proto__` or `.constructor` is
-    // always truthy, and assigning `__proto__` would set the prototype.
-    if (!Object.hasOwn(folderContents, folder.id) || !Array.isArray(folderContents[folder.id])) {
-      setOwnBucket(folderContents, folder.id, []);
+    // A missing bucket, including one only inherited (`__proto__` and
+    // `constructor` read truthy), is repaired. A malformed bucket the folder
+    // does own is not: the check below throws, so the load recovers a backup.
+    if (!Object.hasOwn(folderContents, folder.id) || !folderContents[folder.id]) {
+      setBucket(folderContents, folder.id, []);
       changed = true;
     }
   }
@@ -275,8 +284,9 @@ export function normalizeFolderData(data: FolderData): FolderData {
   });
 
   for (const [folderId, conversations] of Object.entries(folderContents)) {
-    // A malformed orphan bucket is kept as stored, not read.
-    if (!Array.isArray(conversations)) continue;
+    if (!Array.isArray(conversations)) {
+      throw new TypeError(`Folder bucket "${folderId}" is not a list`);
+    }
     const seen = new Set<string>();
     let normalized = conversations.filter((conversation) => {
       if (seen.has(conversation.conversationId)) return false;
@@ -296,7 +306,7 @@ export function normalizeFolderData(data: FolderData): FolderData {
       const sortIndex = missingIndices.get(conversation);
       return sortIndex == null ? conversation : { ...conversation, sortIndex };
     });
-    setOwnBucket(folderContents, folderId, normalized);
+    setBucket(folderContents, folderId, normalized);
     changed = true;
   }
   return changed ? { ...data, folders, folderContents } : data;
@@ -328,12 +338,12 @@ export function findInheritedFolderKey(
   return typeof found === 'string' ? found : null;
 }
 
-/** Stores `bucket` as an own property, even under `__proto__`. */
-function setOwnBucket(
-  contents: FolderData['folderContents'],
-  id: string,
-  bucket: ConversationReference[],
-): void {
+/**
+ * Stores `bucket` under `id` as an own property. Plain assignment would set the
+ * prototype for `__proto__` and leave the folder without a bucket, so every
+ * write that rebuilds `folderContents` by id goes through here.
+ */
+export function setBucket<T>(contents: Record<string, T[]>, id: string, bucket: T[]): void {
   Object.defineProperty(contents, id, {
     value: bucket,
     writable: true,
@@ -346,10 +356,10 @@ function setOwnBucket(
  * The bucket stored under `id` itself. Ids from a drag payload are page-readable
  * data, so an inherited key (`__proto__`, `constructor`) is never a bucket.
  */
-export function ownBucket(
-  contents: FolderData['folderContents'],
+export function ownBucket<T>(
+  contents: Record<string, T[]>,
   id: string | undefined,
-): ConversationReference[] | undefined {
+): T[] | undefined {
   if (!id || !Object.hasOwn(contents, id)) return undefined;
   const bucket = contents[id];
   return Array.isArray(bucket) ? bucket : undefined;

@@ -14,7 +14,7 @@ import {
 } from '@/core/utils/version';
 
 import { SESSION_BACKUP_KEY, SESSION_BACKUP_TIMESTAMP_KEY } from '../constants';
-import { findInheritedFolderKey } from '../model/folderData';
+import { findInheritedFolderKey, ownBucket, setBucket } from '../model/folderData';
 import {
   type FolderExportPayload,
   type ImportOptions,
@@ -229,7 +229,7 @@ export class FolderImportExportService {
 
     for (const [folderId, value] of Object.entries(raw)) {
       if (!Array.isArray(value)) {
-        contents[folderId] = [];
+        setBucket(contents, folderId, []);
         skipped++;
         continue;
       }
@@ -249,7 +249,7 @@ export class FolderImportExportService {
           skipped++;
         }
       }
-      contents[folderId] = valid;
+      setBucket(contents, folderId, valid);
     }
 
     return { contents, skipped };
@@ -285,7 +285,7 @@ export class FolderImportExportService {
     let duplicatesConversationsSkipped = 0;
 
     for (const [folderId, conversations] of Object.entries(imported.folderContents)) {
-      const target = [...(mergedContents[folderId] ?? [])];
+      const target = [...(ownBucket(mergedContents, folderId) ?? [])];
       const existingConvIds = new Set(target.map((c) => c.conversationId));
 
       for (const conv of conversations) {
@@ -297,7 +297,7 @@ export class FolderImportExportService {
         }
       }
 
-      mergedContents[folderId] = target;
+      setBucket(mergedContents, folderId, target);
     }
 
     const merged: FolderData = {

@@ -21,16 +21,25 @@ drop, or hover layout.
 
 - **Trap:** An imported folder with id `__proto__` and empty `folderContents` passed validation.
   `normalizeFolderData` tested `!folderContents[folder.id]`, which reads `Object.prototype` and is
-  truthy, so the folder was saved with no array bucket; assigning one would only have set the
-  prototype. The floating tree's sorter then threw on every load, so the panel stayed broken.
+  truthy, so the folder was saved with no array bucket and the floating tree's sorter threw on every
+  load. Once such a folder is stored, any rebuild that assigns `contents[id] = list` into a fresh
+  object (the Drive merge did) sets the prototype instead, drops the bucket, and sync saves the loss.
+  Repairing a malformed bucket a folder does own to `[]` is no fix either: the load then succeeds and
+  overwrites the primary backup that could have restored its conversations.
 - **Rule:** Imports refuse a folder id or bucket key that is an inherited object key
   (`findInheritedFolderKey` in `src/features/folder/model/folderData.ts`), in the shared validator
-  (Gemini, ChatGPT) and in `readAIStudioImportFile`. Stored data keeps loading: the normalizer
-  requires an own array bucket and writes it with `defineProperty`, normalizer and clone leave a
-  non-array orphan bucket as stored, and the floating tree and AI Studio's sidebar (which never
-  normalizes) read buckets through `ownBucket`.
+  (Gemini, ChatGPT) and in `readAIStudioImportFile`. Every write that rebuilds `folderContents` by
+  id goes through `setBucket` (an own-property `defineProperty`), and reads by id use `ownBucket`.
+  The normalizer repairs only a missing, inherited or empty bucket; a non-array bucket that is owned
+  throws, so the repository recovers from backup as before.
 - **Guard:** `src/features/folder/model/__tests__/folderData.test.ts`
-  (`gives folders named after inherited object keys real buckets of their own`),
+  (`gives folders named after inherited object keys real buckets of their own`,
+  `refuses a malformed bucket a folder owns, so the load recovers a backup`),
+  `src/utils/merge.test.ts` (`mergeFolderData with a folder stored as __proto__`),
+  `src/features/folder/model/__tests__/placeConversations.test.ts`
+  (`placeConversations into a folder stored as __proto__`),
+  `src/features/plugins/builtin/chatgptFolders/__tests__/ChatGptFolderStore.test.ts`
+  (`recovers a backup when a folder owns a malformed bucket`),
   `src/features/folder/services/__tests__/FolderImportExportService.test.ts`
   (`rejects %s that every object inherits`),
   `src/features/plugins/builtin/chatgptFolders/__tests__/activate.test.ts`

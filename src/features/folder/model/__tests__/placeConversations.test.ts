@@ -204,3 +204,18 @@ describe('placeConversations', () => {
     }
   });
 });
+
+describe('placeConversations into a folder stored as __proto__', () => {
+  it.each(['append', 'top', 'keep'] as const)(
+    '%s writes an own bucket, not the prototype',
+    (placement) => {
+      const { data: placed } = placeConversations(data({}, ['__proto__']), [conv('x')], {
+        target: '__proto__',
+        placement,
+      });
+      expect(Object.getPrototypeOf(placed.folderContents)).toBe(Object.prototype);
+      expect(Object.hasOwn(placed.folderContents, '__proto__')).toBe(true);
+      expect(placed.folderContents['__proto__'].map((c) => c.conversationId)).toEqual(['x']);
+    },
+  );
+});

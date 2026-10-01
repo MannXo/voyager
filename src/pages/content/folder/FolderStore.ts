@@ -10,8 +10,10 @@ import {
   cloneFolderData,
   getFolderDepth,
   moveFolder,
+  ownBucket,
   removeFolder,
   reorderConversations,
+  setBucket,
 } from '@/features/folder/model/folderData';
 import { placeConversations } from '@/features/folder/model/placeConversations';
 
@@ -177,7 +179,7 @@ export class FolderStore {
       updatedAt: Date.now(),
     };
     this.data.folders.push(folder);
-    this.data.folderContents[folder.id] = [];
+    setBucket(this.data.folderContents, folder.id, []);
     void this.saveData();
     this.options.onChange('data');
     return folder;
@@ -202,10 +204,12 @@ export class FolderStore {
 
   removeConversationsFromFolder(folderId: string, ids: ReadonlySet<string>): void {
     if (!this.canEdit) return;
-    const conversations = this.data.folderContents[folderId];
+    const conversations = ownBucket(this.data.folderContents, folderId);
     if (!conversations) return;
-    this.data.folderContents[folderId] = conversations.filter(
-      (item) => !ids.has(item.conversationId),
+    setBucket(
+      this.data.folderContents,
+      folderId,
+      conversations.filter((item) => !ids.has(item.conversationId)),
     );
     void this.saveData();
     this.options.onChange('data');
@@ -495,10 +499,12 @@ export class FolderStore {
 
   removeConversationFromFolder(folderId: string, conversationId: string): void {
     if (!this.canEdit) return;
-    if (!this.data.folderContents[folderId]) return;
-
-    this.data.folderContents[folderId] = this.data.folderContents[folderId].filter(
-      (c) => c.conversationId !== conversationId,
+    const conversations = ownBucket(this.data.folderContents, folderId);
+    if (!conversations) return;
+    setBucket(
+      this.data.folderContents,
+      folderId,
+      conversations.filter((c) => c.conversationId !== conversationId),
     );
 
     this.saveData();
@@ -669,8 +675,10 @@ export class FolderStore {
       const initialLength = conversations.length;
 
       // Filter out the deleted conversation
-      this.data.folderContents[folderId] = conversations.filter(
-        (conv) => !isSameConversation(conversationId, conv),
+      setBucket(
+        this.data.folderContents,
+        folderId,
+        conversations.filter((conv) => !isSameConversation(conversationId, conv)),
       );
 
       if (this.data.folderContents[folderId].length < initialLength) {

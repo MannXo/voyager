@@ -132,6 +132,40 @@ describe('ChatGptFolderStore', () => {
     expect(stored.folderContents[folderId].map((c) => c.title)).toEqual(['Trip plan']);
   });
 
+  it('recovers a backup when a folder owns a malformed bucket', async () => {
+    const healthy: FolderData = {
+      folders: [
+        {
+          id: 'f',
+          name: 'Work',
+          parentId: null,
+          isExpanded: true,
+          createdAt: 1,
+          updatedAt: 1,
+          sortIndex: 0,
+        },
+      ],
+      folderContents: { f: [{ ...conversation('a'), sortIndex: 0 }] },
+    };
+    memory.values.local.set(StorageKeys.FOLDER_DATA_CHATGPT, structuredClone(healthy));
+    (await ready()).destroy(); // a healthy load writes the primary backup
+    store = null;
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    memory.values.local.set(StorageKeys.FOLDER_DATA_CHATGPT, {
+      ...structuredClone(healthy),
+      folderContents: { f: 'garbage' },
+    });
+
+    const s = await ready();
+
+    expect(s.data.folderContents.f.map((c) => c.conversationId)).toEqual(['chatgpt:conv:a']);
+    await settle();
+    expect(
+      (memory.values.local.get(StorageKeys.FOLDER_DATA_CHATGPT) as FolderData).folderContents.f,
+    ).toHaveLength(1);
+  });
+
   it('reloads a write from another tab', async () => {
     const s = await ready();
     const seen = vi.fn();

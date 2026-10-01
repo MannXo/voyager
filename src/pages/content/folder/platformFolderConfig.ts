@@ -1,7 +1,12 @@
 import type { AccountScope } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 import { AISTUDIO_ROOT_BUCKET_ID, ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
-import { cloneFolderData, normalizeFolderData } from '@/features/folder/model/folderData';
+import {
+  cloneFolderData,
+  normalizeFolderData,
+  ownBucket,
+  setBucket,
+} from '@/features/folder/model/folderData';
 import { FOLDER_PLATFORMS, type FolderPlatform } from '@/features/folder/platforms';
 
 import type { ConversationReference, FolderData } from './types';
@@ -82,9 +87,11 @@ export function filterLegacyFolderDataByCurrentAccount(
     });
     if (filtered.length === 0) continue;
 
-    nextContents[folderId] = filtered.map((conversation) => ({
-      ...conversation,
-    }));
+    setBucket(
+      nextContents,
+      folderId,
+      filtered.map((conversation) => ({ ...conversation })),
+    );
     if (folderId !== ROOT_CONVERSATIONS_ID) {
       visibleFolderIds.add(folderId);
     }
@@ -107,9 +114,7 @@ export function filterLegacyFolderDataByCurrentAccount(
     .map((folder) => ({ ...folder }));
 
   for (const folder of folders) {
-    if (!nextContents[folder.id]) {
-      nextContents[folder.id] = [];
-    }
+    if (!ownBucket(nextContents, folder.id)) setBucket(nextContents, folder.id, []);
   }
 
   if (!nextContents[ROOT_CONVERSATIONS_ID]) {

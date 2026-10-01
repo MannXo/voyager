@@ -10,7 +10,12 @@ import { StorageKeys } from '@/core/types/common';
 import type { PromptItem, SyncAccountScope } from '@/core/types/sync';
 import { isSafari } from '@/core/utils/browser';
 import { AISTUDIO_ROOT_BUCKET_ID } from '@/features/folder/constants';
-import { cloneFolderData, ownBucket, validateFolderData } from '@/features/folder/model/folderData';
+import {
+  cloneFolderData,
+  ownBucket,
+  setBucket,
+  validateFolderData,
+} from '@/features/folder/model/folderData';
 import { placeConversations } from '@/features/folder/model/placeConversations';
 import { createTranslator, initI18n } from '@/utils/i18n';
 import {
@@ -21,7 +26,11 @@ import {
 import { watchRouteChanges } from '../utils/routeWatcher';
 import type { FolderDataSession } from './FolderDataSession';
 import { FolderRepository, type FolderStoreChange } from './FolderRepository';
-import { mergeAIStudioImport, readAIStudioImportFile } from './aistudioImport';
+import {
+  mergeAIStudioImport,
+  mergeLegacySyncFolderData,
+  readAIStudioImportFile,
+} from './aistudioImport';
 import {
   createInlineFolderEditor,
   createInlineMaterialIcon,
@@ -471,7 +480,7 @@ export class AIStudioFolderManager {
           // await chrome.storage.sync.remove(this.STORAGE_KEY);
         } else {
           // Both have data - merge them (local takes priority for conflicts)
-          const mergedFolders = this.mergeFolderData(
+          const mergedFolders = mergeLegacySyncFolderData(
             localData as FolderData,
             syncData as FolderData,
           );
@@ -483,40 +492,6 @@ export class AIStudioFolderManager {
       console.warn('[AIStudioFolderManager] Migration from sync to local failed:', error);
       // Don't throw - migration failure should not block normal operation
     }
-  }
-
-  /**
-   * Simple merge of folder data (used during migration)
-   * Local data takes priority for conflicts
-   */
-  private mergeFolderData(local: FolderData, sync: FolderData): FolderData {
-    const mergedFolders = [...local.folders];
-    const localFolderIds = new Set(local.folders.map((f) => f.id));
-
-    // Add folders from sync that don't exist in local
-    for (const folder of sync.folders) {
-      if (!localFolderIds.has(folder.id)) {
-        mergedFolders.push(folder);
-      }
-    }
-
-    // Merge folder contents
-    const mergedContents = { ...local.folderContents };
-    for (const [folderId, conversations] of Object.entries(sync.folderContents)) {
-      if (!mergedContents[folderId]) {
-        mergedContents[folderId] = conversations;
-      } else {
-        // Merge conversations, avoiding duplicates
-        const existingIds = new Set(mergedContents[folderId].map((c) => c.conversationId));
-        for (const conv of conversations) {
-          if (!existingIds.has(conv.conversationId)) {
-            mergedContents[folderId].push(conv);
-          }
-        }
-      }
-    }
-
-    return { folders: mergedFolders, folderContents: mergedContents };
   }
 
   private toSyncAccountScope(scope: AccountScope | null): SyncAccountScope | undefined {
@@ -1444,7 +1419,7 @@ export class AIStudioFolderManager {
         updatedAt: now(),
       };
       this.data.folders.push(f);
-      this.data.folderContents[f.id] = [];
+      setBucket(this.data.folderContents, f.id, []);
       await this.save();
       cancel();
       this.render();
@@ -1591,7 +1566,11 @@ export class AIStudioFolderManager {
   private removeConversationFromFolder(folderId: string, conversationId: string): void {
     if (!this.canEdit) return;
     const arr = ownBucket(this.data.folderContents, folderId) ?? [];
-    this.data.folderContents[folderId] = arr.filter((c) => c.conversationId !== conversationId);
+    setBucket(
+      this.data.folderContents,
+      folderId,
+      arr.filter((c) => c.conversationId !== conversationId),
+    );
     this.save().then(() => this.render());
   }
 
@@ -2712,7 +2691,7 @@ export class AIStudioFolderManager {
           updatedAt: now(),
         };
         this.data.folders.push(defaultFolder);
-        this.data.folderContents[defaultFolder.id] = [];
+        setBucket(this.data.folderContents, defaultFolder.id, []);
         this.save();
       }
 

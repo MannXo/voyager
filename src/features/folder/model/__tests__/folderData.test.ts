@@ -320,7 +320,7 @@ describe('folder data integrity', () => {
       '{"folders":[' +
         '{"id":"__proto__","name":"P","parentId":null,"isExpanded":true,"createdAt":1,"updatedAt":1,"sortIndex":0},' +
         '{"id":"constructor","name":"C","parentId":null,"isExpanded":true,"createdAt":1,"updatedAt":1,"sortIndex":1}],' +
-        '"folderContents":{"orphan":"garbage"}}',
+        '"folderContents":{}}',
     ) as FolderData;
 
     const result = normalizeFolderData(stored);
@@ -331,12 +331,25 @@ describe('folder data integrity', () => {
     }
     expect(Object.getPrototypeOf(result.folderContents)).toBe(Object.prototype);
     expect(JSON.parse(JSON.stringify(result.folderContents))).toEqual(
-      JSON.parse('{"orphan":"garbage","__proto__":[],"constructor":[]}'),
+      JSON.parse('{"__proto__":[],"constructor":[]}'),
     );
     expect(normalizeFolderData(JSON.parse(JSON.stringify(result)))).toEqual(
       JSON.parse(JSON.stringify(result)),
     );
-    expect(cloneFolderData(result).folderContents.orphan).toBe('garbage');
+  });
+
+  it('refuses a malformed bucket a folder owns, so the load recovers a backup', () => {
+    for (const bucket of ['garbage', { c: 1 }]) {
+      const data = {
+        folders: [folder('f')],
+        folderContents: { f: bucket },
+      } as unknown as FolderData;
+      expect(() => normalizeFolderData(data)).toThrow(TypeError);
+      expect(cloneFolderData(data).folderContents.f).toBe(bucket);
+    }
+    // An empty value is a missing bucket, repaired as before.
+    const empty = { folders: [folder('f')], folderContents: { f: null } } as unknown as FolderData;
+    expect(normalizeFolderData(empty).folderContents).toEqual({ f: [] });
   });
 
   it('fills missing containers and initializes empty folder buckets', () => {
