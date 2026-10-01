@@ -361,6 +361,10 @@ describe('ChatGPT timeline', () => {
     sent.setAttribute('data-turn-id-container', 'server-1');
     await settle();
     expect(labels()).toEqual(['Just sent']);
+    await longPress(dots()[0]);
+    expect(starStore.get('chatgpt:conv:first')?.map((message) => message.content)).toEqual([
+      'Just sent',
+    ]);
 
     unmountContent(sent);
     await settle();
@@ -460,17 +464,17 @@ describe('ChatGPT timeline', () => {
     thread.replaceChildren(turnShell('user-9', 'user', 'Prompt B'));
     await settle(600);
     expect(labels()).toEqual(['Prompt B']);
+    // Nothing ties these turns to the URL that still names the previous conversation.
+    await longPress(dots()[0]);
+    expect(addStarredMessage).not.toHaveBeenCalled();
 
     history.pushState({}, '', '/c/second');
     await settle(ROUTE_SETTLE_MS);
     expect(labels()).toEqual(['Prompt B']);
     expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('chatgpt:conv:second');
-
-    // The swap before the URL change shows these turns are the new conversation's.
+    // Seen under the previous URL first: left unstarrable rather than guessed.
     await longPress(dots()[0]);
-    expect(starStore.get('chatgpt:conv:second')?.map((message) => message.content)).toEqual([
-      'Prompt B',
-    ]);
+    expect(addStarredMessage).not.toHaveBeenCalled();
   });
 
   it('keeps the previous conversation off the rail when a star change lands mid-switch', async () => {
@@ -544,6 +548,14 @@ describe('ChatGPT timeline', () => {
     expect(starStore.get('chatgpt:conv:other')?.map((message) => message.content)).toEqual([
       'Other prompt',
     ]);
+
+    thread.append(turnShell('user-8', 'user', 'Next prompt'));
+    await settle();
+    await longPress(dots()[1]);
+    expect(starStore.get('chatgpt:conv:other')?.map((message) => message.content)).toEqual([
+      'Other prompt',
+      'Next prompt',
+    ]);
   });
 
   it('ignores a star press in the moment between a URL change and the next refresh', async () => {
@@ -558,28 +570,72 @@ describe('ChatGPT timeline', () => {
     expect(addStarredMessage).not.toHaveBeenCalled();
   });
 
-  it('cannot star while the previous conversation is on screen, then stars the new one', async () => {
-    const old = addExchange(1, 'Prompt A');
+  it("stars only the new conversation's turns while the previous one is still on screen", async () => {
+    addExchange(1, 'Prompt A');
     await mount();
 
     history.pushState({}, '', '/c/second');
     await settle(ROUTE_SETTLE_MS);
     expect(labels()).toEqual(['Prompt A']);
     await longPress(dots()[0]);
-    thread.append(turnShell('user-9', 'user', 'Prompt B'));
-    await settle();
-    // A is still on screen: the URL alone does not say which thread this is.
-    await longPress(dots()[1]);
     expect(addStarredMessage).not.toHaveBeenCalled();
 
-    old.nextElementSibling?.remove();
-    old.remove();
+    thread.append(turnShell('user-9', 'user', 'Prompt B'));
     await settle();
+    // A's turn was seen under the previous URL; B's first appeared under this one.
     await longPress(dots()[0]);
+    expect(addStarredMessage).not.toHaveBeenCalled();
+    await longPress(dots()[1]);
 
     expect(starStore.get('chatgpt:conv:second')?.map((message) => message.content)).toEqual([
       'Prompt B',
     ]);
+  });
+
+  it('cannot star the previous turn under the next id after ChatGPT renamed it', async () => {
+    const sent = addExchange(1, 'Just sent');
+    await mount();
+    sent.setAttribute('data-turn-id-container', 'server-1');
+    await settle();
+
+    history.pushState({}, '', '/c/second');
+    await settle(ROUTE_SETTLE_MS);
+    await longPress(dots()[0]);
+
+    expect(addStarredMessage).not.toHaveBeenCalled();
+  });
+
+  it('cannot star the previous conversation after its DOM briefly empties mid-switch', async () => {
+    addExchange(1, 'Prompt A');
+    await mount();
+    history.pushState({}, '', '/c/second');
+    await settle(ROUTE_SETTLE_MS);
+
+    thread.replaceChildren();
+    await settle();
+    addExchange(1, 'Prompt A');
+    await settle();
+    expect(labels()).toEqual(['Prompt A']);
+    await longPress(dots()[0]);
+
+    expect(addStarredMessage).not.toHaveBeenCalled();
+  });
+
+  it('cannot star a previous-conversation turn that first mounts after the URL changed', async () => {
+    addExchange(1, 'Prompt A');
+    const hidden = addExchange(2, 'Hidden A');
+    unmountContent(hidden);
+    await mount();
+    expect(labels()).toEqual(['Prompt A']);
+
+    history.pushState({}, '', '/c/second');
+    await settle(ROUTE_SETTLE_MS);
+    mountContent(hidden, 'user', 'Hidden A');
+    await settle();
+    expect(labels()).toEqual(['Prompt A', 'Hidden A']);
+    await longPress(dots()[1]);
+
+    expect(addStarredMessage).not.toHaveBeenCalled();
   });
 
   it('drops a press begun in the previous conversation when the next one has the same prompt', async () => {

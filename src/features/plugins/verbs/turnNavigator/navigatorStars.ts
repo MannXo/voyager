@@ -4,29 +4,24 @@
  *
  * Stars are read for the conversation the URL names at the moment of the
  * read. A write needs more than the URL, because hosts change the URL and the
- * thread DOM in separate steps: the turns on screen right after a route change
- * may still be the previous conversation's. So a write is refused
+ * thread DOM in separate steps. A write is refused
  *   - before a refresh has seen the current route (`observe`), and
- *   - while any turn that was on screen under the previous conversation is
- *     still on screen. A new chat gaining its id is exempt: it had no
- *     conversation to come from, and the turns are its own.
- * When the DOM changes first, a refresh under the old route sees every turn
- * replaced at once; the turns from before that swap are the old
- * conversation's, and the new ones may be starred once the URL follows. Only
- * host turn keys show that: list items stay mounted for the whole thread, so
- * a disjoint set is another thread. Mounted elements are replaced by any far
- * scroll on a virtualized host, so there a swap proves nothing.
+ *   - for a turn the DOM evidence does not give to the current conversation
+ *     (`turnOwnership.ts`).
  * Each press takes its target, conversation and URL before any await, and is
  * dropped if the route changed by the time the stars it toggles have loaded.
  */
 import { StarredMessagesService } from '@/pages/content/timeline/StarredMessagesService';
 
 import { extractTurnHash, StarSnapshotLoader } from './starSnapshot';
+import { type ObservedTurn, TurnOwnership } from './turnOwnership';
 
 export interface StarTarget {
   readonly id: string;
   readonly hash: string;
   readonly summary: string;
+  /** The turn's host key, else its element: what ownership was recorded for. */
+  readonly token: string | object;
 }
 
 interface StarEntry {
@@ -54,16 +49,12 @@ export class NavigatorStars {
   private readonly snapshots = new StarSnapshotLoader();
 
   private observedRoute: string | null = null;
-  private observedStarId: string | null = null;
-  /** Turns on screen at the last refresh that found any: host turn keys or elements. */
-  private lastSeen: ReadonlySet<unknown> = new Set();
-  /** Under the observed route, the turns seen before every turn was replaced. */
-  private beforeSwap: ReadonlySet<unknown> | null = null;
-  /** The previous conversation's turns; starring waits until none is on screen. */
-  private carried: ReadonlySet<unknown> | null = null;
   private generation = 0;
+  private readonly owners: TurnOwnership;
 
-  constructor(private readonly sources: StarSources) {}
+  constructor(private readonly sources: StarSources) {
+    this.owners = new TurnOwnership(sources.keyedTurns);
+  }
 
   get(hash: string): StarEntry | undefined {
     return this.byHash.get(hash);
@@ -97,34 +88,23 @@ export class NavigatorStars {
    * Record the route and the turns a refresh found on screen. Returns true
    * when the route changed since the previous refresh.
    */
-  observe(onScreen: ReadonlySet<unknown>): boolean {
+  observe(turns: readonly ObservedTurn[]): boolean {
     const routeId = this.sources.routeId();
     const changed = this.observedRoute !== null && routeId !== this.observedRoute;
-    if (changed) {
-      this.generation += 1;
-      this.carried = this.observedStarId === null ? null : (this.beforeSwap ?? this.lastSeen);
-      this.beforeSwap = null;
-    } else if (
-      this.sources.keyedTurns() &&
-      onScreen.size &&
-      this.lastSeen.size &&
-      !overlaps(this.lastSeen, onScreen)
-    ) {
-      this.beforeSwap = this.lastSeen;
-    }
-    if (this.carried && !overlaps(this.carried, onScreen)) this.carried = null;
+    if (changed) this.generation += 1;
+    if (routeId !== this.observedRoute) this.owners.enterRoute(this.sources.starId());
     this.observedRoute = routeId;
-    this.observedStarId = this.sources.starId();
-    if (onScreen.size) this.lastSeen = onScreen;
+    this.owners.observe(turns);
     return changed;
   }
 
-  /** Whether a star written now is backed by what is on screen. */
-  canStar(): boolean {
+  /** Whether a star written now on this turn is backed by what is on screen. */
+  canStar(token: string | object): boolean {
+    const conversationId = this.sources.starId();
     return (
-      this.sources.starId() !== null &&
+      conversationId !== null &&
       this.sources.routeId() === this.observedRoute &&
-      this.carried === null
+      this.owners.allows(token, conversationId)
     );
   }
 
@@ -137,9 +117,9 @@ export class NavigatorStars {
     describe: () => { readonly url: string; readonly title: string },
   ): Promise<boolean> {
     // Everything the write needs is fixed before the first await.
-    const { id, hash, summary } = target;
+    const { id, hash, summary, token } = target;
     const conversationId = this.sources.starId();
-    if (!conversationId || !this.canStar()) return false;
+    if (!conversationId || !this.canStar(token)) return false;
     const generation = this.generation;
     const { url, title } = describe();
     if (this.loadedFor !== conversationId) {
@@ -153,6 +133,7 @@ export class NavigatorStars {
         return false;
       }
     }
+    this.owners.adopt(token, conversationId);
     const existing = this.byHash.get(hash);
     if (existing) {
       this.byHash.delete(hash);
@@ -172,9 +153,4 @@ export class NavigatorStars {
     });
     return true;
   }
-}
-
-function overlaps(a: ReadonlySet<unknown>, b: ReadonlySet<unknown>): boolean {
-  for (const item of a) if (b.has(item)) return true;
-  return false;
 }

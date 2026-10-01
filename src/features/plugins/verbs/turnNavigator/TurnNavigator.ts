@@ -37,6 +37,7 @@ import {
 } from './scrollMotion';
 import { extractTurnHash } from './starSnapshot';
 import { type Marker, type MountedTurn, TURN_ID_ATTR, mergeMountedTurns } from './turnMerge';
+import { mountedOwnershipTurns, snapshotOwnershipTurns, turnToken } from './turnOwnership';
 import { snapshotMarkers, TurnSnapshot } from './turnSnapshot';
 export { buildConversationId } from './conversationId';
 export { extractTurnHash } from './starSnapshot';
@@ -370,14 +371,14 @@ export class TurnNavigator {
         summary: readText(element),
       }));
     if (mounted[0]) this.setScrollTarget(this.getScrollTarget(mounted[0].element));
-    const onScreen = new Set(
-      turns?.map((turn) => turn.key ?? turn.element) ?? mounted.map((turn) => turn.element),
-    );
-    // A press that began under the previous route must not land under this one.
-    if (this.stars.observe(onScreen)) this.cancelLongPress();
     this.markers = turns
       ? snapshotMarkers(this.markers, turns, centerOf)
       : mergeMountedTurns(this.markers, mounted, centerOf);
+    const onScreen = this.snapshot
+      ? snapshotOwnershipTurns(this.markers, this.snapshot.itemKeys)
+      : mountedOwnershipTurns(mounted);
+    // A press that began under the previous route must not land under this one.
+    if (this.stars.observe(onScreen)) this.cancelLongPress();
     this.markerCenters = this.computeMarkerCenters();
     const sameMarkers =
       previousIds.length === this.markers.length &&
@@ -472,7 +473,8 @@ export class TurnNavigator {
 
   private startLongPress(dot: Dot): void {
     this.cancelLongPress();
-    if (this.disposed || !this.stars.canStar()) return;
+    const marker = this.markers.find((item) => item.id === dot.dataset.targetTurnId);
+    if (this.disposed || !marker || !this.stars.canStar(turnToken(marker))) return;
     this.longPressDot = dot;
     dot.classList.add('holding');
     this.stopLongPressTimer = this.scope.timer(() => {
@@ -495,7 +497,8 @@ export class TurnNavigator {
     const marker = this.markers.find((item) => item.id === turnId);
     if (!marker) return;
     const describe = () => ({ url: location.href.split('#')[0], title: this.getTitle() });
-    if (await this.stars.toggle(marker, describe)) this.applyStarredState();
+    const target = { ...marker, token: turnToken(marker) };
+    if (await this.stars.toggle(target, describe)) this.applyStarredState();
   }
 
   private applyStarredState(): void {

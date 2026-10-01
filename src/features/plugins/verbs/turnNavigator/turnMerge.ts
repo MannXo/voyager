@@ -38,6 +38,8 @@ export interface Marker {
   dotElement: HTMLButtonElement | null;
   /** Snapshot mode: `element` is a list item whose message is unloaded. */
   placeholder?: boolean;
+  /** Snapshot mode: the host's id for the turn's list item. */
+  key?: string | null;
 }
 
 export interface MountedTurn {

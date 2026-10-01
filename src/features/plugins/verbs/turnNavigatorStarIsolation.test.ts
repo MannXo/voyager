@@ -146,6 +146,61 @@ describe('turnNavigator async star isolation', () => {
     await scope.dispose();
   });
 
+  it('cannot star the previous thread when its turns remount after the DOM briefly empties', async () => {
+    document.body.innerHTML = '<div class="ds-user">prompt A</div>';
+    const scope = new PluginScope();
+    turnNavigatorPrimitive.activate(scope, {}, context(deepseek).ctx);
+    await vi.waitFor(() => expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1));
+
+    history.pushState({}, '', '/a/chat/s/other');
+    await vi.waitFor(() =>
+      expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('deepseek:conv:other'),
+    );
+    document.querySelector('.ds-user')!.remove();
+    // Let a refresh see the empty thread.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    // The previous thread re-renders with fresh elements.
+    document.body.append(
+      Object.assign(document.createElement('div'), {
+        className: 'ds-user',
+        textContent: 'prompt A',
+      }),
+    );
+    await vi.waitFor(() => expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1));
+    document.querySelector('.timeline-dot')!.dispatchEvent(new Event('pointerdown'));
+    await new Promise((resolve) => setTimeout(resolve, 700));
+
+    expect(addStarredMessage).not.toHaveBeenCalled();
+    await scope.dispose();
+  });
+
+  it('stars a new chat re-rendered under the id it was given', async () => {
+    history.replaceState({}, '', '/');
+    document.body.innerHTML = '<div class="ds-user">first prompt</div>';
+    const scope = new PluginScope();
+    turnNavigatorPrimitive.activate(scope, {}, context(deepseek).ctx);
+    await vi.waitFor(() => expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1));
+
+    history.replaceState({}, '', '/a/chat/s/given');
+    document.querySelector('.ds-user')!.replaceWith(
+      Object.assign(document.createElement('div'), {
+        className: 'ds-user',
+        textContent: 'first prompt',
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('deepseek:conv:given'),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    document.querySelector('.timeline-dot')!.dispatchEvent(new Event('pointerdown'));
+    await vi.waitFor(() =>
+      expect(addStarredMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ conversationId: 'deepseek:conv:given', content: 'first prompt' }),
+      ),
+    );
+    await scope.dispose();
+  });
+
   it("drops the previous conversation's dots when a star change lands mid-switch", async () => {
     document.body.innerHTML = '<div class="ds-user">prompt A</div>';
     const scope = new PluginScope();

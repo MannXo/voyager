@@ -30,6 +30,8 @@ export interface SnapshotTurn {
 
 export class TurnSnapshot {
   private readonly labels = new Map<string, string>();
+  /** Every turn item's key at the last `collect`, labelled or not. */
+  itemKeys: readonly string[] = [];
 
   constructor(
     private readonly turnSelector: string,
@@ -46,6 +48,7 @@ export class TurnSnapshot {
       return [];
     }
     const turns: SnapshotTurn[] = [];
+    const itemKeys = new Set<string>();
     const indexByKey = new Map<string, number>();
     const add = (turn: SnapshotTurn): void => {
       const { key } = turn;
@@ -63,6 +66,7 @@ export class TurnSnapshot {
       if (node.matches(this.turnSelector)) {
         const owner = node.closest<HTMLElement>(keyed);
         const key = owner && this.isTurnItem(owner) ? this.keyOf(owner) : null;
+        if (key !== null) itemKeys.add(key);
         const summary = readText(node);
         if (key !== null) this.remember(key, summary);
         add({ element: node, summary, content: node, key });
@@ -71,9 +75,11 @@ export class TurnSnapshot {
       // An item with its message unloaded: a user turn only if we saw it as one.
       const key = this.keyOf(node);
       if (key === null || node.querySelector(this.turnSelector) || !this.isTurnItem(node)) continue;
+      itemKeys.add(key);
       const summary = this.labels.get(key);
       if (summary !== undefined) add({ element: node, summary, content: null, key });
     }
+    this.itemKeys = [...itemKeys];
     return turns;
   }
 
@@ -127,9 +133,11 @@ export function snapshotMarkers(
         center,
         dotElement: null,
         placeholder: !turn.content,
+        key: turn.key,
       };
     }
     marker.placeholder = !turn.content;
+    marker.key = turn.key;
     marker.element = turn.element;
     marker.summary = turn.summary;
     marker.center = center;

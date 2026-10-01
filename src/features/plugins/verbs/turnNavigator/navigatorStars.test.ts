@@ -20,16 +20,17 @@ vi.mock('@/pages/content/timeline/StarredMessagesService', () => ({
   },
 }));
 
-const turn = { id: 'c-same', hash: 'same', summary: 'Same prompt' };
+const turn = { id: 'c-same', hash: 'same', summary: 'Same prompt', token: 'item-1' };
+const onScreen = [{ token: turn.token, hash: turn.hash }];
 
 let route: string;
 
-function create(keyedTurns = true): NavigatorStars {
+function create(): NavigatorStars {
   return new NavigatorStars({
     routeId: () => route,
     starId: () => route,
     alive: () => true,
-    keyedTurns: () => keyedTurns,
+    keyedTurns: () => true,
   });
 }
 
@@ -53,7 +54,7 @@ beforeEach(() => {
 describe('navigator star writes', () => {
   it('writes what was pressed, where it was pressed, once the read lands', async () => {
     const stars = create();
-    stars.observe(new Set());
+    stars.observe(onScreen);
     const release = deferRead();
     void stars.load();
 
@@ -72,13 +73,13 @@ describe('navigator star writes', () => {
 
   it('drops a press when the conversation changes while its read is pending', async () => {
     const stars = create();
-    stars.observe(new Set());
+    stars.observe(onScreen);
     const release = deferRead();
     void stars.load();
 
     const toggled = stars.toggle(turn, () => ({ url: 'https://site/c/b', title: 'B' }));
     route = 'site:conv:c';
-    stars.observe(new Set());
+    stars.observe([{ token: 'item-c', hash: 'same' }]);
     void stars.load();
     release([]);
 
@@ -86,41 +87,36 @@ describe('navigator star writes', () => {
     expect(addStarredMessage).not.toHaveBeenCalled();
   });
 
-  it('refuses a press while turns from the previous conversation are on screen', async () => {
-    const stars = create();
-    stars.observe(new Set(['a-1']));
-    await stars.load();
+  it('refuses a press before a refresh has seen the current route', () => {
+    route = '/';
+    const stars = new NavigatorStars({
+      routeId: () => route,
+      starId: () => (route.startsWith('site:conv:') ? route : null),
+      alive: () => true,
+      keyedTurns: () => true,
+    });
+    // A new chat's turn: any id it gets may star it, but only once a refresh saw that id.
+    stars.observe([{ token: 'draft-1', hash: 'x' }]);
     route = 'site:conv:c';
-    stars.observe(new Set(['a-1', 'c-1']));
+    expect(stars.canStar('draft-1')).toBe(false);
 
-    expect(stars.canStar()).toBe(false);
-    stars.observe(new Set(['c-1']));
-    expect(stars.canStar()).toBe(true);
+    stars.observe([{ token: 'draft-1', hash: 'x' }]);
+    expect(stars.canStar('draft-1')).toBe(true);
   });
 
-  it('allows a press at once when every turn was replaced before the URL changed', async () => {
+  it('refuses a turn first seen under another conversation', () => {
     const stars = create();
-    stars.observe(new Set(['a-1']));
-    stars.observe(new Set(['c-1']));
+    stars.observe(onScreen);
     route = 'site:conv:c';
-    stars.observe(new Set(['c-1']));
+    stars.observe([...onScreen, { token: 'item-c', hash: 'other' }]);
 
-    expect(stars.canStar()).toBe(true);
-  });
-
-  it('does not take a swap of mounted elements as a new thread', async () => {
-    const stars = create(false);
-    stars.observe(new Set(['a-1']));
-    stars.observe(new Set(['a-2']));
-    route = 'site:conv:c';
-    stars.observe(new Set(['a-2']));
-
-    expect(stars.canStar()).toBe(false);
+    expect(stars.canStar('item-1')).toBe(false);
+    expect(stars.canStar('item-c')).toBe(true);
   });
 
   it('writes the turn as it was when pressed, even if the marker changes meanwhile', async () => {
     const stars = create();
-    stars.observe(new Set());
+    stars.observe(onScreen);
     const release = deferRead();
     void stars.load();
     const target = { ...turn };
