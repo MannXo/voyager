@@ -243,6 +243,36 @@ describe('FolderStore reconciles external writes after local work settles', () =
     }
   });
 
+  it('carries a debounced open to a moved copy stored under another id spelling', async () => {
+    const native = folders('Alpha', 'Beta');
+    native.folderContents.Alpha = [
+      {
+        conversationId: 'c_abc123def456',
+        title: 'One',
+        url: 'https://gemini.google.com/app/abc123def456',
+        addedAt: 1,
+      },
+    ];
+    writeFromElsewhere(native);
+    await vi.advanceTimersByTimeAsync(0);
+    vi.advanceTimersByTime(5000);
+    store.markConversationAsRecentlyOpened('abc123def456');
+    const openedAt = store.data.folderContents.Alpha[0].lastOpenedAt;
+    expect(openedAt).toBeGreaterThan(0);
+    const moved = structuredClone(native);
+    moved.folderContents.Beta = [
+      { ...native.folderContents.Alpha[0], conversationId: 'abc123def456' },
+    ];
+    moved.folderContents.Alpha = [];
+    writeFromElsewhere(moved);
+
+    await vi.advanceTimersByTimeAsync(350);
+
+    for (const data of [store.data, stored]) {
+      expect(data?.folderContents.Beta.map((c) => c.lastOpenedAt)).toEqual([openedAt]);
+    }
+  });
+
   it('carries a debounced open to every folder that holds the conversation', async () => {
     vi.advanceTimersByTime(5000);
     store.markConversationAsRecentlyOpened('c1');

@@ -1,3 +1,4 @@
+import { normalizeConversationId, resolveConversationRouteId } from './nativeSidebarDom';
 import type { ConversationReference, FolderData } from './types';
 
 type ConversationTimestamp = 'lastTurnAt' | 'lastOpenedAt' | 'updatedAt';
@@ -34,13 +35,29 @@ export function mergeDebouncedEdits(fresh: FolderData, local: FolderData, base: 
   const edits = timestampEditsByConversation(local, base);
   for (const conversations of Object.values(fresh.folderContents)) {
     for (const conversation of conversations) {
-      const edited = edits.get(conversation.conversationId);
-      if (edited) keepLaterTimestamps(conversation, edited);
+      for (const key of conversationKeys(conversation)) {
+        const edited = edits.get(key);
+        if (edited) keepLaterTimestamps(conversation, edited);
+      }
     }
   }
 }
 
-/** Timestamps this context raised since `base`, per conversation, across every folder. */
+/**
+ * Every key a stored reference answers to. The same conversation may be stored
+ * with or without the native `c_` prefix, or be known by its URL; this matches
+ * `FolderStore.isSameConversation`.
+ */
+function conversationKeys(conversation: ConversationReference): Set<string> {
+  const keys = new Set<string>();
+  const id = normalizeConversationId(conversation.conversationId);
+  const routeId = resolveConversationRouteId(conversation.url, conversation.conversationId);
+  if (id) keys.add(id);
+  if (routeId) keys.add(routeId);
+  return keys;
+}
+
+/** Timestamps this context raised since `base`, per conversation key, across every folder. */
 function timestampEditsByConversation(
   local: FolderData,
   base: FolderData,
@@ -59,9 +76,11 @@ function timestampEditsByConversation(
       for (const field of CONVERSATION_TIMESTAMPS) {
         const value = conversation[field];
         if (value === undefined || value <= (original[field] ?? 0)) continue;
-        const edited = edits.get(conversation.conversationId) ?? {};
-        edited[field] = Math.max(edited[field] ?? 0, value);
-        edits.set(conversation.conversationId, edited);
+        for (const key of conversationKeys(conversation)) {
+          const edited = edits.get(key) ?? {};
+          edited[field] = Math.max(edited[field] ?? 0, value);
+          edits.set(key, edited);
+        }
       }
     }
   }
