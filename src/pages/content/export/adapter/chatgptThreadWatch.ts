@@ -1,5 +1,6 @@
 import {
   type ChatGptThreadMessage,
+  TURN_ITEM_SELECTOR,
   TURN_VERSION_ATTRIBUTES,
   mountedTurnItems,
   readTurnFingerprint,
@@ -8,14 +9,19 @@ import {
 } from './chatgptThread';
 
 /**
- * Whether a mounted item differs from `reference` (turn key to fingerprint):
- * it shows another version of a turn in it, or a turn missing from it. An
- * edited prompt's branch gives the prompt and every later turn new keys, so a
- * missing key is a change too. With `learn`, a missing key is added instead.
+ * Whether an item differs from `reference` (turn key to fingerprint): it shows
+ * another version of a turn in it, or a turn missing from it. An edited
+ * prompt's branch gives the prompt and every later turn new keys, so a missing
+ * key is a change too. With `learn`, a missing key is added instead.
  */
-function mountedTurnChanged(reference: Map<string, string>, learn: boolean): boolean {
-  for (const item of mountedTurnItems(resolveVisibleConversationRoot(document))) {
+function turnChanged(
+  items: Iterable<Element>,
+  reference: Map<string, string>,
+  learn: boolean,
+): boolean {
+  for (const item of items) {
     const key = readTurnKey(item);
+    if (!key || item.parentElement?.closest(TURN_ITEM_SELECTOR)) continue;
     const fingerprint = readTurnFingerprint(item);
     const known = reference.get(key);
     if (known === undefined) {
@@ -26,6 +32,31 @@ function mountedTurnChanged(reference: Map<string, string>, learn: boolean): boo
     }
   }
   return false;
+}
+
+/**
+ * The items the records touched, read from the nodes themselves: an item that
+ * changed and unmounted in the same task is detached by now, yet still carries
+ * the ids it showed. Removed nodes add nothing: what they show was seen when
+ * they were added or changed.
+ */
+function recordedTurnItems(records: readonly MutationRecord[]): Set<Element> {
+  const items = new Set<Element>();
+  const addAround = (node: Node | null): void => {
+    const element = node instanceof Element ? node : (node?.parentElement ?? null);
+    const item = element?.closest(TURN_ITEM_SELECTOR);
+    if (item) items.add(item);
+  };
+  for (const record of records) {
+    addAround(record.target);
+    for (const node of record.addedNodes) {
+      addAround(node);
+      if (node instanceof Element) {
+        node.querySelectorAll(TURN_ITEM_SELECTOR).forEach((item) => items.add(item));
+      }
+    }
+  }
+  return items;
 }
 
 function fingerprints(messages: readonly ChatGptThreadMessage[]): Map<string, string> {
@@ -45,31 +76,36 @@ export interface ThreadVersionWatch {
 
 /**
  * Watch the thread for a turn that changes version. A branch switch is a
- * click on a mounted item, and the observer runs right after ChatGPT renders
- * it, before the item can scroll away, so a switch is seen even when the item
- * is unmounted by the time the export reads its snapshot.
+ * click on a mounted item; each mutation record is read from its own nodes,
+ * so the switch is seen even when the item unmounts in the same task, or long
+ * before the export reads its snapshot.
  *
  * Until {@link ThreadVersionWatch.adopt}, each turn is compared with the first
- * version the watch saw of it, from the first change in the thread on. The watch disconnects once it sees a change,
- * which includes another conversation's turns on screen once the reader
- * leaves; otherwise the next preparation stops it.
+ * version the watch saw of it, from the first change in the thread on. The
+ * watch disconnects once it sees a change, which includes another
+ * conversation's turns on screen once the reader leaves; otherwise its owner
+ * stops it when the export session ends.
  */
 export function watchThreadVersions(): ThreadVersionWatch {
   const reference = new Map<string, string>();
   let learning = true;
   let changed = false;
-  const observer = new MutationObserver(() => check());
+  const observer = new MutationObserver((records) => check(recordedTurnItems(records)));
 
   function stop(): void {
     observer.disconnect();
   }
 
-  function check(): void {
+  function check(items: Iterable<Element>): void {
     if (changed) return;
-    if (mountedTurnChanged(reference, learning)) {
+    if (turnChanged(items, reference, learning)) {
       changed = true;
       stop();
     }
+  }
+
+  function drain(): void {
+    check(recordedTurnItems(observer.takeRecords()));
   }
 
   observer.observe(resolveVisibleConversationRoot(document), {
@@ -81,15 +117,14 @@ export function watchThreadVersions(): ThreadVersionWatch {
 
   return {
     adopt(messages) {
-      observer.takeRecords();
+      // Records still pending are judged against what the crawl read.
       reference.clear();
       fingerprints(messages).forEach((fingerprint, key) => reference.set(key, fingerprint));
       learning = false;
-      check();
+      check(mountedTurnItems(resolveVisibleConversationRoot(document)));
     },
     changed() {
-      observer.takeRecords();
-      check();
+      drain();
       return changed;
     },
     stop,

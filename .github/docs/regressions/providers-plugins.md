@@ -384,17 +384,19 @@ while an active plugin has domOps`).
 
 ## ChatGPT snapshot watches for branch switches on turns that later unmount
 
-- **Trap:** Checking only mounted turns at export time missed a branch switch on a turn the reader
-  had since scrolled away from, or one the crawl read and never revisited, so the export mixed
-  branches.
-- **Rule:** `watchThreadVersions` observes the list from the start of the crawl until the next
-  preparation and flags any turn that shows a second version. A switch is a click on a mounted
-  item, and the observer runs before ChatGPT can unmount it. Live, 92 remounts of 49 turns and
-  10 history pages loading under the watch kept every turn's message ids and the same `main`, so
-  remounting or pagination alone never trips it.
+- **Trap:** Checking only mounted turns missed a branch switch on a turn that unmounted before the
+  check: scrolled away later, never revisited by the crawl, or gone in the same task as the
+  switch, so the export mixed branches.
+- **Rule:** `watchThreadVersions` observes the list from the start of the crawl and reads each
+  mutation record's own nodes (the changed element's item, added items and items inside added
+  subtrees, detached or not), and drains pending records whenever the snapshot is read. Live, 92
+  remounts of 49 turns and 10 history pages loading under the watch kept every turn's message ids
+  and the same `main`, so remounting or pagination alone never trips it.
 - **Guard:** `src/pages/content/export/adapter/__tests__/chatgptThreadExport.test.ts`
   (`drops the crawl when a turn switches branch and scrolls out of view before the export`,
-  `drops the crawl when a turn it read switches branch mid-crawl and is never revisited`).
+  `drops the crawl when a turn re-renders as another branch and unmounts in the same task`,
+  `drops the crawl when a turn's ids change in place and it unmounts in the same task`,
+  `keeps the crawl when turns mount and unmount in the same task without changing`).
 
 ## ChatGPT export publishes only its latest, uncancelled crawl
 

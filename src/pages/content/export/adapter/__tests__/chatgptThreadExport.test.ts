@@ -429,6 +429,73 @@ describe('ChatGPT selection export on the live thread', () => {
     );
   });
 
+  it('drops the crawl when a turn re-renders as another branch and unmounts in the same task', async () => {
+    const fixture = mountThreadFixture({ turns: makeTurns(10) });
+    await prepareChatGptExport({ timing: FAST });
+    const bottom = fixture.offset();
+    fixture.setOffset(0);
+    await nextTask();
+
+    fixture.replaceTurn('turn-01', { replyId: 'turn-01-b', assistant: 'Answer 1, branch 2' });
+    fixture.setOffset(bottom);
+    expect(fixture.mountedKeys()).not.toContain('turn-01');
+    // The observer delivers both changes together, after the item is gone.
+    await nextTask();
+
+    await expect(buildChatGptExportTurns(new Set(['turn-01:a']))).rejects.toThrow(
+      'chatgpt_export_thread_changed',
+    );
+  });
+
+  it("drops the crawl when a turn's ids change in place and it unmounts in the same task", async () => {
+    const fixture = mountThreadFixture({ turns: makeTurns(10) });
+    await prepareChatGptExport({ timing: FAST });
+    const bottom = fixture.offset();
+    fixture.setOffset(0);
+    await nextTask();
+
+    const reply = fixture.main.querySelector(
+      '[data-turn-key="turn-01"] [data-chatgpt-selection-message-id]',
+    )!;
+    reply.setAttribute('data-chatgpt-selection-message-id', 'turn-01-b');
+    reply.parentElement!.setAttribute('data-chatgpt-search-message-ids', 'turn-01-b');
+    fixture.setOffset(bottom);
+    expect(fixture.mountedKeys()).not.toContain('turn-01');
+
+    await expect(buildChatGptExportTurns(new Set(['turn-01:a']))).rejects.toThrow(
+      'chatgpt_export_thread_changed',
+    );
+  });
+
+  it('drops the crawl when an unread turn mounts inside a wrapper and leaves in the same task', async () => {
+    const fixture = mountThreadFixture({ turns: makeTurns(4) });
+    await prepareChatGptExport({ timing: FAST });
+
+    const list = fixture.main.querySelector('[data-turn-key]')!.parentElement!;
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = '<div data-turn-key="edit-04"><p>Edited prompt</p></div>';
+    list.appendChild(wrapper);
+    wrapper.remove();
+
+    await expect(buildChatGptExportTurns(new Set(['turn-04:a']))).rejects.toThrow(
+      'chatgpt_export_thread_changed',
+    );
+  });
+
+  it('keeps the crawl when turns mount and unmount in the same task without changing', async () => {
+    const fixture = mountThreadFixture({ turns: makeTurns(10) });
+    await prepareChatGptExport({ timing: FAST });
+    const bottom = fixture.offset();
+
+    fixture.setOffset(0);
+    fixture.setOffset(bottom / 2);
+    fixture.setOffset(bottom);
+    await nextTask();
+
+    expect(collectChatGptTurnContainers()).toHaveLength(20);
+    await expect(buildChatGptExportTurns(new Set(['turn-01:a']))).resolves.toHaveLength(1);
+  });
+
   it('drops the crawl when a turn it read switches branch mid-crawl and is never revisited', async () => {
     // Short turns: several share a window, so an early one leaves before the next read.
     const fixture = mountThreadFixture({ turns: makeTurns(20, 300), overscan: 0 });
