@@ -3,6 +3,7 @@
  * The background owner applies it inside its queue; nothing else calls it.
  */
 import { getPromptNameConflictIds } from '@/core/utils/promptName';
+import { isNewerPromptCopy, promptEditTime } from '@/core/utils/promptRevision';
 import type { PromptItem } from '@/features/backup/types/backup';
 
 export interface PromptImportStats {
@@ -15,8 +16,10 @@ export interface PromptImportStats {
 /**
  * Merge imported prompts into a library, as the prompts import always has:
  * a prompt matching a stored one by id (or else by text) merges tags into it,
- * and a same-id copy that is newer replaces its text and name; anything else
- * is added. `stored` is the freshly read library; its prompts are updated in place.
+ * and a same-id copy that wins (`isNewerPromptCopy`) replaces its text and name
+ * and brings its edit time; anything else is added as it came. A merge never
+ * stamps the time it ran. `stored` is the freshly read library; its prompts are
+ * updated in place.
  *
  * Array position is the manual order, so stored prompts keep their positions.
  * An added prompt goes right after the stored prompt it follows in `incoming`
@@ -26,7 +29,6 @@ export interface PromptImportStats {
 export function mergeImportedPrompts(
   stored: PromptItem[],
   incoming: PromptItem[],
-  now: number,
 ): PromptImportStats & { items: PromptItem[] } {
   const storedItems = new Set(stored);
   const addedItems: PromptItem[] = [];
@@ -56,15 +58,15 @@ export function mergeImportedPrompts(
       // Merge tags if duplicate
       const mergedTags = Array.from(new Set([...(existing.tags || []), ...(item.tags || [])]));
       existing.tags = mergedTags;
-      const incomingTime = item.updatedAt || item.createdAt || 0;
-      const existingTime = existing.updatedAt || existing.createdAt || 0;
-      const shouldApplySameIdUpdate = existingWithId === existing && incomingTime > existingTime;
+      const shouldApplySameIdUpdate =
+        existingWithId === existing && isNewerPromptCopy(item, existing);
 
       if (item.name && (shouldApplySameIdUpdate || !existing.name)) {
         existing.name = item.name;
       }
 
       if (shouldApplySameIdUpdate) {
+        existing.updatedAt = promptEditTime(item);
         existing.text = item.text;
         existingByText.clear();
         for (const mergedItem of [...stored, ...addedItems]) {
@@ -74,15 +76,11 @@ export function mergeImportedPrompts(
           }
         }
       }
-      existing.updatedAt = now;
       duplicates++;
       // A prompt this import added is placed already; only a stored one is an anchor.
       if (storedItems.has(existing)) anchor = existing;
     } else {
-      const importedItem = {
-        ...item,
-        createdAt: now,
-      };
+      const importedItem = { ...item };
       existingByText.set(key, importedItem);
       existingById.set(importedItem.id, importedItem);
       addedItems.push(importedItem);

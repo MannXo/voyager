@@ -18,7 +18,6 @@ async function importFile(stored: unknown[], file: unknown) {
         library = structuredClone(items[PROMPT_LIBRARY_KEY]);
       },
     },
-    now: () => 100,
   });
   const payload = PromptImportExportService.validatePayload(file);
   if (!payload.success) throw payload.error;

@@ -202,8 +202,7 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
   /** Recomputes the shown library; true when it changed. */
   const derive = (): boolean => {
     const next = pending.reduce<unknown[]>(
-      // Every timestamp travels in the op; the time argument only serves imports.
-      (list, op) => applyPromptLibraryOp(list, op, Date.now()).items ?? list,
+      (list, op) => applyPromptLibraryOp(list, op).items ?? list,
       base,
     ) as PromptItem[];
     if (sameList(next, items)) return false;

@@ -57,7 +57,7 @@ async function tab(initial: unknown, legacy: string | null = null) {
       else echo(value);
     },
   };
-  const owner = createPromptLibraryOwner({ area, now: () => 500 });
+  const owner = createPromptLibraryOwner({ area });
   const gates = new Map<number, Promise<void>>();
   let failRead = false;
   const lost = new Set<number>();

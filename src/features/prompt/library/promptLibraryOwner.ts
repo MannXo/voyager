@@ -163,12 +163,11 @@ function reorderPrompts(stored: unknown[], ids: string[]) {
   return { items: changed ? items : null, result: summarize(items, 0, 0) };
 }
 
-function importPrompts(stored: unknown[], incoming: PromptItem[], now: number) {
+function importPrompts(stored: unknown[], incoming: PromptItem[]) {
   // The import has always treated the stored list as prompts; that is unchanged.
   const merged: PromptImportStats & { items: PromptItem[] } = mergeImportedPrompts(
     stored as PromptItem[],
     incoming,
-    now,
   );
   return {
     items: merged.items,
@@ -182,10 +181,10 @@ function importPrompts(stored: unknown[], incoming: PromptItem[], now: number) {
   };
 }
 
+/** Applies an op to a library. Pure: every time an op stores travels in the op. */
 export function applyPromptLibraryOp(
   stored: unknown[],
   op: PromptLibraryOp,
-  now: number,
 ): { items: unknown[] | null; result: PromptLibraryResult } {
   switch (op.kind) {
     case 'add':
@@ -197,7 +196,7 @@ export function applyPromptLibraryOp(
     case 'reorder':
       return reorderPrompts(stored, op.ids);
     case 'import':
-      return importPrompts(stored, op.items, now);
+      return importPrompts(stored, op.items);
     case 'seed':
       // Only reached for an empty library; the owner checks the raw value first.
       return stored.length === 0
@@ -206,11 +205,7 @@ export function applyPromptLibraryOp(
   }
 }
 
-export function createPromptLibraryOwner(options: {
-  area: PromptLibraryArea;
-  now?: () => number;
-}): PromptLibraryOwner {
-  const now = options.now ?? Date.now;
+export function createPromptLibraryOwner(options: { area: PromptLibraryArea }): PromptLibraryOwner {
   let queue: Promise<unknown> = Promise.resolve();
 
   const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
@@ -251,9 +246,7 @@ export function createPromptLibraryOwner(options: {
 
   return {
     apply: (op) =>
-      op.kind === 'seed'
-        ? seed(op.items)
-        : transact((stored) => applyPromptLibraryOp(stored, op, now())),
+      op.kind === 'seed' ? seed(op.items) : transact((stored) => applyPromptLibraryOp(stored, op)),
     read: () => serialize(readStored),
     transact,
   };

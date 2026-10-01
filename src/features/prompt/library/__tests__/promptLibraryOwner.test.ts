@@ -126,10 +126,10 @@ describe('prompt library owner', () => {
     const library = [prompt('a', 'Alpha', { tags: ['x'] }), prompt('b', 'Beta')];
     const incoming = [prompt('z', 'alpha', { tags: ['y'] }), prompt('c', 'Gamma')];
     const { area, stored } = memoryArea(library);
-    const owner = createPromptLibraryOwner({ area, now: () => 50 });
+    const owner = createPromptLibraryOwner({ area });
 
     const result = await owner.apply({ kind: 'import', items: structuredClone(incoming) });
-    const expected = mergeImportedPrompts(structuredClone(library), structuredClone(incoming), 50);
+    const expected = mergeImportedPrompts(structuredClone(library), structuredClone(incoming));
 
     expect(stored()).toEqual(expected.items);
     expect(result).toEqual({
@@ -141,26 +141,27 @@ describe('prompt library owner', () => {
     });
   });
 
-  it('stamps every prompt one import adds with one time, and puts unrelated prompts first', async () => {
-    // Accepted on purpose: a batch shares one `now` rather than reading the clock per prompt.
+  it('adds imported prompts with their own times, and puts unrelated prompts first', async () => {
+    // Stamping the import time would make a copy look edited when it was only synced.
     const { area, stored } = memoryArea([
       prompt('old', 'Old', { createdAt: 10 }),
       prompt('older', 'Older', { createdAt: 5 }),
     ]);
-    let clock = 100;
-    const owner = createPromptLibraryOwner({ area, now: () => clock++ });
+    const owner = createPromptLibraryOwner({ area });
 
     await owner.apply({
       kind: 'import',
-      items: [prompt('n1', 'New one', { createdAt: 1 }), prompt('n2', 'New two', { createdAt: 2 })],
+      items: [
+        prompt('n1', 'New one', { createdAt: 1 }),
+        prompt('n2', 'New two', { createdAt: 2, updatedAt: 3 }),
+      ],
     });
 
-    const items = stored() as PromptItem[];
-    expect(items.map((item) => [item.id, item.createdAt])).toEqual([
-      ['n1', 100],
-      ['n2', 100],
-      ['old', 10],
-      ['older', 5],
+    expect(stored()).toEqual([
+      prompt('n1', 'New one', { createdAt: 1 }),
+      prompt('n2', 'New two', { createdAt: 2, updatedAt: 3 }),
+      prompt('old', 'Old', { createdAt: 10 }),
+      prompt('older', 'Older', { createdAt: 5 }),
     ]);
   });
 

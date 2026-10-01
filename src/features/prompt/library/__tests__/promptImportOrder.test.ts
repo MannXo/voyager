@@ -16,7 +16,6 @@ async function importInto(stored: PromptItem[], incoming: PromptItem[]): Promise
         library = structuredClone(items[PROMPT_LIBRARY_KEY]);
       },
     },
-    now: () => 100,
   });
   await owner.apply({ kind: 'import', items: structuredClone(incoming) });
   return library as PromptItem[];

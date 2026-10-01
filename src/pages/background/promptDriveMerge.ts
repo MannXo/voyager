@@ -45,11 +45,10 @@ export async function mergeCloudPromptsForUpload(
   try {
     return await owner.transact((stored) => {
       if (!validated.success) return { items: null, result: stored as PromptItem[] };
-      const merged = applyPromptLibraryOp(
-        stored,
-        { kind: 'import', items: validated.data.items },
-        Date.now(),
-      );
+      const merged = applyPromptLibraryOp(stored, {
+        kind: 'import',
+        items: validated.data.items,
+      });
       const items = (merged.items ?? stored) as PromptItem[];
       return { items, result: items };
     });
