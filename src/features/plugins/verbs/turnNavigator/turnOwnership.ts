@@ -15,7 +15,7 @@
  *   - A new chat's turns (no id in the URL) are never starrable, not even
  *     under the id the chat later gets.
  *   - A turn inserted while another conversation's turn, or an unattributed
- *     one, is still on screen.
+ *     one, is still on screen (connected and not under a hidden ancestor).
  *   - Keyed mode: items inserted after the route showed its own turns, when
  *     none of them are still on screen. The host keeps every item mounted, so
  *     that is another thread replacing it rather than a scroll.
@@ -28,6 +28,7 @@
 import { hashString } from '@/core/utils/hash';
 
 import type { Marker, MountedTurn } from './turnMerge';
+import { renderedCheck } from './turnVisibility';
 
 /** A turn on screen: the host's key for it, else its element; where it sits; its text hash if known. */
 export interface ObservedTurn {
@@ -134,8 +135,10 @@ export class TurnOwnership {
   private insertionOwner(): TurnOwner {
     const current = this.currentId();
     let ownOnScreen = false;
+    const isRendered = renderedCheck();
     for (const turn of this.tracked) {
-      if (!turn.element.isConnected) continue;
+      // A thread the host hid (ChatGPT keeps earlier ones as display: none) is off screen.
+      if (!(turn.element instanceof Element) || !isRendered(turn.element)) continue;
       const owner = this.ownerOf(turn.token);
       if (owner === current) ownOnScreen = true;
       else if (owner !== null && owner !== undefined) return UNATTRIBUTED;

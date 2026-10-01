@@ -39,6 +39,7 @@ import { extractTurnHash } from './starSnapshot';
 import { type Marker, type MountedTurn, TURN_ID_ATTR, mergeMountedTurns } from './turnMerge';
 import { mountedOwnershipTurns, snapshotOwnershipTurns, turnToken } from './turnOwnership';
 import { snapshotMarkers, TurnSnapshot } from './turnSnapshot';
+import { renderedCheck, togglesVisibility } from './turnVisibility';
 export { buildConversationId } from './conversationId';
 export { extractTurnHash } from './starSnapshot';
 export { buildTurnId, TURN_ID_ATTR } from './turnMerge';
@@ -225,10 +226,15 @@ export class TurnNavigator {
     if (!document.body || this.observing) return;
     this.observing = true;
     const keyAttribute = this.config.turnKeyAttribute;
-    // A renamed turn key re-keys its marker even when no turn node changes.
-    const options: MutationObserverInit = keyAttribute
-      ? { childList: true, subtree: true, attributes: true, attributeFilter: [keyAttribute] }
-      : { childList: true, subtree: true };
+    // A renamed turn key re-keys its marker even when no turn node changes,
+    // and a host may show or hide a whole thread without touching its turns.
+    const options: MutationObserverInit = {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeOldValue: true,
+      attributeFilter: keyAttribute ? [keyAttribute, 'style', 'hidden'] : ['style', 'hidden'],
+    };
     this.scope.observe(document.body, options, (records) => {
       if (!records.some((record) => this.shouldRefreshForMutation(record))) return;
       this.scheduleRefresh();
@@ -266,7 +272,10 @@ export class TurnNavigator {
 
   private shouldRefreshForMutation(record: MutationRecord): boolean {
     if (this.isOwnMutation(record)) return false;
-    if (record.type === 'attributes') return this.touchesTurn(record.target);
+    if (record.type === 'attributes') {
+      const keyChanged = record.attributeName === this.config.turnKeyAttribute;
+      return (keyChanged || togglesVisibility(record)) && this.touchesTurn(record.target);
+    }
     return (
       !!this.toElement(record.target)?.closest(this.config.turnSelector) ||
       [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)].some((node) =>
@@ -376,16 +385,23 @@ export class TurnNavigator {
     const readText = (element: HTMLElement) => this.extractText(element);
     const centerOf = (element: HTMLElement) => this.computeElementCenter(element);
     const turns = this.snapshot?.collect(document, readText);
+    const isRendered = renderedCheck();
     const mounted: MountedTurn[] =
       turns ??
-      Array.from(document.querySelectorAll<HTMLElement>(this.config.turnSelector), (element) => ({
-        element,
-        summary: readText(element),
-      }));
+      Array.from(document.querySelectorAll<HTMLElement>(this.config.turnSelector))
+        .filter(isRendered)
+        .map((element) => ({ element, summary: readText(element) }));
     if (mounted[0]) this.setScrollTarget(this.getScrollTarget(mounted[0].element));
     this.markers = turns
       ? snapshotMarkers(this.markers, turns, centerOf)
-      : mergeMountedTurns(this.markers, mounted, centerOf);
+      : mergeMountedTurns(
+          // A remembered turn still in the page but hidden belongs to a thread the host put away.
+          this.markers.filter(
+            (marker) => !marker.element.isConnected || isRendered(marker.element),
+          ),
+          mounted,
+          centerOf,
+        );
     const onScreen = this.snapshot
       ? snapshotOwnershipTurns(this.markers, this.snapshot.items)
       : mountedOwnershipTurns(mounted);

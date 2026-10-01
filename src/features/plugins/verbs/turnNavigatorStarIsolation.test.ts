@@ -206,6 +206,41 @@ describe('turnNavigator async star isolation', () => {
     await scope.dispose();
   });
 
+  it('keeps the next conversation starrable while the previous thread stays hidden in the page', async () => {
+    document.body.innerHTML = '<div id="page-a"><div class="ds-user">prompt A</div></div>';
+    const scope = new PluginScope();
+    turnNavigatorPrimitive.activate(scope, {}, context(deepseek).ctx);
+    await vi.waitFor(() => expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1));
+    const labels = () =>
+      Array.from(document.querySelectorAll('.timeline-dot')).map((dot) =>
+        dot.getAttribute('aria-label'),
+      );
+
+    // Like ChatGPT: the previous conversation's page stays, hidden.
+    history.pushState({}, '', '/a/chat/s/other');
+    const pageA = document.getElementById('page-a')!;
+    pageA.style.display = 'none';
+    const pageB = document.createElement('div');
+    pageB.innerHTML = '<div class="ds-user">prompt B</div>';
+    document.body.append(pageB);
+    await vi.waitFor(() => expect(labels()).toEqual(['prompt B']));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    document.querySelector('.timeline-dot')!.dispatchEvent(new Event('pointerdown'));
+    await vi.waitFor(() =>
+      expect(addStarredMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ conversationId: 'deepseek:conv:other', content: 'prompt B' }),
+      ),
+    );
+
+    // Going back shows the cached page again, after the route refresh, with no turn inserted.
+    history.pushState({}, '', '/a/chat/s/abc123');
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    pageB.style.display = 'none';
+    pageA.style.display = '';
+    await vi.waitFor(() => expect(labels()).toEqual(['prompt A']));
+    await scope.dispose();
+  });
+
   it('cannot star the previous thread when its turns remount after the DOM briefly empties', async () => {
     document.body.innerHTML = '<div class="ds-user">prompt A</div>';
     const scope = new PluginScope();
