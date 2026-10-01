@@ -63,16 +63,21 @@ and turn ids`).
   re-pointed marker 0 at the third turn. ChatGPT can also briefly keep two virtual-list items with
   one `data-turn-id-container`; the unstamped copy became a `~2` marker that grow-only
   accumulation never dropped, leaving a phantom dot.
-- **Rule:** `turnMerge.ts` matches by the stamped id first, then the host key, then a hash only
-  one marker carries, then the nearest remembered centre among same-hash markers. A site with a
-  per-turn attribute names it as the `turnKey` param; an element owning several turns (a `*-root`
-  wrapper) is never a key. A stamped element keeps its marker when the host renames its key, and
-  the navigator observes that attribute so the marker adopts the new key. `turnKey` is new in
-  this engine: a catalog manifest cannot use it until `PLUGIN_ENGINE_VERSION` is bumped, since
-  older engines skip an op with an unknown param.
-- **Guard:** `src/features/plugins/builtin/chatgptTimeline.test.ts` (`keeps repeated identical
-prompts apart`, `folds a turn ChatGPT briefly renders twice`, `follows a turn whose list id
-ChatGPT renames`, `does not treat a wrapper around several turns as one turn`).
+- **Rule:** `turnMerge.ts` first takes certain matches: the stamped id (same text), the host key
+  (text may be edited in place), a hash only one marker carries. Each run of uncertain turns
+  between two certain matches is then aligned with the markers between them: most matches first,
+  then the smallest distance after the nearer anchor's drift. Picking the nearest raw centre per
+  turn regressed Claude/DeepSeek: a remount that shifted every centre turned a remembered repeat
+  into a new dot. A site with a per-turn attribute names it as the `turnKey` param; an element
+  owning several turns (a `*-root` wrapper) is never a key, and the navigator observes the
+  attribute so a renamed key re-keys its marker. `turnKey` has `sinceEngine` 1.5.0, so a manifest
+  setting it needs `engine >=1.5.0` (a 1.4.0 engine skips the whole op).
+- **Guard:** `src/features/plugins/verbs/turnNavigator/turnMerge.test.ts`,
+  `src/features/plugins/builtin/chatgptTimeline.test.ts` (`keeps repeated identical prompts
+apart`, `folds a turn ChatGPT briefly renders twice`, `follows a turn whose list id ChatGPT
+renames`, `updates the dot when a prompt is edited in place`, `does not treat a wrapper around
+several turns as one turn`), `scripts/__tests__/plugin-check.test.ts` (`older than a primitive
+param it sets`).
 
 ## Turn navigator must re-key on route changes that mutate no turn
 
@@ -86,16 +91,33 @@ ChatGPT renames`, `does not treat a wrapper around several turns as one turn`).
   `clears the rail when leaving`, `rebuilds for the next conversation, Projects routes
 included`).
 
+## A route switch must not merge the previous conversation's turns
+
+- **Trap:** On `/c/A` → `/c/B` the URL can change before the thread DOM. The first refresh under
+  B reset the rail and then merged A's still-mounted turns into it; grow-only markers kept them
+  after B rendered, and A's prompts could be starred under B. Treating a new chat that gains its
+  id the same way would instead strand its stars under the path-hash draft id.
+- **Rule:** `conversationSwitch.ts` holds the previous conversation's mounted turns back as stale
+  until they leave the DOM or their text changes. A draft id becoming a stable id is provisional:
+  stars stay under the draft id until the draft's prompts have survived `REKEY_SETTLE_MS` as the
+  start of the thread, then only those turns' stars move to the stable id; if other turns replace
+  them first, it was a navigation and the draft's turns become stale.
+- **Guard:** `src/features/plugins/builtin/chatgptTimeline.test.ts` (`keeps the old conversation
+off the next one when the URL changes before the DOM`, `does not carry a draft into a different
+conversation`, `moves stars made on a new chat to its id`).
+
 ## Column-reverse scrollers count offsets from the newest turn
 
 - **Trap:** ChatGPT's thread was reported to scroll as a `column-reverse` flex box, where
   `scrollTop` is 0 at the newest turn and negative above it. Positive offsets clamp to 0, so
   every jump landed on the latest turn.
 - **Rule:** `scrollMotion.ts` reads and writes container offsets through `readScrollOffset` and
-  `applyScroll`, which map a reverse scroller onto a 0-based axis. Detection is by layout
-  (`scrollTop < 0` or computed `flex-direction`), never by site.
+  `applyScroll`, which map a reverse scroller onto a 0-based axis. Detection is by the scroller's
+  own computed `flex-direction`, never by site and never by a negative `scrollTop`: Safari
+  reports one on an ordinary scroller during rubber-band overscroll.
 - **Guard:** `src/features/plugins/builtin/chatgptTimeline.test.ts` (`jumps through a
-column-reverse thread`).
+column-reverse thread`, `treats a normal scroller in rubber-band overscroll as a normal
+scroller`).
 
 ## A builtin with a `native` op must not also be bound as a native handler
 

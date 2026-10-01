@@ -73,11 +73,15 @@ type ScrollTarget = HTMLElement | Window | null;
  * out; otherwise `Math.max(0, …)` sends every jump to the newest turn.
  * (ChatGPT's thread was reported to scroll this way; a normal scroller is
  * unaffected.)
+ *
+ * Only the scroller's own layout decides it. A negative `scrollTop` is not
+ * evidence: Safari reports one on an ordinary scroller during rubber-band
+ * overscroll. A reversed flex box INSIDE an ordinary scroller does not move
+ * the scroll origin either, so the content's direction is irrelevant.
  */
 const reverseByStyle = new WeakMap<HTMLElement, boolean>();
 
 function isReverseScroller(container: HTMLElement): boolean {
-  if (container.scrollTop < 0) return true;
   // Read once per container: this runs on every scroll event.
   let reverse = reverseByStyle.get(container);
   if (reverse === undefined) {

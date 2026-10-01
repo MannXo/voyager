@@ -112,18 +112,16 @@ function keyTurns(turns: readonly MountedTurn[], attribute: string | undefined):
  * For each mounted turn, the index of the known marker it is, or -1 for a new
  * turn. Matches keep conversation order (indexes only grow).
  *
- * Repeated prompts ("continue", "yes") share a hash, so the first same-hash
- * marker is not necessarily the right one: with `[hi, x, hi]` known and only
- * the last `hi` mounted, first-match would re-point marker 0 at the third turn.
- * A turn is therefore matched, in order of certainty, by
- *   1. the id stamped on its element (it stayed mounted since we filed it),
- *      even if the host has since renamed its key;
- *   2. its host key;
- *   3. a hash only one known marker carries;
- *   4. among same-hash markers, the one whose remembered centre is nearest,
- *      never past the next certain match so later anchors keep their order.
- * Outside a stamp match, a marker whose key differs from the turn's is never
- * a candidate.
+ * Repeated prompts ("continue", "yes") share a hash, so text alone cannot say
+ * which known marker a mounted repeat is. Matching therefore runs in two
+ * passes:
+ *   1. Certain matches, in order: the id stamped on the element (it stayed
+ *      mounted since we filed it, same text); the host key, which survives an
+ *      in-place edit of the text; a hash only one known marker carries.
+ *   2. Each run of uncertain turns between two certain matches is aligned with
+ *      the known markers between them (`alignRun`).
+ * Outside a stamp or key match, a marker whose key differs from the turn's is
+ * never a candidate.
  */
 function matchKnownMarkers(known: readonly Marker[], mounted: readonly MountedEntry[]): number[] {
   const hashCount = new Map<string, number>();
@@ -137,55 +135,135 @@ function matchKnownMarkers(known: readonly Marker[], mounted: readonly MountedEn
     if (marker.key) indexByKey.set(marker.key, index);
   });
 
-  const sameTurnText = (index: number | undefined, entry: MountedEntry, from: number): boolean =>
-    index !== undefined && index >= from && known[index].hash === entry.hash;
-  const isCandidate = (index: number | undefined, entry: MountedEntry, from: number): boolean =>
-    sameTurnText(index, entry, from) &&
-    (!known[index!].key || !entry.key || known[index!].key === entry.key);
+  const isCandidate = (index: number, entry: MountedEntry): boolean =>
+    known[index].hash === entry.hash &&
+    (!known[index].key || !entry.key || known[index].key === entry.key);
 
   const certainMatch = (entry: MountedEntry, from: number): number => {
     const stamped = entry.element.getAttribute(TURN_ID_ATTR);
     const byStamp = stamped === null ? undefined : indexById.get(stamped);
-    if (sameTurnText(byStamp, entry, from)) return byStamp!;
+    if (byStamp !== undefined && byStamp >= from && known[byStamp].hash === entry.hash) {
+      return byStamp;
+    }
     const byKey = entry.key ? indexByKey.get(entry.key) : undefined;
-    if (isCandidate(byKey, entry, from)) return byKey!;
+    if (byKey !== undefined && byKey >= from) return byKey;
     if (hashCount.get(entry.hash) === 1) {
-      const only = firstByHash.get(entry.hash);
-      if (isCandidate(only, entry, from)) return only!;
+      const only = firstByHash.get(entry.hash)!;
+      if (only >= from && isCandidate(only, entry)) return only;
     }
     return -1;
   };
 
   const matched = new Array<number>(mounted.length).fill(-1);
   let from = 0;
-  for (let i = 0; i < mounted.length; i++) {
-    const entry = mounted[i];
-    let match = certainMatch(entry, from);
-    if (match === -1 && (hashCount.get(entry.hash) ?? 0) > 1) {
-      let bound = known.length;
-      for (let k = i + 1; k < mounted.length; k++) {
-        const next = certainMatch(mounted[k], from);
-        if (next !== -1) {
-          bound = next;
-          break;
-        }
-      }
-      let bestDistance = Infinity;
-      for (let j = from; j < bound; j++) {
-        if (!isCandidate(j, entry, from)) continue;
-        const distance = Math.abs(known[j].center - entry.center);
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          match = j;
-        }
-      }
+  mounted.forEach((entry, i) => {
+    const match = certainMatch(entry, from);
+    if (match === -1) return;
+    matched[i] = match;
+    from = match + 1;
+  });
+
+  // Fresh centre minus remembered centre at a certain match.
+  const driftAt = (i: number): number => mounted[i].center - known[matched[i]].center;
+  let prev = -1;
+  for (let i = 0; i <= mounted.length; i++) {
+    if (i < mounted.length && matched[i] === -1) continue;
+    if (i - prev > 1) {
+      const lo = prev === -1 ? 0 : matched[prev] + 1;
+      const hi = i === mounted.length ? known.length : matched[i];
+      const run = mounted.slice(prev + 1, i);
+      // A run entry is corrected by the drift of the nearer bounding anchor.
+      const drifts = run.map((_, r) => {
+        const toPrev = prev === -1 ? Infinity : r + 1;
+        const toNext = i === mounted.length ? Infinity : run.length - r;
+        if (toPrev === Infinity && toNext === Infinity) return 0;
+        return toPrev <= toNext ? driftAt(prev) : driftAt(i);
+      });
+      alignRun(known, run, lo, hi, drifts, isCandidate).forEach((index, r) => {
+        matched[prev + 1 + r] = index;
+      });
     }
-    if (match !== -1) {
-      matched[i] = match;
-      from = match + 1;
-    }
+    prev = i;
   }
   return matched;
+}
+
+/**
+ * Align uncertain mounted turns with the known markers `[lo, hi)`, keeping
+ * order. The alignment with the most matches wins: a host that re-measured a
+ * region shifts every centre, and nearest-centre matching would then call a
+ * remembered repeat new. Among equally many matches the smallest
+ * drift-corrected distance wins, then the earliest markers.
+ */
+function alignRun(
+  known: readonly Marker[],
+  run: readonly MountedEntry[],
+  lo: number,
+  hi: number,
+  drifts: readonly number[],
+  isCandidate: (index: number, entry: MountedEntry) => boolean,
+): number[] {
+  const m = run.length;
+  const n = Math.max(0, hi - lo);
+  const result = new Array<number>(m).fill(-1);
+  const hashes = new Set(run.map((entry) => entry.hash));
+  let anyCandidate = false;
+  for (let j = lo; j < hi && !anyCandidate; j++) anyCandidate = hashes.has(known[j].hash);
+  if (!anyCandidate) return result;
+
+  // best[i][j]: most matches, then least distance, for run[i..] vs known[lo+j..hi).
+  const width = n + 1;
+  const count = new Int32Array((m + 1) * width);
+  const cost = new Float64Array((m + 1) * width);
+  const at = (i: number, j: number): number => i * width + j;
+  const better = (c1: number, d1: number, c2: number, d2: number): boolean =>
+    c1 > c2 || (c1 === c2 && d1 < d2);
+  for (let i = m - 1; i >= 0; i--) {
+    for (let j = n - 1; j >= 0; j--) {
+      let bestCount = -1;
+      let bestCost = 0;
+      if (isCandidate(lo + j, run[i])) {
+        const distance = Math.abs(run[i].center - (known[lo + j].center + drifts[i]));
+        bestCount = count[at(i + 1, j + 1)] + 1;
+        bestCost = cost[at(i + 1, j + 1)] + distance;
+      }
+      for (const [ni, nj] of [
+        [i, j + 1],
+        [i + 1, j],
+      ] as const) {
+        if (better(count[at(ni, nj)], cost[at(ni, nj)], bestCount, bestCost)) {
+          bestCount = count[at(ni, nj)];
+          bestCost = cost[at(ni, nj)];
+        }
+      }
+      count[at(i, j)] = bestCount;
+      cost[at(i, j)] = bestCost;
+    }
+  }
+
+  let i = 0;
+  let j = 0;
+  while (i < m && j < n) {
+    const here = at(i, j);
+    if (
+      isCandidate(lo + j, run[i]) &&
+      count[at(i + 1, j + 1)] + 1 === count[here] &&
+      Math.abs(
+        cost[at(i + 1, j + 1)] +
+          Math.abs(run[i].center - (known[lo + j].center + drifts[i])) -
+          cost[here],
+      ) < 1e-6
+    ) {
+      result[i] = lo + j;
+      i++;
+      j++;
+    } else if (count[at(i, j + 1)] === count[here] && cost[at(i, j + 1)] === cost[here]) {
+      j++;
+    } else {
+      i++;
+    }
+  }
+  return result;
 }
 
 export function mergeMountedTurns(
@@ -243,6 +321,8 @@ export function mergeMountedTurns(
       anchorDrift.set(knownIndex, mounted[i].center - survivor.center);
       survivor.element = mounted[i].element;
       survivor.summary = mounted[i].summary;
+      // A key match may carry edited text; the marker keeps its id.
+      survivor.hash = mounted[i].hash;
       // The host may rename a turn (a client id becoming the server's).
       survivor.key = mounted[i].key ?? survivor.key;
       mounted[i].element.setAttribute(TURN_ID_ATTR, survivor.id);

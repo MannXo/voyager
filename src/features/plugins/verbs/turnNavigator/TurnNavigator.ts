@@ -14,7 +14,6 @@
  * conversations (Claude, DeepSeek, ChatGPT) never lose turns; see turnMerge.ts.
  */
 import { StorageKeys, type TimelineStyle } from '@/core/types/common';
-import { hashString } from '@/core/utils/hash';
 import { type Dispose, PluginScope } from '@/features/plugins/runtime/pluginScope';
 import { requestPluginSetting } from '@/features/plugins/storage/pluginSettingRequest';
 import type { PluginSettings } from '@/features/plugins/types';
@@ -26,8 +25,8 @@ import type { PreviewMarkerData } from '@/pages/content/timeline/types';
 import { watchRouteChanges } from '@/pages/content/utils/routeWatcher';
 import { initI18n } from '@/utils/i18n';
 
-import { MAX_REGEX_INPUT_LENGTH } from '../../sites/safeRegex';
 import type { PrimitiveHandle } from '../types';
+import { buildConversationId, ConversationSwitch } from './conversationSwitch';
 import {
   afterScrollSettles,
   navigationScrollBehavior,
@@ -35,8 +34,9 @@ import {
   scrollElementToAnchor,
   scrollToCenter,
 } from './scrollMotion';
-import { extractTurnHash, StarSnapshotLoader } from './starSnapshot';
+import { extractTurnHash, moveStarredMessages, StarSnapshotLoader } from './starSnapshot';
 import { type Marker, TURN_ID_ATTR, mergeMountedTurns } from './turnMerge';
+export { buildConversationId } from './conversationSwitch';
 export { extractTurnHash } from './starSnapshot';
 export { buildTurnId, TURN_ID_ATTR } from './turnMerge';
 
@@ -83,25 +83,6 @@ const COMPACT_TRACK_PADDING_PX = 16;
 /** Cluster height used before the track has a layout (first paint, tests). */
 const COMPACT_FALLBACK_SPAN_PX = 240;
 
-export function buildConversationId(
-  config: Pick<TurnNavigatorConfig, 'siteId' | 'conversationIdPattern'>,
-  input: string = location.href,
-): string {
-  try {
-    const url = new URL(input, location.origin);
-    if (config.conversationIdPattern) {
-      // The pattern policy (sites/safeRegex.ts) forbids the constructs that
-      // backtrack catastrophically; a bounded subject caps the rest.
-      const subject = url.pathname.slice(0, MAX_REGEX_INPUT_LENGTH);
-      const match = new RegExp(config.conversationIdPattern).exec(subject);
-      if (match?.[1]) return `${config.siteId}:conv:${match[1]}`;
-    }
-    return `${config.siteId}:${hashString(`${url.origin}${url.pathname}`)}`;
-  } catch {
-    return `${config.siteId}:${hashString(String(input || ''))}`;
-  }
-}
-
 type Dot = HTMLButtonElement & {
   dataset: DOMStringMap & { targetTurnId?: string; markerIndex?: string };
 };
@@ -115,6 +96,8 @@ export class TurnNavigator {
   private markers: Marker[] = [];
   private markerCenters: number[] = [];
   private conversationId = '';
+  private readonly conversationSwitch = new ConversationSwitch();
+  private stopRecheckTimer: Dispose | null = null;
   private readonly starSnapshots = new StarSnapshotLoader();
   private starredByHash = new Map<string, { turnId: string; starredAt: number }>();
   private stopRefreshTimer: Dispose | null = null;
@@ -358,11 +341,32 @@ export class TurnNavigator {
   private async refresh(): Promise<void> {
     if (this.disposed) return;
     this.ensureUi();
-    if (this.buildConversationId() !== this.conversationId) this.resetConversationState();
+    const readText = (element: HTMLElement) => this.extractText(element);
+    const step = this.conversationSwitch.update({
+      routeId: this.buildConversationId(),
+      currentId: this.conversationId,
+      markers: this.markers,
+      turns: Array.from(document.querySelectorAll<HTMLElement>(this.config.turnSelector)),
+      readText,
+      now: Date.now(),
+    });
+    if (step.reset) this.resetConversationState();
+    if (step.recheckInMs !== undefined) {
+      void this.stopRecheckTimer?.();
+      this.stopRecheckTimer = this.scope.timer(() => this.scheduleRefresh(), step.recheckInMs);
+    }
+    if (step.migrate) {
+      const { from, to, hashes } = step.migrate;
+      await moveStarredMessages(from, to, hashes, location.href.split('#')[0]);
+      if (this.disposed) return;
+    }
     await this.loadStars();
     if (this.disposed) return;
     const previousIds = this.markers.map((marker) => marker.id);
-    const turns = Array.from(document.querySelectorAll<HTMLElement>(this.config.turnSelector));
+    // Turns the previous conversation left on screen are not this one's.
+    const turns = Array.from(
+      document.querySelectorAll<HTMLElement>(this.config.turnSelector),
+    ).filter((element) => !this.conversationSwitch.isStale(element, readText));
     if (turns[0]) this.setScrollTarget(this.getScrollTarget(turns[0]));
     this.markers = mergeMountedTurns(
       this.markers,
@@ -374,7 +378,11 @@ export class TurnNavigator {
     const sameMarkers =
       previousIds.length === this.markers.length &&
       previousIds.every((id, index) => id === this.markers[index]?.id);
-    if (!sameMarkers || this.markers.some((marker) => !marker.dotElement)) this.renderDots();
+    // An edited turn keeps its marker id but needs its new label.
+    const outdated = (marker: Marker) =>
+      !marker.dotElement ||
+      (!!marker.summary && marker.dotElement.getAttribute('aria-label') !== marker.summary);
+    if (!sameMarkers || this.markers.some(outdated)) this.renderDots();
     this.applyStarredState();
     this.refreshActive();
     this.handleHash();
@@ -389,12 +397,17 @@ export class TurnNavigator {
     if (this.trackContent) this.trackContent.textContent = '';
   }
 
+  /** Where stars live now: a new chat's draft id until its stable id is confirmed. */
+  private starNamespace(): string {
+    return this.conversationSwitch.namespace(this.buildConversationId());
+  }
+
   private async loadStars(force = false): Promise<void> {
-    const nextConversationId = this.buildConversationId();
+    const nextConversationId = this.starNamespace();
     if (!force && nextConversationId === this.conversationId) return;
     this.conversationId = nextConversationId;
     const isCurrent = this.starSnapshots.begin(
-      () => !this.disposed && this.buildConversationId() === nextConversationId,
+      () => !this.disposed && this.starNamespace() === nextConversationId,
     );
     const messages =
       await StarredMessagesService.getStarredMessagesForConversation(nextConversationId);

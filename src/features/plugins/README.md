@@ -312,12 +312,10 @@ Ownership and precedence:
 Shipped primitives (`verbs/contracts.ts`): `formulaCopy` (since 1.3.0), `vimInput` (since 1.4.0,
 `composer` param, defaults to the adapter's `composer` selector) and `turnNavigator` (since 1.4.0,
 `turn` / `conversationIdPattern` / `scrollContainer` / `yieldWhen` / `position`, all optional and
-defaulting to the adapter, plus the optional `turnKey` attribute added after 1.4.0). The
-formula-copy, Vim, Claude-timeline and ChatGPT-timeline builtins are now manifests that invoke
-these primitives; the timeline engine lives in `verbs/turnNavigator/TurnNavigator.ts`, with marker
-stitching in `turnMerge.ts`. Builtins ship with their engine and may use `turnKey` now; a catalog
-manifest must wait for the next `PLUGIN_ENGINE_VERSION` bump, because a 1.4.0 engine skips an op
-whose params it does not know.
+defaulting to the adapter, plus the optional `turnKey` attribute since 1.5.0). The formula-copy,
+Vim, Claude-timeline and ChatGPT-timeline builtins are now manifests that invoke these primitives;
+the timeline engine lives in `verbs/turnNavigator/TurnNavigator.ts`, with marker stitching in
+`turnMerge.ts` and route switches in `conversationSwitch.ts`.
 
 Some behaviour cannot be expressed as CSS or as the reversible DOM operations.
 A **primitive** is that behaviour, written once as first-party TypeScript inside
@@ -360,6 +358,12 @@ at least that version, and `bun run catalog:build` fails the build otherwise
 `needs-engine` ("update Voyager") instead of `needs-handler`, which is left
 meaning a genuine configuration mistake. `catalog:build` also rejects a handler
 with no contract, and a semantic key the plugin's own site does not define.
+
+A param added to a shipped primitive carries its own `sinceEngine` (D9: params
+are only ever added). An older engine rejects a param it does not know and skips
+the whole op, so a manifest that sets the param needs an `engine` floor at least
+that high; `plugin:check` and `catalog:build` enforce it alongside the primitive
+floor, and `builtin.test.ts` applies the same check to the builtins.
 
 `requires` states the same needs declaratively:
 

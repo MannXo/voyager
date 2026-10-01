@@ -8,15 +8,37 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { StarredMessage } from '@/pages/content/timeline/starredTypes';
+
 import { requireBundledSiteAdapter } from '../catalog/sites';
 import { PluginScope } from '../runtime/pluginScope';
 import type { NativeOperation } from '../types';
 import { turnNavigatorPrimitive } from '../verbs/turnNavigator';
+import { buildConversationId } from '../verbs/turnNavigator/TurnNavigator';
 import { BUILTIN_PLUGINS } from './index';
 
-const { getStarredMessagesForConversation } = vi.hoisted(() => ({
-  getStarredMessagesForConversation: vi.fn().mockResolvedValue([]),
-}));
+/** In-memory stand-in for the background's starred-message store. */
+const { starStore, getStarredMessagesForConversation, addStarredMessage, removeStarredMessage } =
+  vi.hoisted(() => {
+    const store = new Map<string, StarredMessage[]>();
+    return {
+      starStore: store,
+      getStarredMessagesForConversation: vi.fn(async (conversationId: string) => [
+        ...(store.get(conversationId) ?? []),
+      ]),
+      addStarredMessage: vi.fn(async (message: StarredMessage) => {
+        const list = (store.get(message.conversationId) ?? []).filter(
+          (item) => item.turnId !== message.turnId,
+        );
+        store.set(message.conversationId, [...list, message]);
+      }),
+      removeStarredMessage: vi.fn(async (conversationId: string, turnId: string) => {
+        const list = (store.get(conversationId) ?? []).filter((item) => item.turnId !== turnId);
+        if (list.length) store.set(conversationId, list);
+        else store.delete(conversationId);
+      }),
+    };
+  });
 
 vi.mock('@/utils/i18n', () => ({
   initI18n: vi.fn().mockResolvedValue(undefined),
@@ -24,9 +46,9 @@ vi.mock('@/utils/i18n', () => ({
 }));
 vi.mock('@/pages/content/timeline/StarredMessagesService', () => ({
   StarredMessagesService: {
-    addStarredMessage: vi.fn().mockResolvedValue(undefined),
+    addStarredMessage,
     getStarredMessagesForConversation,
-    removeStarredMessage: vi.fn().mockResolvedValue(undefined),
+    removeStarredMessage,
   },
 }));
 vi.mock('@/features/plugins/storage/pluginState', () => ({
@@ -38,6 +60,8 @@ vi.mock('@/pages/content/timeline/timelineStyleCoachmark', () => ({
 
 /** Poll of the shared route watcher plus the navigator's refresh debounce. */
 const ROUTE_SETTLE_MS = 400 + 150;
+/** Long enough for a draft that gained an id to be confirmed as the same chat. */
+const REKEY_SETTLE_MS = 2_500;
 
 let scope: PluginScope;
 let thread: HTMLElement;
@@ -107,6 +131,21 @@ function addExchange(index: number, prompt: string, answer = `Answer ${index}`):
   return user;
 }
 
+function draftId(path = '/'): string {
+  return buildConversationId(
+    {
+      siteId: 'chatgpt',
+      conversationIdPattern: requireBundledSiteAdapter('chatgpt').conversationIdPattern,
+    },
+    `${location.origin}${path}`,
+  );
+}
+
+async function longPress(dot: HTMLElement): Promise<void> {
+  dot.dispatchEvent(new Event('pointerdown'));
+  await vi.advanceTimersByTimeAsync(600);
+}
+
 function dots(): HTMLButtonElement[] {
   return Array.from(document.querySelectorAll<HTMLButtonElement>('.timeline-dot'));
 }
@@ -147,6 +186,7 @@ beforeEach(() => {
   thread = document.getElementById('thread')!;
   scope = new PluginScope();
   targetCount = () => -1;
+  starStore.clear();
   getStarredMessagesForConversation.mockClear();
   window.scrollTo = vi.fn();
 });
@@ -201,6 +241,22 @@ describe('ChatGPT timeline', () => {
     // Centre at 45% of the view: 780 - 0.45 * 600 = 510 from the start, which
     // a column-reverse scroller counts as 510 - 1400.
     expect(scroller.scrollTo).toHaveBeenCalledWith({ top: -890, behavior: 'smooth' });
+  });
+
+  it('treats a normal scroller in rubber-band overscroll as a normal scroller', async () => {
+    const scroller = makeScroller();
+    // Safari reports a negative scrollTop while bouncing past the top edge.
+    Object.defineProperty(scroller, 'scrollTop', { configurable: true, value: -20 });
+    addExchange(1, 'Opening question');
+    const target = addExchange(2, 'Jump here');
+    target.querySelector<HTMLElement>('[data-message-author-role]')!.getBoundingClientRect =
+      rect(700);
+    await mount();
+
+    dots()[1].click();
+
+    // -20 + 700 + 20 - 0.45 * 600, on the ordinary axis.
+    expect(scroller.scrollTo).toHaveBeenCalledWith({ top: 430, behavior: 'smooth' });
   });
 
   it('adds a dot when a new prompt is sent', async () => {
@@ -285,6 +341,19 @@ describe('ChatGPT timeline', () => {
     expect(remounted.getAttribute('data-gv-turn-id')).toBe(id);
   });
 
+  it('updates the dot when a prompt is edited in place, without leaving a phantom', async () => {
+    const shell = addExchange(1, 'Hello');
+    addExchange(2, 'After');
+    await mount();
+    const id = dots()[0].dataset.targetTurnId;
+
+    mountContent(shell, 'user', 'Hello edited');
+    await settle();
+
+    expect(labels()).toEqual(['Hello edited', 'After']);
+    expect(dots()[0].dataset.targetTurnId).toBe(id);
+  });
+
   it('does not treat a wrapper around several turns as one turn', async () => {
     const root = document.createElement('div');
     root.setAttribute('data-turn-id-container', 'client-created-root');
@@ -308,6 +377,65 @@ describe('ChatGPT timeline', () => {
     expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('chatgpt:conv:second');
   });
 
+  it('keeps the old conversation off the next one when the URL changes before the DOM', async () => {
+    const old = addExchange(1, 'Prompt A');
+    await mount();
+
+    history.pushState({}, '', '/c/second');
+    await settle(ROUTE_SETTLE_MS);
+    // A's turn is still on screen, but it is not part of the new conversation.
+    expect(labels()).toEqual([]);
+
+    thread.append(turnShell('user-9', 'user', 'Prompt B'));
+    await settle();
+    expect(labels()).toEqual(['Prompt B']);
+    old.remove();
+    await settle();
+
+    expect(labels()).toEqual(['Prompt B']);
+    expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('chatgpt:conv:second');
+  });
+
+  it('does not carry a draft into a different conversation the user opens', async () => {
+    history.replaceState({}, '', '/');
+    const draft = addExchange(1, 'Draft prompt');
+    await mount();
+    await longPress(dots()[0]);
+    expect(starStore.get(draftId())).toHaveLength(1);
+
+    history.pushState({}, '', '/c/other');
+    await settle(ROUTE_SETTLE_MS);
+    draft.remove();
+    thread.append(turnShell('user-7', 'user', 'Other prompt'));
+    await settle(REKEY_SETTLE_MS);
+
+    expect(labels()).toEqual(['Other prompt']);
+    expect(starStore.get(draftId())).toHaveLength(1);
+    expect(starStore.has('chatgpt:conv:other')).toBe(false);
+  });
+
+  it('moves stars made on a new chat to its id once ChatGPT assigns one', async () => {
+    history.replaceState({}, '', '/');
+    addExchange(1, 'Star me');
+    await mount();
+    await longPress(dots()[0]);
+    expect(starStore.get(draftId())?.map((message) => message.content)).toEqual(['Star me']);
+
+    history.pushState({}, '', '/c/assigned-id');
+    await settle(ROUTE_SETTLE_MS + REKEY_SETTLE_MS);
+
+    expect(starStore.has(draftId())).toBe(false);
+    expect(starStore.get('chatgpt:conv:assigned-id')).toEqual([
+      expect.objectContaining({
+        content: 'Star me',
+        conversationId: 'chatgpt:conv:assigned-id',
+        conversationUrl: expect.stringMatching(/\/c\/assigned-id$/),
+      }),
+    ]);
+    expect(labels()).toEqual(['Star me']);
+    expect(dots()[0].getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('re-keys a new chat once ChatGPT gives it an id, with no DOM change', async () => {
     history.replaceState({}, '', '/');
     addExchange(1, 'Brand new chat');
@@ -317,7 +445,7 @@ describe('ChatGPT timeline', () => {
     );
 
     history.pushState({}, '', '/c/assigned-id');
-    await settle(ROUTE_SETTLE_MS);
+    await settle(ROUTE_SETTLE_MS + REKEY_SETTLE_MS);
 
     expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('chatgpt:conv:assigned-id');
     expect(labels()).toEqual(['Brand new chat']);
