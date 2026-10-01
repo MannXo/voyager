@@ -249,25 +249,6 @@ describe('Gemini conversation placement entry points', () => {
       expect(onChange).toHaveBeenCalledWith('data');
       expect(onArchive).not.toHaveBeenCalled();
     });
-
-    it('treats another spelling of a stored id as a different conversation', async () => {
-      await mount(
-        data(['f'], {
-          f: [ref('c_abc', { sortIndex: 0 }), ref('conv_1', { url: '/app/def', sortIndex: 1 })],
-        }),
-      );
-      store.addConversationToFolder('f', {
-        type: 'conversation',
-        conversationId: 'abc',
-        title: 'A',
-      });
-      store.addConversationToFolder('f', {
-        type: 'conversation',
-        conversationId: 'def',
-        title: 'D',
-      });
-      expect(ids('f')).toEqual(['c_abc', 'conv_1', 'abc', 'def']);
-    });
   });
 
   describe('addConversationsToFolder (multi-select or stored-row drag)', () => {
@@ -455,6 +436,50 @@ describe('Gemini conversation placement entry points', () => {
       store.addConversationToFolderFromNative('f', 'a', 'A', '/app/a');
       expect(ids('f')).toEqual(['a']);
       expect(ids('g')).toEqual(['a']);
+    });
+  });
+
+  describe('a new placement under another spelling of a held conversation', () => {
+    // f holds abc twice (bare and c_) and def under a synthetic id with its route URL.
+    const held = () => [
+      ref('c_abc', { sortIndex: 0 }),
+      ref('abc', { sortIndex: 1 }),
+      ref('conv_1', { url: 'https://gemini.google.com/app/def', sortIndex: 2 }),
+    ];
+    const entries: Array<[string, (id: string) => void]> = [
+      [
+        'ensureConversationsInFolder',
+        (id) => store.ensureConversationsInFolder('f', { conversationId: id, title: id }),
+      ],
+      [
+        'addConversationToFolder',
+        (id) => store.addConversationToFolder('f', { conversationId: id, title: id }),
+      ],
+      ['addConversationsToFolder', (id) => store.addConversationsToFolder('f', [ref(id)])],
+      [
+        'moveConversationToFolder',
+        (id) => store.moveConversationToFolder('s', 'f', find('s', id)!),
+      ],
+      [
+        'addConversationToFolderFromNative',
+        (id) => store.addConversationToFolderFromNative('f', id, id, `/app/${id}`),
+      ],
+    ];
+
+    it.each(entries)('%s adds no row and keeps the existing duplicates', async (_name, place) => {
+      await mount(data(['f', 's'], { f: held(), s: [ref('c_def'), ref('abc')] }));
+      const before = structuredClone(store.data.folderContents.f);
+
+      place('abc');
+      place('c_def');
+
+      expect(store.data.folderContents.f).toEqual(before);
+    });
+
+    it('still places a conversation no key matches', async () => {
+      await mount(data(['f'], { f: held() }));
+      store.addConversationToFolder('f', { conversationId: 'xyz', title: 'X' });
+      expect(ids('f')).toEqual(['c_abc', 'abc', 'conv_1', 'xyz']);
     });
   });
 });

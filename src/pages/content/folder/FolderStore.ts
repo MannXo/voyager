@@ -26,7 +26,7 @@ import {
 } from './FolderRepository';
 import { createConversationMembershipLookup } from './conversationMembership';
 import { applyNativeTitle, indexConversationsByRouteId } from './conversationTitleSync';
-import { isSameConversation } from './folderConversationIdentity';
+import { conversationKeys, isSameConversation } from './folderConversationIdentity';
 import {
   extractConversationIdFromElement,
   extractNativeConversationId,
@@ -299,6 +299,7 @@ export class FolderStore {
     this.data = placeConversations(this.data, records, {
       target: folderId,
       placement: 'append',
+      keysOf: conversationKeys,
     }).data;
   }
 
@@ -362,6 +363,7 @@ export class FolderStore {
       {
         target: folderId,
         placement: 'append',
+        keysOf: conversationKeys,
         removeFrom: sourceFolderId ? { bucket: sourceFolderId } : undefined,
       },
     );
@@ -401,6 +403,7 @@ export class FolderStore {
     const { data, added } = placeConversations(this.data, records, {
       target: folderId,
       placement: 'append',
+      keysOf: conversationKeys,
       // Ids the target already held stay in the source.
       removeFrom:
         sourceFolderId && sourceFolderId !== folderId ? { bucket: sourceFolderId } : undefined,
@@ -525,6 +528,7 @@ export class FolderStore {
     this.data = placeConversations(this.data, [{ ...conv, addedAt: Date.now() }], {
       target: targetFolderId,
       placement: 'append',
+      keysOf: conversationKeys,
       removeFrom: { bucket: sourceFolderId },
       removeWhenPresent: true,
     }).data;
@@ -561,6 +565,7 @@ export class FolderStore {
     const { data, added } = placeConversations(this.data, [record], {
       target: folderId,
       placement: 'top',
+      keysOf: conversationKeys,
     });
     this.data = data;
 

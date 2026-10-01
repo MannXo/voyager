@@ -166,6 +166,29 @@ describe('placeConversations', () => {
     expect(next.folderContents.a[0].title).toBe('kept');
   });
 
+  it('treats records sharing a key as held, without touching stored duplicates', () => {
+    const keysOf = (c: ConversationReference) => [c.conversationId.replace(/^c_/, '')];
+    const input = data({ a: [conv('c_x'), conv('x')], b: [conv('x'), conv('c_y')] });
+    const { data: next, added } = placeConversations(input, [conv('c_x'), conv('y'), conv('c_y')], {
+      target: 'a',
+      placement: 'keep',
+      removeFrom: { bucket: 'b' },
+      removeWhenPresent: true,
+      keysOf,
+    });
+    expect(added.map((c) => c.conversationId)).toEqual(['y']);
+    expect(layout(next).a.map(([id]) => id)).toEqual(['c_x', 'x', 'y']);
+    // Removal matches each incoming record's exact id.
+    expect(layout(next).b.map(([id]) => id)).toEqual(['x']);
+
+    const batch = placeConversations(input, [conv('c_z'), conv('z')], {
+      target: 'b',
+      placement: 'keep',
+      keysOf,
+    });
+    expect(batch.added.map((c) => c.conversationId)).toEqual(['c_z']);
+  });
+
   it('stores fresh records and never mutates its input', () => {
     const input = data({ a: [conv('x', { sortIndex: 0 })], b: [] });
     const incoming = deepFreeze([conv('n', { starred: true })]);

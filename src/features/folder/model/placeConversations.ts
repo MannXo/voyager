@@ -19,6 +19,11 @@ export interface PlaceConversationsOptions {
   removeFrom?: { bucket: string } | 'everywhere';
   /** Whether a conversation the target already holds still leaves `removeFrom`. */
   removeWhenPresent?: boolean;
+  /**
+   * Every key a record answers to: a record the target holds under any shared
+   * key is not placed again. Defaults to the exact `conversationId`.
+   */
+  keysOf?: (conversation: ConversationReference) => readonly string[];
 }
 
 export interface ConversationPlacementResult {
@@ -27,27 +32,34 @@ export interface ConversationPlacementResult {
   added: ConversationReference[];
 }
 
+const exactId = (conversation: ConversationReference): readonly string[] => [
+  conversation.conversationId,
+];
+
 /**
  * Place built conversation records into one bucket. Pure: the input is never
  * mutated and every stored record is a fresh object, so no record is shared
- * between buckets. Identity is the exact `conversationId`; a record the target
- * already holds is kept as stored. Callers build records and own side effects.
+ * between buckets. A record the target already holds (by `keysOf`) is not
+ * placed again, and stored rows are never merged or rewritten, even when they
+ * duplicate each other. Removal from other buckets matches the exact id of the
+ * incoming record. Callers build records and own side effects.
  */
 export function placeConversations(
   data: FolderData,
   records: readonly ConversationReference[],
   options: PlaceConversationsOptions,
 ): ConversationPlacementResult {
-  const { target, placement, removeFrom, removeWhenPresent = false } = options;
-  const held = new Set((data.folderContents[target] ?? []).map((c) => c.conversationId));
+  const { target, placement, removeFrom, removeWhenPresent = false, keysOf = exactId } = options;
+  const held = new Set((data.folderContents[target] ?? []).flatMap((c) => keysOf(c)));
   const added: ConversationReference[] = [];
   const leaving = new Set<string>();
   for (const record of records) {
-    if (held.has(record.conversationId)) {
+    const keys = keysOf(record);
+    if (keys.some((key) => held.has(key))) {
       if (removeWhenPresent) leaving.add(record.conversationId);
       continue;
     }
-    held.add(record.conversationId);
+    keys.forEach((key) => held.add(key));
     leaving.add(record.conversationId);
     added.push({ ...record });
   }
