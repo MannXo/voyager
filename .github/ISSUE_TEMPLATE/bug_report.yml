@@ -65,6 +65,7 @@ body:
     validations:
       required: true
   - type: input
+    id: browser-version
     attributes:
       label: '🌐 浏览器版本 | Browser Version'
       description: 'Use the exact version from the browser About page.'
@@ -97,6 +98,7 @@ body:
     validations:
       required: true
   - type: input
+    id: extension-version
     attributes:
       label: '📦 扩展版本 | Extension Version'
       description: 'Which version of Voyager are you using? Please check the extension popup.'
@@ -104,6 +106,7 @@ body:
     validations:
       required: true
   - type: textarea
+    id: description
     attributes:
       label: '🐛 问题描述 | Bug Description'
       description: 'A clear and concise description of the bug.'
