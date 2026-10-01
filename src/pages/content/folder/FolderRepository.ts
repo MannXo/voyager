@@ -90,6 +90,8 @@ export class FolderRepository {
   private activeStorageKey: string;
   private destroyed = false;
   private readonly storageEchoes = new StorageEchoTracker();
+  /** Another context wrote the active bucket; reload once local work settles. */
+  private reconcilePending = false;
   private saveDebounceTimer: number | null = null;
   private beforeUnloadFlushHandler: (() => void) | null = null;
   private readonly tag: string;
@@ -102,7 +104,8 @@ export class FolderRepository {
     if (this.destroyed) return;
     const change = area === 'local' ? changes[this.activeStorageKey] : undefined;
     if (change && !this.storageEchoes.consume(this.activeStorageKey, change.newValue)) {
-      this.hooks.onExternalChange();
+      this.reconcilePending = true;
+      this.tryReconcile();
     }
     if (area === 'sync' && this.config.isolationSettingKeys.some((key) => changes[key])) {
       void accountIsolationService
@@ -231,6 +234,7 @@ export class FolderRepository {
     const session = this.dataSession;
     if (!session) return;
     // A returning account may still own a queued edit that is newer than disk.
+    // External writes meanwhile are not lost: their events defer a reconcile.
     if ((session.saveInProgress || session.replacingData) && session.ready) return;
     const version = ++session.loadVersion;
     const isCurrent = () =>
@@ -375,7 +379,10 @@ export class FolderRepository {
   }
 
   scheduleSaveData(): void {
-    if (!this.canEdit) return;
+    const session = this.dataSession;
+    if (!session || !this.canEdit) return;
+    // A pending edit supersedes any storage read already in flight for this session.
+    session.loadVersion += 1;
     if (this.saveDebounceTimer !== null) {
       window.clearTimeout(this.saveDebounceTimer);
     }
@@ -383,6 +390,20 @@ export class FolderRepository {
       this.saveDebounceTimer = null;
       void this.saveData();
     }, SAVE_DEBOUNCE_MS);
+  }
+
+  /**
+   * Reload after another context's write once nothing local is newer than disk:
+   * debounced edits are saved first and queued writes drain, so the reload
+   * neither reverts a local edit nor is skipped while a write is pending.
+   */
+  private tryReconcile(): void {
+    const session = this.dataSession;
+    if (!this.reconcilePending || this.destroyed || !session) return;
+    this.flushPendingSaveData();
+    if (session.saveInProgress || session.replacingData) return; // resumed when they settle
+    this.reconcilePending = false;
+    this.hooks.onExternalChange();
   }
 
   flushPendingSaveData(): void {
@@ -423,6 +444,7 @@ export class FolderRepository {
       session.replacingData = false;
       if (this.dataSession === session && !this.destroyed) {
         this.hooks.onChange(saved ? 'data' : 'availability');
+        this.tryReconcile();
       } else if (!session.saveInProgress) {
         this.dataSessions.delete(session.storageKey);
       }
@@ -561,6 +583,7 @@ export class FolderRepository {
     }
     if (this.dataSession === session && !session.replacingData) {
       this.hooks.onPersistSettled?.();
+      if (!session.saveInProgress) this.tryReconcile();
     }
 
     return success;
@@ -595,6 +618,7 @@ export class FolderRepository {
     this.resolvedAccountScope = null;
     this.activeStorageKey = '';
     this.storageEchoes.reset();
+    this.reconcilePending = false;
     this.hooks.onAccountReleased();
     this.hooks.onChange('account');
     try {

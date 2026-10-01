@@ -81,6 +81,23 @@ off a ChatGPT tab`).
   session because the listener ignores events for their old storage key.
 - **Guard:** `src/pages/content/folder/FolderStore.test.ts` ("consumes one mirror echo per write and then applies an external update" and "applies an external update when no local write has armed echo suppression"), `src/pages/content/folder/__tests__/folderStorePersistenceCharacterization.test.ts` ("storage echo and cross-tab reload"), `src/pages/content/folder/__tests__/aistudioFolderSync.test.ts` (Chrome-like storage mock: no event for unchanged or rejected writes, sorted keys), `src/pages/content/folder/storage/__tests__/StorageEchoTracker.test.ts`
 
+## External folder writes reconcile only after local work settles
+
+- **Trap:** The storage listener reloaded immediately. During a pending write or draft
+  replacement `loadData` returned early, so another tab's write was dropped and this tab's next
+  save overwrote it. With a 300ms debounced edit pending, the reload replaced memory with disk and
+  the timer then persisted the reverted state; a debounced edit also did not invalidate a read
+  already in flight.
+- **Rule:** An unsuppressed event for the active bucket only marks `FolderRepository` as needing a
+  reconcile. `tryReconcile()` flushes the debounce, waits while a write or replacement is in
+  flight (persist and `replaceData` resume it), then calls the owner's reload hook. Echo
+  suppression is only an optimisation: a wrongly unsuppressed echo costs one reload of this tab's
+  own data. `scheduleSaveData` bumps `loadVersion` like `saveData`. Limit: whole-snapshot
+  last-writer-wins remains for an external write that lands while a local edit is debounced or
+  already queued; that edit is saved over it. Keeping both needs replaying local ops onto fresh
+  data.
+- **Guard:** `src/pages/content/folder/__tests__/folderStoreReconcile.test.ts`, `src/pages/content/folder/__tests__/aistudioFolderSync.test.ts` ("applies another tab write that lands while its own write is pending")
+
 ## AI Studio external folder reloads must reapply library archive classes
 
 - **Trap:** A cross-tab folder reload repainted the AI Studio sidebar, but `render()` does not

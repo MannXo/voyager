@@ -245,6 +245,35 @@ describe('AI Studio folder sync across contexts', () => {
     expect(manager.data).toEqual(folderData('Mine'));
   });
 
+  it('applies another tab write that lands while its own write is pending', async () => {
+    local[GLOBAL_KEY] = folderData('Mine');
+    const manager = await mount();
+    const write = Promise.withResolvers<void>();
+    const commit = mockBrowser.storage.local.set.getMockImplementation()!;
+    mockBrowser.storage.local.set.mockImplementationOnce(
+      async (values: Record<string, unknown>) => {
+        await commit(values); // committed and echoed; the storage promise is still pending
+        return write.promise;
+      },
+    );
+
+    manager.data.folders[0].name = 'Edited here';
+    const saving = manager.save();
+    await vi.advanceTimersByTimeAsync(0);
+    writeFromElsewhere({ [GLOBAL_KEY]: folderData('From another tab') });
+    write.resolve();
+    await expect(saving).resolves.toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(manager.data).toEqual(folderData('From another tab'));
+
+    manager.data.folders[0].isExpanded = false;
+    await expect(manager.save()).resolves.toBe(true);
+    expect(local[GLOBAL_KEY]).toEqual({
+      ...folderData('From another tab'),
+      folders: [{ ...folderData('From another tab').folders[0], isExpanded: false }],
+    });
+  });
+
   it('ignores other buckets, other areas and a disabled folder feature', async () => {
     local[GLOBAL_KEY] = folderData('Mine');
     const manager = await mount();
