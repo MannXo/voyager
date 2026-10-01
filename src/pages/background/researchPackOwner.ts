@@ -9,11 +9,17 @@ import {
 } from '@/features/researchPack/services/packMessages';
 import { createResearchPackOwner } from '@/features/researchPack/services/packStore';
 
-import { isAllowedSyncContentSender } from './runtimeMessageRouting';
+import { getSenderPageUrl, isAllowedSyncContentSender } from './runtimeMessageRouting';
 
-/** Same gate as the Drive sync content messages: this extension, on a Gemini tab. */
+/**
+ * This extension's content script on a Gemini page. The page is the tab URL, or the sending
+ * frame's URL when Firefox/Safari omit it. The content script only runs in the top frame
+ * (no `all_frames`), so a sender that reports a subframe is refused.
+ */
 export function isAllowedResearchPackSender(sender: chrome.runtime.MessageSender): boolean {
-  return sender.id === chrome.runtime.id && isAllowedSyncContentSender(sender.tab?.url, 'gemini');
+  if (sender.id !== chrome.runtime.id) return false;
+  if (sender.frameId !== undefined && sender.frameId !== 0) return false;
+  return isAllowedSyncContentSender(getSenderPageUrl(sender), 'gemini');
 }
 
 export function startResearchPackOwner(): void {
