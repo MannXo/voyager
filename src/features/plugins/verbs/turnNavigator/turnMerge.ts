@@ -13,10 +13,8 @@
  * Pure apart from stamping `data-gv-turn-id` on the turns it files; the
  * navigator owns the marker list and passes it in.
  *
- * A host whose virtual list keeps a per-turn attribute on each item (ChatGPT's
- * `data-turn-id-container`) can name it as `turnKey`. The key then tells
- * repeated prompts apart and folds a turn the host briefly renders twice into
- * one marker, instead of leaving a phantom `~2` dot behind.
+ * A host that keeps one list item per turn mounted (ChatGPT, `turnKey`) does
+ * not need any of this: see turnSnapshot.ts.
  */
 import { hashString } from '@/core/utils/hash';
 
@@ -33,8 +31,6 @@ export interface Marker {
   /** Last-known center offset within the scroll target; reused while unmounted. */
   center: number;
   dotElement: HTMLButtonElement | null;
-  /** The host's own id for the turn, when the navigator has a `turnKey`. */
-  key?: string;
 }
 
 export interface MountedTurn {
@@ -42,11 +38,7 @@ export interface MountedTurn {
   readonly summary: string;
 }
 
-interface KeyedTurn extends MountedTurn {
-  readonly key?: string;
-}
-
-interface MountedEntry extends KeyedTurn {
+interface MountedEntry extends MountedTurn {
   readonly hash: string;
   readonly center: number;
 }
@@ -55,57 +47,13 @@ export function buildTurnId(text: string): string {
   return `c-${hashString(text)}`;
 }
 
-function claimTurnId(hash: string, usedIds: Set<string>): string {
+/** `c-<hash>`, or `c-<hash>~<n>` for the n-th turn with that text. */
+export function claimTurnId(hash: string, usedIds: Set<string>): string {
   const base = `c-${hash}`;
   let id = base;
   for (let n = 2; usedIds.has(id); n++) id = `${base}~${n}`;
   usedIds.add(id);
   return id;
-}
-
-/**
- * Read each turn's key from the nearest element carrying `attribute`, then
- * fold copies of one turn. An element that owns several turns is a list
- * wrapper (ChatGPT's `*-root` bookkeeping containers carry the same attribute),
- * so its value is not a turn key. Two different elements with one value are a
- * transient duplicate render: keep the copy already filed, else the first.
- */
-function keyTurns(turns: readonly MountedTurn[], attribute: string | undefined): KeyedTurn[] {
-  if (!attribute) return [...turns];
-  const owners = turns.map((turn) => {
-    try {
-      return turn.element.closest<HTMLElement>(`[${attribute}]`);
-    } catch {
-      return null;
-    }
-  });
-  const turnsPerOwner = new Map<HTMLElement, number>();
-  for (const owner of owners) {
-    if (owner) turnsPerOwner.set(owner, (turnsPerOwner.get(owner) ?? 0) + 1);
-  }
-  const keyed: KeyedTurn[] = turns.map((turn, index) => {
-    const owner = owners[index];
-    const key = owner && turnsPerOwner.get(owner) === 1 ? owner.getAttribute(attribute) : null;
-    return key ? { ...turn, key } : turn;
-  });
-  const keptByKey = new Map<string, number>();
-  const dropped = new Set<number>();
-  keyed.forEach((turn, index) => {
-    if (!turn.key) return;
-    const kept = keptByKey.get(turn.key);
-    if (kept === undefined) {
-      keptByKey.set(turn.key, index);
-    } else if (
-      !keyed[kept].element.hasAttribute(TURN_ID_ATTR) &&
-      turn.element.hasAttribute(TURN_ID_ATTR)
-    ) {
-      dropped.add(kept);
-      keptByKey.set(turn.key, index);
-    } else {
-      dropped.add(index);
-    }
-  });
-  return keyed.filter((_, index) => !dropped.has(index));
 }
 
 /**
@@ -116,28 +64,20 @@ function keyTurns(turns: readonly MountedTurn[], attribute: string | undefined):
  * which known marker a mounted repeat is. Matching therefore runs in two
  * passes:
  *   1. Certain matches, in order: the id stamped on the element (it stayed
- *      mounted since we filed it, same text); the host key, which survives an
- *      in-place edit of the text; a hash only one known marker carries.
+ *      mounted since we filed it, same text); a hash only one known marker
+ *      carries.
  *   2. Each run of uncertain turns between two certain matches is aligned with
  *      the known markers between them (`alignRun`).
- * Outside a stamp or key match, a marker whose key differs from the turn's is
- * never a candidate.
  */
 function matchKnownMarkers(known: readonly Marker[], mounted: readonly MountedEntry[]): number[] {
   const hashCount = new Map<string, number>();
   const firstByHash = new Map<string, number>();
   const indexById = new Map<string, number>();
-  const indexByKey = new Map<string, number>();
   known.forEach((marker, index) => {
     hashCount.set(marker.hash, (hashCount.get(marker.hash) ?? 0) + 1);
     if (!firstByHash.has(marker.hash)) firstByHash.set(marker.hash, index);
     indexById.set(marker.id, index);
-    if (marker.key) indexByKey.set(marker.key, index);
   });
-
-  const isCandidate = (index: number, entry: MountedEntry): boolean =>
-    known[index].hash === entry.hash &&
-    (!known[index].key || !entry.key || known[index].key === entry.key);
 
   const certainMatch = (entry: MountedEntry, from: number): number => {
     const stamped = entry.element.getAttribute(TURN_ID_ATTR);
@@ -145,11 +85,9 @@ function matchKnownMarkers(known: readonly Marker[], mounted: readonly MountedEn
     if (byStamp !== undefined && byStamp >= from && known[byStamp].hash === entry.hash) {
       return byStamp;
     }
-    const byKey = entry.key ? indexByKey.get(entry.key) : undefined;
-    if (byKey !== undefined && byKey >= from) return byKey;
     if (hashCount.get(entry.hash) === 1) {
       const only = firstByHash.get(entry.hash)!;
-      if (only >= from && isCandidate(only, entry)) return only;
+      if (only >= from) return only;
     }
     return -1;
   };
@@ -179,7 +117,7 @@ function matchKnownMarkers(known: readonly Marker[], mounted: readonly MountedEn
         if (toPrev === Infinity && toNext === Infinity) return 0;
         return toPrev <= toNext ? driftAt(prev) : driftAt(i);
       });
-      alignRun(known, run, lo, hi, drifts, isCandidate).forEach((index, r) => {
+      alignRun(known, run, lo, hi, drifts).forEach((index, r) => {
         matched[prev + 1 + r] = index;
       });
     }
@@ -201,11 +139,12 @@ function alignRun(
   lo: number,
   hi: number,
   drifts: readonly number[],
-  isCandidate: (index: number, entry: MountedEntry) => boolean,
 ): number[] {
   const m = run.length;
   const n = Math.max(0, hi - lo);
   const result = new Array<number>(m).fill(-1);
+  const isCandidate = (index: number, entry: MountedEntry): boolean =>
+    known[index].hash === entry.hash;
   const hashes = new Set(run.map((entry) => entry.hash));
   let anyCandidate = false;
   for (let j = lo; j < hi && !anyCandidate; j++) anyCandidate = hashes.has(known[j].hash);
@@ -270,9 +209,8 @@ export function mergeMountedTurns(
   known: Marker[],
   turns: readonly MountedTurn[],
   centerOf: (element: HTMLElement) => number,
-  turnKey?: string,
 ): Marker[] {
-  const mounted: MountedEntry[] = keyTurns(turns, turnKey).map((turn) => ({
+  const mounted: MountedEntry[] = turns.map((turn) => ({
     ...turn,
     hash: hashString(turn.summary),
     center: centerOf(turn.element),
@@ -293,7 +231,6 @@ export function mergeMountedTurns(
       element: entry.element,
       center: entry.center,
       dotElement: null,
-      ...(entry.key ? { key: entry.key } : {}),
     };
   };
 
@@ -321,14 +258,6 @@ export function mergeMountedTurns(
       anchorDrift.set(knownIndex, mounted[i].center - survivor.center);
       survivor.element = mounted[i].element;
       survivor.summary = mounted[i].summary;
-      if (survivor.hash !== mounted[i].hash) {
-        // A key match carrying edited text: stars are filed by the id's hash,
-        // so the edited turn takes the id of its new text.
-        survivor.hash = mounted[i].hash;
-        survivor.id = claimTurnId(survivor.hash, usedIds);
-      }
-      // The host may rename a turn (a client id becoming the server's).
-      survivor.key = mounted[i].key ?? survivor.key;
       mounted[i].element.setAttribute(TURN_ID_ATTR, survivor.id);
       lastAnchor = knownIndex;
       continue;

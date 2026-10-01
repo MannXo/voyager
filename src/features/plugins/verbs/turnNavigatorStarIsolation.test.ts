@@ -115,4 +115,32 @@ describe('turnNavigator async star isolation', () => {
     expect(document.querySelector('.timeline-dot')?.getAttribute('aria-pressed')).toBe('true');
     await scope.dispose();
   });
+
+  it("drops the previous conversation's dots when a star change lands mid-switch", async () => {
+    document.body.innerHTML = '<div class="ds-user">prompt A</div>';
+    const scope = new PluginScope();
+    turnNavigatorPrimitive.activate(scope, {}, context(deepseek).ctx);
+    await vi.waitFor(() => expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1));
+
+    history.pushState({}, '', '/a/chat/s/other');
+    // Another tab starred something before this tab refreshed for the new route.
+    const callbacks = vi.mocked(chrome.storage.onChanged.addListener).mock.calls;
+    const notify = callbacks[callbacks.length - 1][0];
+    notify({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: [] } }, 'local');
+    document.querySelector('.ds-user')!.replaceWith(
+      Object.assign(document.createElement('div'), {
+        className: 'ds-user',
+        textContent: 'prompt B',
+      }),
+    );
+
+    await vi.waitFor(() =>
+      expect(
+        Array.from(document.querySelectorAll('.timeline-dot')).map((dot) =>
+          dot.getAttribute('aria-label'),
+        ),
+      ).toEqual(['prompt B']),
+    );
+    await scope.dispose();
+  });
 });

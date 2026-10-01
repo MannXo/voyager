@@ -80,7 +80,7 @@ export const PRIMITIVE_CONTRACTS: readonly PrimitiveContract[] = [
         required: false,
         sinceEngine: '1.5.0',
         description:
-          "Attribute holding the host's own per-turn id, read from the turn or its nearest ancestor (a virtual-list item). Tells repeated prompts apart and folds a turn rendered twice into one marker.",
+          "Attribute holding the host's own per-turn id on the virtual-list item it keeps mounted for every turn, even while the message inside unloads. The rail is then rebuilt from those items on every refresh, with labels remembered by this id, instead of accumulated.",
       },
       conversationIdPattern: {
         type: 'string',

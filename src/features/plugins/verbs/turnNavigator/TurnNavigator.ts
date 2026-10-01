@@ -11,7 +11,9 @@
  *     while, say, an artifact frame is open; `position` picks the rail side.
  *
  * Markers are accumulated across refreshes by content hash so virtualised
- * conversations (Claude, DeepSeek, ChatGPT) never lose turns; see turnMerge.ts.
+ * conversations (Claude, DeepSeek) never lose turns; see turnMerge.ts. A site
+ * that names a `turnKeyAttribute` keeps one item per turn mounted (ChatGPT),
+ * and its rail is rebuilt from the DOM instead; see turnSnapshot.ts.
  */
 import { StorageKeys, type TimelineStyle } from '@/core/types/common';
 import { type Dispose, PluginScope } from '@/features/plugins/runtime/pluginScope';
@@ -26,7 +28,7 @@ import { watchRouteChanges } from '@/pages/content/utils/routeWatcher';
 import { initI18n } from '@/utils/i18n';
 
 import type { PrimitiveHandle } from '../types';
-import { buildConversationId, ConversationSwitch } from './conversationSwitch';
+import { buildConversationId, starConversationId } from './conversationId';
 import {
   afterScrollSettles,
   navigationScrollBehavior,
@@ -34,9 +36,10 @@ import {
   scrollElementToAnchor,
   scrollToCenter,
 } from './scrollMotion';
-import { extractTurnHash, moveStarredMessages, StarSnapshotLoader } from './starSnapshot';
-import { type Marker, TURN_ID_ATTR, mergeMountedTurns } from './turnMerge';
-export { buildConversationId } from './conversationSwitch';
+import { extractTurnHash, StarSnapshotLoader } from './starSnapshot';
+import { type Marker, type MountedTurn, TURN_ID_ATTR, mergeMountedTurns } from './turnMerge';
+import { snapshotMarkers, TurnSnapshot } from './turnSnapshot';
+export { buildConversationId } from './conversationId';
 export { extractTurnHash } from './starSnapshot';
 export { buildTurnId, TURN_ID_ATTR } from './turnMerge';
 
@@ -46,7 +49,7 @@ export interface TurnNavigatorConfig {
   /** Display label, stripped from `document.title` for starred-message titles. */
   readonly siteLabel: string;
   readonly turnSelector: string;
-  /** Attribute naming the host's own per-turn id on a turn or its list item. */
+  /** Attribute on the list item the host keeps mounted for every turn: snapshot mode. */
   readonly turnKeyAttribute?: string;
   /** Path regular expression whose first group is the conversation id. */
   readonly conversationIdPattern?: string;
@@ -95,9 +98,11 @@ export class TurnNavigator {
   private observing = false;
   private markers: Marker[] = [];
   private markerCenters: number[] = [];
-  private conversationId = '';
-  private readonly conversationSwitch = new ConversationSwitch();
-  private stopRecheckTimer: Dispose | null = null;
+  /** Route the merged markers were collected under; star reads never change it. */
+  private markerRouteId = '';
+  /** Conversation whose stars `starredByHash` holds; null on a new chat. */
+  private starsLoadedFor: string | null | undefined;
+  private readonly snapshot: TurnSnapshot | null;
   private readonly starSnapshots = new StarSnapshotLoader();
   private starredByHash = new Map<string, { turnId: string; starredAt: number }>();
   private stopRefreshTimer: Dispose | null = null;
@@ -126,6 +131,8 @@ export class TurnNavigator {
     private readonly config: TurnNavigatorConfig,
   ) {
     this.barSelector = `.gemini-timeline-bar[data-gv-turn-navigator="${config.siteId}"]`;
+    const key = config.turnKeyAttribute;
+    this.snapshot = key ? new TurnSnapshot(config.turnSelector, key) : null;
   }
 
   /** `<siteId>:conv:<id>` from the site's route pattern, else a hash of the path. */
@@ -256,9 +263,15 @@ export class TurnNavigator {
 
   private touchesTurn(node: Node): boolean {
     const element = this.toElement(node);
-    return !!(
+    if (
       element?.closest(this.config.turnSelector) ||
       element?.querySelector?.(this.config.turnSelector)
+    )
+      return true;
+    // A list item whose message is already unloaded still holds a turn.
+    const item = this.config.turnKeyAttribute && `[${this.config.turnKeyAttribute}]`;
+    return (
+      !!item && node instanceof window.Element && (node.matches(item) || !!node.querySelector(item))
     );
   }
 
@@ -341,51 +354,36 @@ export class TurnNavigator {
   private async refresh(): Promise<void> {
     if (this.disposed) return;
     this.ensureUi();
-    const readText = (element: HTMLElement) => this.extractText(element);
-    const step = this.conversationSwitch.update({
-      routeId: this.buildConversationId(),
-      currentId: this.conversationId,
-      markers: this.markers,
-      turns: Array.from(document.querySelectorAll<HTMLElement>(this.config.turnSelector)),
-      readText,
-      now: Date.now(),
-    });
-    if (step.reset) this.resetConversationState();
-    if (step.recheckInMs !== undefined) {
-      void this.stopRecheckTimer?.();
-      this.stopRecheckTimer = this.scope.timer(() => this.scheduleRefresh(), step.recheckInMs);
-    }
-    if (step.migrate) {
-      const { from, to, hashes } = step.migrate;
-      await moveStarredMessages(from, to, hashes, location.href.split('#')[0]);
-      if (this.disposed) return;
+    const routeId = this.buildConversationId();
+    if (routeId !== this.markerRouteId) {
+      this.resetConversationState();
+      this.markerRouteId = routeId;
     }
     await this.loadStars();
     if (this.disposed) return;
     const previousIds = this.markers.map((marker) => marker.id);
-    // Turns the previous conversation left on screen are not this one's.
-    const turns = Array.from(
-      document.querySelectorAll<HTMLElement>(this.config.turnSelector),
-    ).filter((element) => !this.conversationSwitch.isStale(element, readText));
-    if (turns[0]) this.setScrollTarget(this.getScrollTarget(turns[0]));
-    this.markers = mergeMountedTurns(
-      this.markers,
-      turns.map((element) => ({ element, summary: this.extractText(element) })),
-      (element) => this.computeElementCenter(element),
-      this.config.turnKeyAttribute,
-    );
+    const readText = (element: HTMLElement) => this.extractText(element);
+    const centerOf = (element: HTMLElement) => this.computeElementCenter(element);
+    const turns = this.snapshot?.collect(document, readText);
+    const mounted = turns ?? this.readMountedTurns(readText);
+    if (mounted[0]) this.setScrollTarget(this.getScrollTarget(mounted[0].element));
+    this.markers = turns
+      ? snapshotMarkers(this.markers, turns, centerOf)
+      : mergeMountedTurns(this.markers, mounted, centerOf);
     this.markerCenters = this.computeMarkerCenters();
     const sameMarkers =
       previousIds.length === this.markers.length &&
       previousIds.every((id, index) => id === this.markers[index]?.id);
-    // An edited turn keeps its marker id but needs its new label.
-    const outdated = (marker: Marker) =>
-      !marker.dotElement ||
-      (!!marker.summary && marker.dotElement.getAttribute('aria-label') !== marker.summary);
-    if (!sameMarkers || this.markers.some(outdated)) this.renderDots();
+    if (!sameMarkers || this.markers.some((marker) => !marker.dotElement)) this.renderDots();
     this.applyStarredState();
     this.refreshActive();
     this.handleHash();
+  }
+
+  private readMountedTurns(readText: (element: HTMLElement) => string): MountedTurn[] {
+    return Array.from(document.querySelectorAll<HTMLElement>(this.config.turnSelector)).map(
+      (element) => ({ element, summary: readText(element) }),
+    );
   }
 
   private resetConversationState(): void {
@@ -397,20 +395,21 @@ export class TurnNavigator {
     if (this.trackContent) this.trackContent.textContent = '';
   }
 
-  /** Where stars live now: a new chat's draft id until its stable id is confirmed. */
-  private starNamespace(): string {
-    return this.conversationSwitch.namespace(this.buildConversationId());
+  private starConversationId(): string | null {
+    return starConversationId(this.config);
   }
 
+  /** Read the stars of the conversation the URL names now. */
   private async loadStars(force = false): Promise<void> {
-    const nextConversationId = this.starNamespace();
-    if (!force && nextConversationId === this.conversationId) return;
-    this.conversationId = nextConversationId;
+    const conversationId = this.starConversationId();
+    if (!force && conversationId === this.starsLoadedFor) return;
+    this.starsLoadedFor = conversationId;
     const isCurrent = this.starSnapshots.begin(
-      () => !this.disposed && this.starNamespace() === nextConversationId,
+      () => !this.disposed && this.starConversationId() === conversationId,
     );
-    const messages =
-      await StarredMessagesService.getStarredMessagesForConversation(nextConversationId);
+    const messages = conversationId
+      ? await StarredMessagesService.getStarredMessagesForConversation(conversationId)
+      : [];
     if (isCurrent())
       this.starredByHash = new Map(
         messages.map((message) => [
@@ -495,7 +494,7 @@ export class TurnNavigator {
 
   private startLongPress(dot: Dot): void {
     this.cancelLongPress();
-    if (this.disposed) return;
+    if (this.disposed || !this.starConversationId()) return;
     this.longPressDot = dot;
     dot.classList.add('holding');
     this.stopLongPressTimer = this.scope.timer(() => {
@@ -515,20 +514,23 @@ export class TurnNavigator {
   }
 
   private async toggleStar(turnId: string): Promise<void> {
+    const conversationId = this.starConversationId();
+    if (!conversationId) return;
+    if (conversationId !== this.starsLoadedFor) await this.loadStars();
     const marker = this.markers.find((item) => item.id === turnId);
-    if (!marker) return;
+    if (!marker || this.disposed) return;
     const existing = this.starredByHash.get(marker.hash);
     if (existing) {
       this.starredByHash.delete(marker.hash);
       // Remove by the stored id, which may still be in the legacy format.
-      await StarredMessagesService.removeStarredMessage(this.conversationId, existing.turnId);
+      await StarredMessagesService.removeStarredMessage(conversationId, existing.turnId);
     } else {
       const starredAt = Date.now();
       this.starredByHash.set(marker.hash, { turnId: marker.id, starredAt });
       const message: StarredMessage = {
         turnId: marker.id,
         content: marker.summary,
-        conversationId: this.conversationId,
+        conversationId,
         conversationUrl: location.href.split('#')[0],
         conversationTitle: this.getTitle(),
         starredAt,

@@ -19,27 +19,34 @@ import { buildConversationId, buildTurnId } from '../verbs/turnNavigator/TurnNav
 import { BUILTIN_PLUGINS } from './index';
 
 /** In-memory stand-in for the background's starred-message store. */
-const { starStore, getStarredMessagesForConversation, addStarredMessage, removeStarredMessage } =
-  vi.hoisted(() => {
-    const store = new Map<string, StarredMessage[]>();
-    return {
-      starStore: store,
-      getStarredMessagesForConversation: vi.fn(async (conversationId: string) => [
-        ...(store.get(conversationId) ?? []),
-      ]),
-      addStarredMessage: vi.fn(async (message: StarredMessage) => {
-        const list = (store.get(message.conversationId) ?? []).filter(
-          (item) => item.turnId !== message.turnId,
-        );
-        store.set(message.conversationId, [...list, message]);
-      }),
-      removeStarredMessage: vi.fn(async (conversationId: string, turnId: string) => {
-        const list = (store.get(conversationId) ?? []).filter((item) => item.turnId !== turnId);
-        if (list.length) store.set(conversationId, list);
-        else store.delete(conversationId);
-      }),
-    };
-  });
+const {
+  starStore,
+  addToStore,
+  getStarredMessagesForConversation,
+  addStarredMessage,
+  removeStarredMessage,
+} = vi.hoisted(() => {
+  const store = new Map<string, StarredMessage[]>();
+  const addToStore = async (message: StarredMessage): Promise<void> => {
+    const list = (store.get(message.conversationId) ?? []).filter(
+      (item) => item.turnId !== message.turnId,
+    );
+    store.set(message.conversationId, [...list, message]);
+  };
+  return {
+    starStore: store,
+    addToStore,
+    getStarredMessagesForConversation: vi.fn(async (conversationId: string) => [
+      ...(store.get(conversationId) ?? []),
+    ]),
+    addStarredMessage: vi.fn(addToStore),
+    removeStarredMessage: vi.fn(async (conversationId: string, turnId: string) => {
+      const list = (store.get(conversationId) ?? []).filter((item) => item.turnId !== turnId);
+      if (list.length) store.set(conversationId, list);
+      else store.delete(conversationId);
+    }),
+  };
+});
 
 vi.mock('@/utils/i18n', () => ({
   initI18n: vi.fn().mockResolvedValue(undefined),
@@ -61,8 +68,8 @@ vi.mock('@/pages/content/timeline/timelineStyleCoachmark', () => ({
 
 /** Poll of the shared route watcher plus the navigator's refresh debounce. */
 const ROUTE_SETTLE_MS = 400 + 150;
-/** Long enough for a draft that gained an id to be confirmed as the same chat. */
-const REKEY_SETTLE_MS = 2_500;
+/** Longer than any settle window a timing heuristic could wait out. */
+const SLOW_HOST_MS = 2_500;
 
 let scope: PluginScope;
 let thread: HTMLElement;
@@ -142,6 +149,24 @@ function draftId(path = '/'): string {
   );
 }
 
+function star(conversation: string, text: string): StarredMessage {
+  return {
+    turnId: buildTurnId(text),
+    content: text,
+    conversationId: conversation,
+    conversationUrl: `${location.origin}/`,
+    conversationTitle: 'Saved',
+    starredAt: 1,
+  };
+}
+
+/** The storage echo every star write sends to open tabs. */
+function notifyStars(): void {
+  const listeners = vi.mocked(chrome.storage.onChanged.addListener).mock.calls;
+  const notify = listeners[listeners.length - 1][0];
+  notify({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: {} } }, 'local');
+}
+
 async function longPress(dot: HTMLElement): Promise<void> {
   dot.dispatchEvent(new Event('pointerdown'));
   await vi.advanceTimersByTimeAsync(600);
@@ -189,6 +214,9 @@ beforeEach(() => {
   targetCount = () => -1;
   starStore.clear();
   getStarredMessagesForConversation.mockClear();
+  addStarredMessage.mockClear();
+  addStarredMessage.mockImplementation(addToStore);
+  removeStarredMessage.mockClear();
   window.scrollTo = vi.fn();
 });
 
@@ -353,9 +381,7 @@ describe('ChatGPT timeline', () => {
 
     // The star belongs to the edited text, and survives the store's echo.
     await longPress(dots()[0]);
-    const listeners = vi.mocked(chrome.storage.onChanged.addListener).mock.calls;
-    const notify = listeners[listeners.length - 1][0];
-    notify({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: {} } }, 'local');
+    notifyStars();
     await settle();
 
     expect(starStore.get('chatgpt:conv:first')?.map((message) => message.turnId)).toEqual([
@@ -387,18 +413,18 @@ describe('ChatGPT timeline', () => {
     expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('chatgpt:conv:second');
   });
 
-  it('keeps the old conversation off the next one when the URL changes before the DOM', async () => {
+  it('shows what is on screen while the URL changes before the DOM', async () => {
     const old = addExchange(1, 'Prompt A');
     await mount();
 
     history.pushState({}, '', '/c/second');
     await settle(ROUTE_SETTLE_MS);
-    // A's turn is still on screen, but it is not part of the new conversation.
-    expect(labels()).toEqual([]);
+    // A's turn is still on screen until ChatGPT replaces it.
+    expect(labels()).toEqual(['Prompt A']);
 
     thread.append(turnShell('user-9', 'user', 'Prompt B'));
     await settle();
-    expect(labels()).toEqual(['Prompt B']);
+    old.nextElementSibling?.remove();
     old.remove();
     await settle();
 
@@ -406,59 +432,112 @@ describe('ChatGPT timeline', () => {
     expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('chatgpt:conv:second');
   });
 
-  it('does not carry a draft into a different conversation the user opens', async () => {
-    history.replaceState({}, '', '/');
-    const draft = addExchange(1, 'Draft prompt');
+  it("drops the previous conversation's off-screen turns when ChatGPT removes their items", async () => {
+    const shells = [addExchange(1, 'Prompt A1'), addExchange(2, 'Prompt A2')];
     await mount();
-    await longPress(dots()[0]);
-    expect(starStore.get(draftId())).toHaveLength(1);
+    shells.forEach(unmountContent);
+    await settle();
+    expect(labels()).toEqual(['Prompt A1', 'Prompt A2']);
 
-    history.pushState({}, '', '/c/other');
+    history.pushState({}, '', '/c/second');
     await settle(ROUTE_SETTLE_MS);
-    draft.remove();
-    thread.append(turnShell('user-7', 'user', 'Other prompt'));
-    await settle(REKEY_SETTLE_MS);
+    thread.append(turnShell('user-9', 'user', 'Prompt B'));
+    await settle();
+    // The items React removes hold no message DOM any more.
+    for (const shell of shells) {
+      shell.nextElementSibling?.remove();
+      shell.remove();
+    }
+    await settle();
 
-    expect(labels()).toEqual(['Other prompt']);
-    expect(starStore.get(draftId())).toHaveLength(1);
-    expect(starStore.has('chatgpt:conv:other')).toBe(false);
+    expect(labels()).toEqual(['Prompt B']);
   });
 
-  it('moves stars made on a new chat to its id once ChatGPT assigns one', async () => {
-    history.replaceState({}, '', '/');
-    addExchange(1, 'Star me');
+  it('shows the next conversation when its DOM arrives well before the URL', async () => {
+    addExchange(1, 'Prompt A');
     await mount();
-    await longPress(dots()[0]);
-    expect(starStore.get(draftId())?.map((message) => message.content)).toEqual(['Star me']);
 
-    history.pushState({}, '', '/c/assigned-id');
-    await settle(ROUTE_SETTLE_MS + REKEY_SETTLE_MS);
+    thread.replaceChildren(turnShell('user-9', 'user', 'Prompt B'));
+    await settle(600);
+    expect(labels()).toEqual(['Prompt B']);
 
-    expect(starStore.has(draftId())).toBe(false);
-    expect(starStore.get('chatgpt:conv:assigned-id')).toEqual([
-      expect.objectContaining({
-        content: 'Star me',
-        conversationId: 'chatgpt:conv:assigned-id',
-        conversationUrl: expect.stringMatching(/\/c\/assigned-id$/),
-      }),
-    ]);
-    expect(labels()).toEqual(['Star me']);
-    expect(dots()[0].getAttribute('aria-pressed')).toBe('true');
+    history.pushState({}, '', '/c/second');
+    await settle(ROUTE_SETTLE_MS);
+    expect(labels()).toEqual(['Prompt B']);
+    expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('chatgpt:conv:second');
   });
 
-  it('re-keys a new chat once ChatGPT gives it an id, with no DOM change', async () => {
+  it('keeps the previous conversation off the rail when a star change lands mid-switch', async () => {
+    addExchange(1, 'Prompt A');
+    await mount();
+
+    history.pushState({}, '', '/c/second');
+    // Another tab starred something before this tab noticed the route change.
+    notifyStars();
+    thread.replaceChildren(turnShell('user-9', 'user', 'Prompt B'));
+    await settle(ROUTE_SETTLE_MS);
+
+    expect(labels()).toEqual(['Prompt B']);
+  });
+
+  it('cannot star a new chat until ChatGPT gives it an id, then stars under that id', async () => {
     history.replaceState({}, '', '/');
     addExchange(1, 'Brand new chat');
     await mount();
-    expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith(
-      expect.stringMatching(/^chatgpt:(?!conv:)/),
-    );
+
+    await longPress(dots()[0]);
+    expect(addStarredMessage).not.toHaveBeenCalled();
+    // Every new chat on / shares one path-hash id: nothing there is this chat's.
+    expect(getStarredMessagesForConversation).not.toHaveBeenCalled();
 
     history.pushState({}, '', '/c/assigned-id');
-    await settle(ROUTE_SETTLE_MS + REKEY_SETTLE_MS);
-
+    await settle(ROUTE_SETTLE_MS);
     expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('chatgpt:conv:assigned-id');
+    await longPress(dots()[0]);
+
+    expect(starStore.get('chatgpt:conv:assigned-id')?.map((message) => message.content)).toEqual([
+      'Brand new chat',
+    ]);
     expect(labels()).toEqual(['Brand new chat']);
+    expect(dots()[0].getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('never moves or deletes a star stored under a new-chat id', async () => {
+    history.replaceState({}, '', '/');
+    const saved = star(draftId(), 'Star me');
+    starStore.set(draftId(), [saved]);
+    // A store near its quota drops a write without an error.
+    addStarredMessage.mockImplementation(async () => {});
+    addExchange(1, 'Star me');
+    await mount();
+
+    history.pushState({}, '', '/c/assigned-id');
+    await settle(ROUTE_SETTLE_MS + SLOW_HOST_MS);
+
+    expect(removeStarredMessage).not.toHaveBeenCalled();
+    expect(starStore.get(draftId())).toEqual([saved]);
+  });
+
+  it('keeps a new chat out of a conversation opened while the new chat is still on screen', async () => {
+    history.replaceState({}, '', '/');
+    starStore.set('chatgpt:conv:other', [star('chatgpt:conv:other', 'Other prompt')]);
+    const draft = addExchange(1, 'Draft prompt');
+    await mount();
+    await longPress(dots()[0]);
+
+    history.pushState({}, '', '/c/other');
+    // ChatGPT is slow to load the conversation: the new chat stays on screen.
+    await settle(ROUTE_SETTLE_MS + SLOW_HOST_MS);
+    draft.nextElementSibling?.remove();
+    draft.remove();
+    thread.append(turnShell('user-7', 'user', 'Other prompt'));
+    await settle();
+
+    expect(labels()).toEqual(['Other prompt']);
+    expect(dots()[0].getAttribute('aria-pressed')).toBe('true');
+    expect(starStore.get('chatgpt:conv:other')?.map((message) => message.content)).toEqual([
+      'Other prompt',
+    ]);
   });
 
   it('clears the rail when leaving for a page without turns', async () => {

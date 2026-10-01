@@ -56,23 +56,21 @@ or prompt commands.
   `src/features/plugins/builtin/claudeTimeline/index.test.ts` (`builds Claude-scoped conversation
 and turn ids`).
 
-## Repeated prompts and duplicate renders need a per-turn key, not first-hash matching
+## Repeated prompts need ordered matching, and ChatGPT needs no matching at all
 
 - **Trap:** Navigator markers are keyed by a hash of the prompt text. With
   `[continue, x, continue]` known and only the last `continue` mounted, first-hash matching
-  re-pointed marker 0 at the third turn. ChatGPT can also briefly keep two virtual-list items with
-  one `data-turn-id-container`; the unstamped copy became a `~2` marker that grow-only
-  accumulation never dropped, leaving a phantom dot.
-- **Rule:** `turnMerge.ts` first takes certain matches: the stamped id (same text), the host key
-  (text may be edited in place; the turn then takes its new text's id, since stars are filed by
-  the id's hash), a hash only one marker carries. Each run of uncertain turns
-  between two certain matches is then aligned with the markers between them: most matches first,
-  then the smallest distance after the nearer anchor's drift. Picking the nearest raw centre per
-  turn regressed Claude/DeepSeek: a remount that shifted every centre turned a remembered repeat
-  into a new dot. A site with a per-turn attribute names it as the `turnKey` param; an element
-  owning several turns (a `*-root` wrapper) is never a key, and the navigator observes the
-  attribute so a renamed key re-keys its marker. `turnKey` has `sinceEngine` 1.5.0, so a manifest
-  setting it needs `engine >=1.5.0` (a 1.4.0 engine skips the whole op).
+  re-pointed marker 0 at the third turn; picking the nearest raw centre per turn instead turned a
+  remount that shifted every centre into extra dots on Claude/DeepSeek. Accumulating ChatGPT's
+  turns the same way kept a phantom `~2` dot when ChatGPT briefly rendered one list item twice.
+- **Rule:** Without a `turnKey`, `turnMerge.ts` first takes certain matches (the stamped id with
+  the same text, a hash only one marker carries), then aligns each run of uncertain turns between
+  two certain matches with the markers between them: most matches first, then the smallest
+  distance after the nearer anchor's drift. ChatGPT keeps one `[data-turn-id-container]` item per
+  turn mounted, so it names that attribute as `turnKey` and uses snapshot mode (see the route
+  switch entry): duplicate items fold by id, preferring the copy with a mounted message, and an
+  element holding other items or several turns (a `*-root` wrapper) is never a turn. `turnKey`
+  has `sinceEngine` 1.5.0, so a manifest setting it needs `engine >=1.5.0`.
 - **Guard:** `src/features/plugins/verbs/turnNavigator/turnMerge.test.ts`,
   `src/features/plugins/builtin/chatgptTimeline.test.ts` (`keeps repeated identical prompts
 apart`, `folds a turn ChatGPT briefly renders twice`, `follows a turn whose list id ChatGPT
@@ -88,24 +86,32 @@ param it sets`).
 - **Rule:** `TurnNavigator.start()` subscribes to the shared `watchRouteChanges` inside its
   plugin scope and schedules a refresh. ChatGPT's `conversationIdPattern` accepts `/u/<n>/` and
   Projects `/g/<id>/` prefixes, matching the export adapter's conversation route.
-- **Guard:** `src/features/plugins/builtin/chatgptTimeline.test.ts` (`re-keys a new chat`,
-  `clears the rail when leaving`, `rebuilds for the next conversation, Projects routes
-included`).
+- **Guard:** `src/features/plugins/builtin/chatgptTimeline.test.ts` (`cannot star a new chat
+until ChatGPT gives it an id`, `clears the rail when leaving`, `rebuilds for the next
+conversation, Projects routes included`).
 
-## A route switch must not merge the previous conversation's turns
+## Rail contents and star ids must not depend on the order of URL and DOM changes
 
-- **Trap:** On `/c/A` → `/c/B` the URL can change before the thread DOM. The first refresh under
-  B reset the rail and then merged A's still-mounted turns into it; grow-only markers kept them
-  after B rendered, and A's prompts could be starred under B. Treating a new chat that gains its
-  id the same way would instead strand its stars under the path-hash draft id.
-- **Rule:** `conversationSwitch.ts` holds the previous conversation's mounted turns back as stale
-  until they leave the DOM or their text changes. A draft id becoming a stable id is provisional:
-  stars stay under the draft id until the draft's prompts have survived `REKEY_SETTLE_MS` as the
-  start of the thread, then only those turns' stars move to the stable id; if other turns replace
-  them first, it was a navigation and the draft's turns become stale.
-- **Guard:** `src/features/plugins/builtin/chatgptTimeline.test.ts` (`keeps the old conversation
-off the next one when the URL changes before the DOM`, `does not carry a draft into a different
-conversation`, `moves stars made on a new chat to its id`).
+- **Trap:** SPA hosts change the URL and the thread DOM in separate steps, in either order and
+  with any delay. Grow-only markers owned by a conversation id kept the previous thread's turns
+  on the next rail. Holding the old elements back emptied the next rail when its DOM came first.
+  A settle timer that moved a new chat's stars to its assigned id moved them into whatever
+  conversation the user opened while the draft was still on screen, and deleted the draft record
+  even when the store had silently dropped the copy. A star-change event between the URL change
+  and the refresh set the shared conversation id, so the refresh skipped its reset.
+- **Rule:** No timing heuristics. In snapshot mode (`turnSnapshot.ts`) the rail is rebuilt from
+  the list items in the DOM on every refresh, with labels of unloaded items remembered by the
+  host's turn id, and removing an item (even an empty one) triggers a refresh. Merge mode resets
+  when the route differs from `markerRouteId`, which only `refresh()` writes. Stars are read and
+  written for the id the URL names at that moment (`conversationId.ts`); a site with a
+  `conversationIdPattern` cannot star a route that does not match it, so star records never move.
+- **Guard:** `src/features/plugins/builtin/chatgptTimeline.test.ts` (`shows what is on screen
+while the URL changes before the DOM`, `drops the previous conversation's off-screen turns`,
+  `shows the next conversation when its DOM arrives well before the URL`, `keeps the previous
+conversation off the rail when a star change lands mid-switch`, `never moves or deletes a star
+stored under a new-chat id`, `keeps a new chat out of a conversation opened while the new chat is
+still on screen`), `src/features/plugins/verbs/turnNavigatorStarIsolation.test.ts` (`drops the
+previous conversation's dots when a star change lands mid-switch`).
 
 ## Column-reverse scrollers count offsets from the newest turn
 

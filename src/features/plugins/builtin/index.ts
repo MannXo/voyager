@@ -289,8 +289,8 @@ export const BUILTIN_PLUGINS: readonly PluginManifest[] = [
           handler: 'turnNavigator',
           // Selectors and the conversation id come from the ChatGPT adapter, so
           // fixes travel with site.json. ChatGPT keeps one virtual-list item per
-          // turn and can briefly render a turn twice; its id keeps repeated
-          // prompts apart and folds the copies into one marker.
+          // turn mounted and only unloads the message inside it, so the rail is
+          // rebuilt from those items (snapshot mode) instead of accumulated.
           params: { turnKey: 'data-turn-id-container' },
         },
       ],
