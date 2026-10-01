@@ -176,6 +176,17 @@ export const NON_SETTINGS_BACKUP_POLICIES = {
     disposition: 'separate-file',
     reason: 'AI Studio folder content has its own Drive file.',
   },
+  [StorageKeys.FOLDER_DATA_CHATGPT]: {
+    storage: 'local',
+    disposition: 'local-data',
+    reason:
+      'ChatGPT folder content stays on this device until Drive sync supports ChatGPT; the user exports it from the folder panel.',
+  },
+  [StorageKeys.CHATGPT_FOLDER_PANEL]: {
+    storage: 'local',
+    disposition: 'device-local',
+    reason: 'Viewport coordinates and panel state should not be restored across different screens.',
+  },
   [StorageKeys.FOLDER_FLOATING_NUDGE_SHOWN]: {
     storage: 'sync',
     disposition: 'deprecated',

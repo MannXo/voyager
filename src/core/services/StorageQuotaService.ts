@@ -166,7 +166,11 @@ interface CategoryDefinition {
 
 const PROMPT_KEYS = new Set<string>([StorageKeys.PROMPT_ITEMS, StorageKeys.PROMPT_HISTORY_ITEMS]);
 
-const FOLDER_KEYS = new Set<string>([StorageKeys.FOLDER_DATA, StorageKeys.FOLDER_DATA_AISTUDIO]);
+const FOLDER_KEYS = new Set<string>([
+  StorageKeys.FOLDER_DATA,
+  StorageKeys.FOLDER_DATA_AISTUDIO,
+  StorageKeys.FOLDER_DATA_CHATGPT,
+]);
 
 const TIMELINE_KEYS = new Set<string>([
   StorageKeys.TIMELINE_STARRED_MESSAGES,
@@ -222,6 +226,7 @@ const CATEGORY_DEFINITIONS: readonly CategoryDefinition[] = [
       `${StorageKeys.FOLDER_DATA_AISTUDIO}:acct:`,
       'gvBackup_gemini-folders_',
       'gvBackup_aistudio-folders_',
+      'gvBackup_chatgpt-folders_',
     ],
     clearable: false,
   },

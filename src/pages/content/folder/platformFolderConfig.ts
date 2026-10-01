@@ -11,7 +11,12 @@ import type { ConversationReference, FolderData } from './types';
  * Keys, backup namespaces and root bucket ids are serialized user data: freeze them.
  */
 export interface PlatformFolderConfig {
-  platform: FolderPlatform;
+  /**
+   * The platform whose account isolation switch applies. `null` is a bucket with no
+   * isolation switch (ChatGPT): isolation stays off and nothing falls back to the
+   * legacy global switch, so the bucket never becomes account-scoped.
+   */
+  platform: FolderPlatform | null;
   /** `chrome.storage.local` base key; account isolation appends `:acct:<hash>`. */
   storageKey: string;
   /** DataBackupService namespace for the `gvBackup_<namespace>_*` recovery slots. */
