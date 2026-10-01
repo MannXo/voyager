@@ -830,3 +830,52 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
 - **Guard:** `src/pages/content/folder/__tests__/conversationPlacementCharacterization.test.ts`,
   `src/pages/content/folder/__tests__/aistudioPlacementCharacterization.test.ts` and
   `src/features/folder/model/__tests__/placeConversations.test.ts`.
+
+## The ChatGPT sidebar section lives inside the subtree its own watcher observes
+
+- **Trap:** The ChatGPT folder section is inserted into the sidebar `nav` that
+  `ChatGptSidebarWatcher` observes for row, title and menu changes. Re-inserting it on every pass
+  is itself a `childList` mutation, so each pass schedules the next one and the page never goes
+  idle. Placing it inside `[data-chatgpt-project-conversation-drop-target]` puts it in ChatGPT's
+  pointer-based Project drop zone. React can also drop the section, clone it, or remount the whole
+  sidebar during pagination, navigation and collapse.
+- **Rule:** `ChatGptFolderSection.place` is a no-op when the section already sits directly before
+  the Recents drop-target wrapper. It removes stray copies, and it re-resolves the sidebar on every
+  pass instead of holding the first `nav`. It never falls back to a floating mount while the sidebar
+  is gone. The watcher's body observer only wakes it when its sidebar is disconnected.
+- **Guard:** `src/features/plugins/builtin/chatgptFolders/__tests__/sidebarSection.test.ts`
+  (`settles instead of re-inserting itself after every sidebar change`,
+  `shows the folders just above Recents, outside its Project drop target`,
+  `comes back when a React re-render drops it`, `moves into a remounted sidebar`,
+  `removes a copy ChatGPT cloned with its own nodes`).
+
+## Hiding filed ChatGPT chats must not hide the open chat or rows inside Projects
+
+- **Trap:** A rule that hides every filed row also hides the conversation the user has open, so the
+  sidebar loses its current-page marker. A selector over every `listitem` also reaches rows under a
+  Project, which are not part of Recents. Stored ids end up inside a CSS selector, so an id
+  containing a quote or bracket could break out of it.
+- **Rule:** The single `style[data-gv-chatgpt-hide-filed]` rule is scoped to
+  `[data-sidebar-project-container-id="chats"]` and excludes rows that contain
+  `[aria-current="page"]`. It only takes ids that match `^[A-Za-z0-9_-]+$`, and the rule is removed
+  when the setting or the plugin turns off. The `:has()` form was checked live on chatgpt.com
+  (2026-10-01).
+- **Guard:** `src/features/plugins/builtin/chatgptFolders/__tests__/hideFiled.test.ts`.
+
+## A cloned ChatGPT menu item must stay out of Radix's keyboard collection
+
+- **Trap:** "Move to folder" is a clone of a native item in ChatGPT's Radix "Chat actions" menu. A
+  clone that keeps `data-radix-collection-item`, an `id`, or `data-highlighted` confuses Radix's
+  roving focus and highlight. Without Radix's item wiring, a click on the clone does not close the
+  menu by itself. The menu content can also render a few frames after its
+  trigger turns `aria-expanded="true"`, and waiting for it without a bound polled every frame
+  forever when it never rendered.
+- **Rule:** `buildEntry` strips Radix wiring (`data-radix-collection-item`, `id`, highlight,
+  disabled and submenu attributes). The entry is pointer-only, and selecting it closes the menu
+  with the Escape keydown that Radix listens for. `ChatGptMoveMenu.check` finds the menu by
+  comparing `aria-labelledby` (Radix ids need escaping in selectors). It waits at most
+  `MENU_WAIT_FRAMES` frames per trigger, and it injects once per open menu.
+- **Guard:** `src/features/plugins/builtin/chatgptFolders/__tests__/moveToFolder.test.ts`
+  (`sits after Move to project once, and files the row into the picked folder`,
+  `reaches a menu whose content renders after its trigger opens`,
+  `stops waiting for a menu that never renders`).
