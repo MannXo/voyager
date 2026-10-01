@@ -247,3 +247,27 @@ off a ChatGPT tab`).
 - **Guard:** `src/pages/content/researchPack/__tests__/researchPackScope.test.ts` and
   `src/pages/content/researchPack/__tests__/scope.test.ts`
   (`fails closed when the isolation setting cannot be read`).
+
+## An email that appears after binding can name another account
+
+- **Trap:** At startup Gemini shows `/u/0/` before the account email. `resolveAccountScope` then
+  keys the page by the route alias, which can still point at the account that last used `/u/0/`, so
+  Research Pack bound account A's pack and kept reading and writing it after B's email appeared.
+  Comparing contexts treated a null email as "unknown", never as a change.
+- **Rule:** When a scope bound without an email sees one for the same route, resolve the new context
+  once. A different key switches to that pack; the same key only records the email on the bound
+  scope, so the panel, its typing and in-flight loads are not reset. An action taken while the check
+  runs uses the context with the email.
+- **Guard:** `src/pages/content/researchPack/__tests__/researchPackScope.test.ts`
+  (`when the account email shows up after the scope was bound`).
+
+## Same-scope async results can arrive out of order
+
+- **Trap:** A Research Pack load that read storage before an add was saved could return after the
+  add's result and put the old pack back on screen, so Copy, Download and Insert exported it without
+  the new item. Checking only that a result belongs to the current scope does not catch this.
+- **Rule:** Number loads and applies when they start and render a result only if no later request
+  has rendered. Every write fires `storage.onChanged` and a fresh load, so the newest request
+  carries the latest pack.
+- **Guard:** `src/pages/content/researchPack/__tests__/researchPackScope.test.ts`
+  (`keeps a newer add on screen when an older load of the same scope lands after it`).
