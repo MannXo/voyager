@@ -219,7 +219,7 @@ describe('readDragPayload', () => {
 });
 
 describe('AI Studio parseDragDataPayload projection', () => {
-  it('projects conversation payloads to id, title and url', () => {
+  it('projects conversation payloads to id, title, url and source folder', () => {
     expect(
       parseDragDataPayload(
         JSON.stringify({
@@ -235,7 +235,13 @@ describe('AI Studio parseDragDataPayload projection', () => {
       conversationId: 'p1',
       title: 'Prompt',
       url: 'https://aistudio.google.com/prompts/p1',
+      sourceFolderId: 'f1',
     });
+    expect(
+      parseDragDataPayload(
+        JSON.stringify({ type: 'conversation', conversationId: 'p2', title: '' }),
+      ),
+    ).toEqual({ type: 'conversation', conversationId: 'p2', title: '', url: '' });
   });
 
   it('ignores folder payloads and hostile urls', () => {

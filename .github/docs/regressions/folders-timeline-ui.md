@@ -713,8 +713,10 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
     spelling is not placed again. Stored rows, existing duplicates included, are never merged or
     rewritten, and removal from a source matches the incoming record's exact id.
   - AI Studio uses exact ids and `placement: 'keep'`, because its records have no `sortIndex`;
-    `append` or `top` would seed one. A stored prompt moves with its whole record; the payload
-    builds one only for a prompt no bucket holds.
+    `append` or `top` would seed one. A stored prompt moves with its whole record, taken from
+    the payload's `sourceFolderId` bucket first, because legacy or imported data can hold
+    differing copies in several buckets; any stored copy is the fallback. The payload builds a
+    record only for a prompt no bucket holds.
   - Known platform differences that are kept on purpose:
     - Gemini lets a conversation sit in several folders; AI Studio moves a prompt out of every
       other bucket.

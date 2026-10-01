@@ -218,6 +218,47 @@ describe.each(dropTargets)('AI Studio $name', ({ drop }) => {
     expect(manager.data.folderContents[ROOT][2]).not.toBe(stored);
   });
 
+  it('carries the copy from the bucket the prompt was dragged out of', async () => {
+    const fromA = prompt('p5', { title: 'Copy A', lastOpenedAt: 1 });
+    const fromB = prompt('p5', {
+      title: 'Copy B',
+      customTitle: true,
+      starred: true,
+      lastOpenedAt: 7,
+    });
+    const manager = createManager({
+      folders: [folder('a'), folder('b'), folder('c')],
+      folderContents: { a: [fromA], b: [fromB], c: [] },
+    });
+    await drop(manager, 'c', {
+      type: 'conversation',
+      conversationId: 'p5',
+      title: 'Copy B',
+      url: '/prompts/p5',
+      sourceFolderId: 'b',
+    });
+
+    expect(ids(manager)).toEqual({ a: [], b: [], c: ['p5'] });
+    expect(manager.data.folderContents.c[0]).toEqual(fromB);
+  });
+
+  it('falls back to any stored copy when the source bucket does not hold the prompt', async () => {
+    const fromA = prompt('p5', { title: 'Copy A', lastOpenedAt: 1 });
+    const manager = createManager({
+      folders: [folder('a'), folder('b'), folder('c')],
+      folderContents: { a: [fromA], b: [], c: [] },
+    });
+    await drop(manager, 'c', {
+      type: 'conversation',
+      conversationId: 'p5',
+      title: 'Payload',
+      sourceFolderId: 'b',
+    });
+
+    expect(ids(manager)).toEqual({ a: [], b: [], c: ['p5'] });
+    expect(manager.data.folderContents.c[0]).toEqual(fromA);
+  });
+
   it('builds the record from the payload only for a prompt no bucket holds', async () => {
     const manager = createManager(initial);
     await drop(manager, 'a', {

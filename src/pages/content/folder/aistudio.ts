@@ -205,6 +205,7 @@ export function parseDragDataPayload(raw: string): DragData | null {
     conversationId: parsed.conversationId,
     title: parsed.title,
     url: parsed.url ?? '',
+    ...(parsed.sourceFolderId ? { sourceFolderId: parsed.sourceFolderId } : {}),
   };
 }
 
@@ -1688,9 +1689,11 @@ export class AIStudioFolderManager {
     const data = this.parseDragDataFromEvent(event);
     if (!data || data.type !== 'conversation' || !data.conversationId) return false;
     const conversationId = data.conversationId;
-    const stored = Object.values(this.data.folderContents)
-      .flat()
-      .find((conversation) => conversation.conversationId === conversationId);
+    // Prefer the dragged copy: legacy data can hold differing copies in several buckets.
+    const held = (list: ConversationReference[] | undefined) =>
+      list?.find((conversation) => conversation.conversationId === conversationId);
+    const source = data.sourceFolderId ? this.data.folderContents[data.sourceFolderId] : undefined;
+    const stored = held(source) ?? held(Object.values(this.data.folderContents).flat());
     const record: ConversationReference = stored ?? {
       conversationId,
       title: normalizeText(data.title) || this.t('conversation_untitled'),
