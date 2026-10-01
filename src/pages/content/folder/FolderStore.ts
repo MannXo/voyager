@@ -10,7 +10,6 @@ import {
   cloneFolderData,
   getFolderDepth,
   moveFolder,
-  normalizeFolderData,
   removeFolder,
   reorderConversations,
 } from '@/features/folder/model/folderData';
@@ -548,49 +547,26 @@ export class FolderStore {
     const folderExists = this.data.folders.some((f) => f.id === folderId);
     if (!folderExists) return;
 
-    // Add to folder
-    if (!this.data.folderContents[folderId]) {
-      this.data.folderContents[folderId] = [];
-    }
-
-    // Check if conversation already exists in folder
-    const existingIndex = this.data.folderContents[folderId].findIndex(
-      (c) => c.conversationId === conversationId,
-    );
-
-    let addedNewConversation = false;
-    if (existingIndex === -1) {
-      // Insert at the top by claiming sortIndex 0 and shifting existing entries
-      // up by one. Time-based fallback alone is not enough — normalization
-      // (called from saveData) will assign sortIndex 0 to the newest entry by
-      // time and collide with any pre-existing sortIndex 0, after which JS's
-      // stable sort drops the new entry below the old one.
-      //
-      // Normalize first so any nullish sortIndex on existing
-      // entries gets a numeric value before the shift. Otherwise (sortIndex ?? 0)
-      // would map both null entries and the existing 0 entry to 1.
-      this.data = normalizeFolderData(this.data);
-      const now = Date.now();
-      for (const c of this.data.folderContents[folderId]) {
-        c.sortIndex = (c.sortIndex ?? 0) + 1;
-      }
-      this.data.folderContents[folderId].push({
-        conversationId,
-        title,
-        url,
-        addedAt: now,
-        lastOpenedAt: now,
-        lastTurnAt: lastTurnAt ?? this.getKnownConversationLastTurnAt(conversationId, url),
-        isGem,
-        gemId,
-        sortIndex: 0,
-      });
-      addedNewConversation = true;
-    }
+    const now = Date.now();
+    const record: ConversationReference = {
+      conversationId,
+      title,
+      url,
+      addedAt: now,
+      lastOpenedAt: now,
+      lastTurnAt: lastTurnAt ?? this.getKnownConversationLastTurnAt(conversationId, url),
+      isGem,
+      gemId,
+    };
+    const { data, added } = placeConversations(this.data, [record], {
+      target: folderId,
+      placement: 'top',
+    });
+    this.data = data;
 
     this.saveData();
     this.options.onChange('data');
-    if (addedNewConversation) {
+    if (added.length > 0) {
       this.options.onArchive();
     }
   }

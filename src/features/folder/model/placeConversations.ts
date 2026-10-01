@@ -52,7 +52,11 @@ export function placeConversations(
     added.push({ ...record });
   }
 
-  // Normalizing first gives every existing record a numeric index to shift.
+  // A new record claims index 0 and the bucket shifts down. The recency
+  // fallback alone is not enough: normalization would give the newest record
+  // 0, colliding with an existing 0, and the stable sort would then keep the
+  // new record below it. Normalizing first gives every existing record a
+  // numeric index, so `?? 0` cannot fold unindexed records onto the old 0.
   const base = placement === 'top' && added.length > 0 ? normalizeFolderData(data) : data;
   const folderContents = { ...base.folderContents };
   const existing = folderContents[target] ?? [];
