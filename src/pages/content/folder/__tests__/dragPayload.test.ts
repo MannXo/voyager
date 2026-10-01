@@ -92,9 +92,9 @@ describe('parseDragPayload: malformed and hostile input', () => {
     'javascript:alert(1)',
     ' JavaScript:alert(1)',
     'java\tscript:alert(1)',
+    '\njavascript:alert(1)',
+    'vbscript:msgbox(1)',
     'data:text/html,<script>alert(1)</script>',
-    '//evil.example/app/x',
-    '/\\evil.example/app/x',
   ])('rejects the conversation url %j', (url) => {
     expect(isAllowedConversationUrl(url)).toBe(false);
     expect(
@@ -107,16 +107,26 @@ describe('parseDragPayload: malformed and hostile input', () => {
     ).toBeNull();
   });
 
-  it('allows http(s), root-relative and empty urls', () => {
-    for (const url of ['', 'https://gemini.google.com/app/x', 'http://a.b/c', '/app/x', 'app/x']) {
+  it('allows every url that resolves to http(s), as stored rows may hold them', () => {
+    for (const url of [
+      '',
+      'https://gemini.google.com/app/x',
+      'http://a.b/c',
+      '/app/x',
+      'app/x',
+      '//gemini.google.com/app/abcdef1234567890',
+      '/\\gemini.google.com/app/x',
+      'http://[',
+    ]) {
       expect(isAllowedConversationUrl(url)).toBe(true);
     }
   });
 
-  it('drops unknown keys and __proto__ instead of copying them', () => {
+  it('keeps stored reference fields but drops prototype keys', () => {
     const raw =
       '{"type":"conversation","conversationId":"x","title":"t","__proto__":{"polluted":true},' +
-      '"extra":1,"conversations":[{"conversationId":"y","__proto__":{"polluted":true},"evil":2}]}';
+      '"extra":1,"conversations":[{"conversationId":"y","__proto__":{"polluted":true},' +
+      '"constructor":1,"futureField":2,"sortIndex":"3"}]}';
     const parsed = parseDragPayload(raw);
     expect(parsed).not.toBeNull();
     expect(Object.keys(parsed!).sort()).toEqual([
@@ -126,13 +136,16 @@ describe('parseDragPayload: malformed and hostile input', () => {
       'type',
     ]);
     expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype);
-    expect(Object.keys(parsed!.conversations![0]).sort()).toEqual([
-      'addedAt',
-      'conversationId',
-      'title',
-      'url',
-    ]);
+    const reference = parsed!.conversations![0];
+    expect(Object.getPrototypeOf(reference)).toBe(Object.prototype);
+    expect(reference).toEqual({ conversationId: 'y', title: '', futureField: 2, sortIndex: '3' });
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  it('ignores a non-string top-level url instead of rejecting the drag', () => {
+    expect(
+      parseDragPayloadObject({ type: 'conversation', conversationId: 'x', url: null }),
+    ).toEqual({ type: 'conversation', conversationId: 'x', title: '' });
   });
 
   it('omits wrong-typed optional fields rather than passing them through', () => {

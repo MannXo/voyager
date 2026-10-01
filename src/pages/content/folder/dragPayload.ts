@@ -6,9 +6,10 @@ import type { DragData } from './types';
  * One validated reader for Voyager folder drag data.
  *
  * Any page can start a drag that carries `application/json`, so a drop target
- * must not trust the payload shape. The parser rebuilds a fresh object field
- * by field: unknown keys (including `__proto__`) are dropped, structural fields
- * are type-checked, and a payload whose shape no drop site can use is
+ * must not trust the payload shape. The parser rebuilds a fresh object:
+ * structural fields are type-checked, unknown top-level keys are dropped,
+ * conversation references keep their stored fields minus prototype keys, URLs
+ * must resolve to http(s), and a payload whose shape no drop site can use is
  * rejected. It stays host-neutral so every folder surface can share it.
  */
 
@@ -35,45 +36,45 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
+/** Resolves relative and protocol-relative URLs; only the resulting scheme matters. */
+const URL_CHECK_BASE = 'https://voyager.invalid/';
+/** Keys that would reach an object's prototype when copied by assignment. */
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/**
+ * Accept any URL that resolves to http(s): absolute, root-relative, relative and
+ * protocol-relative (`//host/app/x`, which imported and stored rows may carry).
+ * Reject other schemes (`javascript:`, `data:` ...). A string the URL parser
+ * cannot read cannot be navigated either, so it only fails on an explicit
+ * non-http(s) scheme; control characters and spaces are ignored like the parser does.
+ */
+export function isAllowedConversationUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url, URL_CHECK_BASE);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    // eslint-disable-next-line no-control-regex
+    const compact = url.replace(/[\u0000- ]/g, '');
+    const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(compact);
+    return !scheme || /^https?$/i.test(scheme[1]);
+  }
 }
 
 /**
- * Accept http(s) URLs and same-origin relative paths. Reject other schemes
- * (`javascript:`, `data:` ...) and protocol-relative URLs. The URL parser
- * strips tabs/newlines and leading spaces, so check a copy without them.
+ * Folder rows drag their stored record and a move persists that copy, so keep
+ * every field as stored. Only the id and a string URL are checked; prototype
+ * keys are dropped and a missing title becomes ''.
  */
-export function isAllowedConversationUrl(url: string): boolean {
-  // eslint-disable-next-line no-control-regex
-  const compact = url.replace(/[\u0000- ]/g, '');
-  if (/^[\\/]{2}/.test(compact)) return false;
-  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(compact);
-  if (!scheme) return true;
-  const name = scheme[1].toLowerCase();
-  return name === 'http' || name === 'https';
-}
-
 function parseConversationReference(value: unknown): ConversationReference | null {
   if (!isRecord(value) || !isNonEmptyString(value.conversationId)) return null;
-  const url = value.url ?? '';
-  if (typeof url !== 'string' || !isAllowedConversationUrl(url)) return null;
+  if (typeof value.url === 'string' && !isAllowedConversationUrl(value.url)) return null;
 
-  const reference: ConversationReference = {
-    conversationId: value.conversationId,
-    title: typeof value.title === 'string' ? value.title : '',
-    url,
-    addedAt: isFiniteNumber(value.addedAt) ? value.addedAt : 0,
-  };
-  if (isFiniteNumber(value.lastOpenedAt)) reference.lastOpenedAt = value.lastOpenedAt;
-  if (isFiniteNumber(value.lastTurnAt)) reference.lastTurnAt = value.lastTurnAt;
-  if (isFiniteNumber(value.updatedAt)) reference.updatedAt = value.updatedAt;
-  if (typeof value.isGem === 'boolean') reference.isGem = value.isGem;
-  if (typeof value.gemId === 'string') reference.gemId = value.gemId;
-  if (typeof value.starred === 'boolean') reference.starred = value.starred;
-  if (typeof value.customTitle === 'boolean') reference.customTitle = value.customTitle;
-  if (isFiniteNumber(value.sortIndex)) reference.sortIndex = value.sortIndex;
-  return reference;
+  const reference: UnknownRecord = {};
+  for (const [key, field] of Object.entries(value)) {
+    if (!UNSAFE_KEYS.has(key)) reference[key] = field;
+  }
+  if (typeof reference.title !== 'string') reference.title = '';
+  return reference as unknown as ConversationReference;
 }
 
 /** Validate an already-decoded payload object. */
@@ -112,8 +113,8 @@ export function parseDragPayloadObject(value: unknown): DragData | null {
     payload.conversationId = value.conversationId;
   }
 
-  if (value.url !== undefined) {
-    if (typeof value.url !== 'string' || !isAllowedConversationUrl(value.url)) return null;
+  if (typeof value.url === 'string') {
+    if (!isAllowedConversationUrl(value.url)) return null;
     payload.url = value.url;
   }
   if (typeof value.isGem === 'boolean') payload.isGem = value.isGem;
