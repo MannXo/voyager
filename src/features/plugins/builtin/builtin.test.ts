@@ -5,6 +5,7 @@ import { NATIVE_HANDLER_BINDINGS } from '@/pages/content/pluginNativeRegistratio
 import { checkPrimitivesAreShippable } from '../../../../scripts/lib/pluginChecks';
 import { validateManifest } from '../manifest/validate';
 import { activateChatGptFolders } from './chatgptFolders';
+import { HIDE_FILED_SETTING } from './chatgptFolders/chatgptHideFiled';
 import { BUILTIN_PLUGINS, NATIVE_BUILTIN_PLUGIN_IDS } from './index';
 
 describe('BUILTIN_PLUGINS', () => {
@@ -128,13 +129,27 @@ describe('BUILTIN_PLUGINS', () => {
   it('binds ChatGPT folders, a ChatGPT-only native plugin, to its activate handler', () => {
     const folders = BUILTIN_PLUGINS.find((m) => m.id === 'voyager.chatgpt-folders');
     expect(folders?.matches).toEqual(['https://chatgpt.com/*', 'https://chat.openai.com/*']);
-    expect(folders?.contributes).toEqual({});
+    // Still bound by id: its only contribution is a setting, no native op.
+    expect(folders?.contributes.domOps).toBeUndefined();
     expect(folders?.i18n?.zh?.name).toBe('ChatGPT · 文件夹');
     // Manifest -> handler and handler -> manifest.
     expect(NATIVE_BUILTIN_PLUGIN_IDS).toContain('voyager.chatgpt-folders');
     expect(NATIVE_HANDLER_BINDINGS['voyager.chatgpt-folders']).toEqual({
       activate: activateChatGptFolders,
     });
+  });
+
+  it('offers hiding filed ChatGPT chats as an opt-in setting with a label in every locale', () => {
+    const folders = BUILTIN_PLUGINS.find((m) => m.id === 'voyager.chatgpt-folders');
+    // The key the plugin reads at activation is the key the manifest declares.
+    expect(folders?.contributes.settings?.[HIDE_FILED_SETTING]).toMatchObject({
+      type: 'boolean',
+      default: false,
+    });
+    const locales = ['zh', 'zh_TW', 'ja', 'ko', 'fr', 'es', 'pt', 'ru', 'ar'] as const;
+    for (const locale of locales) {
+      expect(folders?.i18n?.[locale]?.settings?.[HIDE_FILED_SETTING]?.label, locale).toBeTruthy();
+    }
   });
 
   it('does not expose the retired Claude usage plugin', () => {
