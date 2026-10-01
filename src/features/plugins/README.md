@@ -137,9 +137,10 @@ An official plugin is authored as files under its platform's directory:
 Manifests may keep tiny CSS inline with `{ "css": "..." }`, but the preferred
 authoring shape is `{ "file": "style.css" }` next to `plugin.json`. The bundled
 source and the published catalog file both resolve that CSS to inline text,
-reject remote-resource loads (`@import`, an external `url()` / `src()`, or any
-string that starts with an external URL, which `image-set()` or `var()` could
-fetch), and normalize it before the runtime sees it. For
+reject anything that loads, from the page's own origin too (`@import`,
+`image-set()`, `image()`, `cross-fade()`, `src()`, a `url()` other than `data:`
+or `#fragment`, or any string that starts with an external URL), and normalize
+it before the runtime sees it. For
 user settings, `{{settingKey}}` tokens can be used in CSS text or in
 `setAttribute` / `setStyle` DOM op values; a common pattern is for CSS files to
 use a normal custom property and for a `setStyle` op to set that variable from a

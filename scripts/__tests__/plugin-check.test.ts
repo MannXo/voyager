@@ -139,7 +139,16 @@ describe('plugin-check', () => {
 
     const result = await checkPluginDir(pluginDir);
     expect(result.ok).toBe(false);
-    expect(result.issues.join('\n')).toMatch(/@import or external url\(\)/);
+    expect(result.issues.join('\n')).toMatch(/must not load anything/);
+  });
+
+  it('reports a style file that loads from the page origin', async () => {
+    const pluginDir = makeFixturePlugin();
+    writeFileSync(join(pluginDir, 'style.css'), "body{background:url('/probe')}\n");
+
+    const result = await checkPluginDir(pluginDir);
+    expect(result.ok).toBe(false);
+    expect(result.issues.join('\n')).toMatch(/must not load anything/);
   });
 
   it('reports a match pattern the site does not cover (D18)', async () => {

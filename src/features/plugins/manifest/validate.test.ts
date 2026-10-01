@@ -260,7 +260,7 @@ describe('validateManifest', () => {
     }
   });
 
-  it('allows local style URLs and allowlisted attributes', () => {
+  it('allows inert style URLs and allowlisted attributes', () => {
     const result = validateManifest({
       ...valid,
       contributes: {
@@ -268,7 +268,7 @@ describe('validateManifest', () => {
           {
             op: 'setStyle',
             target: 'body',
-            styles: { background: 'url(/assets/background.png)' },
+            styles: { background: 'url(data:image/png;base64,AAAA)', filter: 'url(#gv-blur)' },
           },
           { op: 'setAttribute', target: 'a', name: 'data-gv-section', value: 'local' },
           { op: 'setAttribute', target: 'a', name: 'aria-label', value: 'Section' },
@@ -438,12 +438,57 @@ describe('validateManifest remote-resource checks on rendered values', () => {
     }
   });
 
-  it('keeps accepting quoted local and data strings', () => {
+  it('rejects every same-origin, relative or other fetching URL, not only external ones', () => {
     for (const css of [
+      "body{background:url('/probe')}",
+      'body{background:url(probe.png)}',
+      'body{background:url( "../p.gif" )}',
+      'body{background:url(\\2f probe)}',
+      'body{cursor:URL(a.cur), auto}',
+      'a{mask:url(chrome-extension://abc/x.svg)}',
+      'a{filter:url(icons.svg#blur)}',
+      '@font-face{font-family:x;src:url(f.woff2)}',
       'body{background-image:image-set("a.png" 1x, "/b.png" 2x)}',
+      'body{background-image:-webkit-image-set(url(data:x) 1x)}',
+      'body{background-image:im\\61ge-set("a.png" 1x)}',
+      'body{background-image:image("a.png")}',
+      'body{background-image:cross-fade(url(data:x), "b.png" 50%)}',
+      'body{background-image:src("a.png")}',
+      '@import "x.css";',
+      'body{background:url(a.png)}/* "https://t.example" */',
+    ]) {
+      const result = validateManifest({ ...valid, contributes: { styles: [{ css }] } });
+      expect(result.success, css).toBe(false);
+    }
+    for (const value of ["url('/probe')", 'image-set("a.png" 1x)', 'url(x.png) no-repeat']) {
+      const result = validateManifest({
+        ...valid,
+        contributes: {
+          domOps: [{ op: 'setStyle', target: 'body', styles: { background: value } }],
+        },
+      });
+      expect(result.success, value).toBe(false);
+    }
+    const viaStyleAttribute = validateManifest({
+      ...valid,
+      contributes: {
+        domOps: [{ op: 'setAttribute', target: 'a', name: 'style', value: 'background:url(/p)' }],
+      },
+    });
+    expect(viaStyleAttribute.success).toBe(false);
+  });
+
+  it('keeps accepting inert URLs and plain strings', () => {
+    for (const css of [
       'body{font-family:"Inter", sans-serif}',
       "body::after{content:'http'}",
-      'body{background:url(a.png)}/* "https://t.example" */',
+      "body::after{content:'/probe.png'}",
+      'body{background:url(data:image/png;base64,AAAA)}',
+      'body{background:url( "data:image/svg+xml,%3Csvg/%3E" )}',
+      'svg{filter:url(#gv-blur)}',
+      'a{background:url()}',
+      '.gv-x-url-image-set{color:red}',
+      'a{background-image:linear-gradient(red, blue)}',
     ]) {
       const result = validateManifest({ ...valid, contributes: { styles: [{ css }] } });
       expect(result.success, css).toBe(true);

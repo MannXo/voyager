@@ -118,6 +118,17 @@ describe('checking a reply without installing it', () => {
     );
   });
 
+  it('refuses a reply whose CSS would load from the page origin', async () => {
+    const probe = {
+      ...MANIFEST,
+      contributes: { styles: [{ css: "body{background:url('/probe')}" }] },
+    };
+    const result = await checkPluginReply(JSON.stringify(probe), noRecords);
+    expect('issues' in result && result.issues.map((issue) => issue.path)).toEqual([
+      'contributes.styles[0].css',
+    ]);
+  });
+
   it('passes extraction problems through', async () => {
     expect(await checkPluginReply('no json here', noRecords)).toEqual({
       ok: false,

@@ -148,6 +148,9 @@ describe('validation parity with the remote catalog', () => {
     'external url() in CSS': authored({
       contributes: { styles: [{ css: 'body{background:url(https://t.example/p.gif)}' }] },
     }),
+    'a same-origin url() in CSS': authored({
+      contributes: { styles: [{ css: "body{background:url('/probe')}" }] },
+    }),
     '@import in CSS': authored({
       contributes: { styles: [{ css: '@import url("https://evil.example/x.css");' }] },
     }),

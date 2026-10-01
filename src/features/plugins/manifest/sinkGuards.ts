@@ -14,6 +14,11 @@
  * attribute value through `attr()`. So no sink may hold an external URL in any
  * form a later sink could turn into a fetch, whatever the sink it came from.
  *
+ * CSS may not fetch at all, not even from the page's own origin: `url()` only
+ * takes a `data:` URL or a `#fragment`, and the functions that read a bare
+ * string as an image URL (`image-set()`, `image()`, `cross-fade()`, `src()`)
+ * and `@import` are refused, so a relative string elsewhere stays inert.
+ *
  * Every scan here is linear in the input: the checks run on the page's main
  * thread against remote catalog data.
  */
@@ -105,16 +110,53 @@ function skipCssEscape(css: string, index: number): number {
   return index + 1 + (hex ? hex[0].length : 1);
 }
 
+/** CSS functions that fetch a bare string argument as an image (`src()` any URL). */
+const STRING_FETCH_FUNCTIONS = new Set(['image-set', 'image', 'cross-fade', 'src']);
+/** Longest function name tracked; anything longer is no function we look for. */
+const MAX_TRACKED_NAME = 24;
+const NAME_OVERFLOW = '\u0000';
+
+function trackName(name: string, next: string): string {
+  if (name === NAME_OVERFLOW) return name;
+  return name.length < MAX_TRACKED_NAME ? name + next : NAME_OVERFLOW;
+}
+
+/**
+ * A `url()` argument that loads nothing: empty, a `#fragment` (same-document
+ * reference) or a `data:` URL. Tab and newline vanish and C0 controls and
+ * spaces are trimmed first, as the URL parser does.
+ */
+function isInertUrl(raw: string): boolean {
+  const url = raw.replace(/[\t\n\r]/g, '');
+  let start = 0;
+  let end = url.length;
+  while (start < end && url.charCodeAt(start) <= 0x20) start++;
+  while (end > start && url.charCodeAt(end - 1) <= 0x20) end--;
+  const trimmed = url.slice(start, end);
+  return trimmed === '' || trimmed.startsWith('#') || /^data:/i.test(trimmed);
+}
+
+/** Index of the closing quote of the string that opens at `start` (or the end). */
+function cssStringEnd(css: string, start: number): number {
+  const quote = css[start];
+  let end = start + 1;
+  while (end < css.length && css[end] !== quote && !isCssNewline(css[end])) {
+    end = css[end] === '\\' ? skipCssEscape(css, end) : end + 1;
+  }
+  return Math.min(end, css.length);
+}
+
 /**
  * Walk the CSS the way its tokenizer does (comments, strings, escapes and
- * unquoted `url(` tokens) and report whether any string token starts with an
+ * `url(` tokens) and report whether it can fetch: a `url()` that is not inert,
+ * a string-fetching function, or any string token that starts with an
  * external URL once its escapes are resolved. A string can reach a fetch
  * through `image-set()`, `src()`, `image()` or `cross-fade()`, directly or via
  * `var()` from another sink, so the check does not depend on what precedes the
  * string. Where the reading could differ from the browser's (a quote inside an
  * unquoted `url(`, which the browser treats as a bad URL), it fails closed.
  */
-function cssHasExternalString(source: string): boolean {
+function cssTokensCanFetch(source: string): boolean {
   // The tokenizer's preprocessing: CRLF, CR and FF are one newline.
   const css = source.replace(/\r\n?|\f/g, '\n');
   let name = '';
@@ -127,32 +169,37 @@ function cssHasExternalString(source: string): boolean {
       i = close + 2;
       name = '';
     } else if (ch === '"' || ch === "'") {
-      let end = i + 1;
-      while (end < css.length && css[end] !== ch && !isCssNewline(css[end])) {
-        end = css[end] === '\\' ? skipCssEscape(css, end) : end + 1;
-      }
-      const content = decodeCssEscapes(css.slice(i + 1, Math.min(end, css.length)));
+      const end = cssStringEnd(css, i);
+      const content = decodeCssEscapes(css.slice(i + 1, end));
       if (EXTERNAL_URL_PREFIX.test(content)) return true;
       i = end + 1;
       name = '';
     } else if (ch === '\\') {
       const next = skipCssEscape(css, i);
-      name = name.length < 4 ? name + decodeCssEscapes(css.slice(i, next)).toLowerCase() : name;
+      name = trackName(name, decodeCssEscapes(css.slice(i, next)).toLowerCase());
       i = next;
     } else if (ch === '(' && name === 'url') {
       let j = i + 1;
       while (j < css.length && isCssWhitespace(css[j])) j++;
-      if (css[j] !== '"' && css[j] !== "'") {
-        // Unquoted url( token: runs to `)`; the URL itself is EXTERNAL_URL_FUNCTION's job.
+      if (css[j] === '"' || css[j] === "'") {
+        const end = cssStringEnd(css, j);
+        if (!isInertUrl(decodeCssEscapes(css.slice(j + 1, end)))) return true;
+        j = end + 1;
+      } else {
+        // Unquoted url( token: runs to `)`.
+        const start = j;
         while (j < css.length && css[j] !== ')') {
           if (css[j] === '"' || css[j] === "'") return true;
           j = css[j] === '\\' ? skipCssEscape(css, j) : j + 1;
         }
+        if (!isInertUrl(decodeCssEscapes(css.slice(start, j)))) return true;
       }
       i = j;
       name = '';
+    } else if (ch === '(' && STRING_FETCH_FUNCTIONS.has(name.replace(/^-[a-z]+-/, ''))) {
+      return true;
     } else {
-      name = isCssNameChar(ch) ? (name.length < 4 ? name + ch.toLowerCase() : name) : '';
+      name = isCssNameChar(ch) ? trackName(name, ch.toLowerCase()) : '';
       i++;
     }
   }
@@ -160,32 +207,33 @@ function cssHasExternalString(source: string): boolean {
 }
 
 /**
- * True when CSS text can fetch an external resource: an external `url()` /
- * `src()`, or any string that starts with an external URL.
+ * True when CSS text can fetch anything, external or from the page's own
+ * origin: a `url()` that is not `data:` / `#fragment`, a string-fetching
+ * function, or any string that starts with an external URL.
  */
-export function cssHasExternalUrl(css: string): boolean {
+export function cssCanFetch(css: string): boolean {
   return (
-    cssReadings(css).some((text) => EXTERNAL_URL_FUNCTION.test(text)) || cssHasExternalString(css)
+    cssReadings(css).some((text) => EXTERNAL_URL_FUNCTION.test(text)) || cssTokensCanFetch(css)
   );
 }
 
 function cssHasRemoteResource(css: string): boolean {
-  return cssReadings(css).some((text) => /@import\b/i.test(text)) || cssHasExternalUrl(css);
+  return cssReadings(css).some((text) => /@import\b/i.test(text)) || cssCanFetch(css);
 }
 
 /** Problem with stylesheet text, or null when it may be injected. */
 export function styleSheetIssue(css: string): string | null {
   if (css.length > MAX_STYLE_LENGTH) return `exceeds ${MAX_STYLE_LENGTH} chars`;
   if (cssHasRemoteResource(css)) {
-    return 'must not use @import or external url(), or a string starting with an external URL (remote-resource fetch)';
+    return 'must not load anything: no @import, image-set(), image(), cross-fade() or src(), url() only with data: or #fragment, and no string starting with an external URL (network fetch)';
   }
   return null;
 }
 
 /** Problem with one inline style value, or null when it may be set. */
 export function styleValueIssue(value: string): string | null {
-  return cssHasExternalUrl(value)
-    ? 'must not use an external url(), or a string starting with an external URL (remote-resource fetch)'
+  return cssCanFetch(value)
+    ? 'must not load anything: no image-set(), image(), cross-fade() or src(), url() only with data: or #fragment, and no string starting with an external URL (network fetch)'
     : null;
 }
 
