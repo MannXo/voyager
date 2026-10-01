@@ -93,6 +93,8 @@ export class FolderRepository {
   private readonly storageEchoes = new StorageEchoTracker();
   /** Another context wrote the active bucket; reload once local work settles. */
   private saveDebounceTimer: number | null = null;
+  /** The session a scope refresh released, still told about writes until it rebinds. */
+  private releasingSession: FolderDataSession | null = null;
   private beforeUnloadFlushHandler: (() => void) | null = null;
   private readonly tag: string;
   private readonly debug: (...args: unknown[]) => void;
@@ -236,6 +238,8 @@ export class FolderRepository {
     const isCurrent = () =>
       this.dataSession === session && session.loadVersion === version && !this.destroyed;
     session.loadsInFlight += 1;
+    const externalWrites = session.externalWrites;
+    let applied = false; // memory now holds what storage held when read
     try {
       // On Safari, restore recovery backups from the durable mirror before any
       // recoverFromBackup() can run (localStorage may have been ITP-evicted).
@@ -274,6 +278,7 @@ export class FolderRepository {
         // Create primary backup on successful load
         session.backup.createPrimaryBackup(this.data);
         session.markReady();
+        applied = true;
 
         this.debug('Data loaded and validated successfully');
       } else if (loadedData) {
@@ -292,6 +297,7 @@ export class FolderRepository {
         );
         this.data = { folders: [], folderContents: {} };
         session.markReady();
+        applied = true;
         // No notification needed - this is expected for new users
       }
     } catch (error) {
@@ -303,9 +309,13 @@ export class FolderRepository {
       await this.attemptDataRecovery(error, session);
     } finally {
       session.loadsInFlight -= 1;
+      // Only a read that started after every observed external write settles them.
+      if (applied && session.externalWrites === externalWrites) session.reconcilePending = false;
       if (isCurrent() && session.ready) {
         this.hooks.onChange('loaded');
       }
+      // A discarded read, or a write observed during this one, still needs a reload.
+      if (this.dataSession === session && (applied || !isCurrent())) this.tryReconcile();
     }
   }
 
@@ -412,24 +422,28 @@ export class FolderRepository {
   private markExternalChanges(changes: Record<string, Storage.StorageChange>): void {
     const sessions = new Set(this.dataSessions.values());
     if (this.dataSession) sessions.add(this.dataSession);
+    if (this.releasingSession) sessions.add(this.releasingSession);
     for (const session of sessions) {
       const change = changes[session.storageKey];
       if (change && !this.storageEchoes.consume(session.storageKey, change.newValue)) {
         session.reconcilePending = true;
+        session.externalWrites += 1;
       }
     }
     this.tryReconcile();
   }
 
   /**
-   * Reload after another context's write once no write is in flight, so the
-   * reload is not skipped. Debounced edits are merged onto the fresh data.
+   * Reload after another context's write once no write or read is in flight, so
+   * the reload is neither skipped nor discarded. The flag stays set until a load
+   * applies storage (see `loadData`). Debounced edits are merged onto that data.
    */
   private tryReconcile(): void {
     const session = this.dataSession;
     if (!session?.reconcilePending || this.destroyed) return;
-    if (session.saveInProgress || session.replacingData) return; // resumed when they settle
-    session.reconcilePending = false;
+    // Only skips a reload that could not apply yet; the flag survives it, and
+    // persist, `replaceData` and `loadData` call back once they settle.
+    if (session.saveInProgress || session.replacingData || session.loadsInFlight > 0) return;
     this.hooks.onExternalChange();
   }
 
@@ -639,6 +653,7 @@ export class FolderRepository {
     // Flush the old account's pending debounce before releasing its data owner.
     this.flushPendingSaveData();
     previous?.deactivate();
+    this.releasingSession = previous;
     if (previous && !previous.saveInProgress && !previous.replacingData) {
       this.dataSessions.delete(previous.storageKey);
     }
@@ -679,6 +694,7 @@ export class FolderRepository {
       this.dataSessions.set(storageKey, session);
       session.accountScope = resolvedScope;
       this.dataSession = session;
+      this.releasingSession = null;
       this.resolvedAccountScope = resolvedScope;
       this.activeStorageKey = storageKey;
       this.hooks.onAccountBound?.(context);
@@ -688,6 +704,8 @@ export class FolderRepository {
         this.hooks.onChange('title');
         this.hooks.onChange('loaded');
       }
+      // A rebound session may hold a write observed before or during the switch.
+      this.tryReconcile();
     } catch (error) {
       console.error(`${this.tag} Failed to resolve account scope:`, error);
       // Keep persistence unbound on failure. A global fallback has no known owner.

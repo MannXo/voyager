@@ -308,6 +308,20 @@ describe('FolderStore reconciles external writes after local work settles', () =
     expectMerged(stored);
   });
 
+  it('reloads again for a write that lands while the reload read is in flight', async () => {
+    const read = deferred<FolderData | null>();
+    vi.mocked(adapter.loadData).mockImplementationOnce(() => read.promise);
+    writeFromElsewhere(folders('Alpha', 'From another tab'));
+    await vi.advanceTimersByTimeAsync(0);
+    const firstRead = structuredClone(stored ?? null);
+    writeFromElsewhere(folders('Alpha', 'From another tab', 'Then a third'));
+
+    read.resolve(firstRead);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(names(store.data)).toEqual(['Alpha', 'From another tab', 'Then a third']);
+  });
+
   it('merges a debounced edit made while the reload read was in flight', async () => {
     const read = deferred<FolderData | null>();
     vi.mocked(adapter.loadData).mockImplementationOnce(() => read.promise);
@@ -437,6 +451,30 @@ describe('FolderStore keeps an observed external write with its own account', ()
     await finishOwnWrite();
 
     expect(names(store.data)).toEqual(['Mine', 'From another tab']);
+  });
+
+  it('applies a write whose reload read a same-account scope refresh discarded', async () => {
+    writeFromElsewhere(KEY_A, folders('Alpha', 'From another tab'));
+    await store.refreshAccountScope();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(names(store.data)).toEqual(['Alpha', 'From another tab']);
+  });
+
+  it('applies a write that lands while the account scope is being resolved', async () => {
+    const scope = deferred<void>();
+    vi.mocked(accountIsolationService.resolveAccountScope).mockImplementationOnce(async () => {
+      await scope.promise;
+      return { accountKey: 'email:a', accountId: 1, routeUserId: '1', emailHash: 'a' };
+    });
+    const refreshing = store.refreshAccountScope();
+    await vi.advanceTimersByTimeAsync(0);
+    writeFromElsewhere(KEY_A, folders('Alpha', 'From another tab'));
+    scope.resolve();
+    await refreshing;
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(names(store.data)).toEqual(['Alpha', 'From another tab']);
   });
 
   it('does not reload another account for a write seen in this one', async () => {

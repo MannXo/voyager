@@ -15,6 +15,8 @@ export class FolderDataSession {
   pendingSave: FolderData | null = null;
   /** Another context wrote this bucket; reload once this session is active and idle. */
   reconcilePending = false;
+  /** Counts observed external writes, so a load knows whether one arrived during its read. */
+  externalWrites = 0;
   /** What this context last read from or wrote to storage: the base for merging debounced edits. */
   baseline: FolderData | null = null;
   pendingSaveCompletion: {

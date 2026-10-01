@@ -92,18 +92,21 @@ off a ChatGPT tab`).
   an automatic edit (last-opened on navigation, activity timestamps) overwrite another tab's folder.
 - **Rule:** An unsuppressed event only flags the `FolderDataSession` that owns the written bucket
   (`reconcilePending`), including a session retained for its pending write while another account
-  is active; the flag never moves to another session and survives scope changes.
-  `tryReconcile()` runs for the active session once no write or replacement is in flight (persist
-  and `replaceData` resume it), then calls the owner's reload hook. Every load merges edits still
+  is active and the session a scope refresh is releasing; the flag never moves to another session
+  and survives scope changes. It clears only when a load applies a read that started after every
+  observed external write (`externalWrites`), never when a reload is merely requested, so a read
+  discarded by a scope refresh, a save or a newer load leaves it set. `tryReconcile()` calls the
+  owner's reload hook for the active session once no write, replacement or read is in flight;
+  persist, `replaceData`, `loadData` and rebinding call it again. Every load merges edits still
   waiting on the debounce onto the fresh data with `mergeDebouncedEdits`, against
   `session.baseline` (what this tab last read or wrote), so debounced edits may only touch
   expand/collapse and conversation timestamps. Timestamps raised here are matched by conversation
   id across folders, because another tab may have moved or copied the conversation; fresh
-  membership wins, so a removed reference is not brought back. A debounce that falls due while a load is in flight
-  re-arms instead of saving, so it cannot supersede that read. Echo suppression is only an
-  optimisation: a wrongly unsuppressed echo costs one reload of this tab's own data. Limit: an
-  immediate save issued while the reload read is in flight, or a snapshot already queued behind an
-  in-flight write, is still whole-snapshot last-writer-wins.
+  membership wins, so a removed reference is not brought back. A debounce that falls due while a
+  load is in flight re-arms instead of saving, so it cannot supersede that read. Echo suppression
+  is only an optimisation: a wrongly unsuppressed echo costs one reload of this tab's own data.
+  Limit: an immediate save issued while the reload read is in flight, or a snapshot already queued
+  behind an in-flight write, is still whole-snapshot last-writer-wins.
 - **Guard:** `src/pages/content/folder/__tests__/folderStoreReconcile.test.ts`, `src/pages/content/folder/__tests__/aistudioFolderSync.test.ts` ("applies another tab write that lands while its own write is pending")
 
 ## AI Studio external folder reloads must reapply library archive classes
