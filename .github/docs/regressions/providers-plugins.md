@@ -573,8 +573,9 @@ say`), `src/pages/content/platformTheme/__tests__/platformTheme.test.ts`.
   custom-property declaration pushed a hiding one out of view.
 - **Rule:** Normalize the property and value first (comments to spaces with `stripCssComments`,
   escapes with `decodeCssEscapes`, lowercase, no `!important`), read a `style` attribute both with
-  comments removed and as written, and warn on a hiding property unless the value is known to show
-  the element. Show every inline style value in full; clip only targets and other attributes.
+  comments removed and as written, and warn on a hiding property unless the value shows the element
+  by itself, per property. A global keyword (`inherit`, `unset`, `revert`, …) always warns:
+  `visibility:inherit` under a hidden ancestor hides a child the page made visible. Show every inline style value in full; clip only targets and other attributes.
 - **Guard:** `src/features/plugins/local/pluginPreview.test.ts`
   (`reads hiding values through CSS comments and escapes`,
   `shows inline style values in full, so a long one cannot push a hiding declaration out of view`),

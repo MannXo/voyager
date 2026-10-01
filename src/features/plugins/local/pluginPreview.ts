@@ -78,8 +78,12 @@ function normalizeCss(text: string): string {
     .trim();
 }
 
-/** Values that resolve to what the element would show anyway. */
-const GLOBAL_KEYWORDS = new Set(['inherit', 'initial', 'unset', 'revert']);
+/**
+ * `display` keywords that show the element's content by themselves. No global
+ * keyword (`inherit`, `unset`, `revert`, …): its result depends on the cascade,
+ * and `visibility:inherit` under a hidden ancestor hides a child the page made
+ * visible. Column boxes render no content, so they are not here either.
+ */
 const SHOWN_DISPLAY_KEYWORDS = new Set([
   'block',
   'inline',
@@ -102,8 +106,6 @@ const SHOWN_DISPLAY_KEYWORDS = new Set([
   'table-footer-group',
   'table-row',
   'table-cell',
-  'table-column-group',
-  'table-column',
   'table-caption',
   'ruby-base',
   'ruby-text',
@@ -112,9 +114,8 @@ const SHOWN_DISPLAY_KEYWORDS = new Set([
 ]);
 const OPACITY_NUMBER = /^\+?(?:\d+(?:\.\d*)?|\.\d+)%?$/;
 
-/** Whether a value on a hiding property is one that certainly shows the element. */
+/** Whether a value on a hiding property shows the element by itself, whatever the cascade. */
 function valueShows(property: string, value: string): boolean {
-  if (GLOBAL_KEYWORDS.has(value)) return true;
   switch (property) {
     case 'display':
       return value !== '' && value.split(' ').every((word) => SHOWN_DISPLAY_KEYWORDS.has(word));

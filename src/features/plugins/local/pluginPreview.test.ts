@@ -151,6 +151,27 @@ describe('plain-language plugin preview', () => {
     }
   });
 
+  it('warns on a global keyword, whose result depends on the cascade', () => {
+    // `visibility:inherit` under a hidden ancestor hides a child the page made visible.
+    const warnings = (domOp: Record<string, unknown>) =>
+      previewPlugin(gated({ ...base, contributes: { domOps: [domOp] } })).warnings;
+    const composer = { kind: 'semantic', key: 'composer' };
+    for (const property of ['display', 'visibility', 'opacity', 'content-visibility']) {
+      for (const keyword of ['inherit', 'initial', 'unset', 'revert', 'revert-layer', 'INHERIT']) {
+        const styles = { [property]: keyword };
+        expect(
+          warnings({ op: 'setStyle', target: composer, styles }),
+          JSON.stringify(styles),
+        ).toEqual([{ kind: 'hides' }]);
+        const value = `color:red;${property}:/**/${keyword}`;
+        expect(
+          warnings({ op: 'setAttribute', target: composer, name: 'style', value }),
+          value,
+        ).toEqual([{ kind: 'hides' }]);
+      }
+    }
+  });
+
   it('warns when a value on a hiding property cannot be read with confidence', () => {
     const hiding = (styles: Record<string, unknown>) =>
       previewPlugin(
@@ -168,13 +189,16 @@ describe('plain-language plugin preview', () => {
       { opacity: '.05' },
       { visibility: 'whatever' },
       { 'content-visibility': 'hidden-matchable' },
+      // A column box renders none of its content.
+      { display: 'table-column' },
+      { display: 'table-column-group' },
     ]) {
       expect(hiding(styles), JSON.stringify(styles)).toEqual([{ kind: 'hides' }]);
     }
     for (const styles of [
       { display: 'inline-block' },
       { display: 'block flow' },
-      { display: 'inherit' },
+      { display: 'contents' },
       { opacity: '50%' },
       { opacity: '1 !important' },
       { 'content-visibility': 'auto' },
