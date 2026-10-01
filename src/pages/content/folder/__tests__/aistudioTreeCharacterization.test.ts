@@ -437,6 +437,34 @@ describe('AI Studio folder tree: navigation', () => {
     window.removeEventListener('popstate', popstate);
   });
 
+  it("opens /library through the nav's own Library link when the nav has one", async () => {
+    await mount();
+    const nav = document.querySelector('.nav-content nav')!;
+    const native = document.createElement('a');
+    native.href = '/library';
+    nav.appendChild(native);
+    const clicked = vi.fn((event: Event) => event.preventDefault());
+    native.addEventListener('click', clicked);
+    const pushState = vi.spyOn(history, 'pushState');
+
+    tree.libraryButton()!.click();
+
+    expect(clicked).toHaveBeenCalledTimes(1);
+    expect(pushState).not.toHaveBeenCalled();
+  });
+
+  it('otherwise opens /library through the History API, without a page load', async () => {
+    await mount();
+    const popstate = vi.fn();
+    window.addEventListener('popstate', popstate);
+
+    tree.libraryButton()!.click();
+
+    expect(location.pathname).toBe('/library');
+    expect(popstate).toHaveBeenCalledTimes(1);
+    window.removeEventListener('popstate', popstate);
+  });
+
   it('offers the Library shortcut away from /library and hides it there', async () => {
     await mount();
     expect(tree.libraryButton()?.style.display).toBe('');

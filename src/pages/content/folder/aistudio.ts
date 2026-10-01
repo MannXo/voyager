@@ -31,6 +31,7 @@ import {
   mergeLegacySyncFolderData,
   readAIStudioImportFile,
 } from './aistudioImport';
+import { openLibraryInApp } from './aistudioNavigation';
 import {
   AISTUDIO_PROMPT_DRAG_TYPES,
   type AIStudioTree,
@@ -804,11 +805,7 @@ export class AIStudioFolderManager {
       libraryBtn.className = 'gv-folder-action-btn gv-folder-library-btn';
       libraryBtn.title = this.t('folder_manage_in_library');
       libraryBtn.appendChild(this.createIcon('library_books'));
-      libraryBtn.addEventListener('click', () => {
-        try {
-          location.assign('/library');
-        } catch {}
-      });
+      libraryBtn.addEventListener('click', openLibraryInApp);
       actions.appendChild(libraryBtn);
       this.libraryShortcutBtn = libraryBtn;
       this.updateLibraryShortcutVisibility();
