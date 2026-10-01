@@ -140,6 +140,53 @@ describe('NativeHealthReporter', () => {
     expect(reporter.getEntries()).toEqual([]);
   });
 
+  describe('scopes reports to the page they were made on', () => {
+    const confirmMiss = () => {
+      reporter.reportMissing('export', missingTurns());
+      vi.advanceTimersByTime(GRACE_MS);
+      expect(reporter.getEntries().map((entry) => entry.feature)).toEqual(['export']);
+    };
+
+    it('drops a confirmed failure after navigating to another conversation', () => {
+      confirmMiss();
+      history.replaceState(null, '', '/u/1/app/fedcba9876543210');
+      expect(reporter.getEntries()).toEqual([]);
+      expect((askStatus(lastMessageListener()) as { entries: unknown[] }).entries).toEqual([]);
+    });
+
+    it('drops a confirmed failure after opening a new chat', () => {
+      confirmMiss();
+      history.replaceState(null, '', '/u/1/app');
+      expect(reporter.getEntries()).toEqual([]);
+    });
+
+    it('drops a confirmed failure after switching account on the same conversation', () => {
+      confirmMiss();
+      history.replaceState(null, '', '/u/2/app/0123456789abcdef');
+      expect(reporter.getEntries()).toEqual([]);
+    });
+
+    it('does not carry elapsed grace into the next conversation', () => {
+      reporter.reportMissing('timeline', missingTurns());
+      vi.advanceTimersByTime(GRACE_MS - 1);
+      history.replaceState(null, '', '/u/1/app/fedcba9876543210');
+      reporter.reportMissing('timeline', missingTurns());
+
+      vi.advanceTimersByTime(1);
+      expect(reporter.getEntries()).toEqual([]);
+      vi.advanceTimersByTime(GRACE_MS - 1);
+      expect(reporter.getEntries().map((entry) => entry.feature)).toEqual(['timeline']);
+    });
+
+    it('drops a pending probe whose page is gone by the verdict', () => {
+      reporter.reportMissing('timeline', missingTurns());
+      history.replaceState(null, '', '/u/1/app/fedcba9876543210');
+      vi.advanceTimersByTime(GRACE_MS);
+      expect(reporter.getEntries()).toEqual([]);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
   it('postpones the verdict while the tab is hidden', () => {
     const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
     reporter.reportMissing('timeline', missingTurns());

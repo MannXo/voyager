@@ -67,9 +67,17 @@ function readExtensionVersion(): string {
  * page-evidence check, and only a miss that survives both becomes an entry. A found report, a
  * withdrawal or `stop` clears the feature at once. Reports are ignored until `start`, which runs
  * only in Gemini's top frame.
+ *
+ * Entries and pending probes belong to the pathname they were reported on, `/u/<index>/` included.
+ * Gemini navigates in place, so instead of listening for route changes the reporter compares the
+ * pathname whenever it is read or reported to, and drops everything from a previous page. A
+ * warning for one conversation or account never shows on another, and grace time never carries
+ * over.
  */
 export class NativeHealthReporter {
   private running = false;
+  /** The pathname every current entry and pending probe was reported on. */
+  private scopePath: string | null = null;
   private readonly pending = new Map<
     NativeHealthFeature,
     { timer: ReturnType<typeof setTimeout>; probe: MissingAnchorProbe }
@@ -97,9 +105,8 @@ export class NativeHealthReporter {
   stop(): void {
     if (!this.running) return;
     this.running = false;
-    this.pending.forEach(({ timer }) => clearTimeout(timer));
-    this.pending.clear();
-    this.entries.clear();
+    this.clearAll();
+    this.scopePath = null;
     try {
       chrome.runtime.onMessage.removeListener(this.onMessage);
     } catch {
@@ -108,20 +115,24 @@ export class NativeHealthReporter {
   }
 
   getEntries(): NativeHealthEntry[] {
+    this.syncScope();
     return Array.from(this.entries.values());
   }
 
   reportFound(feature: NativeHealthFeature): void {
+    this.syncScope();
     this.clear(feature);
   }
 
   /** The owner stopped (teardown, toggle off): it makes no claim about this page any more. */
   withdraw(feature: NativeHealthFeature): void {
+    this.syncScope();
     this.clear(feature);
   }
 
   reportMissing(feature: NativeHealthFeature, probe: MissingAnchorProbe): void {
     if (!this.running) return;
+    this.syncScope();
     if (!routeMatches(probe.route, classifyGeminiRoute(location.pathname))) {
       // New chats and other pages have no turns to find. Arming a timer there would only churn.
       this.clear(feature);
@@ -137,6 +148,8 @@ export class NativeHealthReporter {
   }
 
   private verdict(feature: NativeHealthFeature): void {
+    // A probe from a page the user has left is dropped here with everything else from that page.
+    this.syncScope();
     const current = this.pending.get(feature);
     this.pending.delete(feature);
     if (!this.running || !current) return;
@@ -166,6 +179,19 @@ export class NativeHealthReporter {
       lastSeenAt: now,
       extensionVersion: previous?.extensionVersion ?? readExtensionVersion(),
     });
+  }
+
+  private syncScope(): void {
+    const path = location.pathname;
+    if (path === this.scopePath) return;
+    this.clearAll();
+    this.scopePath = path;
+  }
+
+  private clearAll(): void {
+    this.pending.forEach(({ timer }) => clearTimeout(timer));
+    this.pending.clear();
+    this.entries.clear();
   }
 
   private clear(feature: NativeHealthFeature): void {
