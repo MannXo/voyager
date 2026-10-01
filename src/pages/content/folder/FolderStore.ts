@@ -14,6 +14,7 @@ import {
   removeFolder,
   reorderConversations,
 } from '@/features/folder/model/folderData';
+import { placeConversations } from '@/features/folder/model/placeConversations';
 
 import { TimestampService } from '../timestamp/TimestampService';
 import { historyTimestampStore } from '../timestamp/historyTimestamps';
@@ -290,58 +291,33 @@ export class FolderStore {
 
   ensureConversationsInFolder(folderId: string, dragData: DragData): void {
     if (!this.canEdit) return;
-    if (!this.data.folderContents[folderId]) {
-      this.data.folderContents[folderId] = [];
-    }
+    const items = dragData.conversations?.length
+      ? dragData.conversations
+      : dragData.conversationId
+        ? [{ ...dragData, conversationId: dragData.conversationId }]
+        : [];
+    const records = items.map((item) => this.buildDroppedConversation(item));
+    this.data = placeConversations(this.data, records, {
+      target: folderId,
+      placement: 'append',
+    }).data;
+  }
 
-    const convs = dragData.conversations ?? [];
-    const items: {
-      id: string;
-      title: string;
+  /** A conversation dropped from outside a folder, before placement assigns its sortIndex. */
+  private buildDroppedConversation(
+    item: Pick<ConversationReference, 'conversationId' | 'title' | 'isGem' | 'gemId'> & {
       url?: string;
-      isGem?: boolean;
-      gemId?: string;
-    }[] =
-      convs.length > 0
-        ? convs.map((c) => ({
-            id: c.conversationId,
-            title: c.title,
-            url: c.url,
-            isGem: c.isGem,
-            gemId: c.gemId,
-          }))
-        : dragData.conversationId
-          ? [
-              {
-                id: dragData.conversationId,
-                title: dragData.title,
-                url: dragData.url,
-                isGem: dragData.isGem,
-                gemId: dragData.gemId,
-              },
-            ]
-          : [];
-
-    let maxSortIndex = this.data.folderContents[folderId].reduce(
-      (max, c) => Math.max(max, c.sortIndex ?? -1),
-      -1,
-    );
-
-    for (const item of items) {
-      const exists = this.data.folderContents[folderId].some((c) => c.conversationId === item.id);
-      if (exists) continue;
-
-      this.data.folderContents[folderId].push({
-        conversationId: item.id,
-        title: this.resolveDraggedConversationTitleForStorage(item.id, item.title),
-        url: item.url ?? '',
-        addedAt: Date.now(),
-        lastTurnAt: this.getKnownConversationLastTurnAt(item.id, item.url),
-        isGem: item.isGem,
-        gemId: item.gemId,
-        sortIndex: ++maxSortIndex,
-      });
-    }
+    },
+  ): ConversationReference {
+    return {
+      conversationId: item.conversationId,
+      title: this.resolveDraggedConversationTitleForStorage(item.conversationId, item.title),
+      url: item.url ?? '',
+      addedAt: Date.now(),
+      lastTurnAt: this.getKnownConversationLastTurnAt(item.conversationId, item.url),
+      isGem: item.isGem,
+      gemId: item.gemId,
+    };
   }
 
   private resolveDraggedConversationTitleForStorage(conversationId: string, title: string): string {
