@@ -9,6 +9,8 @@
  *
  * Keep these in step with `manifest.json`'s first `content_scripts` entry.
  */
+import type { PluginManifest } from '../types';
+
 export const GEMINI_MATCHES: readonly string[] = [
   'https://gemini.google.com/*',
   'https://business.gemini.google/*',
@@ -28,4 +30,26 @@ const NATIVE_SURFACE_HOSTS: ReadonlySet<string> = new Set(
 /** True for gemini.google.com, business.gemini.google, aistudio.google.com/.cn. */
 export function isNativeSurfaceHost(host: string): boolean {
   return NATIVE_SURFACE_HOSTS.has(host.trim().toLowerCase());
+}
+
+/** True when `url` is on a native surface, judged by its actual hostname. */
+export function isNativeSurfaceUrl(url: string): boolean {
+  try {
+    return isNativeSurfaceHost(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What no plugin may bring to a native surface: a `theme` (Gemini and AI Studio
+ * keep Voyager's own accent) or a `native` op (every shipped primitive already
+ * runs there as a native Voyager feature). `validateLocalManifest` rejects these
+ * at import by pattern; the runtime refuses them again by the page's real host.
+ */
+export function conflictsWithNativeSurface(
+  manifest: Pick<PluginManifest, 'theme' | 'contributes'>,
+): boolean {
+  if (manifest.theme) return true;
+  return (manifest.contributes.domOps ?? []).some((op) => op.op === 'native');
 }

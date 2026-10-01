@@ -92,6 +92,18 @@ describe('resolveBrandColor', () => {
     expect(resolveBrandColor('https://claude.ai/x', plugins)).toBe('#ff0000');
   });
 
+  it('never takes a plugin theme on Gemini or AI Studio', () => {
+    const plugins = [
+      themedPlugin('#ff0000', ['https://gemini.google.com/*', 'https://aistudio.google.com/*']),
+    ];
+    expect(resolveBrandColor('https://gemini.google.com/app', plugins)).toBeNull();
+    expect(resolveBrandColor('https://aistudio.google.com/prompts', plugins)).toBeNull();
+    const frame = [themedPlugin('#ff0000', ['https://*.frame.claudeusercontent.com/*'])];
+    expect(
+      resolveBrandColor('https://gemini.google.com/app/abc?x=.frame.claudeusercontent.com/', frame),
+    ).toBeNull();
+  });
+
   it('ignores a plugin theme whose matches do not cover the url', () => {
     const plugins = [themedPlugin('#ff0000', ['https://chatgpt.com/*'])];
     // Falls back to Claude's adapter brandColor, not the ChatGPT-scoped plugin.

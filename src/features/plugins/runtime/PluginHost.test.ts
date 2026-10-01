@@ -681,6 +681,47 @@ describe('PluginHost with a local plugin on Gemini', () => {
     document.body.innerHTML = '';
   });
 
+  it('never mounts a plugin with a native op or a theme on a native surface, whatever its matches say', async () => {
+    const nativeOp: PluginManifest = {
+      ...manifest(['https://gemini.google.com/*'], 'voyager.native-on-gemini'),
+      contributes: {
+        domOps: [
+          {
+            op: 'addClass',
+            target: { kind: 'css', selector: 'body' },
+            className: 'gv-plugin-active',
+          },
+          { op: 'native', handler: 'formulaCopy', params: {} },
+        ],
+      },
+    };
+    const themed: PluginManifest = {
+      ...manifest(['https://gemini.google.com/*'], 'voyager.themed-on-gemini'),
+      theme: { brand: '#ff0000' },
+    };
+    // A legal Claude-artifact pattern whose wildcard must stay in the hostname.
+    const frameOnly: PluginManifest = {
+      ...manifest(['https://*.frame.claudeusercontent.com/*'], 'local.me.frame'),
+      contributes: { domOps: [{ op: 'native', handler: 'turnNavigator', params: {} }] },
+    };
+    const enabled = { enabled: true, installedAt: 1 };
+    mockState({
+      'voyager.native-on-gemini': enabled,
+      'voyager.themed-on-gemini': enabled,
+      'local.me.frame': enabled,
+    });
+    const host = new PluginHost({
+      url: 'https://gemini.google.com/app/abc?x=.frame.claudeusercontent.com/',
+      sources: [new StaticSource([nativeOp, themed, frameOnly])],
+      doc: document,
+      isTopFrame: true,
+    });
+    await host.start();
+    expect(document.body.classList.contains('gv-plugin-active')).toBe(false);
+    expect(host.getStatuses()).toEqual([]);
+    host.stop();
+  });
+
   it('never asks for a catalog from AI Studio either, whatever is enabled there', async () => {
     mockState({ 'voyager.test': { enabled: true, installedAt: 1 } });
     const requestCatalogRefresh = vi.fn();

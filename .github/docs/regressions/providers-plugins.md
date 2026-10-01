@@ -490,3 +490,20 @@ while an active plugin has domOps`).
 - **Guard:** `src/features/plugins/local/localPluginMutations.test.ts`
   (`a plugin-state write racing a re-import`, `restoring plugin state from Drive`),
   `src/pages/background/__tests__/pluginRuntimeMessages.test.ts`.
+
+## A host wildcard in a match pattern stays inside the hostname
+
+- **Trap:** `matchesUrl` compiled a whole pattern into one regex with `*` as `.*`, so the host
+  wildcard of the legal `https://*.frame.claudeusercontent.com/*` ran across `/` and `?` and
+  matched `https://gemini.google.com/app/abc?x=.frame.claudeusercontent.com/`. The import gate
+  judged that pattern as Claude-only, so a local plugin with a native op or a theme got onto
+  Gemini anyway.
+- **Rule:** `matchesUrl` parses the URL and matches scheme, `URL.host` and path + query
+  separately; `*.example.com` only matches hostnames ending in `.example.com`. Independently of
+  patterns, `PluginHost` never mounts or lists a plugin with a `theme` or a `native` op on a
+  native-surface host, and `resolveBrandColor` never takes a plugin theme there
+  (`conflictsWithNativeSurface`, `isNativeSurfaceUrl`).
+- **Guard:** `src/features/plugins/sites/matchPattern.test.ts`
+  (`keeps a host wildcard inside the hostname`), `src/features/plugins/runtime/PluginHost.test.ts`
+  (`never mounts a plugin with a native op or a theme on a native surface, whatever its matches
+say`), `src/pages/content/platformTheme/__tests__/platformTheme.test.ts`.

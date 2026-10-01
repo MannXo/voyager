@@ -29,6 +29,7 @@ import {
   resolveSiteAdapterForUrl,
 } from '@/features/plugins/remote/siteOverride';
 import { matchesAnyPattern } from '@/features/plugins/sites/matchPattern';
+import { isNativeSurfaceUrl } from '@/features/plugins/sites/nativeSurfaces';
 import { SiteRegistry } from '@/features/plugins/sites/registry';
 import { listPluginManifests } from '@/features/plugins/sources/defaultSources';
 import { loadPluginState, subscribePluginState } from '@/features/plugins/storage/pluginState';
@@ -138,8 +139,11 @@ export function resolveBrandColor(
   // 1. Per-site user override wins over everything for this site.
   const custom = adapter?.id ? customColors[adapter.id] : undefined;
   if (typeof custom === 'string' && custom.trim()) return custom;
-  // 2. A URL-matching, caller-active plugin that declares theme.brand.
-  const fromPlugin = manifests.find((m) => m.theme?.brand && matchesAnyPattern(url, m.matches));
+  // 2. A URL-matching, caller-active plugin that declares theme.brand; never
+  //    on Gemini / AI Studio, whatever the plugin's patterns say.
+  const fromPlugin = isNativeSurfaceUrl(url)
+    ? undefined
+    : manifests.find((m) => m.theme?.brand && matchesAnyPattern(url, m.matches));
   if (fromPlugin?.theme?.brand) return fromPlugin.theme.brand;
   // 3. The adapter's built-in brand colour (claude / chatgpt / …).
   // 4. else null → Gemini / AI Studio keep the theme-aware sage CSS default.

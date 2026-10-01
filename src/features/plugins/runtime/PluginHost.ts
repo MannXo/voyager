@@ -34,6 +34,7 @@ import {
   resolveSiteOverride,
 } from '../remote/siteOverride';
 import { matchesAnyPattern } from '../sites/matchPattern';
+import { conflictsWithNativeSurface, isNativeSurfaceUrl } from '../sites/nativeSurfaces';
 import { SiteRegistry } from '../sites/registry';
 import { createDefaultPluginSources, listPluginManifests } from '../sources/defaultSources';
 import { type PluginStateMap, loadPluginState, subscribePluginState } from '../storage/pluginState';
@@ -264,7 +265,7 @@ export class PluginHost {
     const engine = this.engine;
     const statuses: PluginStatus[] = [];
     for (const listed of this.manifests) {
-      if (!matchesAnyPattern(this.url, listed.matches)) continue;
+      if (!this.targetsThisPage(listed)) continue;
       const pinned = this.frozen.get(listed.id);
       const manifest = pinned?.mounted ?? listed;
       const incompatibility = findIncompatibility({
@@ -346,7 +347,7 @@ export class PluginHost {
       // An update that drops this page from its `matches` is a removal for
       // this page, never a pending version: unfreeze so the unmount below
       // sees it and reconcile() cannot revive it from the frozen manifest.
-      if (!matchesAnyPattern(this.url, next.matches)) {
+      if (!this.targetsThisPage(next)) {
         this.frozen.delete(next.id);
         continue;
       }
@@ -443,9 +444,19 @@ export class PluginHost {
     return resolved;
   }
 
+  /**
+   * The plugin's `matches` cover this page, and it brings nothing a native
+   * surface refuses (theme, native ops), judged by the page's real host rather
+   * than by its patterns.
+   */
+  private targetsThisPage(manifest: PluginManifest): boolean {
+    if (!matchesAnyPattern(this.url, manifest.matches)) return false;
+    return !(isNativeSurfaceUrl(this.url) && conflictsWithNativeSurface(manifest));
+  }
+
   private async shouldActivate(manifest: PluginManifest, state: PluginStateMap): Promise<boolean> {
     if (!this.surfaceOn) return false;
-    if (!matchesAnyPattern(this.url, manifest.matches)) return false;
+    if (!this.targetsThisPage(manifest)) return false;
     if (!state[manifest.id]?.enabled) return false;
     const incompatibility = findIncompatibility({
       manifest,
