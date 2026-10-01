@@ -367,11 +367,34 @@ while an active plugin has domOps`).
   turns, and a snapshot read before the switch stayed exportable.
 - **Rule:** Record each item's message ids (`data-chatgpt-search-message-ids` and the reply's
   `data-chatgpt-selection-message-id`). An item seen again with other ids fails the crawl with
-  `chatgpt_export_thread_changed`, and a mounted item that differs from the snapshot drops it. A
-  switch on an item that is unmounted at export time is not detected.
+  `chatgpt_export_thread_changed`, and a mounted item that differs from the snapshot drops it.
 - **Guard:** `src/pages/content/export/adapter/__tests__/chatgptThreadExport.test.ts`
   (`fails when a branch switch changes a turn it already read, rather than mixing branches`,
   `drops the crawl once a mounted turn switches branch after it was read`).
+
+## ChatGPT snapshot treats an unread mounted turn as a change
+
+- **Trap:** Switching to an edited prompt's branch gives that prompt and every later turn new
+  keys. Validation that compared only keys it had read ignored the new turns, so the old branch's
+  snapshot stayed exportable on the same URL.
+- **Rule:** A mounted turn whose key the crawl did not read drops the snapshot, as a changed
+  fingerprint does; both go through `mountedTurnChanged` in `chatgptThreadWatch.ts`.
+- **Guard:** `src/pages/content/export/adapter/__tests__/chatgptThreadExport.test.ts`
+  (`drops the crawl once the reader switches to an edited prompt's branch of the same length`).
+
+## ChatGPT snapshot watches for branch switches on turns that later unmount
+
+- **Trap:** Checking only mounted turns at export time missed a branch switch on a turn the reader
+  had since scrolled away from, or one the crawl read and never revisited, so the export mixed
+  branches.
+- **Rule:** `watchThreadVersions` observes the list from the start of the crawl until the next
+  preparation and flags any turn that shows a second version. A switch is a click on a mounted
+  item, and the observer runs before ChatGPT can unmount it. Live, 92 remounts of 49 turns and
+  10 history pages loading under the watch kept every turn's message ids and the same `main`, so
+  remounting or pagination alone never trips it.
+- **Guard:** `src/pages/content/export/adapter/__tests__/chatgptThreadExport.test.ts`
+  (`drops the crawl when a turn switches branch and scrolls out of view before the export`,
+  `drops the crawl when a turn it read switches branch mid-crawl and is never revisited`).
 
 ## ChatGPT export publishes only its latest, uncancelled crawl
 

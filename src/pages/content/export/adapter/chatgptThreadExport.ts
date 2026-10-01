@@ -16,11 +16,11 @@ import {
   findUserBubble,
   hasRenderedThread,
   mountedTurnItems,
-  readTurnFingerprint,
   readTurnKey,
   resolveVisibleConversationRoot,
   userSelectionHost,
 } from './chatgptThread';
+import { type ThreadVersionWatch, watchThreadVersions } from './chatgptThreadWatch';
 import type { ChatGptTurnContainer, ChatGptTurnRole, ExportSelectionOptions } from './type';
 
 /**
@@ -31,8 +31,10 @@ import type { ChatGptTurnContainer, ChatGptTurnRole, ExportSelectionOptions } fr
  * extracted. Selection then reads that snapshot: its ids, roles and content.
  * When the crawl cannot prove the thread complete the snapshot is empty, so
  * the export shows its existing warning instead of offering a partial list.
- * It is dropped as well once a mounted item no longer matches what was read
- * (another branch or a regenerated reply under the same key).
+ * It is dropped as well once the thread changes from what was read: a turn
+ * shows another branch or a regenerated reply, or a turn appears that was not
+ * read. A watch that starts before the crawl sees such a change even when the
+ * item has scrolled out of the DOM by the time of the export.
  *
  * The earlier DOM (`[data-turn-id-container]`, persistent per-message
  * containers) keeps its own path in `chatgpt.ts` for accounts ChatGPT has not
@@ -48,6 +50,8 @@ interface ThreadSnapshot {
 }
 
 let snapshot: ThreadSnapshot | null = null;
+/** Watches the thread from the start of the crawl that produced `snapshot`. */
+let watch: ThreadVersionWatch | null = null;
 /** Counts preparations, so only the latest one publishes its crawl. */
 let preparation = 0;
 /**
@@ -59,6 +63,8 @@ const lastHosts = new Map<string, HTMLElement>();
 /** Test hook: forget the last crawl. */
 export function resetChatGptThreadSnapshot(): void {
   snapshot = null;
+  watch?.stop();
+  watch = null;
   lastHosts.clear();
 }
 
@@ -78,26 +84,22 @@ export async function prepareChatGptExport(options: ChatGptCrawlOptions = {}): P
   const current = ++preparation;
   const route = normalizedConversationUrl(options.expectedUrl ?? location.href);
   snapshot = { route, messages: null, failure: 'chatgpt_export_thread_incomplete' };
+  const versions = watchThreadVersions();
+  watch = versions;
   try {
     const messages = await crawlChatGptThread(options);
     // A newer preparation owns the snapshot, even when it failed.
     if (current === preparation && snapshot?.route === route) {
+      versions.adopt(messages);
       snapshot = { route, messages, failure: '' };
     }
   } catch (error) {
+    // Only this preparation's own watch: a newer one has already replaced it.
+    versions.stop();
     if (isAbortError(error)) throw error;
     console.warn('[Gemini Voyager] ChatGPT export could not read the whole conversation:', error);
   }
   return true;
-}
-
-/** Whether a mounted item shows another version than the one that was read. */
-function threadChangedSince(messages: readonly ChatGptThreadMessage[]): boolean {
-  const read = new Map(messages.map((message) => [message.turnKey, message.fingerprint]));
-  return mountedTurnItems(resolveVisibleConversationRoot(document)).some((item) => {
-    const fingerprint = read.get(readTurnKey(item));
-    return fingerprint !== undefined && readTurnFingerprint(item) !== fingerprint;
-  });
 }
 
 function currentSnapshot(): ThreadSnapshot | null {
@@ -105,7 +107,7 @@ function currentSnapshot(): ThreadSnapshot | null {
   if (snapshot.route !== normalizedConversationUrl()) {
     return { ...snapshot, messages: null, failure: 'chatgpt_export_conversation_changed' };
   }
-  if (snapshot.messages && threadChangedSince(snapshot.messages)) {
+  if (snapshot.messages && watch?.changed()) {
     snapshot = { ...snapshot, messages: null, failure: 'chatgpt_export_thread_changed' };
   }
   return snapshot;

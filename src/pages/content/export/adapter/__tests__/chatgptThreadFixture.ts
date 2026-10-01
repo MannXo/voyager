@@ -54,6 +54,11 @@ export interface ThreadFixture {
   loadedCount(): number;
   /** Swap a turn's content in place, as a branch switch does; re-renders it if mounted. */
   replaceTurn(key: string, changes: Partial<Omit<FixtureTurn, 'key'>>): void;
+  /**
+   * Replace the turns from `fromKey` on with `turns`, as switching to an edited
+   * prompt's branch does: the prompt and every later turn get new keys.
+   */
+  switchBranch(fromKey: string, turns: readonly FixtureTurn[]): void;
 }
 
 function renderItem(turn: FixtureTurn): HTMLElement {
@@ -253,6 +258,11 @@ export function mountThreadFixture(options: ThreadFixtureOptions): ThreadFixture
       if (!element) return;
       element.remove();
       mounted.delete(key);
+      render();
+    },
+    switchBranch(fromKey, turns) {
+      const index = all.findIndex((turn) => turn.key === fromKey);
+      all.splice(index, all.length - index, ...turns);
       render();
     },
   };

@@ -48,6 +48,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function nextTask(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 function ids(turns: readonly FixtureTurn[]): string[] {
   return turns.flatMap((turn) => [
     ...(turn.user !== undefined ? [`${turn.key}:u`] : []),
@@ -389,6 +393,58 @@ describe('ChatGPT selection export on the live thread', () => {
     await expect(buildChatGptExportTurns(new Set(['turn-06:a']))).rejects.toThrow(
       'chatgpt_export_thread_changed',
     );
+    expect(collectChatGptTurnContainers()).toEqual([]);
+  });
+
+  it("drops the crawl once the reader switches to an edited prompt's branch of the same length", async () => {
+    const fixture = mountThreadFixture({ turns: makeTurns(6) });
+    await prepareChatGptExport({ timing: FAST });
+
+    // Editing turn 5's prompt gives it and every later turn new keys.
+    fixture.switchBranch('turn-05', [
+      { key: 'edit-05', height: 1500, user: 'Question 5, edited', assistant: 'Answer 5, edited' },
+      { key: 'edit-06', height: 1500, user: 'Question 6, edited', assistant: 'Answer 6, edited' },
+    ]);
+
+    await expect(buildChatGptExportTurns(new Set(['turn-05:u']))).rejects.toThrow(
+      'chatgpt_export_thread_changed',
+    );
+    expect(collectChatGptTurnContainers()).toEqual([]);
+  });
+
+  it('drops the crawl when a turn switches branch and scrolls out of view before the export', async () => {
+    const fixture = mountThreadFixture({ turns: makeTurns(10) });
+    await prepareChatGptExport({ timing: FAST });
+    const bottom = fixture.offset();
+
+    fixture.setOffset(0);
+    await nextTask();
+    fixture.replaceTurn('turn-01', { replyId: 'turn-01-b', assistant: 'Answer 1, branch 2' });
+    await nextTask();
+    fixture.setOffset(bottom);
+    expect(fixture.mountedKeys()).not.toContain('turn-01');
+
+    await expect(buildChatGptExportTurns(new Set(['turn-01:a']))).rejects.toThrow(
+      'chatgpt_export_thread_changed',
+    );
+  });
+
+  it('drops the crawl when a turn it read switches branch mid-crawl and is never revisited', async () => {
+    // Short turns: several share a window, so an early one leaves before the next read.
+    const fixture = mountThreadFixture({ turns: makeTurns(20, 300), overscan: 0 });
+    let switched = '';
+    const onProgress = (count: number) => {
+      if (switched || count !== 5) return;
+      // A turn the crawl has read, still on screen, but not the one it continues from.
+      const read = new Set(makeTurns(count).map((turn) => turn.key));
+      const tail = makeTurns(count).at(-1)?.key;
+      switched = fixture.mountedKeys().find((key) => read.has(key) && key !== tail) ?? '';
+      if (switched) fixture.replaceTurn(switched, { replyId: `${switched}-b` });
+    };
+
+    await prepareChatGptExport({ timing: FAST, onProgress });
+
+    expect(switched).not.toBe('');
     expect(collectChatGptTurnContainers()).toEqual([]);
   });
 

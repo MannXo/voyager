@@ -30,6 +30,12 @@ const USER_UNIT_SELECTOR = '[data-chatgpt-search-unit-key]';
 export const ASSISTANT_REPLY_SELECTOR = '[data-chatgpt-selection-message-id]';
 const REPLY_ID_ATTRIBUTE = 'data-chatgpt-selection-message-id';
 const MESSAGE_IDS_ATTRIBUTE = 'data-chatgpt-search-message-ids';
+/** The attributes {@link readTurnKey} and {@link readTurnFingerprint} read. */
+export const TURN_VERSION_ATTRIBUTES: readonly string[] = [
+  TURN_KEY_ATTRIBUTE,
+  MESSAGE_IDS_ATTRIBUTE,
+  REPLY_ID_ATTRIBUTE,
+];
 const HISTORY_PENDING_SELECTOR = '[role="status"]';
 /** The list's own wrapper: the history spinner and the items, nothing of the page around them. */
 const THREAD_LIST_SELECTOR = '[data-chatgpt-conversation-selection-target]';
