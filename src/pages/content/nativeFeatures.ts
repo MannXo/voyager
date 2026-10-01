@@ -16,6 +16,7 @@ import { startBrandTheme } from './platformTheme';
 import { startPromptHistory } from './promptHistory/index';
 import { startRemoteAnnouncements } from './remoteAnnouncements/index';
 import { isResearchPackEnabledValue, startResearchPack } from './researchPack/index';
+import { startResearchPackReceiver } from './researchPack/receiver';
 import { startResponseCompleteNotification } from './responseNotification/index';
 import { startSendBehavior } from './sendBehavior/index';
 import { startStorageQuotaWarningToast } from './storageQuotaWarning';
@@ -126,6 +127,12 @@ export const NATIVE_FEATURES = {
     position: CleanupPositions.CleanupResearchPack,
     start: () => startResearchPack(),
     toggle: { key: StorageKeys.RESEARCH_PACK_ENABLED, isEnabled: isResearchPackEnabledValue },
+  },
+  researchPackReceiver: {
+    id: 'research-pack-receiver',
+    position: CleanupPositions.CleanupResearchPackReceiver,
+    start: () => startResearchPackReceiver(),
+    inertReason: 'Receives a research pack only on ChatGPT and Claude, never on Gemini.',
   },
 } as const satisfies Record<string, NativeFeature>;
 

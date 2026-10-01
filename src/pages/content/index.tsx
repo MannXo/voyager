@@ -669,6 +669,8 @@ function handleVisibilityChange(): void {
       if (pluginPlatformId) {
         initialized = true;
         if (isPluginSubframe) return;
+        // A research pack sent from Gemini with "Continue in …" lands here.
+        void mountNativeFeature(cleanupManager, NATIVE_FEATURES.researchPackReceiver);
         // Same path as custom websites (plan §7): the Prompt Manager mounts
         // only while this host is in the user's custom-website list, which is
         // what the popup's "enable Prompt Manager on <site>" toggle edits, and

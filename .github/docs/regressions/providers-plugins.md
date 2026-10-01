@@ -570,3 +570,23 @@ say`), `src/pages/content/platformTheme/__tests__/platformTheme.test.ts`.
   still never read a catalog.
 - **Guard:** `src/pages/background/__tests__/pluginRuntimeMessages.test.ts`
   (`plugin setting writes checked against the real plugin listing`).
+
+## Research pack handoff picks its path inside the click
+
+- **Trap:** "Continue in ChatGPT / Claude" can only copy to the clipboard inside the click: Safari
+  requires the user gesture, and Chrome refuses the write once the new tab takes focus. A host
+  permission alone does not mean Voyager runs on the target either, because the content script is
+  registered only for origins of enabled plugins (or Prompt Manager sites). Deciding after asking
+  the background, or from the permission alone, leaves the pack in a record nobody claims, or tries
+  a copy after the gesture is gone.
+- **Rule:** The Gemini tab picks the branch synchronously from a status cached when the panel
+  opens; an unknown status means "cannot run there". The fallback calls `clipboard.writeText` first
+  and asks the background to open the chat only after the copy succeeds. Readiness is the host
+  permission plus a registered content script whose matches cover the new-chat URL. When the
+  background finds the target no longer ready, it opens nothing and the user clicks again. The
+  receiver peeks, waits for the composer, then claims, so a slow page or login redirect lets the
+  tab-bound record expire. No URL carries the pack.
+- **Guard:** `src/pages/content/researchPack/__tests__/continueIn.test.ts`,
+  `src/pages/content/researchPack/__tests__/receiver.test.ts`,
+  `src/features/researchPack/services/__tests__/handoff.test.ts` and
+  `src/pages/background/__tests__/researchPackHandoff.test.ts`.
