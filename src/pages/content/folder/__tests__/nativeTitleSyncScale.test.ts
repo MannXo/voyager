@@ -153,6 +153,40 @@ describe('FolderStore native title sync', () => {
     expect(titleOf('one', 0)).toBe('Second');
   });
 
+  it('keeps the per-conversation matching rules at the edges', async () => {
+    const [a, b, c, d, e] = [11, 12, 13, 14, 15].map(hex);
+    await createStore({
+      folders: [folder('one')],
+      folderContents: {
+        one: [
+          reference(`  C_${a} `, '', 'Old A'),
+          // An unparseable URL falls back to the stored id.
+          reference(`c_${b}`, 'http://[bad', 'Old B'),
+          // Matched by its stored id and by the different id in its URL.
+          reference(`c_${c}`, `/app/${d}`, 'Old CD'),
+          reference(`c_${e}`, `/app/${e}`, 'Old E'),
+        ],
+      },
+    });
+    sidebar.append(
+      nativeRow(a, 'New A'),
+      nativeRow(b, 'New B'),
+      nativeRow(c, 'From C'),
+      nativeRow(d, 'From D'),
+      nativeRow(e, 'Real E'),
+      nativeRow(e, ''),
+    );
+
+    await store.syncConversationTitlesFromNative();
+
+    expect(store.data.folderContents.one.map((conv) => conv.title)).toEqual([
+      'New A',
+      'New B',
+      'From D',
+      'Real E',
+    ]);
+  });
+
   it('does not save or re-render when every stored title already matches', async () => {
     const id = hex(8);
     await createStore({

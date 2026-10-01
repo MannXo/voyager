@@ -796,7 +796,7 @@ export class FolderStore {
     this.nativeTitleSyncInProgress = true;
     try {
       let updated = false;
-      // One index per pass keeps this O(rows + stored); see indexConversationsByRouteId.
+      // One index per pass: O(stored + rows + matches); see indexConversationsByRouteId.
       const index = indexConversationsByRouteId(this.data.folderContents);
       const conversations = getNativeConversationElements(this.options.getContext().sidebar);
 
