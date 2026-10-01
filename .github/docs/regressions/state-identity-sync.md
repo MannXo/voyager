@@ -465,7 +465,9 @@ devices: the pusher sets Drive, a puller keeps its own order`).
   strip `null` in a parser or serializer. Pinning must keep bumping `updatedAt`, or a pin loses
   to the older copy. An added prompt keeps the times it came with. A copy without `createdAt`
   gets 0 from the file parser, the oldest edit time, so it never beats a timestamped copy; the
-  field stays a number because every prompt validator, old and new, requires one.
+  field stays a number because every prompt validator, old and new, requires one. Known limit:
+  copies edited in the same millisecond may not settle alike on every device, and a missing,
+  `null` or `0` pin share one tie key; both are left as too unlikely to handle.
 - **Guard:** `src/pages/background/__tests__/promptDriveMergeEdits.test.ts` (`keeps an edit made
 elsewhere after this device merged an unchanged copy`, `changes nothing when the same Drive file
 is merged again`, the pin and unpin round trips), `src/utils/mergePrompts.test.ts` and
