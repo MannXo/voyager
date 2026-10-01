@@ -10,16 +10,20 @@
  *   - every `native` op names a primitive this build ships, with params that
  *     match its published spec, and `engine` admits no build older than it
  *     (the same rule `plugin:check` applies to official plugins);
- *   - every match pattern stays inside a plugin platform Voyager already
- *     supports (the D18 rule official plugins follow), so enabling a local
- *     plugin can only ask for host access an official plugin could ask for.
+ *   - every match pattern stays inside a site Voyager already supports: a
+ *     plugin platform (the D18 rule official plugins follow) or a native
+ *     surface (Gemini, AI Studio), so enabling a local plugin can only ask for
+ *     host access Voyager already has or an official plugin could ask for;
+ *   - a plugin that targets a native surface declares no `theme`: Gemini and
+ *     AI Studio keep Voyager's own accent (the popup's accent picker changes it).
  */
 import type { Result } from '@/core/types/common';
 
-import { BUNDLED_SITE_ADAPTERS } from '../catalog/sites';
 import { primitiveParamIssues, primitiveShippabilityIssues } from '../manifest/primitiveChecks';
 import { type ManifestIssue, validateManifest } from '../manifest/validate';
 import { patternWithinAny } from '../sites/matchPattern';
+import { NATIVE_SURFACE_MATCHES } from '../sites/nativeSurfaces';
+import { DEFAULT_ADAPTERS } from '../sites/registry';
 import type { PluginManifest, SiteAdapter } from '../types';
 import { toLocalPluginId } from './localPluginId';
 
@@ -35,7 +39,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function validateLocalManifest(
   input: unknown,
-  sites: readonly SiteAdapter[] = BUNDLED_SITE_ADAPTERS,
+  sites: readonly SiteAdapter[] = DEFAULT_ADAPTERS,
 ): Result<ValidatedLocalPlugin, ManifestIssue[]> {
   if (!isRecord(input)) {
     return { success: false, error: [{ path: '', message: 'manifest must be a JSON object' }] };
@@ -70,6 +74,12 @@ export function validateLocalManifest(
       message: `"${pattern}" is outside the sites plugins can target (${supported.join(', ')})`,
     });
   });
+  if (manifest.theme && manifest.matches.some((p) => patternWithinAny(p, NATIVE_SURFACE_MATCHES))) {
+    issues.push({
+      path: 'theme',
+      message: 'Gemini and AI Studio keep Voyager’s own accent: remove theme for these sites',
+    });
+  }
 
   return issues.length > 0
     ? { success: false, error: issues }

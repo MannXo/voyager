@@ -2653,6 +2653,10 @@
     "message": "Importa un complemento declarativo que hayas escrito: un manifiesto JSON con su CSS incluido, o el manifiesto seleccionado junto con sus archivos .css. Pasa las mismas comprobaciones que los complementos oficiales y queda desactivado hasta que lo actives.",
     "description": "Popup plugin page: what importing a local plugin does"
   },
+  "localPluginsNativeHint": {
+    "message": "Ejecuta tu propio CSS y ajustes de página en este sitio. Los complementos importados quedan desactivados hasta que los actives.",
+    "description": "Native popup (Gemini / AI Studio): hint on the collapsed Local plugins entry"
+  },
   "localPluginsImportFiles": {
     "message": "Importar archivos",
     "description": "Popup plugin page: button that opens the file picker for a local plugin"

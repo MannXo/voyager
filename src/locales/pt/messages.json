@@ -2653,6 +2653,10 @@
     "message": "Importe um plugin declarativo que você escreveu: um manifesto JSON com o CSS embutido, ou o manifesto selecionado junto com seus arquivos .css. Ele passa pelas mesmas verificações dos plugins oficiais e fica desativado até você ativá-lo.",
     "description": "Popup plugin page: what importing a local plugin does"
   },
+  "localPluginsNativeHint": {
+    "message": "Execute seu próprio CSS e ajustes de página neste site. Os plugins importados ficam desativados até você ativá-los.",
+    "description": "Native popup (Gemini / AI Studio): hint on the collapsed Local plugins entry"
+  },
   "localPluginsImportFiles": {
     "message": "Importar arquivos",
     "description": "Popup plugin page: button that opens the file picker for a local plugin"

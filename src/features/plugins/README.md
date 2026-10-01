@@ -165,9 +165,12 @@ A user can run a declarative plugin they wrote without publishing it:
 1. Write `plugin.json` exactly as above, plus its `style.css` (or inline the CSS
    as `{ "css": "..." }`). Any lowercase reverse-dotted `id` works; it is stored
    as `local.<id>`.
-2. Open the popup, go to the plugin page, and under **Local plugins** choose
-   **Import files** (pick the manifest together with its `.css` files) or
-   **Paste JSON** (a manifest with its CSS inlined).
+2. Open the popup and find **Local plugins**: on Claude, ChatGPT or DeepSeek it
+   sits on the plugin page; on Gemini and AI Studio it is the last entry of the
+   settings (collapsed until opened, or until a local plugin targets the page,
+   which then also shows its toggle and settings). Choose **Import files** (pick
+   the manifest together with its `.css` files) or **Paste JSON** (a manifest
+   with its CSS inlined).
 3. A rejected import lists every problem as `path: message` and leaves the
    installed version untouched. An accepted one is stored **disabled** and its
    inspect view shows the sites it matches, the CSS size, every page change,
@@ -185,9 +188,51 @@ local-only rules, never a weaker one: `validateManifest` with the CSS and
 rendered-sink guards, `tier: "declarative"` only, `native` ops only for primitives
 this build ships with params that match their contract and an `engine` floor
 at or above their `sinceEngine` (`manifest/primitiveChecks.ts`, shared with
-`plugin:check`), and `matches` inside a plugin platform's `matches`, so enabling a
-local plugin can only request host access an official plugin could. Stored
-records are re-validated on every read by `local/LocalPluginSource.ts`.
+`plugin:check`), and `matches` inside a plugin platform's `matches` or a native
+surface's (`sites/nativeSurfaces.ts`: Gemini, AI Studio), so enabling a local
+plugin can only request host access an official plugin could, or none at all.
+A plugin for Gemini or AI Studio may not declare `theme`: those pages keep
+Voyager's own accent. Stored records are re-validated on every read by
+`local/LocalPluginSource.ts`.
+
+**Gemini and AI Studio.** Only local plugins can target them; the bundled and
+remote catalogs never do. They resolve semantic keys through the native
+`geminiAdapter` / `aistudioAdapter` (`userTurn`, `assistantTurn`, `composer`,
+`sidebar`; the Gemini `sidebar` key also covers Voyager's folder panel, so
+prefer a precise CSS selector there). The manifest already injects the content
+script and grants these hosts, so enabling one needs no permission prompt and
+`pluginsToOriginPatterns` leaves their origins out of dynamic registration
+(registering them would inject Voyager twice). `PluginHost` mounts them with
+the same reversible engine as elsewhere; turning one off removes its classes
+and stylesheet, and D7 applies to `native` ops. The zero-request promise
+holds: `isEligibleCatalogHost` refuses every native host, so a Gemini page has
+no catalog host, never asks for a check and never reads a catalog cache, and
+the background refuses a forced check for them too. A minimal Gemini plugin:
+
+```json
+{
+  "id": "me.gemini-compact-turns",
+  "name": "Compact Gemini turns",
+  "version": "1.0.0",
+  "description": "Tighter spacing between my messages",
+  "author": "me",
+  "category": "readability",
+  "license": "MIT",
+  "engine": ">=1.0.0",
+  "tier": "declarative",
+  "matches": ["https://gemini.google.com/*"],
+  "contributes": {
+    "styles": [{ "css": ".gv-plugin-compact-turn{margin-block:4px!important}" }],
+    "domOps": [
+      {
+        "op": "addClass",
+        "target": { "kind": "semantic", "key": "userTurn" },
+        "className": "gv-plugin-compact-turn"
+      }
+    ]
+  }
+}
+```
 
 Ownership and precedence:
 
@@ -198,7 +243,8 @@ Ownership and precedence:
   `storage/pluginState.ts` never share a key with one.
 - **Merged last, outside the kill switch.** The remote catalog says nothing about
   a user's own plugin, and an enabled local plugin never makes a page eligible
-  for a catalog check (`remote/hostCatalogPolicy.ts`).
+  for a catalog check (`remote/hostCatalogPolicy.ts`). A kindless or official
+  source cannot serve a `local.*` id either: only `kind: 'local'` does.
 - **Storage.** Manifests live in `chrome.storage.local` under
   `StorageKeys.PLUGIN_LOCAL_MANIFESTS` (at most 50, 1,000,000 characters per
   import). They stay on the device: the enable state rides the plugin-state
@@ -344,9 +390,10 @@ plugin fix does.
   wildcards or ports); the user settings (online-updates switch, check interval
   counted from the last attempt, failure backoff, writer-version staleness); and
   page eligibility, meaning at least one **enabled** plugin targets the host.
-  Gemini and AI Studio have no plugins, so they never pass the last gate and
-  never produce a request. A manual check sends `force` and skips every gate
-  except the build flag.
+  Gemini and AI Studio are never catalog hosts (`isEligibleCatalogHost`), even
+  with a local plugin enabled there, so they never produce a request. A manual
+  check sends `force` and skips every gate except the build flag and the host
+  shape.
 - **`remote/hostCatalogPolicy.ts`** — the pure rules the background and the
   content script must agree on (which hosts may be looked up, when a check is
   due, the backoff curve, when a cached entry may be used at all), each one

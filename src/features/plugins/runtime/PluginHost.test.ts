@@ -603,6 +603,66 @@ describe('PluginHost site override (plan §3)', () => {
   });
 });
 
+describe('PluginHost with a local plugin on Gemini', () => {
+  const geminiTweak: PluginManifest = {
+    ...manifest(['https://gemini.google.com/*'], 'local.me.gemini-tweak'),
+    contributes: {
+      styles: [{ css: '.gv-plugin-local-tweak{outline:1px solid red}' }],
+      domOps: [
+        {
+          op: 'addClass',
+          target: { kind: 'semantic', key: 'userTurn' },
+          className: 'gv-plugin-local-tweak',
+        },
+      ],
+    },
+  };
+
+  it('mounts on Gemini through the native adapter, tears down on disable, and never asks for a catalog', async () => {
+    document.body.innerHTML = '<user-query>hello</user-query>';
+    mockState({ 'local.me.gemini-tweak': { enabled: true, installedAt: 1 } });
+    const requestCatalogRefresh = vi.fn();
+    const host = new PluginHost({
+      url: 'https://gemini.google.com/app/abc',
+      sources: [{ id: 'local', kind: 'local', list: async () => [geminiTweak] }],
+      doc: document,
+      requestCatalogRefresh,
+      isTopFrame: true,
+    });
+
+    await host.start();
+    expect(host.activeAdapter?.id).toBe('gemini');
+    const turn = document.querySelector('user-query');
+    expect(turn?.classList.contains('gv-plugin-local-tweak')).toBe(true);
+    expect(document.documentElement.innerHTML).toContain('.gv-plugin-local-tweak{');
+    // Zero-request promise: no catalog check and no catalog cache subscription.
+    expect(requestCatalogRefresh).not.toHaveBeenCalled();
+
+    fireStateChange({ 'local.me.gemini-tweak': { enabled: false, installedAt: 1 } });
+    await flush();
+    expect(turn?.classList.contains('gv-plugin-local-tweak')).toBe(false);
+    expect(document.documentElement.innerHTML).not.toContain('.gv-plugin-local-tweak{');
+    host.stop();
+    document.body.innerHTML = '';
+  });
+
+  it('never asks for a catalog from AI Studio either, whatever is enabled there', async () => {
+    mockState({ 'voyager.test': { enabled: true, installedAt: 1 } });
+    const requestCatalogRefresh = vi.fn();
+    const host = new PluginHost({
+      url: 'https://aistudio.google.com/prompts/new_chat',
+      sources: [new StaticSource([manifest(['https://aistudio.google.com/*'])])],
+      doc: document,
+      requestCatalogRefresh,
+      isTopFrame: true,
+    });
+    await host.start();
+    expect(document.body.classList.contains('gv-plugin-active')).toBe(true);
+    expect(requestCatalogRefresh).not.toHaveBeenCalled();
+    host.stop();
+  });
+});
+
 /** Deliver a plugin-state change to every storage.onChanged subscriber. */
 function fireStateChange(state: Record<string, unknown>): void {
   const listeners = (chrome.storage.onChanged.addListener as unknown as Mock).mock.calls;

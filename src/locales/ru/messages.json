@@ -2653,6 +2653,10 @@
     "message": "Импортируйте собственный декларативный плагин: JSON-манифест со встроенным CSS или манифест вместе с его файлами .css. Он проходит те же проверки, что и официальные плагины, и остаётся выключенным, пока вы его не включите.",
     "description": "Popup plugin page: what importing a local plugin does"
   },
+  "localPluginsNativeHint": {
+    "message": "Запускайте собственный CSS и настройки страницы на этом сайте. Импортированные плагины остаются выключенными, пока вы их не включите.",
+    "description": "Native popup (Gemini / AI Studio): hint on the collapsed Local plugins entry"
+  },
   "localPluginsImportFiles": {
     "message": "Импорт файлов",
     "description": "Popup plugin page: button that opens the file picker for a local plugin"

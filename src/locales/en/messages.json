@@ -2653,6 +2653,10 @@
     "message": "Import a declarative plugin you wrote: a manifest JSON with its CSS inlined, or the manifest picked together with its .css files. It passes the same checks as official plugins and stays off until you turn it on.",
     "description": "Popup plugin page: what importing a local plugin does"
   },
+  "localPluginsNativeHint": {
+    "message": "Run your own CSS and page tweaks on this site. Imported plugins stay off until you turn them on.",
+    "description": "Native popup (Gemini / AI Studio): hint on the collapsed Local plugins entry"
+  },
   "localPluginsImportFiles": {
     "message": "Import files",
     "description": "Popup plugin page: button that opens the file picker for a local plugin"

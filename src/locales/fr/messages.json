@@ -2653,6 +2653,10 @@
     "message": "Importez une extension déclarative que vous avez écrite : un manifeste JSON avec son CSS intégré, ou le manifeste sélectionné avec ses fichiers .css. Elle passe les mêmes contrôles que les extensions officielles et reste désactivée jusqu'à ce que vous l'activiez.",
     "description": "Popup plugin page: what importing a local plugin does"
   },
+  "localPluginsNativeHint": {
+    "message": "Exécutez vos propres CSS et ajustements de page sur ce site. Les extensions importées restent désactivées jusqu'à ce que vous les activiez.",
+    "description": "Native popup (Gemini / AI Studio): hint on the collapsed Local plugins entry"
+  },
   "localPluginsImportFiles": {
     "message": "Importer des fichiers",
     "description": "Popup plugin page: button that opens the file picker for a local plugin"

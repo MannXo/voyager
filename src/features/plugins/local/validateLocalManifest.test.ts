@@ -72,6 +72,38 @@ describe('validateLocalManifest', () => {
     expect(paths(authored({ matches: ['https://chat.deepseek.com/a/*'] }))).toEqual([]);
   });
 
+  it('lets local plugins target Gemini and AI Studio, which official plugins never do', () => {
+    expect(paths(authored({ matches: ['https://gemini.google.com/*'] }))).toEqual([]);
+    expect(paths(authored({ matches: ['https://business.gemini.google/*'] }))).toEqual([]);
+    expect(paths(authored({ matches: ['https://aistudio.google.com/prompts/*'] }))).toEqual([]);
+    expect(paths(authored({ matches: ['https://*.google.com/*'] }))).toEqual(['matches[0]']);
+  });
+
+  it('accepts the Gemini example from the plugin README', () => {
+    const example = authored({
+      id: 'me.gemini-compact-turns',
+      category: 'readability',
+      matches: ['https://gemini.google.com/*'],
+      contributes: {
+        styles: [{ css: '.gv-plugin-compact-turn{margin-block:4px!important}' }],
+        domOps: [
+          {
+            op: 'addClass',
+            target: { kind: 'semantic', key: 'userTurn' },
+            className: 'gv-plugin-compact-turn',
+          },
+        ],
+      },
+    });
+    expect(paths(example)).toEqual([]);
+  });
+
+  it('keeps Voyager’s own accent on Gemini: a theme there is rejected', () => {
+    const theme = { brand: '#ff0000' };
+    expect(paths(authored({ matches: ['https://gemini.google.com/*'], theme }))).toEqual(['theme']);
+    expect(paths(authored({ theme }))).toEqual([]);
+  });
+
   it('allows a native op only for a shipped primitive with params that fit its contract', () => {
     const native = (handler: string, params: Record<string, unknown>, engine = '>=1.4.0') =>
       authored({

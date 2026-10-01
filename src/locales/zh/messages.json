@@ -2653,6 +2653,10 @@
     "message": "导入你自己编写的声明式插件：内联了 CSS 的清单 JSON，或同时选中清单和它的 .css 文件。它与官方插件经过相同的检查，在你手动开启之前保持关闭。",
     "description": "Popup plugin page: what importing a local plugin does"
   },
+  "localPluginsNativeHint": {
+    "message": "在此网站上运行你自己编写的 CSS 和页面调整。导入的插件在你开启之前保持关闭。",
+    "description": "Native popup (Gemini / AI Studio): hint on the collapsed Local plugins entry"
+  },
   "localPluginsImportFiles": {
     "message": "导入文件",
     "description": "Popup plugin page: button that opens the file picker for a local plugin"

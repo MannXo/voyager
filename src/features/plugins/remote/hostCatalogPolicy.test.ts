@@ -216,6 +216,21 @@ describe('hasEnabledPluginForUrl', () => {
   });
 });
 
+describe('native surfaces are never catalog hosts', () => {
+  it('gives Gemini and AI Studio pages no catalog host at all', () => {
+    for (const url of [
+      'https://gemini.google.com/app/1',
+      'https://business.gemini.google/',
+      'https://aistudio.google.com/prompts',
+      'https://aistudio.google.cn/',
+    ]) {
+      expect(catalogHostFromUrl(url)).toBeUndefined();
+    }
+    expect(isEligibleCatalogHost('gemini.google.com')).toBe(false);
+    expect(isEligibleCatalogHost('claude.ai')).toBe(true);
+  });
+});
+
 describe('catalog eligibility ignores local plugins', () => {
   it('never asks for a catalog because a local plugin is enabled', () => {
     const local = [manifest('local.me.tweak', ['https://chat.deepseek.com/*'])];

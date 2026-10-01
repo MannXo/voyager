@@ -394,7 +394,7 @@ while an active plugin has domOps`).
   nothing to do with it.
 - **Rule:** `validateLocalManifest` forces every id into `local.*`, runs the remote gate plus the
   primitive contract and engine-floor checks, and keeps `matches` inside an existing plugin
-  platform. `mergePluginRecords` drops official records in `local.*` and merges local ones last,
+  platform or native surface. `mergePluginRecords` drops official records in `local.*` and merges local ones last,
   outside the kill switch; `hasEnabledPluginForUrl` / `hasEnabledPluginForHost` skip `local.*`.
   Import validates before it writes and always writes `enabled: false`.
 - **Guard:** `src/features/plugins/local/validateLocalManifest.test.ts`,
@@ -402,3 +402,24 @@ while an active plugin has domOps`).
   `src/features/plugins/sources/defaultSources.test.ts` (`mergePluginRecords with local plugins`),
   `src/features/plugins/remote/hostCatalogPolicy.test.ts`
   (`catalog eligibility ignores local plugins`).
+
+## A local plugin on Gemini or AI Studio must not make the page network-active or inject twice
+
+- **Trap:** Gemini and AI Studio are native surfaces: the manifest injects the content script
+  there and lists them in `host_permissions`, and the zero-request promise says their pages never
+  ask for a catalog. Once local plugins can target them, an enabled one would turn the page into
+  a catalog host (a request per check interval, plus a catalog cache read), and its origin would
+  flow into `registerContentScripts` (Voyager injected twice) and into the enable-time permission
+  request (Safari and Firefox refuse it).
+- **Rule:** `isEligibleCatalogHost` refuses every native-surface host (`sites/nativeSurfaces.ts`),
+  so `catalogHostFromUrl` is undefined there and neither the page, the popup nor a forced
+  background check can fetch for it. `pluginsToOriginPatterns` drops native-surface origins and
+  `pluginToOriginPatternsForActiveUrl` returns nothing on a native page. Local plugins there may
+  not declare `theme`. Keep `nativeSurfaces.ts` in step with `manifest.json`.
+- **Guard:** `src/features/plugins/runtime/PluginHost.test.ts`
+  (`PluginHost with a local plugin on Gemini`),
+  `src/features/plugins/remote/hostCatalogPolicy.test.ts`
+  (`native surfaces are never catalog hosts`),
+  `src/features/plugins/remote/hostCatalogRefresh.test.ts`
+  (`never fetches for Gemini or AI Studio, even on a forced check`),
+  `src/features/plugins/runtime/siteRegistration.test.ts` (`native surfaces (Gemini, AI Studio)`).

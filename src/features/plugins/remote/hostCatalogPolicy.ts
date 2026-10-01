@@ -11,6 +11,7 @@
  */
 import { isLocalPluginId } from '../local/localPluginId';
 import { matchesAnyPattern } from '../sites/matchPattern';
+import { isNativeSurfaceHost } from '../sites/nativeSurfaces';
 import type { PluginStateMap } from '../storage/pluginState';
 import type { PluginManifest } from '../types';
 import type { HostCatalogCacheEntry } from './hostCatalogCache';
@@ -56,6 +57,11 @@ export function hostCatalogBackoffMs(failureCount: number): number {
  * frame origins (`*.frame.claudeusercontent.com`), ports, IPs in brackets and
  * anything with a path are rejected so the file name is a plain
  * `<host>.json` and per-artifact frame subdomains never cause a lookup each.
+ *
+ * Voyager's native surfaces (Gemini, AI Studio) are never catalog hosts, even
+ * when a user's local plugin runs there: Gemini pages make zero requests to
+ * the catalog, and this one rule covers the page, the popup and a forced
+ * background check alike.
  */
 export function isEligibleCatalogHost(host: string): boolean {
   if (typeof host !== 'string' || host.length === 0 || host.length > 253) return false;
@@ -63,7 +69,7 @@ export function isEligibleCatalogHost(host: string): boolean {
     !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(host)
   )
     return false;
-  return true;
+  return !isNativeSurfaceHost(host);
 }
 
 /** `location.host` of a page URL when it is a catalog-eligible https host. */
@@ -86,8 +92,8 @@ export function hostCatalogFileUrl(baseUrl: string, host: string): string {
 
 /**
  * D4 trigger: a page may ask for a catalog check only when at least one
- * ENABLED plugin targets it. Gemini / AI Studio have no plugins, so they never
- * qualify and never produce a request. A user-imported (`local.*`) plugin
+ * ENABLED plugin targets it. Gemini / AI Studio are not catalog hosts at all
+ * (`isEligibleCatalogHost`), so they never produce a request. A user-imported (`local.*`) plugin
  * never counts: the catalog cannot update it, so enabling one must not make
  * Voyager contact the catalog host about that site.
  */

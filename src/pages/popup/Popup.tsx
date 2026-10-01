@@ -22,6 +22,7 @@ import { GeneralSettingsCard } from './components/GeneralSettingsCard';
 import { InputSettingsCard } from './components/InputSettingsCard';
 import { KeyboardShortcutSettings } from './components/KeyboardShortcutSettings';
 import { NativeHealthNotice } from './components/NativeHealthNotice';
+import { NativeLocalPluginsSection } from './components/NativeLocalPluginsSection';
 import { PluginSiteSettings } from './components/PluginSiteSettings';
 import { PopupFooter } from './components/PopupFooter';
 import { PopupHeader } from './components/PopupHeader';
@@ -396,6 +397,21 @@ export default function Popup({ sourceTabId }: PopupProps = {}) {
             isVisible={(id) => sections.shouldShowSetting('nanobanana', id)}
             t={t}
           />,
+        )}
+
+        {/* Gemini / AI Studio have no plugin page; local plugins get one entry here. */}
+        {!isPluginSite && !sections.hasSettingsSearch && (
+          <NativeLocalPluginsSection
+            plugins={{
+              manifests: plugins.siteScopedManifests,
+              loading: plugins.pluginsLoading,
+              activeUrl: tab.activeUrl,
+              sourceIds: plugins.pluginSourceIds,
+              blockedUpdates: plugins.pluginBlockedUpdates,
+              statuses: plugins.pluginStatuses,
+            }}
+            t={t}
+          />
         )}
       </div>
 

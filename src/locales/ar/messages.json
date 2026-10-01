@@ -2653,6 +2653,10 @@
     "message": "استورد إضافة تصريحية كتبتها بنفسك: ملف بيان JSON يتضمن CSS، أو ملف البيان مع ملفات ‎.css الخاصة به. تخضع لنفس فحوصات الإضافات الرسمية وتبقى معطّلة حتى تفعّلها.",
     "description": "Popup plugin page: what importing a local plugin does"
   },
+  "localPluginsNativeHint": {
+    "message": "شغّل CSS وتعديلات الصفحة الخاصة بك على هذا الموقع. تبقى الإضافات المستوردة معطّلة حتى تفعّلها.",
+    "description": "Native popup (Gemini / AI Studio): hint on the collapsed Local plugins entry"
+  },
   "localPluginsImportFiles": {
     "message": "استيراد ملفات",
     "description": "Popup plugin page: button that opens the file picker for a local plugin"

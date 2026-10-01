@@ -4,8 +4,8 @@
  * every DOM operation, the first-party primitives it invokes (with their
  * params) and the settings it declares. Pure; shared by the UI and tests.
  */
-import { BUNDLED_SITE_ADAPTERS } from '../catalog/sites';
 import { patternWithinAny } from '../sites/matchPattern';
+import { DEFAULT_ADAPTERS } from '../sites/registry';
 import type { DomOperation, PluginManifest, SelectorRef, SiteAdapter } from '../types';
 
 export interface PluginInspectionSite {
@@ -73,7 +73,7 @@ function describeOp(op: Exclude<DomOperation, { op: 'native' }>): string {
 
 export function inspectPlugin(
   manifest: PluginManifest,
-  sites: readonly SiteAdapter[] = BUNDLED_SITE_ADAPTERS,
+  sites: readonly SiteAdapter[] = DEFAULT_ADAPTERS,
 ): PluginInspection {
   const styles = manifest.contributes.styles ?? [];
   const domOps: string[] = [];

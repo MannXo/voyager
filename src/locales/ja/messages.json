@@ -2653,6 +2653,10 @@
     "message": "自作の宣言型プラグインをインポートします。CSS を埋め込んだマニフェスト JSON か、マニフェストと .css ファイルをまとめて選択してください。公式プラグインと同じチェックを通り、オンにするまで無効のままです。",
     "description": "Popup plugin page: what importing a local plugin does"
   },
+  "localPluginsNativeHint": {
+    "message": "このサイトで自作の CSS やページ調整を実行します。インポートしたプラグインは、オンにするまで無効のままです。",
+    "description": "Native popup (Gemini / AI Studio): hint on the collapsed Local plugins entry"
+  },
   "localPluginsImportFiles": {
     "message": "ファイルをインポート",
     "description": "Popup plugin page: button that opens the file picker for a local plugin"
