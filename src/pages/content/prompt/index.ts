@@ -69,6 +69,7 @@ import {
   openTemplateFill,
   type TemplateFillHandle,
 } from './PromptTemplateFill';
+import { computeAnchoredPosition } from './anchoredPanelPosition';
 import { extractPlainTitle } from './compactTitle';
 import { activatePromptText } from './promptClickAction';
 import { createPromptLibraryState, readPromptLibrary } from './promptLibraryState';
@@ -398,19 +399,6 @@ function copyText(text: string): Promise<void> {
       resolve();
     });
   }
-}
-
-function computeAnchoredPosition(
-  trigger: HTMLElement,
-  panel: HTMLElement,
-): { top: number; left: number } {
-  const rect = trigger.getBoundingClientRect();
-  const vw = window.innerWidth;
-  const pad = 8;
-  const panelW = Math.min(380, Math.max(300, panel.getBoundingClientRect().width || 320));
-  const tentativeLeft = Math.min(vw - panelW - pad, Math.max(pad, rect.left + rect.width - panelW));
-  const top = Math.max(pad, rect.top - (panel.getBoundingClientRect().height || 360) - 10);
-  return { top, left: Math.round(tentativeLeft) };
 }
 
 export async function startPromptManager(): Promise<{ destroy: () => void }> {
