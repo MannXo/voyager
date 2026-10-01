@@ -231,6 +231,22 @@ describe('research pack account scope', () => {
     for (const release of held.splice(0)) release();
   });
 
+  it('shows a pack written again after it was removed, though its revision starts over', async () => {
+    const shared = sharedStorage({ [GLOBAL]: { ...packOf('old item'), revision: 5 } });
+    stop = startResearchPack({
+      pageUrl: geminiPageUrl,
+      store: shared.store,
+      resolveKey: async () => GLOBAL,
+    });
+    await flush();
+    expect(shownItems()).toEqual(['old item']);
+
+    emitStorageChange({ [GLOBAL]: { oldValue: { ...packOf('old item'), revision: 5 } } }, 'local');
+    expect(shownItems()).toEqual([]);
+    emitStorageChange({ [GLOBAL]: { newValue: { ...packOf('new item'), revision: 1 } } }, 'local');
+    expect(shownItems()).toEqual(['new item']);
+  });
+
   it('writes an answer to the account it was added under, even if the page switches first', async () => {
     const shared = sharedStorage();
     const resolveKey = vi.fn(async (context: ResearchPackScopeContext) => {
