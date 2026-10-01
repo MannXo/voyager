@@ -553,6 +553,17 @@ turn on a route without a conversation id`),
   `src/features/plugins/builtin/chatgptTemporaryHandoff/composer.test.ts`
   (`reads the draft and hands off through a composer whose send button has no test id`).
 
+## Temporary-chat handoff never writes into the hidden temporary composer
+
+- **Trap:** Leaving the temporary chat keeps its page, composer and draft included, under a
+  `display: none` ancestor. Composer picking fell back to a zero-size candidate, so while the new
+  chat's composer was still mounting, the stability checks accepted the hidden one and the
+  transcript went into the old draft.
+- **Rule:** Drop candidates that are not rendered (`isRendered`: connected, no `hidden` or
+  `display: none` ancestor) before any size check or fallback, in `composerPick.ts`.
+- **Guard:** `src/features/plugins/builtin/chatgptTemporaryHandoff/composer.test.ts`
+  (`waits for the new chat's composer instead of writing into the hidden temporary one`).
+
 ## Claude usage settings hash may not open the modal by itself
 
 - **Trap:** Clicking the Claude usage link changed the URL hash to `#settings/usage`, but the usage

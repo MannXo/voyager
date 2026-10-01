@@ -5,6 +5,7 @@ import { type Dispose, PluginScope } from '@/features/plugins/runtime/pluginScop
 import { insertTextIntoChatInput } from '@/pages/content/chatInput';
 import type { AppLanguage } from '@/utils/language';
 
+import { pickComposer } from './composerPick';
 import { getTemporaryHandoffCopy } from './i18n';
 import {
   CHATGPT_COMPOSER_SELECTORS,
@@ -818,23 +819,6 @@ function isDeliveryComplete(
   if (!draft?.trim()) return true;
   const deliveryText = delivery.mode === 'inline' ? delivery.text : delivery.directive;
   return hasOrderedComposerSegments(input, deliveryText, draft);
-}
-
-function isUsableComposer(candidate: HTMLElement): boolean {
-  return (
-    candidate.isConnected &&
-    !candidate.matches('[hidden], [aria-hidden="true"], [aria-disabled="true"]') &&
-    !candidate.closest('[hidden], [inert], [aria-hidden="true"]')
-  );
-}
-
-function pickComposer(candidates: readonly HTMLElement[]): HTMLElement | null {
-  const usable = candidates.filter(isUsableComposer);
-  for (let index = usable.length - 1; index >= 0; index -= 1) {
-    const rect = usable[index].getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) return usable[index];
-  }
-  return usable[usable.length - 1] || null;
 }
 
 function currentComposer(): HTMLElement | null {

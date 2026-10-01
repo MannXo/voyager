@@ -41,9 +41,11 @@ const scopes: PluginScope[] = [];
  * `form[data-chatgpt-composer]`, no `#prompt-textarea`, and a submit button
  * labelled only by a localized aria-label.
  */
-function addCurrentComposer(draft = ''): HTMLElement {
+function addCurrentComposer(draft = '', page?: HTMLElement): HTMLElement {
   const main =
-    document.querySelector('main') ?? document.body.appendChild(document.createElement('main'));
+    page?.querySelector('main') ??
+    document.querySelector('main') ??
+    document.body.appendChild(document.createElement('main'));
   const form = document.createElement('form');
   form.setAttribute('data-chatgpt-composer', '');
   const textbox = document.createElement('div');
@@ -94,6 +96,38 @@ describe('temporary chat handoff on the current ChatGPT composer', () => {
       handoffTemporaryChat(scope, { mode: 'inline', text: 'Continue this transcript' }),
     ).resolves.toBe('ready');
 
+    expect(normal.composer?.textContent).toContain('Continue this transcript');
+  });
+
+  it("waits for the new chat's composer instead of writing into the hidden temporary one", async () => {
+    const scope = new PluginScope();
+    scopes.push(scope);
+    history.replaceState({}, '', '/?temporary-chat=true');
+    const temporaryPage = document.body.appendChild(document.createElement('div'));
+    temporaryPage.appendChild(document.createElement('main'));
+    const temporary = addCurrentComposer('Unsent follow-up', temporaryPage);
+    const normal: { composer: HTMLElement | null } = { composer: null };
+    const toggle = document.createElement('button');
+    toggle.setAttribute('aria-label', 'Turn off temporary chat');
+    toggle.addEventListener('click', () => {
+      history.replaceState({}, '', '/');
+      toggle.remove();
+      // ChatGPT keeps the page it leaves under a display: none ancestor and
+      // mounts the new chat's composer a moment later.
+      temporaryPage.style.display = 'none';
+      setTimeout(() => {
+        const page = document.body.appendChild(document.createElement('div'));
+        page.appendChild(document.createElement('main'));
+        normal.composer = addCurrentComposer('', page);
+      }, 600);
+    });
+    document.body.appendChild(toggle);
+
+    await expect(
+      handoffTemporaryChat(scope, { mode: 'inline', text: 'Continue this transcript' }),
+    ).resolves.toBe('ready');
+
+    expect(temporary.textContent).toBe('Unsent follow-up');
     expect(normal.composer?.textContent).toContain('Continue this transcript');
   });
 });
