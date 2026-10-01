@@ -38,6 +38,19 @@ function parseChatGptUrl(href: string): URL | null {
   }
 }
 
+/**
+ * The conversation a root-relative link (`/c/<id>`, `/g/<project>/c/<id>`) names,
+ * as its bare id and path; `null` for any other link. No URL parsing, so a pass
+ * over every sidebar row stays cheap.
+ */
+export function readChatGptConversationPath(
+  href: string | null,
+): { readonly id: string; readonly path: string } | null {
+  if (!href?.startsWith('/') || href.startsWith('//')) return null;
+  const match = CONVERSATION_PATH.exec(href);
+  return match ? { id: match[2], path: match[1] } : null;
+}
+
 /** The conversation `href` names, or `null` for any other page or site. */
 export function readChatGptConversation(href: string): ChatGptConversationIdentity | null {
   const url = parseChatGptUrl(href);

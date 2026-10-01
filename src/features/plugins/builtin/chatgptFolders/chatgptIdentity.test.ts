@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { readChatGptConversation } from './chatgptIdentity';
+import { readChatGptConversation, readChatGptConversationPath } from './chatgptIdentity';
 
 const ID = '68a1f2c3-0b4d-8001-9e2f-1a2b3c4d5e6f';
 
@@ -50,5 +50,25 @@ describe('readChatGptConversation', () => {
     ['garbage', 'not a url'],
   ])('reads no conversation from %s', (_name, href) => {
     expect(readChatGptConversation(href)).toBeNull();
+  });
+});
+
+describe('readChatGptConversationPath', () => {
+  it.each([
+    ['a plain link', `/c/${ID}`, `/c/${ID}`],
+    ['a Project link', `/g/g-p-67ab12cd34-trip/c/${ID}`, `/g/g-p-67ab12cd34-trip/c/${ID}`],
+    ['a link with a query and hash', `/c/${ID}?model=gpt-5#top`, `/c/${ID}`],
+  ])('reads %s', (_name, href, path) => {
+    expect(readChatGptConversationPath(href)).toEqual({ id: ID, path });
+  });
+
+  it.each([
+    ['the home link', '/'],
+    ['the GPTs link', '/gpts'],
+    ['a protocol-relative link to another host', `//evil.example/c/${ID}`],
+    ['an absolute link', `https://chatgpt.com/c/${ID}`],
+    ['no href', null],
+  ])('reads nothing from %s', (_name, href) => {
+    expect(readChatGptConversationPath(href)).toBeNull();
   });
 });
