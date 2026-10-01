@@ -582,11 +582,29 @@ say`), `src/pages/content/platformTheme/__tests__/platformTheme.test.ts`.
 - **Rule:** The Gemini tab picks the branch synchronously from a status cached when the panel
   opens; an unknown status means "cannot run there". The fallback calls `clipboard.writeText` first
   and asks the background to open the chat only after the copy succeeds. Readiness is the host
-  permission plus a registered content script whose matches cover the new-chat URL. When the
-  background finds the target no longer ready, it opens nothing and the user clicks again. The
-  receiver peeks, waits for the composer, then claims, so a slow page or login redirect lets the
-  tab-bound record expire. No URL carries the pack.
+  permission plus a registered content script whose matches cover the new-chat URL, in a browser
+  with `storage.session`. When the background finds the target no longer ready, it opens nothing
+  and the user clicks again. A click in flight ignores further clicks, so a double click opens one
+  tab. No URL carries the pack.
 - **Guard:** `src/pages/content/researchPack/__tests__/continueIn.test.ts`,
-  `src/pages/content/researchPack/__tests__/receiver.test.ts`,
   `src/features/researchPack/services/__tests__/handoff.test.ts` and
   `src/pages/background/__tests__/researchPackHandoff.test.ts`.
+
+## A handed-off research pack goes only into an empty main composer on the new chat
+
+- **Trap:** The first receiver accepted any page on the target host and the adapter's composer
+  selector, which on ChatGPT includes every `contenteditable`. A tab that had moved to another chat
+  could still claim the pack, and the insert could land in a canvas or an edit-message box, or
+  replace a draft or a selection, since `insertTextIntoChatInput` keeps a selection inside the
+  input. The `storage.local` fallback could leave the plaintext on disk past its expiry when an
+  alarm failed, and across a browser restart.
+- **Rule:** Peek and claim only on the exact new-chat path (ChatGPT `/`, Claude `/new`; a query or
+  hash is tolerated), and check the route, the document and the composer again after the claim.
+  Use each site's main composer selector, require exactly one, require it to be empty, and collapse
+  the selection to its end before inserting. Any failed check inserts nothing and points the user
+  back to Gemini's Copy. Keep the record in `storage.session` only; without it, report every
+  target unready.
+- **Guard:** `src/pages/content/researchPack/__tests__/receiver.test.ts`,
+  `src/features/researchPack/services/__tests__/handoff.test.ts` (`cannot be taken once its tab
+has left the new-chat page`, `stores nothing and reports every target unready without
+storage.session`) and `src/pages/background/__tests__/researchPackHandoffWiring.test.ts`.

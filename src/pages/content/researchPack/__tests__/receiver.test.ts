@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { HANDOFF_MESSAGES, type HandoffMessage } from '@/features/researchPack/services/handoff';
 
+import { insertTextIntoChatInput } from '../../chatInput';
 import {
   RECEIVER_COMPOSER_TIMEOUT_MS,
   RECEIVER_POLL_MS,
@@ -43,22 +44,39 @@ describe('research pack receiver on ChatGPT and Claude', () => {
   let pending: boolean;
   let claimReply: unknown;
   let send: ReturnType<typeof vi.fn<(message: HandoffMessage) => Promise<unknown>>>;
+  let url: string;
+  let insert: ReturnType<typeof vi.fn<(text: string, input: HTMLElement) => boolean>>;
 
   const sent = () => send.mock.calls.map(([message]) => message.type);
   const toast = () => document.querySelector<HTMLElement>('.gv-rp-root .gv-rp-toast');
 
   function start(pageUrl = 'https://chatgpt.com/', isTopFrame = true): void {
+    url = pageUrl;
     stop = startResearchPackReceiver({
       send,
-      pageUrl: () => pageUrl,
+      insert,
+      pageUrl: () => url,
       isTopFrame: () => isTopFrame,
     });
+  }
+
+  /** Hold the claim reply until `release` runs, to act while it is in flight. */
+  function holdClaim(): () => void {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const answer = send.getMockImplementation()!;
+    send.mockImplementation(async (message) => {
+      if (message.type === HANDOFF_MESSAGES.claim) await held;
+      return answer(message);
+    });
+    return () => release();
   }
 
   beforeEach(() => {
     vi.useFakeTimers();
     document.body.innerHTML = '';
     pending = true;
+    insert = vi.fn((text: string, input: HTMLElement) => insertTextIntoChatInput(text, input));
     claimReply = { ok: true, markdown: PACK };
     send = vi.fn(async (message: HandoffMessage) => {
       if (message.type === HANDOFF_MESSAGES.peek) return { ok: true, pending };
@@ -95,9 +113,9 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     expect(toast()).toBeNull();
   });
 
-  it('fills the Claude composer found through the site adapter', async () => {
+  it('fills the main Claude composer', async () => {
     document.body.innerHTML =
-      '<fieldset><div contenteditable="true" class="ProseMirror"><p></p></div></fieldset>';
+      '<fieldset><div contenteditable="true" data-testid="chat-input" class="ProseMirror"><p></p></div></fieldset>';
     start('https://claude.ai/new');
     await vi.advanceTimersByTimeAsync(SETTLE_MS);
 
@@ -181,5 +199,121 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     await vi.advanceTimersByTimeAsync(SETTLE_MS);
 
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it('does not even peek on a page other than the new chat', async () => {
+    chatgptComposer();
+    start('https://chatgpt.com/c/abc');
+    stop!();
+    start('https://claude.ai/chat/abc');
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('gives up without claiming when the tab navigates while it waits', async () => {
+    start();
+    await vi.advanceTimersByTimeAsync(RECEIVER_POLL_MS);
+    url = 'https://chatgpt.com/c/abc';
+    chatgptComposer();
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+
+    expect(sent()).toEqual([HANDOFF_MESSAGES.peek]);
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('inserts nothing when the tab navigates while the claim is in flight', async () => {
+    const { composer } = chatgptComposer();
+    const release = holdClaim();
+    start();
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+    url = 'https://chatgpt.com/c/abc';
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(sent()).toEqual([HANDOFF_MESSAGES.peek, HANDOFF_MESSAGES.claim]);
+    expect(insert).not.toHaveBeenCalled();
+    expect(composer.textContent).toBe('');
+    expect(toast()?.dataset.tone).toBe('error');
+  });
+
+  it('ignores a canvas or edit box and fills only the main ChatGPT composer', async () => {
+    const { composer } = chatgptComposer();
+    const canvas = document.createElement('div');
+    canvas.contentEditable = 'true';
+    canvas.setAttribute('contenteditable', 'true');
+    canvas.textContent = 'Canvas document';
+    document.body.append(canvas);
+    start();
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+
+    expect(composer.textContent).toContain('Rayleigh scattering.');
+    expect(canvas.textContent).toBe('Canvas document');
+  });
+
+  it('claims nothing when only a generic editor is on the page', async () => {
+    document.body.innerHTML = '<div contenteditable="true"></div>';
+    start();
+    await vi.advanceTimersByTimeAsync(RECEIVER_COMPOSER_TIMEOUT_MS + SETTLE_MS);
+
+    expect(sent()).toEqual([HANDOFF_MESSAGES.peek]);
+    expect(document.querySelector('[contenteditable]')!.textContent).toBe('');
+  });
+
+  it('leaves a draft alone and claims nothing when the composer is not empty', async () => {
+    const { composer } = chatgptComposer();
+    composer.textContent = 'My own draft';
+    start();
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+
+    expect(sent()).toEqual([HANDOFF_MESSAGES.peek]);
+    expect(insert).not.toHaveBeenCalled();
+    expect(composer.textContent).toBe('My own draft');
+    expect(toast()?.textContent).toBe(
+      "Couldn't add the research pack here. Go back to Gemini and copy it.",
+    );
+  });
+
+  it('does not replace text the user typed and selected while the claim was in flight', async () => {
+    const { composer } = chatgptComposer();
+    const release = holdClaim();
+    start();
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+    composer.textContent = 'Typed meanwhile';
+    const range = document.createRange();
+    range.selectNodeContents(composer);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(insert).not.toHaveBeenCalled();
+    expect(composer.textContent).toBe('Typed meanwhile');
+    expect(toast()?.dataset.tone).toBe('error');
+  });
+
+  it('inserts at a collapsed caret inside the composer, whatever was selected on the page', async () => {
+    const { composer } = chatgptComposer();
+    const note = document.createElement('p');
+    note.textContent = 'Selected page text';
+    document.body.append(note);
+    const range = document.createRange();
+    range.selectNodeContents(note);
+    window.getSelection()!.addRange(range);
+    let caret: { collapsed: boolean; inside: boolean } | null = null;
+    insert.mockImplementation((text, input) => {
+      const selection = window.getSelection()!;
+      caret = {
+        collapsed: selection.isCollapsed,
+        inside: input.contains(selection.getRangeAt(0).commonAncestorContainer),
+      };
+      return insertTextIntoChatInput(text, input);
+    });
+    start();
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+
+    expect(caret).toEqual({ collapsed: true, inside: true });
+    expect(note.textContent).toBe('Selected page text');
+    expect(composer.textContent).toContain('Rayleigh scattering.');
   });
 });

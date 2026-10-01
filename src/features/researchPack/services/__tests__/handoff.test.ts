@@ -11,6 +11,7 @@ import {
   type HandoffOpener,
   type HandoffTarget,
   createHandoffBroker,
+  handoffNewChatTargetForUrl,
   handoffStorageKey,
   handoffTargetForUrl,
   parseHandoffMessage,
@@ -139,6 +140,26 @@ describe('research pack handoff broker', () => {
     expect(data.has(handoffStorageKey(42))).toBe(true);
 
     await expect(broker.claim(42, CHATGPT_PAGE)).resolves.toEqual({ ok: true, markdown: PACK });
+  });
+
+  it('cannot be taken once its tab has left the new-chat page', async () => {
+    const { broker, data } = setup();
+    await broker.open('chatgpt', PACK, GEMINI_TAB);
+    await broker.open('claude', PACK, GEMINI_TAB);
+
+    for (const page of ['https://chatgpt.com/c/other', 'https://chatgpt.com/g/g-p-1/project']) {
+      await expect(broker.peek(42, page)).resolves.toBe(false);
+      await expect(broker.claim(42, page)).resolves.toEqual({ ok: false });
+    }
+    await expect(broker.peek(43, 'https://claude.ai/chat/other')).resolves.toBe(false);
+    await expect(broker.claim(43, 'https://claude.ai/chat/other')).resolves.toEqual({ ok: false });
+    expect(data.size).toBe(2);
+
+    // A harmless query on the new-chat page itself is fine.
+    await expect(broker.claim(42, 'https://chatgpt.com/?model=auto')).resolves.toMatchObject({
+      ok: true,
+    });
+    await expect(broker.claim(43, 'https://claude.ai/new/')).resolves.toMatchObject({ ok: true });
   });
 
   it('stores nothing and reports every target unready without storage.session', async () => {
@@ -270,6 +291,18 @@ describe('research pack handoff messages', () => {
     expect(handoffTargetForUrl('https://claude.ai.evil.com/')).toBeNull();
     expect(handoffTargetForUrl('https://gemini.google.com/app')).toBeNull();
     expect(handoffTargetForUrl(undefined)).toBeNull();
+  });
+
+  it('recognizes only the exact new-chat routes', () => {
+    expect(handoffNewChatTargetForUrl('https://chatgpt.com/')).toBe('chatgpt');
+    expect(handoffNewChatTargetForUrl('https://chatgpt.com/?temporary-chat=true')).toBe('chatgpt');
+    expect(handoffNewChatTargetForUrl('https://claude.ai/new')).toBe('claude');
+    expect(handoffNewChatTargetForUrl('https://claude.ai/new#x')).toBe('claude');
+    expect(handoffNewChatTargetForUrl('https://chatgpt.com/c/1')).toBeNull();
+    expect(handoffNewChatTargetForUrl('https://claude.ai/')).toBeNull();
+    expect(handoffNewChatTargetForUrl('https://claude.ai/new/chat')).toBeNull();
+    expect(handoffNewChatTargetForUrl('https://claude.ai/newer')).toBeNull();
+    expect(handoffNewChatTargetForUrl('https://gemini.google.com/')).toBeNull();
   });
 
   it('round-trips alarm names and ignores other alarms', () => {

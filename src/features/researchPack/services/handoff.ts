@@ -5,8 +5,8 @@
  * The pack never travels in a URL. When Voyager runs on the target site and
  * the browser has `storage.session`, the background opens the new chat and
  * keeps a one-shot record bound to that tab's id, with a short expiry.
- * Voyager's content script on that tab claims it once, after the composer
- * exists, and fills the composer without sending.
+ * Voyager's content script on that tab claims it once, only while the tab is
+ * still on the new-chat page, and fills the empty composer without sending.
  * Otherwise the Gemini tab copies the pack inside the click and the
  * background only opens the new chat.
  *
@@ -22,6 +22,8 @@ export interface HandoffTargetInfo {
   readonly label: string;
   /** The new-chat page opened for the user. A constant: no query, no hash, no content. */
   readonly newChatUrl: string;
+  /** The only path a pack may be claimed on; a tab that moved to a chat cannot take it. */
+  readonly newChatPath: string;
   /** The optional host permission Voyager needs to run there. */
   readonly origin: string;
   readonly hosts: readonly string[];
@@ -31,12 +33,14 @@ export const HANDOFF_TARGETS: Readonly<Record<HandoffTarget, HandoffTargetInfo>>
   chatgpt: {
     label: 'ChatGPT',
     newChatUrl: 'https://chatgpt.com/',
+    newChatPath: '/',
     origin: 'https://chatgpt.com/*',
     hosts: ['chatgpt.com'],
   },
   claude: {
     label: 'Claude',
     newChatUrl: 'https://claude.ai/new',
+    newChatPath: '/new',
     origin: 'https://claude.ai/*',
     hosts: ['claude.ai'],
   },
@@ -94,6 +98,18 @@ export function handoffTargetForUrl(url: string | undefined): HandoffTarget | nu
   if (parsed.protocol !== 'https:') return null;
   const host = parsed.hostname.toLowerCase();
   return HANDOFF_TARGET_IDS.find((target) => HANDOFF_TARGETS[target].hosts.includes(host)) ?? null;
+}
+
+/**
+ * The target whose new-chat page this is, or null. The path must match exactly
+ * (a trailing slash aside); a query or hash is tolerated, since both sites add
+ * harmless ones to a new chat, and a prefilled composer is refused separately.
+ */
+export function handoffNewChatTargetForUrl(url: string | undefined): HandoffTarget | null {
+  const target = handoffTargetForUrl(url);
+  if (!target || !url) return null;
+  const path = new URL(url).pathname.replace(/(.)\/+$/, '$1');
+  return path === HANDOFF_TARGETS[target].newChatPath ? target : null;
 }
 
 export function parseHandoffMessage(message: unknown): HandoffMessage | null {
@@ -253,7 +269,7 @@ export function createHandoffBroker(deps: HandoffBrokerDeps): HandoffBroker {
       await drop(tabId);
       return null;
     }
-    return handoffTargetForUrl(pageUrl) === pending.target ? pending : null;
+    return handoffNewChatTargetForUrl(pageUrl) === pending.target ? pending : null;
   };
 
   const readiness = async (target: HandoffTarget): Promise<boolean> => {

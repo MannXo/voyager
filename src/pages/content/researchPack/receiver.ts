@@ -2,20 +2,21 @@
  * Receiving end of "Continue in ChatGPT / Claude", on the new chat tab the
  * background opened (see `features/researchPack/services/handoff.ts`).
  *
- * Order: peek → wait for the composer → claim → insert. Peeking first keeps
- * every ordinary page load free of observers and timers. Claiming only once
- * the composer exists means a login redirect or a slow page leaves the record
- * to expire instead of spending it. The pack goes into the composer and
- * nothing is sent: the user reviews it and presses send.
+ * Order: peek → wait for the composer → claim → check again → insert. Only a
+ * fresh new-chat page peeks, so ordinary page loads stay free of timers.
+ * Claiming only once the composer exists means a login redirect or a slow
+ * page leaves the record to expire instead of spending it. The pack goes only
+ * into the site's main composer, only while it is empty and the tab is still
+ * on the new-chat page; anything else inserts nothing. Nothing is sent: the
+ * user reviews the pack and presses send.
  *
- * The composer comes from the site adapter's `composer` selector and the text
- * goes in through the shared `insertTextIntoChatInput`.
+ * The text goes in through the shared `insertTextIntoChatInput`.
  */
-import { SiteRegistry } from '@/features/plugins/sites/registry';
 import {
   HANDOFF_MESSAGES,
   type HandoffMessage,
-  handoffTargetForUrl,
+  type HandoffTarget,
+  handoffNewChatTargetForUrl,
 } from '@/features/researchPack/services/handoff';
 import { getTranslationSync } from '@/utils/i18n';
 import type { TranslationKey } from '@/utils/translations';
@@ -45,18 +46,41 @@ function isUsable(candidate: HTMLElement): boolean {
   );
 }
 
-/** The site's composer: the last usable match of its adapter selector, visible ones first. */
-export function findHandoffComposer(pageUrl: string, doc: Document = document): HTMLElement | null {
-  const selector = SiteRegistry.createDefault().resolveByUrl(pageUrl)?.selectors.composer;
-  if (!selector) return null;
-  let candidates: HTMLElement[];
-  try {
-    candidates = Array.from(doc.querySelectorAll<HTMLElement>(selector)).filter(isUsable);
-  } catch {
-    return null;
-  }
-  const visible = candidates.filter((candidate) => candidate.getBoundingClientRect().height > 0);
-  return visible.at(-1) ?? candidates.at(-1) ?? null;
+/**
+ * Each site's main composer, never the adapter's generic `contenteditable`
+ * fallback, which also matches canvases and edit-message boxes. The same
+ * selectors identify these composers for Vim input and slash prompts.
+ */
+export const HANDOFF_COMPOSER_SELECTORS: Readonly<Record<HandoffTarget, string>> = {
+  chatgpt: '#prompt-textarea[contenteditable="true"]',
+  claude: '[data-testid="chat-input"][contenteditable="true"]',
+};
+
+/** The site's main composer, or null when there is none or more than one is usable. */
+export function findHandoffComposer(
+  target: HandoffTarget,
+  doc: Document = document,
+): HTMLElement | null {
+  const candidates = Array.from(
+    doc.querySelectorAll<HTMLElement>(HANDOFF_COMPOSER_SELECTORS[target]),
+  ).filter(isUsable);
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+/** A composer the pack may go into: nothing typed, pasted or restored as a draft. */
+function isEmptyComposer(composer: HTMLElement): boolean {
+  return (composer.textContent ?? '').trim() === '';
+}
+
+/** Put the caret at the end so the insertion can never replace a selection. */
+function collapseSelectionToEnd(composer: HTMLElement): void {
+  const selection = composer.ownerDocument.getSelection();
+  if (!selection) return;
+  const range = composer.ownerDocument.createRange();
+  range.selectNodeContents(composer);
+  range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
 }
 
 function isClaim(value: unknown): value is { ok: true; markdown: string } {
@@ -68,7 +92,12 @@ function isClaim(value: unknown): value is { ok: true; markdown: string } {
 export function startResearchPackReceiver(deps: ResearchPackReceiverDeps = {}): StopNativeFeature {
   const pageUrl = deps.pageUrl ?? (() => window.location.href);
   const isTopFrame = deps.isTopFrame ?? (() => window.top === window);
-  if (!handoffTargetForUrl(pageUrl()) || !isTopFrame()) return () => {};
+  const target = handoffNewChatTargetForUrl(pageUrl());
+  if (!target || !isTopFrame()) return () => {};
+  const startDocument = document;
+  /** Still the new-chat page this receiver started on, in the same document. */
+  const onNewChat = (): boolean =>
+    document === startDocument && handoffNewChatTargetForUrl(pageUrl()) === target;
 
   const send = deps.send ?? ((message: HandoffMessage) => chrome.runtime.sendMessage(message));
   const insert =
@@ -121,7 +150,7 @@ export function startResearchPackReceiver(deps: ResearchPackReceiverDeps = {}): 
       };
       abandonWait = () => finish(null);
       const poll = (): void => {
-        const composer = findHandoffComposer(pageUrl());
+        const composer = findHandoffComposer(target);
         stable = composer && composer === previous ? stable + 1 : composer ? 1 : 0;
         previous = composer;
         if (composer && stable >= RECEIVER_STABLE_POLLS) return finish(composer);
@@ -137,16 +166,25 @@ export function startResearchPackReceiver(deps: ResearchPackReceiverDeps = {}): 
 
     const composer = await waitForComposer();
     if (stopped) return;
-    if (!composer) {
-      // Not claimed: the record expires on its own.
+    // Not claimed on any of these: the record expires on its own.
+    if (!onNewChat()) return;
+    if (!composer || !isEmptyComposer(composer)) {
       toast('researchPackHandoffFailed', 'error');
       return;
     }
 
     const claim = await send({ type: HANDOFF_MESSAGES.claim });
     if (stopped || !isClaim(claim)) return;
-    const input = composer.isConnected ? composer : findHandoffComposer(pageUrl());
-    if (!input || !insert(claim.markdown, input)) {
+    // The claim took a round trip: the user may have navigated, typed or
+    // selected meanwhile. The pack is spent now, so anything off inserts
+    // nothing and points the user back to Gemini's Copy.
+    const input = findHandoffComposer(target);
+    if (!onNewChat() || !input || !isEmptyComposer(input)) {
+      toast('researchPackHandoffFailed', 'error');
+      return;
+    }
+    collapseSelectionToEnd(input);
+    if (!insert(claim.markdown, input)) {
       toast('researchPackHandoffFailed', 'error');
       return;
     }
