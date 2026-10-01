@@ -1,4 +1,5 @@
 import { StorageKeys } from '@/core/types/common';
+import { composedTargetElement } from '@/core/utils/composedTarget';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
 
 import { expandInputWithCursorAtEnd } from '../inputCollapse';
@@ -989,11 +990,6 @@ function scheduleSendReconcile(input: HTMLElement | null): void {
 function isEditableTarget(element: HTMLElement | null): boolean {
   if (!element) return false;
   return element.matches(EDITABLE_SELECTOR) || Boolean(element.closest(EDITABLE_SELECTOR));
-}
-
-function getTargetElement(event: KeyboardEvent): HTMLElement | null {
-  if (event.target instanceof HTMLElement) return event.target;
-  return document.activeElement instanceof HTMLElement ? document.activeElement : null;
 }
 
 function isEditPromptInput(element: HTMLElement): boolean {
@@ -2572,7 +2568,8 @@ function handleNormalMode(event: KeyboardEvent, input: HTMLElement): boolean {
 function handleKeyDown(event: KeyboardEvent): void {
   if (!isEnabled || shouldIgnoreKey(event)) return;
 
-  const target = getTargetElement(event);
+  // Read through shadow hosts so typing in an extension panel stays typing.
+  const target = composedTargetElement(event);
 
   if (!activeInput && event.key === 'i' && !event.shiftKey && !isEditableTarget(target)) {
     if (focusVimInput('insert')) {
