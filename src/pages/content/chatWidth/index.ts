@@ -1,39 +1,13 @@
 /**
  * Adjusts the chat area width based on user settings (stored as viewport %)
  */
+import { getGeminiTurnSelectors } from '@/core/gemini/turnSelectors';
 
 const STYLE_ID = 'gemini-voyager-chat-width';
 const DEFAULT_PERCENT = 70;
 const MIN_PERCENT = 30;
 const MAX_PERCENT = 100;
 const LEGACY_BASELINE_PX = 1200;
-
-// Selectors based on the export functionality that already works
-function getUserSelectors(): string[] {
-  return [
-    '.user-query-bubble-container',
-    '.user-query-container',
-    'user-query-content',
-    'user-query',
-    'div[aria-label="User message"]',
-    'article[data-author="user"]',
-    '[data-message-author-role="user"]',
-  ];
-}
-
-function getAssistantSelectors(): string[] {
-  return [
-    'model-response',
-    '.model-response',
-    'response-container',
-    '.response-container',
-    '.presented-response-container',
-    '[aria-label="Gemini response"]',
-    '[data-message-author-role="assistant"]',
-    '[data-message-author-role="model"]',
-    'article[data-author="assistant"]',
-  ];
-}
 
 function getTableSelectors(): string[] {
   return [
@@ -77,8 +51,8 @@ function applyWidth(widthPercent: number) {
     document.head.appendChild(style);
   }
 
-  const userSelectors = getUserSelectors();
-  const assistantSelectors = getAssistantSelectors();
+  const userSelectors = getGeminiTurnSelectors('chatWidth.userTurn');
+  const assistantSelectors = getGeminiTurnSelectors('chatWidth.assistantTurn');
   const tableSelectors = getTableSelectors();
 
   // Build comprehensive CSS rules

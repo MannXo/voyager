@@ -32,7 +32,7 @@
     "src/pages/content/prompt/__tests__/slashPrompt.test.ts": 1949,
     "src/pages/content/prompt/index.ts": 2649,
     "src/pages/content/prompt/slashPrompt.ts": 1955,
-    "src/pages/content/quoteReply/index.ts": 1197,
+    "src/pages/content/quoteReply/index.ts": 1195,
     "src/pages/content/sidebarAutoHide/index.ts": 1066,
     "src/pages/content/timeline/TimelineView.ts": 1046,
     "src/pages/content/usageStatus/index.ts": 1552,

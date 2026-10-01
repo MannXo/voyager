@@ -26,6 +26,10 @@ capture the conversation URL so delayed work retains the correct account and con
 
 Keep these less obvious boundaries intact:
 
+- Gemini turn selectors come from [`@/core/gemini/turnSelectors`](../../../core/gemini/turnSelectors.ts),
+  read at query time. Its keys are not interchangeable: each keeps the entries and order its owners
+  relied on, and detection order decides which selector the timeline stores.
+
 - A mounted `u-N` is a DOM-window position. Only a complete history mapping can prove that it is a
   stored full-conversation alias. Use `TimelineState` for alias resolution before star/hierarchy edits.
 - A state repaint preserves the user's manually scrolled rail position. Synchronize the rail to the

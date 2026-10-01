@@ -1,3 +1,7 @@
+import {
+  getGeminiTurnSelectors,
+  getGeminiUserTurnObserverScope,
+} from '@/core/gemini/turnSelectors';
 import { StorageKeys, isTimelineStyle } from '@/core/types/common';
 import { applyRTLClass } from '@/core/utils/rtl';
 import { initI18n } from '@/utils/i18n';
@@ -432,20 +436,7 @@ export class TimelineManager {
       userOverride = localStorage.getItem('geminiTimelineUserTurnSelector') || '';
       autoDetected = localStorage.getItem('geminiTimelineUserTurnSelectorAuto') || '';
     } catch {}
-    const defaultCandidates = [
-      // Angular-based Gemini UI user bubble (primary)
-      '.user-query-bubble-with-background',
-      // Angular containers (fallbacks if bubble selector changes)
-      '.user-query-bubble-container',
-      '.user-query-container',
-      'user-query-content .user-query-bubble-with-background',
-      // Attribute-based fallbacks for other Gemini variants
-      'div[aria-label="User message"]',
-      'article[data-author="user"]',
-      'article[data-turn="user"]',
-      '[data-message-author-role="user"]',
-      'div[role="listitem"][data-user="true"]',
-    ];
+    const defaultCandidates = getGeminiTurnSelectors('turn.user');
     // Compatibility strategy:
     // - Keep explicit user override as highest priority.
     // - Prefer built-in defaults over auto-detected cache, so stale auto cache can self-heal after refresh.
@@ -470,12 +461,12 @@ export class TimelineManager {
       this.userTurnSelector = defaultCandidates.join(',');
     } else {
       // Scope selection/observers:
-      // - Broad scope (main/body) if:
-      //   a) user provided an explicit override, or
-      //   b) auto-detected selector suggests Angular-based user query DOM (contains 'user-query')
+      // - Broad scope (main/body) if the user's explicit override matched, or the matched
+      //   selector belongs to Gemini's Angular layout, where turns are not siblings
       // - Otherwise, scope to the immediate parent for performance
-      const looksAngularUserQuery = /user-query/i.test(matchedSelector || '');
-      if ((userOverride && matchedSelector === userOverride) || looksAngularUserQuery) {
+      const needsConversationScope =
+        getGeminiUserTurnObserverScope(matchedSelector) === 'conversation';
+      if ((userOverride && matchedSelector === userOverride) || needsConversationScope) {
         this.conversationContainer =
           (document.querySelector('main') as HTMLElement) || (document.body as HTMLElement);
       } else {

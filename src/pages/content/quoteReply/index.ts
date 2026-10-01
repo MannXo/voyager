@@ -56,11 +56,8 @@ const EDIT_COLOR_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
 const STYLE_ID = 'gemini-voyager-quote-reply-style';
 const HIGHLIGHT_PREVIEW_CLASS = 'gv-highlight-selection-preview-active';
 const HIGHLIGHT_PREVIEW_COLOR_PROPERTY = '--gv-highlight-selection-preview-color';
-const QUOTEABLE_MESSAGE_SELECTOR = [
-  '.conversation-container',
-  ...getUserTurnSelectors(),
-  ...getAssistantTurnSelectors(),
-].join(', ');
+const getQuoteableMessageSelector = (): string =>
+  ['.conversation-container', ...getUserTurnSelectors(), ...getAssistantTurnSelectors()].join(', ');
 
 function getHighlightPreviewBackground(color: HighlightColor): string {
   const hex = getHighlightColorHex(color);
@@ -1023,9 +1020,10 @@ export function startQuoteReply(options: QuoteReplyOptions = {}) {
         range.commonAncestorContainer instanceof Element
           ? range.commonAncestorContainer
           : range.commonAncestorContainer.parentElement;
+      const quoteableMessageSelector = getQuoteableMessageSelector();
       if (
-        !element?.closest(QUOTEABLE_MESSAGE_SELECTOR) ||
-        !commonAncestor?.closest(QUOTEABLE_MESSAGE_SELECTOR)
+        !element?.closest(quoteableMessageSelector) ||
+        !commonAncestor?.closest(quoteableMessageSelector)
       ) {
         hideButton();
         currentSelectionRange = null;

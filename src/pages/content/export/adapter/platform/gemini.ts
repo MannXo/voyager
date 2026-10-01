@@ -1,3 +1,4 @@
+import { getGeminiTurnSelectors } from '@/core/gemini/turnSelectors';
 import {
   DOMContentExtractor,
   type ExtractedContent,
@@ -206,31 +207,14 @@ export function buildGeminiAdapter(site: SiteAdapter): ExportPlatformAdapter {
           return '';
         }
       })();
-      const defaults = [
-        '.user-query-bubble-with-background',
-        '.user-query-bubble-container',
-        '.user-query-container',
-        'user-query-content .user-query-bubble-with-background',
-        'div[aria-label="User message"]',
-        'article[data-author="user"]',
-        'article[data-turn="user"]',
-        '[data-message-author-role="user"]',
-        'div[role="listitem"][data-user="true"]',
-      ];
+      const defaults = getGeminiTurnSelectors('turn.user');
       return configured
         ? [configured, ...defaults.filter((item) => item !== configured)]
         : defaults;
     },
     getAssistantSelectors: () => [
-      '[aria-label="Gemini response"]',
-      '[data-message-author-role="assistant"]',
-      '[data-message-author-role="model"]',
-      'article[data-author="assistant"]',
-      'article[data-turn="assistant"]',
-      'article[data-turn="model"]',
-      '.model-response, model-response',
-      '.response-container',
-      'div[role="listitem"]:not([data-user="true"])',
+      ...getGeminiTurnSelectors('turn.assistant'),
+      ...getGeminiTurnSelectors('turn.assistantFallback'),
     ],
     getConversationRootCandidates: () => ROOT_CANDIDATES,
     extractConversationTitle,
