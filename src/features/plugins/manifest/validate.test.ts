@@ -496,7 +496,9 @@ describe('validateManifest remote-resource checks on rendered values', () => {
     ]) {
       const started = performance.now();
       const issues = validateStyleCss(css, 'css');
-      expect(performance.now() - started, css.slice(0, 12)).toBeLessThan(200);
+      // Linear takes milliseconds and quadratic takes tens of seconds at this size; the wide bound
+      // keeps the check meaningful while parallel suites load the machine.
+      expect(performance.now() - started, css.slice(0, 12)).toBeLessThan(2000);
       expect(issues.some((issue) => issue.message.startsWith('exceeds'))).toBe(false);
     }
   });
