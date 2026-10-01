@@ -36,6 +36,8 @@ export interface PluginInspection {
   readonly styleSheets: number;
   /** Total characters across every stylesheet. */
   readonly cssChars: number;
+  /** Every stylesheet's source, in order: CSS can do anything, so it is shown as is. */
+  readonly css: readonly string[];
   /** One readable line per non-native DOM operation. */
   readonly domOps: readonly string[];
   readonly primitives: readonly PluginInspectionPrimitive[];
@@ -96,6 +98,7 @@ export function inspectPlugin(
     })),
     styleSheets: styles.length,
     cssChars: styles.reduce((sum, style) => sum + style.css.length, 0),
+    css: styles.map((style) => style.css),
     domOps,
     primitives,
     settings: Object.entries(manifest.contributes.settings ?? {}).map(([key, field]) => ({

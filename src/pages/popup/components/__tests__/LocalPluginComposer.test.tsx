@@ -199,12 +199,23 @@ describe('describe a change → prompt → pasted reply → preview → import',
     expect(preview?.textContent).toContain('localPluginChangeCss');
     expect(preview?.textContent).toContain('localPluginChangeAddClass');
     expect(preview?.textContent).toContain('localPluginPreviewLandsOff');
-    expect(container.querySelector('[data-testid="local-plugin-warnings"]')).toBeNull();
+    // CSS is shown in full and flagged as not summarized.
+    expect(preview?.querySelector('[data-testid="local-plugin-css"]')?.textContent).toContain(
+      '.gv-plugin-narrow{max-width:640px}',
+    );
+    expect(container.querySelector('[data-testid="local-plugin-warnings"]')?.textContent).toBe(
+      'localPluginPreviewWarningslocalPluginWarnCss',
+    );
     // The technical inspect view is the same one shown after import.
     await act(async () => button(preview as HTMLElement, 'localPluginsInspect').click());
     expect(
       container.querySelector('[data-testid="local-plugin-inspection"]')?.textContent,
     ).toContain('addClass gv-plugin-narrow → semantic:userTurn');
+    expect(
+      container
+        .querySelector('[data-testid="local-plugin-inspection"]')
+        ?.querySelector('[data-testid="local-plugin-css"]')?.textContent,
+    ).toContain('.gv-plugin-narrow{max-width:640px}');
     expect(chrome.storage.local.set).not.toHaveBeenCalled();
 
     await act(async () => button(container, 'localPluginDescribeImport').click());

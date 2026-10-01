@@ -4,6 +4,8 @@ import { inspectPlugin } from '@/features/plugins/local/inspectPlugin';
 import type { PluginManifest } from '@/features/plugins/types';
 import type { TranslationKey } from '@/utils/translations';
 
+import { LocalPluginCssSource } from './LocalPluginCssSource';
+
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
@@ -29,8 +31,8 @@ function Lines({ items, none }: { items: readonly string[]; none: string }) {
 }
 
 /**
- * Inspect-before-enable view of a validated plugin: where it runs, how much CSS
- * it injects, each page change, every Voyager built-in it calls with its
+ * Inspect-before-enable view of a validated plugin: where it runs, its CSS in
+ * full, each page change, every Voyager built-in it calls with its
  * params, and its settings.
  */
 export function LocalPluginInspection({
@@ -60,9 +62,14 @@ export function LocalPluginInspection({
           />
         </Row>
         <Row label={t('localPluginInspectCss')}>
-          {inspection.styleSheets === 0
-            ? none
-            : t('localPluginInspectCssChars').replace('{chars}', String(inspection.cssChars))}
+          {inspection.styleSheets === 0 ? (
+            none
+          ) : (
+            <>
+              {t('localPluginInspectCssChars').replace('{chars}', String(inspection.cssChars))}
+              <LocalPluginCssSource css={inspection.css} label={t('localPluginInspectCss')} />
+            </>
+          )}
         </Row>
         <Row label={t('localPluginInspectDomOps')}>
           <Lines items={inspection.domOps} none={none} />

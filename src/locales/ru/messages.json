@@ -2889,6 +2889,10 @@
     "message": "область диалога",
     "description": "Preview target: the scrolling conversation area"
   },
+  "localPluginWarnCss": {
+    "message": "Его CSS может изменить на странице что угодно, в том числе скрыть содержимое. Voyager не пересказывает CSS — прочитайте его ниже.",
+    "description": "Warning: the plugin has CSS, which the preview shows but does not summarize"
+  },
   "localPluginWarnSelector": {
     "message": "Находит элементы по CSS-селектору — после обновления сайта он может перестать срабатывать.",
     "description": "Warning: the plugin targets raw CSS selectors"

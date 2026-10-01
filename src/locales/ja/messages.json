@@ -2889,6 +2889,10 @@
     "message": "会話エリア",
     "description": "Preview target: the scrolling conversation area"
   },
+  "localPluginWarnCss": {
+    "message": "この CSS はページ上のあらゆるもの（非表示にすることも含む）を変更できます。Voyager は CSS を要約しないので、下のコードを直接確認してください。",
+    "description": "Warning: the plugin has CSS, which the preview shows but does not summarize"
+  },
   "localPluginWarnSelector": {
     "message": "CSS セレクターで要素を指定しているため、サイトの更新で効かなくなることがあります。",
     "description": "Warning: the plugin targets raw CSS selectors"

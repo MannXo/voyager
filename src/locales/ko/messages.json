@@ -2889,6 +2889,10 @@
     "message": "대화 영역",
     "description": "Preview target: the scrolling conversation area"
   },
+  "localPluginWarnCss": {
+    "message": "이 CSS는 숨기기를 포함해 페이지의 무엇이든 바꿀 수 있습니다. Voyager는 CSS를 요약하지 않으니 아래 코드를 직접 확인하세요.",
+    "description": "Warning: the plugin has CSS, which the preview shows but does not summarize"
+  },
   "localPluginWarnSelector": {
     "message": "CSS 선택자로 요소를 지정하므로 사이트가 바뀌면 동작하지 않을 수 있습니다.",
     "description": "Warning: the plugin targets raw CSS selectors"

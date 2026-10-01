@@ -27,7 +27,7 @@ const base = {
 const site = (id: string) => authoringSites().find((candidate) => candidate.id === id) ?? null;
 
 describe('plain-language plugin preview', () => {
-  it('lists the site once and every change in order, with nothing to warn about', () => {
+  it('lists the site once, every change in order, and its CSS in full', () => {
     const preview = previewPlugin(
       gated({
         ...base,
@@ -64,7 +64,56 @@ describe('plain-language plugin preview', () => {
         styles: 'max-width: 720px; margin: 0 auto',
       },
     ]);
-    expect(preview.warnings).toEqual([]);
+    // CSS can do anything, so it is shown in full and never summarized away.
+    expect(preview.css).toEqual(['.gv-plugin-narrow{max-width:720px}', '.gv-plugin-x{}']);
+    expect(preview.warnings).toEqual([{ kind: 'css' }]);
+  });
+
+  it('says plainly that CSS is not summarized, even when it hides the page', () => {
+    const preview = previewPlugin(
+      gated({ ...base, contributes: { styles: [{ css: 'main{display:none!important}' }] } }),
+    );
+    expect(preview.css).toEqual(['main{display:none!important}']);
+    expect(preview.warnings).toEqual([{ kind: 'css' }]);
+  });
+
+  it('warns about hiding through setStyle and the hidden or style attribute', () => {
+    const hiding = (domOp: Record<string, unknown>) =>
+      previewPlugin(gated({ ...base, contributes: { domOps: [domOp] } })).warnings;
+    const composer = { kind: 'semantic', key: 'composer' };
+    for (const styles of [
+      { display: 'none' },
+      { DISPLAY: ' None !important' },
+      { visibility: 'hidden' },
+      { visibility: 'collapse' },
+      { opacity: '0' },
+      { opacity: '0.0%' },
+      { 'content-visibility': 'hidden' },
+      { display: 'var(--gv-x)' },
+    ]) {
+      expect(hiding({ op: 'setStyle', target: composer, styles }), JSON.stringify(styles)).toEqual([
+        { kind: 'hides' },
+      ]);
+    }
+    expect(hiding({ op: 'setAttribute', target: composer, name: 'hidden', value: '' })).toEqual([
+      { kind: 'hides' },
+    ]);
+    expect(
+      hiding({
+        op: 'setAttribute',
+        target: composer,
+        name: 'style',
+        value: 'color:red; display : none',
+      }),
+    ).toEqual([{ kind: 'hides' }]);
+    for (const styles of [{ display: 'flex' }, { opacity: '0.8' }, { visibility: 'visible' }]) {
+      expect(hiding({ op: 'setStyle', target: composer, styles }), JSON.stringify(styles)).toEqual(
+        [],
+      );
+    }
+    expect(
+      hiding({ op: 'setAttribute', target: composer, name: 'aria-hidden', value: 'true' }),
+    ).toEqual([]);
   });
 
   it('warns about hiding, raw selectors, the wrong site and a replaced version', () => {
@@ -78,6 +127,7 @@ describe('plain-language plugin preview', () => {
     expect(preview.changes).toEqual([
       { kind: 'hide', target: { kind: 'css', selector: 'nav[aria-label]' } },
     ]);
+    expect(preview.css).toEqual([]);
     expect(preview.warnings).toEqual([
       { kind: 'replaces', version: '0.9.0' },
       { kind: 'not-on-site', site: 'ChatGPT' },

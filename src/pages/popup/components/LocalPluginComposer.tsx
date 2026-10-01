@@ -15,6 +15,7 @@ import type { TranslationKey } from '@/utils/translations';
 
 import { Button } from '../../../components/ui/button';
 import type { LocalPluginsController } from '../hooks/useLocalPlugins';
+import { LocalPluginCssSource } from './LocalPluginCssSource';
 import { LocalPluginInspection } from './LocalPluginInspection';
 import { LocalPluginIssueList } from './LocalPluginIssueList';
 import { REPLY_PROBLEM_KEYS, changeText, warningText } from './localPluginPreviewText';
@@ -262,6 +263,7 @@ export function LocalPluginComposer({
               ))}
             </ul>
           </div>
+          <LocalPluginCssSource css={preview.css} label={t('localPluginInspectCss')} />
           {preview.warnings.length > 0 && (
             <div className="text-amber-700 dark:text-amber-400" data-testid="local-plugin-warnings">
               <p className="text-[11px] font-medium">{t('localPluginPreviewWarnings')}</p>

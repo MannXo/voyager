@@ -78,6 +78,8 @@ export function changeText(t: Translate, change: PluginPreviewChange): string {
 
 export function warningText(t: Translate, warning: PluginPreviewWarning): string {
   switch (warning.kind) {
+    case 'css':
+      return t('localPluginWarnCss');
     case 'raw-selector':
       return t('localPluginWarnSelector');
     case 'hides':

@@ -2889,6 +2889,10 @@
     "message": "對話區域",
     "description": "Preview target: the scrolling conversation area"
   },
+  "localPluginWarnCss": {
+    "message": "它的 CSS 可以改動頁面上的任何東西，包括隱藏內容。Voyager 不會替你摘要 CSS，請直接看下方的原始碼。",
+    "description": "Warning: the plugin has CSS, which the preview shows but does not summarize"
+  },
   "localPluginWarnSelector": {
     "message": "用 CSS 選擇器定位元素，網站更新後可能失效。",
     "description": "Warning: the plugin targets raw CSS selectors"

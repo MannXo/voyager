@@ -202,9 +202,12 @@ with any AI the user already uses, while Voyager itself stays offline:
   installing it. The popup closes while the user is in their AI tab, so this
   step works on its own in a fresh popup.
 - `local/pluginPreview.ts` describes the result in plain terms (sites, each
-  change, warnings for hidden content, raw selectors, a replaced version, a
+  change, warnings for hidden content via `hide`, `hidden` or a hiding inline
+  style, raw selectors, a replaced version, a
   site other than the one the prompt was written for, and a `theme` or `native`
-  op the prompt asked the AI to leave out). It builds on `inspectPlugin`, and
+  op the prompt asked the AI to leave out). CSS is not summarized: its full
+  source is shown with a plain warning that it can change anything, hiding
+  included, since reading its effect would be a guess. It builds on `inspectPlugin`, and
   the same inspect view opens under it on demand. **Import** hands the exact previewed
   object to `importLocalPlugin`, so it lands disabled and follows the re-import
   rules above.
