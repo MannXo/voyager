@@ -2725,6 +2725,194 @@
     "message": "開啟過程中這個外掛被重新匯入了，所以它維持關閉。請先檢查新版本，再重新開啟。",
     "description": "A local plugin was re-imported while the user was enabling it, so it was not enabled"
   },
+  "localPluginDescribeOpen": {
+    "message": "用一句話改造介面",
+    "description": "Button that opens the one-sentence plugin flow"
+  },
+  "localPluginDescribeHint": {
+    "message": "用一句話說出你想怎麼改網站。Voyager 會寫好一段提示詞，由你自己傳給任何 AI，再檢查你貼回來的回覆。Voyager 本身不會送出任何內容。",
+    "description": "Explains the one-sentence plugin flow and that Voyager sends nothing"
+  },
+  "localPluginDescribeRequestLabel": {
+    "message": "想改什麼？",
+    "description": "Label of the one-sentence request field"
+  },
+  "localPluginDescribeRequestPlaceholder": {
+    "message": "例如：讓我的訊息窄一點，並隱藏側邊欄",
+    "description": "Example request in the one-sentence field"
+  },
+  "localPluginDescribeSiteLabel": {
+    "message": "網站",
+    "description": "Label of the target-site picker"
+  },
+  "localPluginDescribeBuildPrompt": {
+    "message": "產生提示詞",
+    "description": "Button that writes the AI prompt"
+  },
+  "localPluginDescribePromptLabel": {
+    "message": "要傳給 AI 的提示詞",
+    "description": "Label of the generated prompt"
+  },
+  "localPluginDescribePromptHint": {
+    "message": "自己把它貼到任何 AI 對話中，再把完整回覆貼到下方。",
+    "description": "Tells the user to send the prompt themselves and paste the reply"
+  },
+  "localPluginDescribeCopy": {
+    "message": "複製提示詞",
+    "description": "Button that copies the prompt"
+  },
+  "localPluginDescribeCopied": {
+    "message": "已複製",
+    "description": "Shown after the prompt was copied"
+  },
+  "localPluginDescribeCopyFailed": {
+    "message": "複製失敗。請選取提示詞後自行複製。",
+    "description": "Shown when the clipboard refused the prompt"
+  },
+  "localPluginDescribeReplyLabel": {
+    "message": "AI 的回覆",
+    "description": "Label of the field for the AI reply"
+  },
+  "localPluginDescribeReplyPlaceholder": {
+    "message": "貼上完整回覆，或只貼上其中的 JSON",
+    "description": "Placeholder of the AI reply field"
+  },
+  "localPluginDescribeCheck": {
+    "message": "檢查回覆",
+    "description": "Button that checks the pasted reply"
+  },
+  "localPluginDescribeImport": {
+    "message": "匯入",
+    "description": "Button that imports the previewed plugin"
+  },
+  "localPluginReplyEmpty": {
+    "message": "請先貼上 AI 的回覆。",
+    "description": "The reply field is empty"
+  },
+  "localPluginReplyTooLong": {
+    "message": "這段回覆太長了，不像是一個外掛。",
+    "description": "The pasted reply is too large"
+  },
+  "localPluginReplyNoJson": {
+    "message": "找不到 JSON。請讓 AI 只用一個 ```json 程式碼區塊回答。",
+    "description": "No JSON manifest found in the reply"
+  },
+  "localPluginReplyMultipleJson": {
+    "message": "回覆裡有不只一個 JSON 程式碼區塊。只保留外掛那一個後重新貼上。",
+    "description": "The reply holds more than one JSON block"
+  },
+  "localPluginPreviewTitle": {
+    "message": "匯入前確認",
+    "description": "Heading of the preview shown before import"
+  },
+  "localPluginPreviewChanges": {
+    "message": "它會改什麼",
+    "description": "Heading of the list of changes in the preview"
+  },
+  "localPluginPreviewWarnings": {
+    "message": "請先留意",
+    "description": "Heading of the warnings in the preview"
+  },
+  "localPluginPreviewLandsOff": {
+    "message": "匯入後預設關閉。準備好後，到外掛列表中開啟。",
+    "description": "Explains that the import lands turned off"
+  },
+  "localPluginChangeCss": {
+    "message": "加入自己的樣式（{chars} 個字元的 CSS）",
+    "description": "Preview line: the plugin adds CSS; {chars} is a character count"
+  },
+  "localPluginChangeAddClass": {
+    "message": "幫{target}加上標記，讓樣式生效（{className}）",
+    "description": "Preview line: the plugin tags elements so its CSS applies"
+  },
+  "localPluginChangeHide": {
+    "message": "隱藏{target}",
+    "description": "Preview line: the plugin hides elements"
+  },
+  "localPluginChangeSetStyle": {
+    "message": "修改{target}的樣式：{styles}",
+    "description": "Preview line: the plugin sets inline styles"
+  },
+  "localPluginChangeSetAttribute": {
+    "message": "在{target}上設定 {name}=\"{value}\"",
+    "description": "Preview line: the plugin sets an attribute"
+  },
+  "localPluginChangeNative": {
+    "message": "執行 Voyager 內建功能 {handler}",
+    "description": "Preview line: the plugin runs a Voyager built-in feature"
+  },
+  "localPluginChangeSetting": {
+    "message": "加入一個設定：{label}",
+    "description": "Preview line: the plugin adds a setting"
+  },
+  "localPluginChangeTheme": {
+    "message": "把 Voyager 的強調色改成 {color}",
+    "description": "Preview line: the plugin changes the accent color"
+  },
+  "localPluginTargetSelector": {
+    "message": "符合 {selector} 的元素",
+    "description": "Preview target described by a raw CSS selector"
+  },
+  "localPluginTargetUserTurn": {
+    "message": "你的訊息",
+    "description": "Preview target: the user's messages"
+  },
+  "localPluginTargetAssistantTurn": {
+    "message": "AI 的回覆",
+    "description": "Preview target: the AI's replies"
+  },
+  "localPluginTargetThinkingBlock": {
+    "message": "思考過程",
+    "description": "Preview target: reasoning sections"
+  },
+  "localPluginTargetCodeBlock": {
+    "message": "程式碼區塊",
+    "description": "Preview target: code blocks"
+  },
+  "localPluginTargetComposer": {
+    "message": "輸入框",
+    "description": "Preview target: the message input box"
+  },
+  "localPluginTargetSidebar": {
+    "message": "側邊欄",
+    "description": "Preview target: the sidebar"
+  },
+  "localPluginTargetSidePanel": {
+    "message": "側面板",
+    "description": "Preview target: the secondary side panel"
+  },
+  "localPluginTargetHeaderActions": {
+    "message": "右上角的按鈕",
+    "description": "Preview target: top-right action buttons"
+  },
+  "localPluginTargetScrollContainer": {
+    "message": "對話區域",
+    "description": "Preview target: the scrolling conversation area"
+  },
+  "localPluginWarnSelector": {
+    "message": "用 CSS 選擇器定位元素，網站更新後可能失效。",
+    "description": "Warning: the plugin targets raw CSS selectors"
+  },
+  "localPluginWarnHides": {
+    "message": "會隱藏頁面的一部分。關閉外掛即可恢復。",
+    "description": "Warning: the plugin hides part of the page"
+  },
+  "localPluginWarnNotOnSite": {
+    "message": "它不會在你選擇的網站 {site} 上執行。",
+    "description": "Warning: the plugin does not run on the site the user picked"
+  },
+  "localPluginWarnTheme": {
+    "message": "會修改 Voyager 的強調色，而提示詞要求 AI 不要這樣做。",
+    "description": "Warning: the plugin changes the accent color although the prompt asked not to"
+  },
+  "localPluginWarnNative": {
+    "message": "會執行 Voyager 內建功能，而提示詞要求 AI 不要這樣做。",
+    "description": "Warning: the plugin runs a Voyager built-in although the prompt asked not to"
+  },
+  "localPluginWarnReplaces": {
+    "message": "會取代你已安裝的 {version} 版，並在你重新開啟前維持關閉。",
+    "description": "Warning: importing replaces an installed version and turns it off"
+  },
   "localPluginInspectSites": {
     "message": "網站",
     "description": "Inspect view: sites the plugin runs on"

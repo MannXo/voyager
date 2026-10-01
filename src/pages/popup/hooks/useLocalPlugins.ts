@@ -5,6 +5,7 @@ import {
   type LocalPluginImportResult,
   MAX_LOCAL_PLUGIN_IMPORT_CHARS,
   exportLocalPluginJson,
+  importLocalPlugin,
   importLocalPluginFiles,
   removeLocalPlugin,
 } from '@/features/plugins/local/localPluginImport';
@@ -94,34 +95,45 @@ export function useLocalPlugins() {
   }, []);
 
   const runImport = useCallback(
-    async (read: () => Promise<LocalPluginFile[] | LocalPluginImportResult>) => {
+    async (job: () => Promise<LocalPluginImportResult>): Promise<LocalPluginImportResult> => {
       setBusy(true);
       setResult(null);
+      let outcome: LocalPluginImportResult;
       try {
-        const files = await read();
-        setResult(Array.isArray(files) ? await importLocalPluginFiles(files) : files);
+        outcome = await job();
       } catch (error) {
-        setResult({
+        outcome = {
           ok: false,
           issues: [
             { path: 'file', message: error instanceof Error ? error.message : String(error) },
           ],
-        });
-      } finally {
-        setBusy(false);
+        };
       }
+      setResult(outcome);
+      setBusy(false);
+      return outcome;
     },
     [],
   );
 
   const importFiles = useCallback(
-    (files: readonly File[]) => runImport(() => readPickedFiles(files)),
+    (files: readonly File[]) =>
+      runImport(async () => {
+        const read = await readPickedFiles(files);
+        return Array.isArray(read) ? importLocalPluginFiles(read) : read;
+      }),
     [runImport],
   );
 
   /** Pasted text is read as a single `plugin.json` with its CSS inlined. */
   const importText = useCallback(
-    (text: string) => runImport(async () => [{ name: 'plugin.json', text }]),
+    (text: string) => runImport(() => importLocalPluginFiles([{ name: 'plugin.json', text }])),
+    [runImport],
+  );
+
+  /** A manifest already read and previewed (the AI-reply flow), imported as is. */
+  const importManifest = useCallback(
+    (raw: unknown) => runImport(() => importLocalPlugin(raw)),
     [runImport],
   );
 
@@ -148,6 +160,7 @@ export function useLocalPlugins() {
     busy,
     importFiles,
     importText,
+    importManifest,
     remove,
     exportPlugin,
     clearResult: () => setResult(null),

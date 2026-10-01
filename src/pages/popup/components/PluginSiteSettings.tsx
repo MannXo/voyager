@@ -85,7 +85,7 @@ export function PluginSiteSettings({
       </Card>
       <div style={{ order: -1 }} className="flex flex-col gap-4">
         <PluginManager {...plugins} />
-        <LocalPluginsPanel t={t} />
+        <LocalPluginsPanel t={t} activeUrl={plugins.activeUrl} />
       </div>
     </>
   );

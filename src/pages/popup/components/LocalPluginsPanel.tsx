@@ -1,26 +1,15 @@
 import { useRef, useState } from 'react';
 
-import { ClipboardPaste, Download, Trash2, Upload } from 'lucide-react';
+import { ClipboardPaste, Download, Trash2, Upload, WandSparkles } from 'lucide-react';
 
-import type { ManifestIssue } from '@/features/plugins/manifest/validate';
 import type { TranslationKey } from '@/utils/translations';
 
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent, CardTitle } from '../../../components/ui/card';
 import { type LocalPluginEntry, useLocalPlugins } from '../hooks/useLocalPlugins';
+import { LocalPluginComposer } from './LocalPluginComposer';
 import { LocalPluginInspection } from './LocalPluginInspection';
-
-function IssueList({ issues }: { issues: readonly ManifestIssue[] }) {
-  return (
-    <ul className="mt-1 space-y-0.5" data-testid="local-plugin-issues">
-      {issues.map((issue, index) => (
-        <li key={index} className="font-mono text-[10px] break-all">
-          {issue.path ? `${issue.path}: ${issue.message}` : issue.message}
-        </li>
-      ))}
-    </ul>
-  );
-}
+import { LocalPluginIssueList as IssueList } from './LocalPluginIssueList';
 
 function LocalPluginRow({
   entry,
@@ -107,10 +96,18 @@ function LocalPluginRow({
  * one on stays in `PluginManager`, which owns the host-permission flow, so an
  * import can never enable anything by itself.
  */
-export function LocalPluginsPanel({ t }: { t: (key: TranslationKey) => string }) {
+export function LocalPluginsPanel({
+  t,
+  activeUrl,
+}: {
+  t: (key: TranslationKey) => string;
+  /** The active tab's URL, used to preselect the site when describing a change. */
+  activeUrl?: string;
+}) {
   const local = useLocalPlugins();
   const fileInput = useRef<HTMLInputElement | null>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
+  const [describeOpen, setDescribeOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const result = local.result;
   const imported = result?.ok ? result.manifest : null;
@@ -146,7 +143,20 @@ export function LocalPluginsPanel({ t }: { t: (key: TranslationKey) => string })
               <span>{t('localPluginsPasteJson')}</span>
             </span>
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="col-span-2 w-full"
+            aria-expanded={describeOpen}
+            onClick={() => setDescribeOpen((value) => !value)}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <WandSparkles className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>{t('localPluginDescribeOpen')}</span>
+            </span>
+          </Button>
         </div>
+        {describeOpen && <LocalPluginComposer t={t} local={local} activeUrl={activeUrl} />}
         <input
           ref={fileInput}
           type="file"

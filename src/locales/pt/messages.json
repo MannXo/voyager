@@ -2725,6 +2725,194 @@
     "message": "Este plugin foi reimportado enquanto você o ativava, então ele continua desativado. Confira a nova versão e ative-o novamente.",
     "description": "A local plugin was re-imported while the user was enabling it, so it was not enabled"
   },
+  "localPluginDescribeOpen": {
+    "message": "Descrever uma mudança",
+    "description": "Button that opens the one-sentence plugin flow"
+  },
+  "localPluginDescribeHint": {
+    "message": "Diga em uma frase o que deve mudar em um site. O Voyager escreve um prompt que você mesmo envia para qualquer IA e depois verifica a resposta que você colar aqui. O Voyager não envia nada por conta própria.",
+    "description": "Explains the one-sentence plugin flow and that Voyager sends nothing"
+  },
+  "localPluginDescribeRequestLabel": {
+    "message": "O que deve mudar?",
+    "description": "Label of the one-sentence request field"
+  },
+  "localPluginDescribeRequestPlaceholder": {
+    "message": "ex.: deixe minhas mensagens mais estreitas e esconda a barra lateral",
+    "description": "Example request in the one-sentence field"
+  },
+  "localPluginDescribeSiteLabel": {
+    "message": "Site",
+    "description": "Label of the target-site picker"
+  },
+  "localPluginDescribeBuildPrompt": {
+    "message": "Gerar prompt",
+    "description": "Button that writes the AI prompt"
+  },
+  "localPluginDescribePromptLabel": {
+    "message": "Prompt para a sua IA",
+    "description": "Label of the generated prompt"
+  },
+  "localPluginDescribePromptHint": {
+    "message": "Cole você mesmo em qualquer chat de IA e depois cole a resposta completa abaixo.",
+    "description": "Tells the user to send the prompt themselves and paste the reply"
+  },
+  "localPluginDescribeCopy": {
+    "message": "Copiar prompt",
+    "description": "Button that copies the prompt"
+  },
+  "localPluginDescribeCopied": {
+    "message": "Copiado",
+    "description": "Shown after the prompt was copied"
+  },
+  "localPluginDescribeCopyFailed": {
+    "message": "Não foi possível copiar. Selecione o prompt e copie você mesmo.",
+    "description": "Shown when the clipboard refused the prompt"
+  },
+  "localPluginDescribeReplyLabel": {
+    "message": "Resposta da IA",
+    "description": "Label of the field for the AI reply"
+  },
+  "localPluginDescribeReplyPlaceholder": {
+    "message": "Cole a resposta inteira ou só o JSON dela",
+    "description": "Placeholder of the AI reply field"
+  },
+  "localPluginDescribeCheck": {
+    "message": "Verificar resposta",
+    "description": "Button that checks the pasted reply"
+  },
+  "localPluginDescribeImport": {
+    "message": "Importar",
+    "description": "Button that imports the previewed plugin"
+  },
+  "localPluginReplyEmpty": {
+    "message": "Cole primeiro a resposta da IA.",
+    "description": "The reply field is empty"
+  },
+  "localPluginReplyTooLong": {
+    "message": "Esta resposta é longa demais para ser um plugin.",
+    "description": "The pasted reply is too large"
+  },
+  "localPluginReplyNoJson": {
+    "message": "Nenhum JSON encontrado. Peça à IA para responder com um único bloco ```json.",
+    "description": "No JSON manifest found in the reply"
+  },
+  "localPluginReplyMultipleJson": {
+    "message": "A resposta tem mais de um bloco JSON. Mantenha só o do plugin e cole de novo.",
+    "description": "The reply holds more than one JSON block"
+  },
+  "localPluginPreviewTitle": {
+    "message": "Antes de importar",
+    "description": "Heading of the preview shown before import"
+  },
+  "localPluginPreviewChanges": {
+    "message": "O que ele muda",
+    "description": "Heading of the list of changes in the preview"
+  },
+  "localPluginPreviewWarnings": {
+    "message": "Confira antes",
+    "description": "Heading of the warnings in the preview"
+  },
+  "localPluginPreviewLandsOff": {
+    "message": "Ele é importado desativado. Ative-o na lista de plugins quando quiser.",
+    "description": "Explains that the import lands turned off"
+  },
+  "localPluginChangeCss": {
+    "message": "Adiciona estilos próprios ({chars} caracteres de CSS)",
+    "description": "Preview line: the plugin adds CSS; {chars} is a character count"
+  },
+  "localPluginChangeAddClass": {
+    "message": "Marca {target} para aplicar os estilos ({className})",
+    "description": "Preview line: the plugin tags elements so its CSS applies"
+  },
+  "localPluginChangeHide": {
+    "message": "Esconde {target}",
+    "description": "Preview line: the plugin hides elements"
+  },
+  "localPluginChangeSetStyle": {
+    "message": "Muda o estilo de {target}: {styles}",
+    "description": "Preview line: the plugin sets inline styles"
+  },
+  "localPluginChangeSetAttribute": {
+    "message": "Define {name}=\"{value}\" em {target}",
+    "description": "Preview line: the plugin sets an attribute"
+  },
+  "localPluginChangeNative": {
+    "message": "Executa o recurso integrado {handler} do Voyager",
+    "description": "Preview line: the plugin runs a Voyager built-in feature"
+  },
+  "localPluginChangeSetting": {
+    "message": "Adiciona uma configuração: {label}",
+    "description": "Preview line: the plugin adds a setting"
+  },
+  "localPluginChangeTheme": {
+    "message": "Muda a cor de destaque do Voyager para {color}",
+    "description": "Preview line: the plugin changes the accent color"
+  },
+  "localPluginTargetSelector": {
+    "message": "os elementos que correspondem a {selector}",
+    "description": "Preview target described by a raw CSS selector"
+  },
+  "localPluginTargetUserTurn": {
+    "message": "suas mensagens",
+    "description": "Preview target: the user's messages"
+  },
+  "localPluginTargetAssistantTurn": {
+    "message": "as respostas da IA",
+    "description": "Preview target: the AI's replies"
+  },
+  "localPluginTargetThinkingBlock": {
+    "message": "as seções de raciocínio",
+    "description": "Preview target: reasoning sections"
+  },
+  "localPluginTargetCodeBlock": {
+    "message": "os blocos de código",
+    "description": "Preview target: code blocks"
+  },
+  "localPluginTargetComposer": {
+    "message": "a caixa de mensagem",
+    "description": "Preview target: the message input box"
+  },
+  "localPluginTargetSidebar": {
+    "message": "a barra lateral",
+    "description": "Preview target: the sidebar"
+  },
+  "localPluginTargetSidePanel": {
+    "message": "o painel lateral",
+    "description": "Preview target: the secondary side panel"
+  },
+  "localPluginTargetHeaderActions": {
+    "message": "os botões no canto superior direito",
+    "description": "Preview target: top-right action buttons"
+  },
+  "localPluginTargetScrollContainer": {
+    "message": "a área da conversa",
+    "description": "Preview target: the scrolling conversation area"
+  },
+  "localPluginWarnSelector": {
+    "message": "Usa seletores CSS, que podem parar de funcionar quando o site for atualizado.",
+    "description": "Warning: the plugin targets raw CSS selectors"
+  },
+  "localPluginWarnHides": {
+    "message": "Esconde parte da página. Desative o plugin para trazê-la de volta.",
+    "description": "Warning: the plugin hides part of the page"
+  },
+  "localPluginWarnNotOnSite": {
+    "message": "Ele não roda em {site}, o site que você escolheu.",
+    "description": "Warning: the plugin does not run on the site the user picked"
+  },
+  "localPluginWarnTheme": {
+    "message": "Muda a cor de destaque do Voyager, o que o prompt pediu à IA para não fazer.",
+    "description": "Warning: the plugin changes the accent color although the prompt asked not to"
+  },
+  "localPluginWarnNative": {
+    "message": "Executa um recurso integrado do Voyager, o que o prompt pediu à IA para não fazer.",
+    "description": "Warning: the plugin runs a Voyager built-in although the prompt asked not to"
+  },
+  "localPluginWarnReplaces": {
+    "message": "Substitui a versão {version} que você já tem e a desativa até você ativá-la de novo.",
+    "description": "Warning: importing replaces an installed version and turns it off"
+  },
   "localPluginInspectSites": {
     "message": "Sites",
     "description": "Inspect view: sites the plugin runs on"

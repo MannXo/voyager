@@ -52,7 +52,7 @@ export function NativeLocalPluginsSection({
   return (
     <div style={{ order: 1000 }} className="flex flex-col gap-4">
       {localHere.length > 0 && <PluginManager {...plugins} manifests={localHere} />}
-      <LocalPluginsPanel t={t} />
+      <LocalPluginsPanel t={t} activeUrl={plugins.activeUrl} />
     </div>
   );
 }
