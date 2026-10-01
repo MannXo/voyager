@@ -609,7 +609,9 @@ say`), `src/pages/content/platformTheme/__tests__/platformTheme.test.ts`.
   Navigation API cannot run the handoff: the Gemini click takes the clipboard path, and the
   receiver refuses to peek. Use each site's main composer selector, require exactly one, and
   require it to be empty: blank text and only the empty-editor skeleton (`<p>`, `<br>`,
-  ProseMirror's separator image), since an image or a mention chip has no text but is content.
+  and ProseMirror's separator in its exact rendered shape, `<img class="ProseMirror-separator"
+alt="">` with at most `mark-placeholder`, never a source or alt text), since an image or a
+  mention chip has no text but is content.
   Collapse the selection to its end before inserting. Any failed check inserts nothing and points
   the user back to Gemini's Copy. Keep the record in `storage.session` only; without it, report
   every target unready.

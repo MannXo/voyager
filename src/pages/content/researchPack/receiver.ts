@@ -105,10 +105,27 @@ function isEmptySkeletonElement(element: Element): boolean {
     case 'BR':
       return true;
     case 'IMG':
-      return element.classList.contains('ProseMirror-separator');
+      return isProseMirrorSeparator(element);
     default:
       return false;
   }
+}
+
+/** The only attributes ProseMirror gives its separator image. */
+const SEPARATOR_ATTRIBUTES = new Set(['class', 'alt', 'mark-placeholder']);
+
+/**
+ * ProseMirror's decorative caret image, exactly as prosemirror-view renders it:
+ * `<img class="ProseMirror-separator" alt="">`, plus `mark-placeholder="true"`
+ * on the cursor wrapper. Never a source, never alt text; a class alone does not
+ * make an image decorative.
+ */
+function isProseMirrorSeparator(element: Element): boolean {
+  return (
+    element.classList.contains('ProseMirror-separator') &&
+    element.getAttribute('alt') === '' &&
+    Array.from(element.attributes).every((attribute) => SEPARATOR_ATTRIBUTES.has(attribute.name))
+  );
 }
 
 /**

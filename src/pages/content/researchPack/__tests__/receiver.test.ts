@@ -471,6 +471,34 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     expect(toast()?.dataset.tone).toBe('error');
   });
 
+  it.each([
+    ['a photo', '<img class="ProseMirror-separator" src="blob:https://chatgpt.com/p" alt="photo">'],
+    ['a source', '<img class="ProseMirror-separator" src="data:image/png;base64,AAAA" alt="">'],
+    ['alt text', '<img class="ProseMirror-separator" alt="photo">'],
+    [
+      'a srcset',
+      '<img class="ProseMirror-separator" srcset="blob:https://chatgpt.com/p 1x" alt="">',
+    ],
+  ])('treats an image dressed as the separator but carrying %s as content', async (_, img) => {
+    const { composer } = chatgptComposer();
+    composer.innerHTML = `<p>${img}</p>`;
+    start();
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+
+    expect(sent()).toEqual([HANDOFF_MESSAGES.peek]);
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it("counts ProseMirror's cursor-wrapper separator as empty", async () => {
+    const { composer } = chatgptComposer();
+    composer.innerHTML =
+      '<p><img class="ProseMirror-separator" mark-placeholder="true" alt=""><br class="ProseMirror-trailingBreak"></p>';
+    start();
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+
+    expect(insert).toHaveBeenCalledOnce();
+  });
+
   it('counts the editor placeholder skeleton as empty', async () => {
     const { composer } = chatgptComposer();
     composer.innerHTML =
