@@ -16,5 +16,5 @@
   },
   "brandColor": "#0ea5e9",
   "capabilities": ["chat", "sidebar", "composer", "darkMode"],
-  "conversationIdPattern": "^/c/([^/?#]+)"
+  "conversationIdPattern": "^(?:/u/[^/]+)?(?:/g/[^/]+)?/c/([^/?#]+)"
 }

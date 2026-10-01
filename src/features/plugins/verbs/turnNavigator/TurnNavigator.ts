@@ -11,7 +11,7 @@
  *     while, say, an artifact frame is open; `position` picks the rail side.
  *
  * Markers are accumulated across refreshes by content hash so virtualised
- * conversations (Claude, DeepSeek) never lose turns; see the merge notes below.
+ * conversations (Claude, DeepSeek, ChatGPT) never lose turns; see turnMerge.ts.
  */
 import { StorageKeys, type TimelineStyle } from '@/core/types/common';
 import { hashString } from '@/core/utils/hash';
@@ -23,6 +23,7 @@ import { TimelinePreviewPanel } from '@/pages/content/timeline/TimelinePreviewPa
 import type { StarredMessage } from '@/pages/content/timeline/starredTypes';
 import { showTimelineStyleCoachmark } from '@/pages/content/timeline/timelineStyleCoachmark';
 import type { PreviewMarkerData } from '@/pages/content/timeline/types';
+import { watchRouteChanges } from '@/pages/content/utils/routeWatcher';
 import { initI18n } from '@/utils/i18n';
 
 import { MAX_REGEX_INPUT_LENGTH } from '../../sites/safeRegex';
@@ -30,11 +31,14 @@ import type { PrimitiveHandle } from '../types';
 import {
   afterScrollSettles,
   navigationScrollBehavior,
+  readScrollOffset,
   scrollElementToAnchor,
   scrollToCenter,
 } from './scrollMotion';
 import { extractTurnHash, StarSnapshotLoader } from './starSnapshot';
+import { type Marker, TURN_ID_ATTR, mergeMountedTurns } from './turnMerge';
 export { extractTurnHash } from './starSnapshot';
+export { buildTurnId, TURN_ID_ATTR } from './turnMerge';
 
 export interface TurnNavigatorConfig {
   /** Site adapter id; prefixes conversation ids and marks the rail. */
@@ -42,6 +46,8 @@ export interface TurnNavigatorConfig {
   /** Display label, stripped from `document.title` for starred-message titles. */
   readonly siteLabel: string;
   readonly turnSelector: string;
+  /** Attribute naming the host's own per-turn id on a turn or its list item. */
+  readonly turnKeyAttribute?: string;
   /** Path regular expression whose first group is the conversation id. */
   readonly conversationIdPattern?: string;
   readonly scrollContainerSelector?: string;
@@ -59,7 +65,6 @@ export interface TurnNavigatorConfig {
  */
 export const TIMELINE_STYLE_COACHMARK_ID = 'claude-timeline-compact-style-intro-v1';
 
-export const TURN_ID_ATTR = 'data-gv-turn-id';
 const TOOLTIP_ID = 'gv-turn-navigator-tooltip';
 const TOOLTIP_TEXT_CLASS = 'gv-turn-navigator-tooltip-text';
 const REFRESH_DELAY_MS = 120;
@@ -97,61 +102,9 @@ export function buildConversationId(
   }
 }
 
-export function buildTurnId(text: string): string {
-  return `c-${hashString(text)}`;
-}
-
 type Dot = HTMLButtonElement & {
   dataset: DOMStringMap & { targetTurnId?: string; markerIndex?: string };
 };
-
-// Claude virtualizes long conversations: only a sliding window of turns is
-// mounted at any time, so the DOM is never the full conversation. Markers are
-// therefore ACCUMULATED across refreshes (ids keyed by content hash, not mount
-// index) and stitched into order via turns shared between overlapping windows.
-interface Marker {
-  id: string;
-  hash: string;
-  summary: string;
-  starred: boolean;
-  starredAt?: number;
-  /** Last-seen element; disconnected once Claude virtualizes the turn out. */
-  element: HTMLElement;
-  /** Last-known center offset within the scroll target; reused while unmounted. */
-  center: number;
-  dotElement: Dot | null;
-}
-
-export function buildClaudeConversationId(input = location.href): string {
-  try {
-    const url = new URL(input, location.origin);
-    const chatId = url.pathname.match(/^\/chat\/([^/?#]+)/)?.[1];
-    return chatId
-      ? `claude:conv:${chatId}`
-      : `claude:${hashString(`${url.origin}${url.pathname}`)}`;
-  } catch {
-    return `claude:${hashString(String(input || ''))}`;
-  }
-}
-
-export function buildClaudeTurnId(text: string): string {
-  return `c-${hashString(text)}`;
-}
-
-/**
- * Content hash shared by every historical turn-id format:
- * legacy `c-<mountIndex>-<hash>`, current `c-<hash>` and `c-<hash>~<n>`.
- */
-export function extractClaudeTurnHash(turnId: string): string {
-  const base = turnId.split('~')[0];
-  const segments = base.split('-');
-  return segments[segments.length - 1] || base;
-}
-
-/** Claude renders artifacts in a sandboxed claudeusercontent.com iframe. */
-export function hasOpenClaudeArtifact(doc: Document = document): boolean {
-  return !!doc.querySelector('iframe[src*="claudeusercontent.com"]');
-}
 
 export class TurnNavigator {
   private bar: HTMLElement | null = null;
@@ -230,6 +183,9 @@ export class TurnNavigator {
     if (this.disposed) return;
     this.observe();
     this.scope.on(window, 'hashchange', this.handleHash);
+    // A route change with no turn mutation (new chat getting its id, leaving
+    // for a page without turns) must still re-key or clear the rail.
+    this.scope.effect(() => watchRouteChanges(() => this.scheduleRefresh()), 'route-watch');
     this.scope.on(window, 'resize', this.handleResize);
     this.maybeShowStyleCoachmark();
   }
@@ -264,7 +220,12 @@ export class TurnNavigator {
   private observe(): void {
     if (!document.body || this.observing) return;
     this.observing = true;
-    this.scope.observe(document.body, { childList: true, subtree: true }, (records) => {
+    const keyAttribute = this.config.turnKeyAttribute;
+    // A renamed turn key re-keys its marker even when no turn node changes.
+    const options: MutationObserverInit = keyAttribute
+      ? { childList: true, subtree: true, attributes: true, attributeFilter: [keyAttribute] }
+      : { childList: true, subtree: true };
+    this.scope.observe(document.body, options, (records) => {
       if (!records.some((record) => this.shouldRefreshForMutation(record))) return;
       this.scheduleRefresh();
     });
@@ -301,6 +262,7 @@ export class TurnNavigator {
 
   private shouldRefreshForMutation(record: MutationRecord): boolean {
     if (this.isOwnMutation(record)) return false;
+    if (record.type === 'attributes') return this.touchesTurn(record.target);
     return (
       !!this.toElement(record.target)?.closest(this.config.turnSelector) ||
       [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)].some((node) =>
@@ -402,7 +364,12 @@ export class TurnNavigator {
     const previousIds = this.markers.map((marker) => marker.id);
     const turns = Array.from(document.querySelectorAll<HTMLElement>(this.config.turnSelector));
     if (turns[0]) this.setScrollTarget(this.getScrollTarget(turns[0]));
-    this.markers = this.mergeMountedTurns(turns);
+    this.markers = mergeMountedTurns(
+      this.markers,
+      turns.map((element) => ({ element, summary: this.extractText(element) })),
+      (element) => this.computeElementCenter(element),
+      this.config.turnKeyAttribute,
+    );
     this.markerCenters = this.computeMarkerCenters();
     const sameMarkers =
       previousIds.length === this.markers.length &&
@@ -420,150 +387,6 @@ export class TurnNavigator {
     this.clearPendingNavigation();
     this.lastHandledHash = null;
     if (this.trackContent) this.trackContent.textContent = '';
-  }
-
-  /**
-   * Stitch the currently mounted turns into the accumulated marker list.
-   * Mounted turns are anchored to known markers by content hash (order
-   * preserving) and new turns are woven in next to their anchors. Known turns
-   * are NEVER dropped: Claude's virtualization can mount sparse,
-   * non-contiguous windows mid-transition (old and new window briefly
-   * coexisting), so a missing turn only means "not mounted right now", not
-   * "deleted" — mirroring the Gemini timeline's grow-only behaviour.
-   */
-  private mergeMountedTurns(turns: HTMLElement[]): Marker[] {
-    const known = this.markers;
-    const mounted = turns.map((element) => {
-      const summary = this.extractText(element);
-      return { element, summary, hash: hashString(summary) };
-    });
-    if (!mounted.length) return known;
-
-    const matchedKnownIndex = new Array<number>(mounted.length).fill(-1);
-    let searchFrom = 0;
-    for (let i = 0; i < mounted.length; i++) {
-      for (let j = searchFrom; j < known.length; j++) {
-        if (known[j].hash === mounted[i].hash) {
-          matchedKnownIndex[i] = j;
-          searchFrom = j + 1;
-          break;
-        }
-      }
-    }
-
-    const usedIds = new Set(known.map((marker) => marker.id));
-    const createMarker = (entry: (typeof mounted)[number]): Marker => {
-      const id = this.claimTurnId(entry.hash, usedIds);
-      entry.element.dataset.gvTurnId = id;
-      return {
-        id,
-        hash: entry.hash,
-        summary: entry.summary,
-        starred: false,
-        element: entry.element,
-        center: this.computeElementCenter(entry.element),
-        dotElement: null,
-      };
-    };
-
-    const firstMatch = matchedKnownIndex.findIndex((index) => index >= 0);
-    if (firstMatch === -1) {
-      // Jumped into an unexplored region: place the whole block by its
-      // vertical position relative to the accumulated turns.
-      const fresh = mounted.map(createMarker);
-      const insertAt = known.findIndex((marker) => marker.center > fresh[0].center);
-      return insertAt === -1
-        ? [...known, ...fresh]
-        : [...known.slice(0, insertAt), ...fresh, ...known.slice(insertAt)];
-    }
-
-    const beforeFirstAnchor: Marker[] = [];
-    const afterKnownIndex = new Map<number, Marker[]>();
-    // Fresh centre minus remembered centre per anchor: how far Claude's
-    // re-measuring has shifted this region since the neighbours were seen.
-    const anchorDrift = new Map<number, number>();
-    let lastAnchor = -1;
-    for (let i = 0; i < mounted.length; i++) {
-      const knownIndex = matchedKnownIndex[i];
-      if (knownIndex >= 0) {
-        const survivor = known[knownIndex];
-        anchorDrift.set(
-          knownIndex,
-          this.computeElementCenter(mounted[i].element) - survivor.center,
-        );
-        survivor.element = mounted[i].element;
-        survivor.summary = mounted[i].summary;
-        mounted[i].element.dataset.gvTurnId = survivor.id;
-        lastAnchor = knownIndex;
-        continue;
-      }
-      const marker = createMarker(mounted[i]);
-      if (lastAnchor === -1) {
-        beforeFirstAnchor.push(marker);
-      } else {
-        const bucket = afterKnownIndex.get(lastAnchor);
-        if (bucket) bucket.push(marker);
-        else afterKnownIndex.set(lastAnchor, [marker]);
-      }
-    }
-
-    // Anchors fix the order of the turns they match; a block of new turns is
-    // then filed by scroll position among the known turns between its two
-    // bounding anchors. "Right next to the anchor" is not enough: Claude keeps
-    // the latest turn mounted while the reader sits at the top, and that lone
-    // tail anchor would drag the conversation's opening turns behind the
-    // bottom window. Known centres are compared after the nearest anchor's
-    // drift so re-measured content does not skew the comparison.
-    const anchors = matchedKnownIndex.filter((index) => index >= 0);
-    const insertBefore = new Map<number, Marker[]>();
-    // A known turn between two anchors is assumed to have drifted like the
-    // anchor nearer to it; anchors on different sides of a re-measured region
-    // can carry very different drifts.
-    const driftAt = (index: number, prev: number | undefined, next: number | undefined): number => {
-      const prevDrift = prev === undefined ? undefined : anchorDrift.get(prev);
-      const nextDrift = next === undefined ? undefined : anchorDrift.get(next);
-      if (prevDrift === undefined) return nextDrift ?? 0;
-      if (nextDrift === undefined) return prevDrift;
-      return index - prev! <= next! - index ? prevDrift : nextDrift;
-    };
-    const file = (block: Marker[], prev: number | undefined, next: number | undefined): void => {
-      if (!block.length) return;
-      const lo = prev === undefined ? 0 : prev + 1;
-      const hi = next ?? known.length;
-      let at = hi;
-      for (let index = lo; index < hi; index++) {
-        if (known[index].center + driftAt(index, prev, next) > block[0].center) {
-          at = index;
-          break;
-        }
-      }
-      const bucket = insertBefore.get(at);
-      if (bucket) bucket.push(...block);
-      else insertBefore.set(at, block);
-    };
-    file(beforeFirstAnchor, undefined, anchors[0]);
-    anchors.forEach((anchor, rank) => {
-      const block = afterKnownIndex.get(anchor);
-      if (block) file(block, anchor, anchors[rank + 1]);
-    });
-
-    const result: Marker[] = [];
-    known.forEach((marker, index) => {
-      const block = insertBefore.get(index);
-      if (block) result.push(...block);
-      result.push(marker);
-    });
-    const tail = insertBefore.get(known.length);
-    if (tail) result.push(...tail);
-    return result;
-  }
-
-  private claimTurnId(hash: string, usedIds: Set<string>): string {
-    const base = `c-${hash}`;
-    let id = base;
-    for (let n = 2; usedIds.has(id); n++) id = `${base}~${n}`;
-    usedIds.add(id);
-    return id;
   }
 
   private async loadStars(force = false): Promise<void> {
@@ -1116,10 +939,9 @@ export class TurnNavigator {
       : 0;
   }
 
+  /** Offset from the conversation's start, also on a `column-reverse` scroller. */
   private getScrollTop(): number {
-    return this.scrollTarget && this.scrollTarget !== window
-      ? (this.scrollTarget as HTMLElement).scrollTop
-      : window.scrollY || document.documentElement.scrollTop || 0;
+    return readScrollOffset(this.scrollTarget);
   }
 
   private getViewportHeight(): number {
@@ -1141,12 +963,6 @@ export class TurnNavigator {
       scrollHeight > viewportHeight && this.getScrollTop() + viewportHeight >= scrollHeight - 2
     );
   }
-
-  /**
-   * Every jump is instant. Smooth scrolling drifts across a virtualized
-   * conversation as Claude re-measures content mid-flight, and mixing smooth
-   * short hops with instant long ones read as erratic navigation.
-   */
 }
 
 /**

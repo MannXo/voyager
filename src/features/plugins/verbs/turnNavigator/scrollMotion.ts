@@ -65,13 +65,58 @@ const ACTIVE_ANCHOR = 0.45;
 
 type ScrollTarget = HTMLElement | Window | null;
 
-function applyScroll(target: ScrollTarget, top: number, behavior: ScrollBehavior): void {
-  const clamped = Math.max(0, top);
+/**
+ * A `flex-direction: column-reverse` scroller anchors its scroll origin at the
+ * END of the content: `scrollTop` runs from 0 (newest) down to `-range` (the
+ * conversation's start). Every offset the navigator compares grows from the
+ * start, so such a container is translated on the way in and back on the way
+ * out; otherwise `Math.max(0, …)` sends every jump to the newest turn.
+ * (ChatGPT's thread was reported to scroll this way; a normal scroller is
+ * unaffected.)
+ */
+const reverseByStyle = new WeakMap<HTMLElement, boolean>();
+
+function isReverseScroller(container: HTMLElement): boolean {
+  if (container.scrollTop < 0) return true;
+  // Read once per container: this runs on every scroll event.
+  let reverse = reverseByStyle.get(container);
+  if (reverse === undefined) {
+    try {
+      const style = getComputedStyle(container);
+      reverse = style.flexDirection === 'column-reverse' && /flex/.test(style.display);
+    } catch {
+      reverse = false;
+    }
+    reverseByStyle.set(container, reverse);
+  }
+  return reverse;
+}
+
+function scrollRange(container: HTMLElement): number {
+  return Math.max(0, container.scrollHeight - container.clientHeight);
+}
+
+/** The target's scroll offset measured from the start of the conversation. */
+export function readScrollOffset(target: ScrollTarget): number {
   if (!target || target === window) {
-    window.scrollTo({ top: clamped, behavior });
+    return window.scrollY || document.documentElement.scrollTop || 0;
+  }
+  const container = target as HTMLElement;
+  return isReverseScroller(container)
+    ? container.scrollTop + scrollRange(container)
+    : container.scrollTop;
+}
+
+function applyScroll(target: ScrollTarget, top: number, behavior: ScrollBehavior): void {
+  if (!target || target === window) {
+    window.scrollTo({ top: Math.max(0, top), behavior });
     return;
   }
   const container = target as HTMLElement;
+  const range = scrollRange(container);
+  const clamped = isReverseScroller(container)
+    ? Math.min(0, Math.max(-range, top - range))
+    : Math.max(0, top);
   if (container.scrollTo) container.scrollTo({ top: clamped, behavior });
   else container.scrollTop = clamped;
 }
@@ -110,7 +155,7 @@ export function scrollElementToAnchor(
   const container = target as HTMLElement;
   const containerRect = container.getBoundingClientRect();
   const top =
-    container.scrollTop +
+    readScrollOffset(container) +
     rect.top -
     containerRect.top -
     container.clientHeight * ACTIVE_ANCHOR +

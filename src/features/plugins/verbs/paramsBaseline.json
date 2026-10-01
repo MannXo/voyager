@@ -36,6 +36,10 @@
         "position": {
           "type": "string",
           "required": false
+        },
+        "turnKey": {
+          "type": "string",
+          "required": false
         }
       }
     }

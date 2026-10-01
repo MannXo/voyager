@@ -312,8 +312,12 @@ Ownership and precedence:
 Shipped primitives (`verbs/contracts.ts`): `formulaCopy` (since 1.3.0), `vimInput` (since 1.4.0,
 `composer` param, defaults to the adapter's `composer` selector) and `turnNavigator` (since 1.4.0,
 `turn` / `conversationIdPattern` / `scrollContainer` / `yieldWhen` / `position`, all optional and
-defaulting to the adapter). The formula-copy, Vim and Claude-timeline builtins are now manifests
-that invoke these primitives; the timeline engine lives in `verbs/turnNavigator/TurnNavigator.ts`.
+defaulting to the adapter, plus the optional `turnKey` attribute added after 1.4.0). The
+formula-copy, Vim, Claude-timeline and ChatGPT-timeline builtins are now manifests that invoke
+these primitives; the timeline engine lives in `verbs/turnNavigator/TurnNavigator.ts`, with marker
+stitching in `turnMerge.ts`. Builtins ship with their engine and may use `turnKey` now; a catalog
+manifest must wait for the next `PLUGIN_ENGINE_VERSION` bump, because a 1.4.0 engine skips an op
+whose params it does not know.
 
 Some behaviour cannot be expressed as CSS or as the reversible DOM operations.
 A **primitive** is that behaviour, written once as first-party TypeScript inside

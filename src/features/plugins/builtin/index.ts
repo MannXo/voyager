@@ -213,6 +213,90 @@ export const BUILTIN_PLUGINS: readonly PluginManifest[] = [
     },
   },
   {
+    id: 'voyager.chatgpt-timeline',
+    name: 'ChatGPT · Timeline',
+    version: '1.0.0',
+    description:
+      'Adds a compact conversation timeline to ChatGPT with starred messages and search.',
+    i18n: {
+      zh: {
+        name: 'ChatGPT · 时间线',
+        description: '为 ChatGPT 添加紧凑的对话时间线，支持星标消息和搜索。',
+        settings: { compactView: { label: '使用紧凑索引' } },
+      },
+      zh_TW: {
+        name: 'ChatGPT · 時間線',
+        description: '為 ChatGPT 加入緊湊的對話時間線，支援星標訊息與搜尋。',
+        settings: { compactView: { label: '使用精簡索引' } },
+      },
+      ja: {
+        name: 'ChatGPT · タイムライン',
+        description:
+          'ChatGPT にコンパクトな会話タイムラインを追加し、スター付きメッセージと検索に対応します。',
+        settings: { compactView: { label: 'コンパクト表示を使う' } },
+      },
+      ko: {
+        name: 'ChatGPT · 타임라인',
+        description: 'ChatGPT에 별표 메시지와 검색을 지원하는 간단한 대화 타임라인을 추가합니다.',
+        settings: { compactView: { label: '컴팩트 타임라인 사용' } },
+      },
+      fr: {
+        name: 'ChatGPT · Timeline',
+        description: 'Ajoute une timeline compacte à ChatGPT avec messages favoris et recherche.',
+        settings: { compactView: { label: 'Utiliser la chronologie compacte' } },
+      },
+      es: {
+        name: 'ChatGPT · Línea de tiempo',
+        description:
+          'Añade a ChatGPT una línea de tiempo compacta con mensajes destacados y búsqueda.',
+        settings: { compactView: { label: 'Usar cronología compacta' } },
+      },
+      pt: {
+        name: 'ChatGPT · Linha do tempo',
+        description:
+          'Adiciona ao ChatGPT uma linha do tempo compacta com mensagens favoritas e busca.',
+        settings: { compactView: { label: 'Usar linha do tempo compacta' } },
+      },
+      ru: {
+        name: 'ChatGPT · Таймлайн',
+        description: 'Добавляет в ChatGPT компактную шкалу диалога со звёздами и поиском.',
+        settings: { compactView: { label: 'Использовать компактную шкалу' } },
+      },
+      ar: {
+        name: 'ChatGPT · المخطط الزمني',
+        description: 'يضيف إلى ChatGPT مخططًا زمنيًا موجزًا مع الرسائل المميزة والبحث.',
+        settings: { compactView: { label: 'استخدام المخطط الزمني المضغوط' } },
+      },
+    },
+    author: 'voyager-official',
+    category: 'productivity',
+    license: 'GPL-3.0-or-later',
+    engine: '>=1.4.0',
+    tier: 'declarative',
+    matches: ['https://chatgpt.com/*', 'https://chat.openai.com/*'],
+    requires: { handlers: ['turnNavigator'], semantic: ['userTurn'] },
+    contributes: {
+      settings: {
+        compactView: {
+          type: 'boolean',
+          label: 'Use compact timeline',
+          default: false,
+        },
+      },
+      domOps: [
+        {
+          op: 'native',
+          handler: 'turnNavigator',
+          // Selectors and the conversation id come from the ChatGPT adapter, so
+          // fixes travel with site.json. ChatGPT keeps one virtual-list item per
+          // turn and can briefly render a turn twice; its id keeps repeated
+          // prompts apart and folds the copies into one marker.
+          params: { turnKey: 'data-turn-id-container' },
+        },
+      ],
+    },
+  },
+  {
     id: 'voyager.chatgpt-export',
     name: 'ChatGPT · Conversation Export',
     version: '1.0.0',

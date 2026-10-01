@@ -86,6 +86,23 @@ describe('BUILTIN_PLUGINS', () => {
     expect(timeline?.i18n?.zh?.settings?.compactView?.label).toBe('使用紧凑索引');
   });
 
+  it('includes the ChatGPT timeline, configured entirely by the ChatGPT adapter', () => {
+    const timeline = BUILTIN_PLUGINS.find((m) => m.id === 'voyager.chatgpt-timeline');
+    expect(timeline).toBeDefined();
+    expect(timeline?.matches).toEqual(['https://chatgpt.com/*', 'https://chat.openai.com/*']);
+    expect(timeline?.contributes.domOps).toEqual([
+      { op: 'native', handler: 'turnNavigator', params: { turnKey: 'data-turn-id-container' } },
+    ]);
+    expect(timeline?.requires).toEqual({ handlers: ['turnNavigator'], semantic: ['userTurn'] });
+    expect(timeline?.contributes.settings?.compactView?.default).toBe(false);
+    const locales = ['zh', 'zh_TW', 'ja', 'ko', 'fr', 'es', 'pt', 'ru', 'ar'] as const;
+    for (const locale of locales) {
+      expect(timeline?.i18n?.[locale]?.name, locale).toContain('ChatGPT');
+      expect(timeline?.i18n?.[locale]?.description, locale).toContain('ChatGPT');
+      expect(timeline?.i18n?.[locale]?.settings?.compactView?.label, locale).toBeTruthy();
+    }
+  });
+
   it('does not expose the retired Claude usage plugin', () => {
     const usage = BUILTIN_PLUGINS.find((m) => m.id === 'voyager.claude-usage');
     expect(usage).toBeUndefined();

@@ -17,6 +17,7 @@ import type { Primitive } from './types';
 
 export interface TurnNavigatorParams {
   readonly turn?: string;
+  readonly turnKey?: string;
   readonly conversationIdPattern?: string;
   readonly scrollContainer?: string;
   readonly yieldWhen?: string;
@@ -24,6 +25,8 @@ export interface TurnNavigatorParams {
 }
 
 const MAX_SELECTOR_LENGTH = 2_000;
+/** A plain lower-case attribute name: it is interpolated into `[name]`. */
+const ATTRIBUTE_NAME = /^[a-z][a-z0-9-]{0,63}$/;
 const SELECTOR_PARAMS = ['turn', 'scrollContainer', 'yieldWhen'] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -46,6 +49,7 @@ export const turnNavigatorPrimitive: Primitive<TurnNavigatorParams> = {
     const issues: ManifestIssue[] = [];
     const params: {
       turn?: string;
+      turnKey?: string;
       conversationIdPattern?: string;
       scrollContainer?: string;
       yieldWhen?: string;
@@ -79,6 +83,12 @@ export const turnNavigatorPrimitive: Primitive<TurnNavigatorParams> = {
         }
         continue;
       }
+      if (key === 'turnKey') {
+        if (typeof value === 'string' && ATTRIBUTE_NAME.test(value)) params.turnKey = value;
+        else
+          issues.push({ path: 'params.turnKey', message: 'must be a lower-case attribute name' });
+        continue;
+      }
       if (key === 'position') {
         if (value === 'left' || value === 'right') params.position = value;
         else issues.push({ path: 'params.position', message: 'must be "left" or "right"' });
@@ -110,8 +120,9 @@ export const turnNavigatorPrimitive: Primitive<TurnNavigatorParams> = {
       siteId: adapter?.id ?? 'site',
       siteLabel: adapter?.label ?? 'Conversation',
       turnSelector,
+      turnKeyAttribute: params.turnKey,
       conversationIdPattern: params.conversationIdPattern ?? adapter?.conversationIdPattern,
-      scrollContainerSelector: params.scrollContainer,
+      scrollContainerSelector: params.scrollContainer ?? adapter?.selectors.scrollContainer,
       yieldWhenSelector: params.yieldWhen,
       position: params.position ?? 'right',
       pluginId: context.pluginId,

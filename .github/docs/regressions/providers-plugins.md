@@ -56,6 +56,47 @@ or prompt commands.
   `src/features/plugins/builtin/claudeTimeline/index.test.ts` (`builds Claude-scoped conversation
 and turn ids`).
 
+## Repeated prompts and duplicate renders need a per-turn key, not first-hash matching
+
+- **Trap:** Navigator markers are keyed by a hash of the prompt text. With
+  `[continue, x, continue]` known and only the last `continue` mounted, first-hash matching
+  re-pointed marker 0 at the third turn. ChatGPT can also briefly keep two virtual-list items with
+  one `data-turn-id-container`; the unstamped copy became a `~2` marker that grow-only
+  accumulation never dropped, leaving a phantom dot.
+- **Rule:** `turnMerge.ts` matches by the stamped id first, then the host key, then a hash only
+  one marker carries, then the nearest remembered centre among same-hash markers. A site with a
+  per-turn attribute names it as the `turnKey` param; an element owning several turns (a `*-root`
+  wrapper) is never a key. A stamped element keeps its marker when the host renames its key, and
+  the navigator observes that attribute so the marker adopts the new key. `turnKey` is new in
+  this engine: a catalog manifest cannot use it until `PLUGIN_ENGINE_VERSION` is bumped, since
+  older engines skip an op with an unknown param.
+- **Guard:** `src/features/plugins/builtin/chatgptTimeline.test.ts` (`keeps repeated identical
+prompts apart`, `folds a turn ChatGPT briefly renders twice`, `follows a turn whose list id
+ChatGPT renames`, `does not treat a wrapper around several turns as one turn`).
+
+## Turn navigator must re-key on route changes that mutate no turn
+
+- **Trap:** The navigator refreshed only on turn mutations. A new ChatGPT chat gains `/c/<id>`
+  with no DOM change, and leaving for a page without turns removes them before the URL changes,
+  so stars stayed filed under the path-hash id and the old rail lingered.
+- **Rule:** `TurnNavigator.start()` subscribes to the shared `watchRouteChanges` inside its
+  plugin scope and schedules a refresh. ChatGPT's `conversationIdPattern` accepts `/u/<n>/` and
+  Projects `/g/<id>/` prefixes, matching the export adapter's conversation route.
+- **Guard:** `src/features/plugins/builtin/chatgptTimeline.test.ts` (`re-keys a new chat`,
+  `clears the rail when leaving`, `rebuilds for the next conversation, Projects routes
+included`).
+
+## Column-reverse scrollers count offsets from the newest turn
+
+- **Trap:** ChatGPT's thread was reported to scroll as a `column-reverse` flex box, where
+  `scrollTop` is 0 at the newest turn and negative above it. Positive offsets clamp to 0, so
+  every jump landed on the latest turn.
+- **Rule:** `scrollMotion.ts` reads and writes container offsets through `readScrollOffset` and
+  `applyScroll`, which map a reverse scroller onto a 0-based axis. Detection is by layout
+  (`scrollTop < 0` or computed `flex-direction`), never by site.
+- **Guard:** `src/features/plugins/builtin/chatgptTimeline.test.ts` (`jumps through a
+column-reverse thread`).
+
 ## A builtin with a `native` op must not also be bound as a native handler
 
 - **Trap:** `verifyNativeHandlerBindings` used to require one handler per builtin id. After the

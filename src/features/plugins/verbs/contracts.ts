@@ -69,6 +69,12 @@ export const PRIMITIVE_CONTRACTS: readonly PrimitiveContract[] = [
         required: false,
         description: "User-turn elements to index; defaults to the site adapter's userTurn.",
       },
+      turnKey: {
+        type: 'string',
+        required: false,
+        description:
+          "Attribute holding the host's own per-turn id, read from the turn or its nearest ancestor (a virtual-list item). Tells repeated prompts apart and folds a turn rendered twice into one marker.",
+      },
       conversationIdPattern: {
         type: 'string',
         required: false,
@@ -78,7 +84,8 @@ export const PRIMITIVE_CONTRACTS: readonly PrimitiveContract[] = [
       scrollContainer: {
         type: 'selector',
         required: false,
-        description: 'Element that scrolls the conversation; auto-detected when absent.',
+        description:
+          "Element that scrolls the conversation; defaults to the site adapter's scrollContainer, else auto-detected.",
       },
       yieldWhen: {
         type: 'selector',
