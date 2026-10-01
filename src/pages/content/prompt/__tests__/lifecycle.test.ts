@@ -25,7 +25,7 @@ describe('prompt manager lifecycle', () => {
   it('marks duplicate-name prompts with a persistent non-blocking badge', () => {
     const code = readFileSync(resolve(process.cwd(), 'src/pages/content/prompt/index.ts'), 'utf8');
 
-    expect(code).toContain('const nameConflictIds = getPromptNameConflictIds(items);');
+    expect(code).toContain('const nameConflictIds = getPromptNameConflictIds(library.items);');
     expect(code).toContain("createEl('span', 'gv-pm-chip gv-pm-name-conflict')");
     expect(code).toContain("i18n.t('pm_name_conflict_badge')");
   });

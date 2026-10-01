@@ -70,8 +70,9 @@ import {
 } from './PromptTemplateFill';
 import { extractPlainTitle } from './compactTitle';
 import { activatePromptText } from './promptClickAction';
+import { createPromptLibraryState } from './promptLibraryState';
 import { getPromptNameConflictIds, isPromptNameTaken, normalizePromptName } from './promptName';
-import { isPinned, pinGroupOf, sortPinnedFirst, togglePin } from './promptPinning';
+import { isPinned, pinGroupOf, sortPinnedFirst } from './promptPinning';
 import { createPromptReorder } from './promptReorder';
 import { createPromptRowSurfaces } from './promptRowConfirm';
 import { getScrollHintState } from './scrollHint';
@@ -1024,7 +1025,12 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
     panel.appendChild(notice);
 
     // State
-    let items: PromptItem[] = await readStorage<PromptItem[]>(STORAGE_KEYS.items, []);
+    const library = createPromptLibraryState({
+      read: () => readStorage<PromptItem[]>(STORAGE_KEYS.items, []),
+      write: (next) => writeStorage(STORAGE_KEYS.items, next),
+      makeId: uid,
+    });
+    await library.load();
     let open = false;
     // Restore the tag filter saved in a previous session (#729), reconciled
     // against the tags that still exist so a deleted/renamed tag can't strand
@@ -1033,7 +1039,7 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
     let selectedTags: Set<string> = new Set<string>(
       sanitizeSelectedTags(
         await readStorage<string[]>(STORAGE_KEYS.selectedTags, []),
-        collectAllTags(items),
+        collectAllTags(library.items),
       ),
     );
     let locked = !!(await readStorage<boolean>(STORAGE_KEYS.locked, false));
@@ -1677,7 +1683,7 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
     }
 
     function renderTags(): void {
-      const all = collectAllTags(items);
+      const all = collectAllTags(library.items);
       // Self-heal: if a previously selected tag's prompts were all deleted or
       // retagged this session, drop it so the filter can't get stuck on a
       // chip-less ghost tag that hides every prompt. Persist only on a real
@@ -1721,18 +1727,17 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
     const rowActivators = new Map<string, () => void>();
     const reorder = createPromptReorder<PromptItem>({
       list,
-      getItems: () => items,
+      getItems: () => library.items,
       commit: (next) => {
-        items = next;
+        library.reorder(next);
         renderList();
-        void writeStorage(STORAGE_KEYS.items, items);
       },
       onDragStart: () => {
         hideTooltip();
         rowSurfaces.close();
       },
       onTap: (id) => rowActivators.get(id)?.(),
-      groupOf: (id) => pinGroupOf(items, id),
+      groupOf: (id) => pinGroupOf(library.items, id),
     });
 
     /** Loads the add form with a prompt's fields; shared by the button and the row menu. */
@@ -1755,8 +1760,7 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
         confirmLabel: i18n.t('pm_delete') || 'Delete',
         cancelLabel: i18n.t('pm_cancel') || 'Cancel',
         onConfirm: () => {
-          items = items.filter((x) => x.id !== it.id);
-          void writeStorage(STORAGE_KEYS.items, items);
+          library.remove(it.id);
           renderTags();
           renderList();
           setNotice(i18n.t('pm_deleted') || 'Deleted', 'ok');
@@ -1785,8 +1789,8 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
 
       const q = (searchInput.value || '').trim().toLowerCase();
       const selectedTagList = Array.from(selectedTags);
-      const nameConflictIds = getPromptNameConflictIds(items);
-      const filtered = items.filter((it) => {
+      const nameConflictIds = getPromptNameConflictIds(library.items);
+      const filtered = library.items.filter((it) => {
         const okTag = selectedTagList.every((t) => it.tags.includes(t));
         if (!okTag) return false;
         if (!q) return true;
@@ -2013,9 +2017,8 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
         pinBtn.setAttribute('aria-pressed', isPinned(it) ? 'true' : 'false');
         pinBtn.addEventListener('click', (e) => {
           e.stopPropagation();
-          items = togglePin(items, it.id, Date.now());
+          library.togglePin(it.id);
           renderList();
-          void writeStorage(STORAGE_KEYS.items, items);
         });
         actions.appendChild(pinBtn);
         // Compact keeps the chips with the title they label, leaving the
@@ -2410,9 +2413,8 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
         // The panel's own writes echo back through this listener. Rebuilding
         // the list and flashing "Synced" for data the panel already holds is
         // noise, and reordering writes on every drop.
-        if (Array.isArray(newItems) && JSON.stringify(newItems) !== JSON.stringify(items)) {
+        if (library.receive(newItems)) {
           pmLogger.info('Prompt data changed in chrome.storage.local, reloading...');
-          items = newItems;
           renderTags();
           renderActiveList();
           setNotice(i18n.t('syncSuccess') || 'Synced', 'ok');
@@ -2510,41 +2512,22 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
         nameInput.focus();
         return;
       }
-      if (isPromptNameTaken(items, name, editingId)) {
+      if (isPromptNameTaken(library.items, name, editingId)) {
         setInlineHint(i18n.t('pm_name_duplicate') || 'Prompt name already exists', 'err');
         nameInput.focus();
         return;
       }
       if (!text.trim()) return;
-      if (editingId) {
-        const dup = items.some(
-          (x) => x.id !== editingId && x.text.trim().toLowerCase() === text.trim().toLowerCase(),
-        );
-        if (dup) {
-          setInlineHint(i18n.t('pm_duplicate') || 'Duplicate prompt', 'err');
-          return;
-        }
-        const target = items.find((x) => x.id === editingId);
-        if (target) {
-          target.text = text;
-          target.tags = tags;
-          target.name = name;
-          target.updatedAt = Date.now();
-          await writeStorage(STORAGE_KEYS.items, items);
-          setNotice(i18n.t('pm_saved') || 'Saved', 'ok');
-        }
-        editingId = null;
-      } else {
-        // prevent duplicates (case-insensitive, same text)
-        const exists = items.some((x) => x.text.trim().toLowerCase() === text.trim().toLowerCase());
-        if (exists) {
-          setInlineHint(i18n.t('pm_duplicate') || 'Duplicate prompt', 'err');
-          return;
-        }
-        const it: PromptItem = { id: uid(), name, text, tags, createdAt: Date.now() };
-        items = [it, ...items];
-        await writeStorage(STORAGE_KEYS.items, items);
+      // Duplicate text is refused case-insensitively, ignoring surrounding space.
+      const outcome = editingId
+        ? await library.edit(editingId, { name, text, tags })
+        : await library.add({ name, text, tags });
+      if (outcome === 'duplicate') {
+        setInlineHint(i18n.t('pm_duplicate') || 'Duplicate prompt', 'err');
+        return;
       }
+      if (outcome === 'saved') setNotice(i18n.t('pm_saved') || 'Saved', 'ok');
+      editingId = null;
       (addForm.querySelector('.gv-pm-input-name') as HTMLInputElement).value = '';
       (addForm.querySelector('.gv-pm-input-text') as HTMLTextAreaElement).value = '';
       syncConvertBracesVisibility();
