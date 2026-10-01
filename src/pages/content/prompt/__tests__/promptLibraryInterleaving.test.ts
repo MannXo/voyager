@@ -36,19 +36,31 @@ const prompt = (id: string, text: string, extra: Partial<PromptItem> = {}): Prom
 function profile(initial: unknown) {
   let stored: unknown = structuredClone(initial);
   const tabs: PromptLibraryState[] = [];
+  /** Storage calls and change events still on their way. */
+  let busy = 0;
+  const later = async <T>(ms: number, run: () => T): Promise<T> => {
+    busy += 1;
+    try {
+      await wait(ms);
+      return run();
+    } finally {
+      busy -= 1;
+    }
+  };
   const area: PromptLibraryArea = {
-    get: async (key) => {
-      await wait(0);
-      return key === KEY && stored !== undefined ? { [KEY]: structuredClone(stored) } : {};
-    },
-    set: async (items) => {
-      await wait(5);
-      stored = structuredClone(items[KEY]);
-      // onChanged reaches each tab a little later, as an event does.
-      setTimeout(() => {
-        for (const tab of tabs) tab.receive(structuredClone(stored));
-      }, 1);
-    },
+    get: (key) =>
+      later(0, () =>
+        key === KEY && stored !== undefined ? { [KEY]: structuredClone(stored) } : {},
+      ),
+    set: (items) =>
+      later(5, () => {
+        stored = structuredClone(items[KEY]);
+        // onChanged reaches each tab a little later, as an event does.
+        const value = structuredClone(stored);
+        void later(1, () => {
+          for (const tab of tabs) tab.receive(structuredClone(value));
+        });
+      }),
   };
   const owner = createPromptLibraryOwner({ area });
   const send = createPromptLibraryClient((request) =>
@@ -69,11 +81,16 @@ function profile(initial: unknown) {
     return state;
   }
 
-  return { owner, area, send, openTab, stored: () => stored as PromptItem[] };
-}
+  /** Waits until no storage call or change event is left, however long that takes. */
+  async function settle(): Promise<void> {
+    for (let idle = 0; idle < 3;) {
+      await wait(0);
+      idle = busy === 0 ? idle + 1 : 0;
+    }
+  }
 
-/** Lets every pending storage write, owner op and onChanged event finish. */
-const settle = () => wait(50);
+  return { owner, area, send, openTab, settle, stored: () => stored as PromptItem[] };
+}
 
 describe('Prompt Manager writes alongside other writers', () => {
   it('keeps a Prompt Manager edit and a template saved in another tab', async () => {
@@ -90,7 +107,7 @@ describe('Prompt Manager writes alongside other writers', () => {
       pm.edit('a', { name: 'A', text: 'Alpha, edited', tags: [] }),
       templates.save([{ name: 'Review', text: 'Compare the sources.' }]),
     ]);
-    await settle();
+    await browser.settle();
 
     const stored = browser.stored();
     expect(stored.map((item) => item.id).sort()).toEqual(['a', 'b', 'template']);
@@ -110,7 +127,7 @@ describe('Prompt Manager writes alongside other writers', () => {
     await wait(1);
     pm.reorder([pm.items[2], pm.items[0], pm.items[1]]);
     await merging;
-    await settle();
+    await browser.settle();
     const ids = browser.stored().map((item) => item.id);
     expect([...ids].sort()).toEqual(['a', 'b', 'c', 'cloud']);
     expect(ids.filter((id) => id !== 'cloud')).toEqual(['c', 'a', 'b']);
@@ -119,7 +136,7 @@ describe('Prompt Manager writes alongside other writers', () => {
     // The merge sorts newest first; a reorder made after it is what stays.
     const order = ['c', 'a', 'cloud', 'b'];
     pm.reorder(order.map((id) => pm.items.find((item) => item.id === id)!));
-    await settle();
+    await browser.settle();
     expect(browser.stored().map((item) => item.id)).toEqual(order);
     expect(pm.items).toEqual(browser.stored());
   });
@@ -133,7 +150,7 @@ describe('Prompt Manager writes alongside other writers', () => {
       first.edit('a', { name: 'A', text: 'Alpha from tab one', tags: [] }),
       second.edit('b', { name: 'B', text: 'Beta from tab two', tags: [] }),
     ]);
-    await settle();
+    await browser.settle();
 
     expect(browser.stored().map((item) => item.text)).toEqual([
       'Alpha from tab one',
@@ -153,7 +170,7 @@ describe('Prompt Manager writes alongside other writers', () => {
     const added = first.add({ name: 'D', text: 'D', tags: [] });
     second.togglePin('c');
     await added;
-    await settle();
+    await browser.settle();
 
     const stored = browser.stored();
     expect(stored.map((item) => item.id).sort()).toEqual(['a', 'c', 'pm-1']);
