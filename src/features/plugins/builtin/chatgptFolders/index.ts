@@ -17,7 +17,7 @@ import { createFolderDialogs } from '@/pages/content/folder/folderDialogs';
 import { getTranslationSyncUnsafe as t, initI18n } from '@/utils/i18n';
 
 import { isTemporaryChat } from '../chatgptTemporaryHandoff/handoff';
-import { ChatGptFolderStore } from './ChatGptFolderStore';
+import { type AddOutcome, ChatGptFolderStore } from './ChatGptFolderStore';
 import { type FolderPickerHandle, openFolderPicker } from './chatgptFolderPicker';
 import { ChatGptFolderSection } from './chatgptFolderSection';
 import { ChatGptHideFiled, HIDE_FILED_SETTING } from './chatgptHideFiled';
@@ -35,6 +35,13 @@ import {
 } from './transfer';
 
 const HINT_KEYS = ['chatgptFoldersHint', 'floatingPanelGestureHint'];
+
+const ADD_OUTCOME_KEYS: Record<Exclude<AddOutcome, 'closed'>, string> = {
+  added: 'chatgptFoldersAdded',
+  present: 'chatgptFoldersAlreadyFiled',
+  // The folder was deleted elsewhere; trying again shows the current folders.
+  missing: 'folder_save_error',
+};
 
 function format(key: string, values: Record<string, string | number>): string {
   return Object.entries(values).reduce(
@@ -109,9 +116,10 @@ class ChatGptFoldersView {
     this.picker?.close();
     this.picker = openFolderPicker(this.store.data.folders, (folderId) => {
       this.picker = null;
-      const added = this.store.addConversation(folderId, conversation);
+      const outcome = this.store.addConversation(folderId, conversation);
+      if (outcome === 'closed') return;
       // The menu sits in the sidebar, so the section is where the user is looking.
-      const message = t(added ? 'chatgptFoldersAdded' : 'chatgptFoldersAlreadyFiled');
+      const message = t(ADD_OUTCOME_KEYS[outcome]);
       this.section?.flash(message);
       this.panel?.flash(message);
     });
@@ -205,8 +213,8 @@ class ChatGptFoldersView {
       return;
     }
     if (!this.store.ready) return;
-    const added = this.store.addConversation(folderId, conversation);
-    this.panel?.flash(t(added ? 'chatgptFoldersAdded' : 'chatgptFoldersAlreadyFiled'));
+    const outcome = this.store.addConversation(folderId, conversation);
+    if (outcome !== 'closed') this.panel?.flash(t(ADD_OUTCOME_KEYS[outcome]));
   }
 
   private exportFolders(): void {

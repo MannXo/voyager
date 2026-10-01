@@ -123,13 +123,35 @@ describe('ChatGptFolderStore', () => {
     const s = await ready();
     s.createFolder('Work', null);
     const folderId = s.data.folders[0].id;
-    expect(s.addConversation(folderId, conversation('a', 'Trip plan'))).toBe(true);
-    expect(s.addConversation(folderId, conversation('a', 'Again'))).toBe(false);
+    expect(s.addConversation(folderId, conversation('a', 'Trip plan'))).toBe('added');
+    expect(s.addConversation(folderId, conversation('a', 'Again'))).toBe('present');
     await settle();
 
     const stored = memory.values.local.get(StorageKeys.FOLDER_DATA_CHATGPT) as FolderData;
     expect(stored.folders.map((f) => f.name)).toEqual(['Work']);
     expect(stored.folderContents[folderId].map((c) => c.title)).toEqual(['Trip plan']);
+  });
+
+  it('files nothing into a folder that no longer exists', async () => {
+    const s = await ready();
+    s.createFolder('Work', null);
+    s.createFolder('Gone', null);
+    const [work, gone] = s.data.folders.map((folder) => folder.id);
+    s.addConversation(work, conversation('a'));
+    s.removeFolder(gone);
+    await settle();
+    const writes = memory.writes.length;
+
+    expect(s.addConversation(gone, conversation('b'))).toBe('missing');
+    s.moveConversation('chatgpt:conv:a', work, gone);
+    expect(s.addConversation(ROOT_CONVERSATIONS_ID, conversation('c'))).toBe('added');
+    await settle();
+
+    const stored = memory.values.local.get(StorageKeys.FOLDER_DATA_CHATGPT) as FolderData;
+    expect(Object.keys(stored.folderContents).sort()).toEqual([ROOT_CONVERSATIONS_ID, work].sort());
+    expect(stored.folderContents[work].map((c) => c.conversationId)).toEqual(['chatgpt:conv:a']);
+    // Only the root filing was saved.
+    expect(memory.writes.length).toBe(writes + 1);
   });
 
   it('recovers a backup when a folder owns a malformed bucket', async () => {

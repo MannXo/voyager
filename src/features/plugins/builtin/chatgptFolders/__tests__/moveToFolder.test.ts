@@ -199,6 +199,31 @@ describe('"Move to folder" in a sidebar row menu', () => {
     }
   });
 
+  it('refuses a folder another tab deleted while the picker was open, and says so', async () => {
+    const menu = sidebar.openMenu(TARGET.id);
+    await nextPass();
+    menu.querySelector<HTMLElement>(ENTRY)!.click();
+
+    const fromOtherTab = structuredClone(DATA);
+    fromOtherTab.folders = fromOtherTab.folders.filter((folder) => folder.id !== 'f2');
+    delete fromOtherTab.folderContents.f2;
+    memory.external('local', StorageKeys.FOLDER_DATA_CHATGPT, fromOtherTab);
+    await settle(20);
+    const writes = memory.writes.length;
+
+    pick('Trips');
+    await settle(20);
+
+    const saved = memory.values.local.get(StorageKeys.FOLDER_DATA_CHATGPT) as FolderData;
+    expect(Object.hasOwn(saved.folderContents, 'f2')).toBe(false);
+    expect(memory.writes.length).toBe(writes);
+    const status = document
+      .querySelector('.gv-chatgpt-folder-section')!
+      .shadowRoot!.querySelector<HTMLElement>('[role="status"]')!;
+    expect(status.hidden).toBe(false);
+    expect(status.textContent).toBe('Could not save folder changes. Please try again.');
+  });
+
   it('keeps the Project route of a row inside a Project', async () => {
     sidebar.move(TARGET.id, `/g/g-p-67ab12cd34-trip/c/${TARGET.id}`);
     const menu = sidebar.openMenu(TARGET.id);

@@ -15,6 +15,9 @@ import type { ConversationReference, Folder, FolderData } from '@/pages/content/
 import { CHATGPT_CONVERSATION_ID_PREFIX } from './chatgptIdentity';
 import { CHATGPT_FOLDER_CONFIG } from './config';
 
+/** What filing a conversation did. `missing`: the folder was deleted (say, in another tab). */
+export type AddOutcome = 'added' | 'present' | 'missing' | 'closed';
+
 function bareId(conversationId: string): string {
   return conversationId.startsWith(CHATGPT_CONVERSATION_ID_PREFIX)
     ? conversationId.slice(CHATGPT_CONVERSATION_ID_PREFIX.length)
@@ -114,7 +117,7 @@ export class ChatGptFolderStore {
     const conversation = ownBucket(this.data.folderContents, fromFolderId)?.find(
       (c) => c.conversationId === conversationId,
     );
-    if (!conversation) return;
+    if (!conversation || !this.hasBucketOwner(toFolderId)) return;
     this.commit(() => {
       this.repository.data = placeConversations(this.data, [conversation], {
         target: toFolderId,
@@ -124,13 +127,18 @@ export class ChatGptFolderStore {
       }).data;
     });
   }
-  /** Files `conversation` into `target`; `false` when it is already there or edits are closed. */
-  addConversation(target: string, conversation: ConversationReference): boolean {
-    if (!this.ready) return false;
+  /**
+   * Files `conversation` into `target`. A picker or menu may still offer a folder
+   * another tab has deleted; filing into it would leave an orphan bucket that no
+   * tree shows, so that is refused.
+   */
+  addConversation(target: string, conversation: ConversationReference): AddOutcome {
+    if (!this.ready) return 'closed';
+    if (!this.hasBucketOwner(target)) return 'missing';
     const placed = placeConversations(this.data, [conversation], { target, placement: 'top' });
-    if (placed.added.length === 0) return false;
+    if (placed.added.length === 0) return 'present';
     this.commit(() => (this.repository.data = placed.data));
-    return true;
+    return 'added';
   }
 
   /** Bare ids of every filed conversation, for one pass over the sidebar. */
@@ -164,6 +172,14 @@ export class ChatGptFolderStore {
   /** Persists a whole new snapshot (an import); edits are closed until it settles. */
   replaceData(data: FolderData): Promise<boolean> {
     return this.repository.replaceData(data);
+  }
+
+  /** Whether `bucketId` is the root bucket or a folder that still exists. */
+  private hasBucketOwner(bucketId: string): boolean {
+    return (
+      bucketId === CHATGPT_FOLDER_CONFIG.rootBucketId ||
+      this.data.folders.some((folder) => folder.id === bucketId)
+    );
   }
 
   private *references(): Generator<ConversationReference> {

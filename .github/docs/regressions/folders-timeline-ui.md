@@ -894,3 +894,16 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
   title only when the row shows something new to this tab. A reload alone never writes.
 - **Guard:** `src/features/plugins/builtin/chatgptFolders/__tests__/sidebarTitleSync.test.ts`
   (`settles when another tab saves a title this sidebar still shows differently`).
+
+## The ChatGPT folder picker can offer a folder another tab deleted
+
+- **Trap:** The "Move to folder" picker lists the folders it had when it opened. If another tab
+  deleted one meanwhile, picking it created a bucket for a folder no tree shows. The conversation
+  vanished into it, and with "hide filed chats" on, its Recents row disappeared too.
+- **Rule:** `ChatGptFolderStore.addConversation` and `moveConversation` file only into the root
+  bucket or a folder that still exists. A refused filing returns `missing`, and the user sees
+  `folder_save_error` in the sidebar section (and the panel when it is open).
+- **Guard:** `src/features/plugins/builtin/chatgptFolders/__tests__/ChatGptFolderStore.test.ts`
+  (`files nothing into a folder that no longer exists`) and
+  `src/features/plugins/builtin/chatgptFolders/__tests__/moveToFolder.test.ts`
+  (`refuses a folder another tab deleted while the picker was open, and says so`).
