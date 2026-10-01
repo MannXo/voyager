@@ -306,6 +306,19 @@ export function validateFolderData(data: unknown): boolean {
 }
 
 /** Copy folders and conversation references so a snapshot cannot alias live data. */
+/**
+ * The bucket stored under `id` itself. Ids from a drag payload are page-readable
+ * data, so an inherited key (`__proto__`, `constructor`) is never a bucket.
+ */
+export function ownBucket(
+  contents: FolderData['folderContents'],
+  id: string | undefined,
+): ConversationReference[] | undefined {
+  if (!id || !Object.hasOwn(contents, id)) return undefined;
+  const bucket = contents[id];
+  return Array.isArray(bucket) ? bucket : undefined;
+}
+
 export function cloneFolderData(data: FolderData): FolderData {
   const folders = data.folders.map((folder) => ({ ...folder }));
   const folderContents = Object.fromEntries(

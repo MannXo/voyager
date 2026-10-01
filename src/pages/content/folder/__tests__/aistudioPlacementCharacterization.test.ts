@@ -242,22 +242,26 @@ describe.each(dropTargets)('AI Studio $name', ({ drop }) => {
     expect(manager.data.folderContents.c[0]).toEqual(fromB);
   });
 
-  it('falls back to any stored copy when the source bucket does not hold the prompt', async () => {
-    const fromA = prompt('p5', { title: 'Copy A', lastOpenedAt: 1 });
-    const manager = createManager({
-      folders: [folder('a'), folder('b'), folder('c')],
-      folderContents: { a: [fromA], b: [], c: [] },
-    });
-    await drop(manager, 'c', {
-      type: 'conversation',
-      conversationId: 'p5',
-      title: 'Payload',
-      sourceFolderId: 'b',
-    });
+  // A drag payload is page-readable data: an inherited key is no source bucket.
+  it.each(['b', '__proto__', 'constructor'])(
+    'falls back to any stored copy when source %s does not hold the prompt',
+    async (sourceFolderId) => {
+      const fromA = prompt('p5', { title: 'Copy A', lastOpenedAt: 1 });
+      const manager = createManager({
+        folders: [folder('a'), folder('b'), folder('c')],
+        folderContents: { a: [fromA], b: [], c: [] },
+      });
+      await drop(manager, 'c', {
+        type: 'conversation',
+        conversationId: 'p5',
+        title: 'Payload',
+        sourceFolderId,
+      });
 
-    expect(ids(manager)).toEqual({ a: [], b: [], c: ['p5'] });
-    expect(manager.data.folderContents.c[0]).toEqual(fromA);
-  });
+      expect(ids(manager)).toEqual({ a: [], b: [], c: ['p5'] });
+      expect(manager.data.folderContents.c[0]).toEqual(fromA);
+    },
+  );
 
   it('builds the record from the payload only for a prompt no bucket holds', async () => {
     const manager = createManager(initial);

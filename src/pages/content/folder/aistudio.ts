@@ -10,7 +10,7 @@ import { StorageKeys } from '@/core/types/common';
 import type { PromptItem, SyncAccountScope } from '@/core/types/sync';
 import { isSafari } from '@/core/utils/browser';
 import { AISTUDIO_ROOT_BUCKET_ID } from '@/features/folder/constants';
-import { cloneFolderData, validateFolderData } from '@/features/folder/model/folderData';
+import { cloneFolderData, ownBucket, validateFolderData } from '@/features/folder/model/folderData';
 import { placeConversations } from '@/features/folder/model/placeConversations';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
 import { createTranslator, initI18n } from '@/utils/i18n';
@@ -1692,7 +1692,7 @@ export class AIStudioFolderManager {
     // Prefer the dragged copy: legacy data can hold differing copies in several buckets.
     const held = (list: ConversationReference[] | undefined) =>
       list?.find((conversation) => conversation.conversationId === conversationId);
-    const source = data.sourceFolderId ? this.data.folderContents[data.sourceFolderId] : undefined;
+    const source = ownBucket(this.data.folderContents, data.sourceFolderId);
     const stored = held(source) ?? held(Object.values(this.data.folderContents).flat());
     const record: ConversationReference = stored ?? {
       conversationId,
