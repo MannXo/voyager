@@ -412,11 +412,37 @@ describe('validateManifest remote-resource checks on rendered values', () => {
     }
   });
 
-  it('keeps accepting SVG data URIs whose markup contains http namespaces', () => {
-    const css =
-      'body{background:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\'/>")}';
-    const result = validateManifest({ ...valid, contributes: { styles: [{ css }] } });
-    expect(result.success).toBe(true);
+  it('rejects SVG and every other non-raster data: URL, in any encoding', () => {
+    // A filter resource document in Firefox may load <feImage href>, and base64 hides the URL.
+    for (const url of [
+      'data:image/svg+xml;base64,PHN2Zy8+#f',
+      'data:image/svg+xml,%3Csvg/%3E',
+      "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>",
+      'DATA:IMAGE/SVG+XML;charset=utf-8,<svg/>',
+      'data: image/svg+xml ;base64,PHN2Zy8+',
+      'data:image%2Fsvg+xml,<svg/>',
+      'data:text/html,<p>',
+      'data:text/css,a{}',
+      'data:,hello',
+      'data:;base64,AAAA',
+      'data:image/png',
+    ]) {
+      for (const css of [
+        `a{filter:url("${url}")}`,
+        `a{background:url(${url.replace(/[ '<>]/g, '')})}`,
+      ]) {
+        const result = validateManifest({ ...valid, contributes: { styles: [{ css }] } });
+        expect(result.success, css).toBe(false);
+      }
+    }
+  });
+
+  it('accepts raster data: URLs', () => {
+    for (const type of ['png', 'jpeg', 'gif', 'webp', 'avif', 'bmp', 'x-icon', 'PNG']) {
+      const css = `a{background:url("data:image/${type};base64,AAAA")}`;
+      const result = validateManifest({ ...valid, contributes: { styles: [{ css }] } });
+      expect(result.success, css).toBe(true);
+    }
   });
 
   it('rejects any string that starts with an external URL, wherever it sits', () => {
@@ -484,7 +510,7 @@ describe('validateManifest remote-resource checks on rendered values', () => {
       "body::after{content:'http'}",
       "body::after{content:'/probe.png'}",
       'body{background:url(data:image/png;base64,AAAA)}',
-      'body{background:url( "data:image/svg+xml,%3Csvg/%3E" )}',
+      'body{background:url( "data:image/webp;base64,AAAA" )}',
       'svg{filter:url(#gv-blur)}',
       'a{background:url()}',
       '.gv-x-url-image-set{color:red}',

@@ -345,11 +345,15 @@ while an active plugin has domOps`).
   sheet. And an attribute blocklist let any selector reach `<link rel=stylesheet href>`,
   `<base href>`, SVG `<image href>` or `<iframe srcdoc>`, which all fetch. Checking only external
   URLs also let `body{background:url('/probe')}` through: a relative URL resolves against the page
-  origin, so an enabled plugin still made a request.
+  origin, so an enabled plugin still made a request. Accepting any `data:` URL left one more: in
+  `filter:url(data:image/svg+xml;base64,…#f)` Firefox loads the SVG as a resource document that may
+  fetch `<feImage href="https://…">`, and base64 or percent-encoding hides that URL from the scan.
 - **Rule:** Check the rendered value at every sink with `manifest/sinkGuards.ts`: the validator
   renders styles and DOM ops with their defaults, and `declarativeEngine.ts` re-checks before each
   write, withholding the whole stylesheet or skipping the attribute or style value. CSS loads
-  nothing: `url()` takes only `data:` or a `#fragment`, and `@import`, `image-set()`, `image()`,
+  nothing: `url()` takes only a `#fragment` or a `data:` URL whose declared type is a raster image
+  (png, jpeg, gif, webp, avif, bmp, icon). SVG, any other type and a missing type are refused in
+  every encoding, without decoding the payload. And `@import`, `image-set()`, `image()`,
   `cross-fade()` and `src()` (which read a bare string as a URL) are refused, so a relative string
   elsewhere stays inert. No CSS sink (sheet, `setStyle` value, `style` attribute) may hold any
   string token that starts with an external URL, whatever precedes it, so `var()` cannot carry one

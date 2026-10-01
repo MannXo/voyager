@@ -138,9 +138,13 @@ Manifests may keep tiny CSS inline with `{ "css": "..." }`, but the preferred
 authoring shape is `{ "file": "style.css" }` next to `plugin.json`. The bundled
 source and the published catalog file both resolve that CSS to inline text,
 reject anything that loads, from the page's own origin too (`@import`,
-`image-set()`, `image()`, `cross-fade()`, `src()`, a `url()` other than `data:`
-or `#fragment`, or any string that starts with an external URL), and normalize
-it before the runtime sees it. For
+`image-set()`, `image()`, `cross-fade()`, `src()`, a `url()` other than a
+raster-image `data:` URL or `#fragment`, or any string that starts with an
+external URL), and normalize
+it before the runtime sees it. A `data:` URL in `url()` must declare a raster
+type (`image/png`, `jpeg`, `gif`, `webp`, `avif`, `bmp` or an icon type);
+`data:image/svg+xml` is refused in every encoding, because an SVG used as a
+filter, mask or clip-path resource can load images of its own. For
 user settings, `{{settingKey}}` tokens can be used in CSS text or in
 `setAttribute` / `setStyle` DOM op values; a common pattern is for CSS files to
 use a normal custom property and for a `setStyle` op to set that variable from a

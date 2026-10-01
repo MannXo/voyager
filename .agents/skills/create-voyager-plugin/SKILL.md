@@ -29,7 +29,9 @@ For architecture or distribution changes, read `src/features/plugins/README.md` 
   `gv-plugin-<site>-<id>`. Nothing leaks to the host page unscoped.
 - CSS loads nothing, not even from the page's origin: no `@import`, no
   `image-set()` / `image()` / `cross-fade()` / `src()`, `url()` only with a
-  `data:` URI or `#fragment`, and no string that starts with an external URL
+  `#fragment` or a raster `data:` URI (`image/png`, `jpeg`, `gif`, `webp`,
+  `avif`, `bmp`, icon; never `data:image/svg+xml`, in any encoding, since an SVG
+  filter resource can load images), and no string that starts with an external URL
   (`--u:"//…"`), in the sheet, a `setStyle` value or a `style` attribute.
   `validateStyleCss` rejects the rest.
 - `setAttribute` names are an allowlist: `data-*`, `aria-*`, `title`, `role`,

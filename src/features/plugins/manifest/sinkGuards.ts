@@ -15,7 +15,8 @@
  * form a later sink could turn into a fetch, whatever the sink it came from.
  *
  * CSS may not fetch at all, not even from the page's own origin: `url()` only
- * takes a `data:` URL or a `#fragment`, and the functions that read a bare
+ * takes a raster-image `data:` URL (never SVG, which can load more) or a
+ * `#fragment`, and the functions that read a bare
  * string as an image URL (`image-set()`, `image()`, `cross-fade()`, `src()`)
  * and `@import` are refused, so a relative string elsewhere stays inert.
  *
@@ -122,9 +123,21 @@ function trackName(name: string, next: string): string {
 }
 
 /**
+ * A `data:` URL whose declared type is a raster image: the header before the
+ * first comma is exactly one of these types, optionally with parameters such as
+ * `;base64`. A raster image is decoded as pixels and loads nothing more. SVG is
+ * a document: as a filter, mask or clip-path resource, Firefox lets it load
+ * images (`<feImage href>`), and base64 or percent-encoding hides that URL from
+ * any scan. So SVG, every other type and a missing type are refused, in any
+ * encoding, without decoding the payload.
+ */
+const RASTER_DATA_URL =
+  /^data:[\t\n\f\r ]*image\/(?:png|apng|jpeg|gif|webp|avif|bmp|x-icon|vnd\.microsoft\.icon)[\t\n\f\r ]*(?:;[^,]*)?,/i;
+
+/**
  * A `url()` argument that loads nothing: empty, a `#fragment` (same-document
- * reference) or a `data:` URL. Tab and newline vanish and C0 controls and
- * spaces are trimmed first, as the URL parser does.
+ * reference) or a raster-image `data:` URL. Tab and newline vanish and C0
+ * controls and spaces are trimmed first, as the URL parser does.
  */
 function isInertUrl(raw: string): boolean {
   const url = raw.replace(/[\t\n\r]/g, '');
@@ -133,7 +146,7 @@ function isInertUrl(raw: string): boolean {
   while (start < end && url.charCodeAt(start) <= 0x20) start++;
   while (end > start && url.charCodeAt(end - 1) <= 0x20) end--;
   const trimmed = url.slice(start, end);
-  return trimmed === '' || trimmed.startsWith('#') || /^data:/i.test(trimmed);
+  return trimmed === '' || trimmed.startsWith('#') || RASTER_DATA_URL.test(trimmed);
 }
 
 /** Index of the closing quote of the string that opens at `start` (or the end). */
@@ -208,7 +221,7 @@ function cssTokensCanFetch(source: string): boolean {
 
 /**
  * True when CSS text can fetch anything, external or from the page's own
- * origin: a `url()` that is not `data:` / `#fragment`, a string-fetching
+ * origin: a `url()` that is not a raster `data:` URL or `#fragment`, a string-fetching
  * function, or any string that starts with an external URL.
  */
 export function cssCanFetch(css: string): boolean {
@@ -225,7 +238,7 @@ function cssHasRemoteResource(css: string): boolean {
 export function styleSheetIssue(css: string): string | null {
   if (css.length > MAX_STYLE_LENGTH) return `exceeds ${MAX_STYLE_LENGTH} chars`;
   if (cssHasRemoteResource(css)) {
-    return 'must not load anything: no @import, image-set(), image(), cross-fade() or src(), url() only with data: or #fragment, and no string starting with an external URL (network fetch)';
+    return 'must not load anything: no @import, image-set(), image(), cross-fade() or src(), url() only with a raster image data: URL (png, jpeg, gif, webp, avif, bmp, ico) or #fragment, and no string starting with an external URL (network fetch)';
   }
   return null;
 }
@@ -233,7 +246,7 @@ export function styleSheetIssue(css: string): string | null {
 /** Problem with one inline style value, or null when it may be set. */
 export function styleValueIssue(value: string): string | null {
   return cssCanFetch(value)
-    ? 'must not load anything: no image-set(), image(), cross-fade() or src(), url() only with data: or #fragment, and no string starting with an external URL (network fetch)'
+    ? 'must not load anything: no image-set(), image(), cross-fade() or src(), url() only with a raster image data: URL (png, jpeg, gif, webp, avif, bmp, ico) or #fragment, and no string starting with an external URL (network fetch)'
     : null;
 }
 
