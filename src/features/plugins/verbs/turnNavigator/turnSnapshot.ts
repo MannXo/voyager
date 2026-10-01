@@ -13,7 +13,7 @@
  */
 import { hashString } from '@/core/utils/hash';
 
-import { type Marker, TURN_ID_ATTR, claimTurnId } from './turnMerge';
+import { type Marker, TURN_ID_ATTR, TurnIds } from './turnMerge';
 
 /** Labels kept for unloaded items; the oldest are dropped first. */
 const MAX_REMEMBERED_LABELS = 2_000;
@@ -107,10 +107,10 @@ export function snapshotMarkers(
   centerOf: (element: HTMLElement) => number,
 ): Marker[] {
   const byId = new Map(previous.map((marker) => [marker.id, marker]));
-  const usedIds = new Set<string>();
+  const turnIds = new TurnIds();
   return turns.map((turn) => {
     const hash = hashString(turn.summary);
-    const id = claimTurnId(hash, usedIds);
+    const id = turnIds.claim(hash);
     turn.content?.setAttribute(TURN_ID_ATTR, id);
     const center = centerOf(turn.element);
     const marker = byId.get(id);

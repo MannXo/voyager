@@ -66,6 +66,23 @@ describe('mergeMountedTurns without a turn key', () => {
     expect(mounted.element.getAttribute('data-gv-turn-id')).toBe(third);
   });
 
+  it('re-matches a long run of repeats after a shift, past the alignment budget', () => {
+    const turns: Array<readonly [string, number]> = [
+      ['start', 0],
+      ...Array.from({ length: 5_000 }, (_, index) => ['continue', 100 * (index + 1)] as const),
+      ['end', 100 * 5_001],
+    ];
+    const known = merge([], turns);
+    const ids = known.map((marker) => marker.id);
+
+    const next = merge(
+      known,
+      turns.map(([summary, center]) => [summary, center + 100] as const),
+    );
+
+    expect(next.map((marker) => marker.id)).toEqual(ids);
+  });
+
   it('keeps a genuinely new repeat as a new turn after its twin', () => {
     const known = merge([], [['continue', 100]]);
 

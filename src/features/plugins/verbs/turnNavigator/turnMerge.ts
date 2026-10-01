@@ -19,6 +19,11 @@
 import { hashString } from '@/core/utils/hash';
 
 export const TURN_ID_ATTR = 'data-gv-turn-id';
+/**
+ * Exact alignment of a repeated-prompt run costs (run + 1) x (markers + 1)
+ * cells of time and memory; past this, the run is matched greedily.
+ */
+const MAX_ALIGNMENT_CELLS = 250_000;
 
 export interface Marker {
   id: string;
@@ -47,13 +52,25 @@ export function buildTurnId(text: string): string {
   return `c-${hashString(text)}`;
 }
 
-/** `c-<hash>`, or `c-<hash>~<n>` for the n-th turn with that text. */
-export function claimTurnId(hash: string, usedIds: Set<string>): string {
-  const base = `c-${hash}`;
-  let id = base;
-  for (let n = 2; usedIds.has(id); n++) id = `${base}~${n}`;
-  usedIds.add(id);
-  return id;
+/**
+ * Hands out `c-<hash>`, then `c-<hash>~2`, `~3`… for repeats of one text,
+ * skipping ids already taken. It resumes each text where it stopped, so a
+ * long run of one repeated prompt does not rescan every earlier id.
+ */
+export class TurnIds {
+  private readonly nextByHash = new Map<string, number>();
+
+  constructor(private readonly used = new Set<string>()) {}
+
+  claim(hash: string): string {
+    const base = `c-${hash}`;
+    let n = this.nextByHash.get(hash) ?? 1;
+    let id = n === 1 ? base : `${base}~${n}`;
+    while (this.used.has(id)) id = `${base}~${++n}`;
+    this.nextByHash.set(hash, n + 1);
+    this.used.add(id);
+    return id;
+  }
 }
 
 /**
@@ -149,6 +166,7 @@ function alignRun(
   let anyCandidate = false;
   for (let j = lo; j < hi && !anyCandidate; j++) anyCandidate = hashes.has(known[j].hash);
   if (!anyCandidate) return result;
+  if ((m + 1) * (n + 1) > MAX_ALIGNMENT_CELLS) return alignGreedily(known, run, lo, hi, drifts);
 
   // best[i][j]: most matches, then least distance, for run[i..] vs known[lo+j..hi).
   const width = n + 1;
@@ -205,6 +223,58 @@ function alignRun(
   return result;
 }
 
+/**
+ * A run too long to align exactly: each turn, in order, takes the nearest
+ * remaining marker with its text after drift correction. Known centres grow
+ * with the index, so a scan stops once they pass the best distance, and the
+ * cost stays near linear in the run and the markers.
+ */
+function alignGreedily(
+  known: readonly Marker[],
+  run: readonly MountedEntry[],
+  lo: number,
+  hi: number,
+  drifts: readonly number[],
+): number[] {
+  const indexesByHash = new Map<string, number[]>();
+  for (let j = lo; j < hi; j++) {
+    const indexes = indexesByHash.get(known[j].hash);
+    if (indexes) indexes.push(j);
+    else indexesByHash.set(known[j].hash, [j]);
+  }
+  let cursor = lo;
+  return run.map((entry, r) => {
+    const indexes = indexesByHash.get(entry.hash);
+    if (!indexes) return -1;
+    let k = lowerBound(indexes, cursor);
+    const target = entry.center - drifts[r];
+    let best = -1;
+    let bestDistance = Infinity;
+    for (; k < indexes.length; k++) {
+      const offset = known[indexes[k]].center - target;
+      if (offset > bestDistance) break;
+      if (Math.abs(offset) < bestDistance) {
+        best = indexes[k];
+        bestDistance = Math.abs(offset);
+      }
+    }
+    if (best !== -1) cursor = best + 1;
+    return best;
+  });
+}
+
+/** First position in the ascending `values` holding a value at or above `min`. */
+function lowerBound(values: readonly number[], min: number): number {
+  let low = 0;
+  let high = values.length;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (values[mid] < min) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+}
+
 export function mergeMountedTurns(
   known: Marker[],
   turns: readonly MountedTurn[],
@@ -219,9 +289,9 @@ export function mergeMountedTurns(
 
   const matchedKnownIndex = matchKnownMarkers(known, mounted);
 
-  const usedIds = new Set(known.map((marker) => marker.id));
+  const turnIds = new TurnIds(new Set(known.map((marker) => marker.id)));
   const createMarker = (entry: MountedEntry): Marker => {
-    const id = claimTurnId(entry.hash, usedIds);
+    const id = turnIds.claim(entry.hash);
     entry.element.setAttribute(TURN_ID_ATTR, id);
     return {
       id,
