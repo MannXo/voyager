@@ -1,8 +1,9 @@
 /**
- * ChatGPT folders (P1): a floating folder panel for ChatGPT on the shared folder
- * core. The store is the shared FolderRepository with ChatGPT's own bucket; the
- * panel is the shared shadow-root panel. Everything this plugin creates is
- * registered on its PluginScope, so turning it off leaves nothing behind.
+ * ChatGPT folders on the shared folder core: a folder section in ChatGPT's
+ * sidebar, the shared floating panel, and "Move to folder" in a row's menu. The
+ * store is the shared FolderRepository with ChatGPT's own bucket. Everything this
+ * plugin creates is registered on its PluginScope, so turning it off leaves
+ * nothing behind.
  */
 import type { ConversationReference } from '@/core/types/folder';
 import { cloneFolderData } from '@/features/folder/model/folderData';

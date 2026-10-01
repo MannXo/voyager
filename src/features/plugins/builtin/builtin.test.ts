@@ -139,7 +139,7 @@ describe('BUILTIN_PLUGINS', () => {
     });
   });
 
-  it('offers hiding filed ChatGPT chats as an opt-in setting with a label in every locale', () => {
+  it('describes ChatGPT folders and its opt-in hide setting in every locale', () => {
     const folders = BUILTIN_PLUGINS.find((m) => m.id === 'voyager.chatgpt-folders');
     // The key the plugin reads at activation is the key the manifest declares.
     expect(folders?.contributes.settings?.[HIDE_FILED_SETTING]).toMatchObject({
@@ -148,6 +148,8 @@ describe('BUILTIN_PLUGINS', () => {
     });
     const locales = ['zh', 'zh_TW', 'ja', 'ko', 'fr', 'es', 'pt', 'ru', 'ar'] as const;
     for (const locale of locales) {
+      expect(folders?.i18n?.[locale]?.description, locale).toContain('ChatGPT');
+      expect(folders?.i18n?.[locale]?.description, locale).not.toBe(folders?.description);
       expect(folders?.i18n?.[locale]?.settings?.[HIDE_FILED_SETTING]?.label, locale).toBeTruthy();
     }
   });
