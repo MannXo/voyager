@@ -316,6 +316,33 @@ while an active plugin has domOps`).
   `skips a rendered turn without a message instead of failing the export`,
   `fails when a selected virtual shell never mounts`).
 
+## ChatGPT export reads the live thread whole or not at all
+
+- **Trap:** ChatGPT's current thread is a virtual list of `[data-turn-key]` items that mount and
+  unmount whole (5–7 in the DOM), inside a `column-reverse` scroller, with older history paged in
+  only while the scroller sits at the top. The export still targeted `[data-turn-id-container]`,
+  so full and selection export found nothing, and walking whatever was mounted would have
+  exported the last few turns silently. ChatGPT also keeps earlier conversations in hidden
+  (`display: none`) pages whose `main` comes first in the DOM, so `querySelector('main')` read
+  the wrong conversation.
+- **Rule:** Resolve the root as the first rendered `main`. Before selection mode, the adapter's
+  `prepareConversation` loads history until the spinner inside
+  `[data-chatgpt-conversation-selection-target]` is gone and the top holds still, then walks
+  down keeping the last recorded item mounted in every window and extracts each item while it is
+  mounted (`<turn key>:u` / `:a`). Any unproven start, gap, or missing bottom, or a reply still
+  generating, fails the crawl: the selection list is then empty and the existing warning shows.
+  The reader's scroll position is restored either way. An uncrawled live thread also lists
+  nothing. The two entries above cover only the earlier `[data-turn-id-container]` DOM, which
+  keeps its own path.
+- **Guard:** `src/pages/content/export/adapter/__tests__/chatgptThreadExport.test.ts`
+  (`reads every turn of a virtualized thread that unmounts items while scrolling`,
+  `loads paginated history before reading, so the first turn is the conversation start`,
+  `reads the visible page, not a cached conversation ChatGPT keeps hidden before it`,
+  `fails when every scroll skips past the recorded turns, rather than leaving a gap`,
+  `fails instead of starting mid-thread when older history never finishes loading`,
+  `offers nothing to select when the crawl cannot prove the thread complete`,
+  `restores the scroll position when the crawl fails`).
+
 ## ChatGPT export entry point only where a conversation can exist
 
 - **Trap:** The ChatGPT export plugin matches the whole origin, and the persistent toolbar was
@@ -327,7 +354,10 @@ while an active plugin has domOps`).
   ChatGPT that is a `/c/<id>` route (optionally under `/u/<n>/` or `/g/<gpt>/`) or a rendered
   turn, because a temporary chat keeps `/?temporary-chat=true`.
 - **Guard:** `src/pages/content/export/adapter/__tests__/chatgpt.test.ts`
-  (`chatgptIsConversationPage`), `src/pages/content/export/__tests__/exportEntryGate.test.ts`.
+  (`chatgptIsConversationPage`),
+  `src/pages/content/export/adapter/__tests__/chatgptThreadExport.test.ts` (`accepts a rendered
+turn on a route without a conversation id`),
+  `src/pages/content/export/__tests__/exportEntryGate.test.ts`.
 
 ## ChatGPT export toolbar must avoid the native header cluster
 

@@ -78,6 +78,14 @@ export interface ExportPlatformAdapter {
    */
   isConversationPage?: (doc: Document, url: string) => boolean;
 
+  /**
+   * Read the conversation before selection mode opens, for platforms whose
+   * DOM cannot be walked in place (ChatGPT's virtualized thread). Resolves
+   * true when it handled the preparation; false or omitted falls back to
+   * scrolling the conversation to the top.
+   */
+  prepareConversation?: (options: ExportSelectionOptions) => Promise<boolean>;
+
   collectTurnContainers?: () => ChatGptTurnContainer[];
   buildTurnsForSelection?: (
     selectedMessageIds: ReadonlySet<string>,

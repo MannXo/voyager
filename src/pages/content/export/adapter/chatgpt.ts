@@ -7,6 +7,8 @@ import type { ChatTurn } from '@/features/export/types/export';
 import { computeConversationFingerprint } from '../topNodePreload';
 import type { ChatGptTurnContainer, ChatGptTurnRole, ExportSelectionOptions } from './type';
 
+// Export for ChatGPT's earlier thread DOM (`[data-turn-id-container]`). The
+// current `[data-turn-key]` thread goes through `chatgptThreadExport.ts`.
 const TURN_CONTAINER_SELECTOR = '[data-turn-id-container]';
 // ChatGPT stores virtual-list bookkeeping roots in the same attribute as turns:
 // `client-created-root` for a conversation started in this tab and

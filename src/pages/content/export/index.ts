@@ -667,9 +667,9 @@ function buildExportMessagesFromPairs(pairs: ChatTurn[]): ExportMessage[] {
 function resolveSelectionMessages(pairsInput: ChatTurn[]): ExportMessage[] {
   const turnContainers = exportAdapter.collectTurnContainers?.();
   if (turnContainers) {
-    // ChatGPT retains these top-level virtual-list items even when it unloads
-    // their inner message DOM. Their DOM order and data-turn-id-container value
-    // are consequently the only reliable source for selection identity/order.
+    // ChatGPT virtualizes its thread, so the DOM holds only a few turns. The
+    // adapter's list (crawled up front, or retained containers on the earlier
+    // DOM) is the only reliable source for selection identity and order.
     return turnContainers.map((turn) => ({
       messageId: turn.id,
       role: turn.role,
@@ -1261,11 +1261,11 @@ async function executeExportSequence(
       initialSelectedMessageId,
     });
 
-  // Platforms that don't lazy-load history skip the preload loop,
-  // but scroll the conversation to the top first so virtual-scroll
-  // containers render their topmost nodes before we walk the DOM.
+  // No preload loop: the adapter reads the thread itself, or we scroll to the top.
   if (!exportAdapter.shouldPreloadHistory()) {
-    await scrollToTopAndRender(getUserSelectors());
+    if (!(await exportAdapter.prepareConversation?.({ signal, expectedUrl: state.url }))) {
+      await scrollToTopAndRender(getUserSelectors());
+    }
     throwIfExportCancelled(signal);
     await performFinalExport(state, dict, lang);
     return;

@@ -4,11 +4,13 @@ import {
 } from '@/features/export/services/DOMContentExtractor';
 import type { SiteAdapter } from '@/features/plugins/types';
 
+import { TURN_ITEM_SELECTOR, resolveVisibleConversationRoot } from '../chatgptThread';
 import {
-  buildChatGptTurnsForSelection,
-  chatgptCollectTurnContainers,
-  resolveChatGptSelectionRoles,
-} from '../chatgpt';
+  buildChatGptExportTurns,
+  collectChatGptTurnContainers,
+  prepareChatGptExport,
+  resolveChatGptExportRoles,
+} from '../chatgptThreadExport';
 import type { ExportPlatformAdapter } from './contract';
 
 function extractTitle(): string {
@@ -34,8 +36,13 @@ const ROOT_CANDIDATES = ['main', '[role="main"]'];
 /** `/c/<id>` or `/g/<gpt>/c/<id>`, optionally under `/u/<index>/`. */
 const CONVERSATION_ROUTE = /^(?:\/u\/[^/]+)?(?:\/g\/[^/]+)?\/c\/[^/?#]+/;
 /** A turn ChatGPT has actually rendered, whatever the route says. */
-const MOUNTED_TURN_SELECTOR =
-  '[data-turn-id-container] [data-message-author-role], [data-turn-id-container][data-turn], section[data-turn]';
+const MOUNTED_TURN_SELECTOR = [
+  TURN_ITEM_SELECTOR,
+  // The earlier DOM, for accounts ChatGPT has not moved yet.
+  '[data-turn-id-container] [data-message-author-role]',
+  '[data-turn-id-container][data-turn]',
+  'section[data-turn]',
+].join(', ');
 
 /**
  * ChatGPT serves Codex, settings and other non-chat pages from the same
@@ -52,12 +59,9 @@ export function chatgptIsConversationPage(doc: Document, url: string): boolean {
   return CONVERSATION_ROUTE.test(pathname) || doc.querySelector(MOUNTED_TURN_SELECTOR) !== null;
 }
 
+/** The visible conversation's `main`: ChatGPT keeps earlier pages in hidden ones. */
 function resolveRoot(_userSelectors: string[], doc: Document = document): HTMLElement {
-  for (const selector of ROOT_CANDIDATES) {
-    const element = doc.querySelector<HTMLElement>(selector);
-    if (element) return element;
-  }
-  return doc.body as HTMLElement;
+  return resolveVisibleConversationRoot(doc);
 }
 
 function extractUserImage(element: HTMLElement): NodeListOf<HTMLImageElement> {
@@ -249,8 +253,9 @@ export function buildChatGptAdapter(site: SiteAdapter): ExportPlatformAdapter {
     extractFormula: chatgptExtractFormula,
     extractCodeBlock,
     extractInlineFormula: chatgptExtractInlineFormula,
-    collectTurnContainers: chatgptCollectTurnContainers,
-    buildTurnsForSelection: buildChatGptTurnsForSelection,
-    resolveSelectionRoles: resolveChatGptSelectionRoles,
+    prepareConversation: prepareChatGptExport,
+    collectTurnContainers: collectChatGptTurnContainers,
+    buildTurnsForSelection: buildChatGptExportTurns,
+    resolveSelectionRoles: resolveChatGptExportRoles,
   };
 }
