@@ -11,6 +11,7 @@ import {
   supportsExtensionNotifications,
 } from '@/core/utils/browser';
 import type { FormulaCopyFormat } from '@/features/formulaCopy/FormulaCopyService';
+import { CHATGPT_EXPORT_PLUGIN_ID } from '@/features/plugins/builtin/chatgptExport/openMessage';
 
 import { CloudSyncSettings } from './components/CloudSyncSettings';
 import { ContextSyncSettings } from './components/ContextSyncSettings';
@@ -269,6 +270,13 @@ export default function Popup({ sourceTabId }: PopupProps = {}) {
               blockedUpdates: plugins.pluginBlockedUpdates,
               catalogHost: plugins.pluginCatalogHost,
               statuses: plugins.pluginStatuses,
+            }}
+            exportEntry={{
+              enabled: plugins.pluginState[CHATGPT_EXPORT_PLUGIN_ID]?.enabled === true,
+              activeTabId: tab.activeTabId,
+              // The options page embeds this view in a tab of its own; only the
+              // toolbar popup should get out of the way of the opened dialog.
+              onOpened: sourceTabId === undefined ? () => window.close() : undefined,
             }}
             t={t}
           />

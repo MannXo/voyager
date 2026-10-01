@@ -2593,6 +2593,30 @@
     "message": "Не поддерживается в этом браузере — невозможно предоставить доступ к сайту, нужный плагину.",
     "description": "Shown when a plugin can't be enabled because the browser can't grant the site access it needs (e.g. Safari)"
   },
+  "chatgptExportCardTitle": {
+    "message": "Экспортировать этот диалог",
+    "description": "Title of the popup card that exports the current ChatGPT conversation"
+  },
+  "chatgptExportCardOffHint": {
+    "message": "Включите экспорт диалогов, чтобы сохранять чаты ChatGPT в Markdown, JSON, PDF или как изображение. Кнопка «Экспорт» появится вверху каждого диалога.",
+    "description": "Popup hint shown while ChatGPT conversation export is turned off"
+  },
+  "chatgptExportTurnOn": {
+    "message": "Включить",
+    "description": "Popup button that turns on ChatGPT conversation export"
+  },
+  "chatgptExportCardOnHint": {
+    "message": "Сохраняйте в Markdown, JSON, PDF или как изображение. Та же кнопка «Экспорт» есть вверху каждого диалога.",
+    "description": "Popup hint shown while ChatGPT conversation export is on"
+  },
+  "chatgptExportNoConversation": {
+    "message": "Сначала откройте диалог: на этой странице нечего экспортировать.",
+    "description": "Shown when the ChatGPT tab has no conversation to export"
+  },
+  "chatgptExportReloadTab": {
+    "message": "Перезагрузите эту вкладку ChatGPT и попробуйте снова.",
+    "description": "Shown when the ChatGPT tab has not loaded Voyager yet"
+  },
   "pluginsLoading": {
     "message": "Загрузка плагинов…",
     "description": "Shown while the plugin catalog is loading"

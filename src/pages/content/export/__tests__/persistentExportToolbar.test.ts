@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   isPersistentExportToolbarMounted,
   mountPersistentExportToolbar,
+  openPersistentExportToolbar,
 } from '../persistentExportToolbar';
 
 afterEach(() => {
@@ -64,6 +65,28 @@ describe('persistentExportToolbar', () => {
     });
     handle.button.click();
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the export flow through the mounted toolbar from outside the page UI', () => {
+    expect(openPersistentExportToolbar()).toBe(false);
+
+    const firstOwner = vi.fn();
+    mountPersistentExportToolbar({ label: 'Export', tooltip: 'Export', onClick: firstOwner });
+    const currentOwner = vi.fn();
+    mountPersistentExportToolbar({ label: 'Export', tooltip: 'Export', onClick: currentOwner });
+
+    expect(openPersistentExportToolbar()).toBe(true);
+    expect(currentOwner).toHaveBeenCalledOnce();
+    expect(firstOwner).not.toHaveBeenCalled();
+  });
+
+  it('cannot open the export flow after the toolbar is removed', () => {
+    const onClick = vi.fn();
+    const handle = mountPersistentExportToolbar({ label: 'Export', tooltip: 'Export', onClick });
+    handle.remove();
+
+    expect(openPersistentExportToolbar()).toBe(false);
+    expect(onClick).not.toHaveBeenCalled();
   });
 
   it('does not duplicate-mount; second call updates text on existing instance', () => {

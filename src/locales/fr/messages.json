@@ -2593,6 +2593,30 @@
     "message": "Non pris en charge par ce navigateur : impossible d'accorder l'accès au site requis par l'extension.",
     "description": "Shown when a plugin can't be enabled because the browser can't grant the site access it needs (e.g. Safari)"
   },
+  "chatgptExportCardTitle": {
+    "message": "Exporter cette conversation",
+    "description": "Title of the popup card that exports the current ChatGPT conversation"
+  },
+  "chatgptExportCardOffHint": {
+    "message": "Activez l'export de conversation pour enregistrer vos discussions ChatGPT en Markdown, JSON, PDF ou image. Un bouton Exporter apparaît alors en haut de chaque conversation.",
+    "description": "Popup hint shown while ChatGPT conversation export is turned off"
+  },
+  "chatgptExportTurnOn": {
+    "message": "Activer",
+    "description": "Popup button that turns on ChatGPT conversation export"
+  },
+  "chatgptExportCardOnHint": {
+    "message": "Enregistrez en Markdown, JSON, PDF ou image. Le même bouton Exporter se trouve en haut de chaque conversation.",
+    "description": "Popup hint shown while ChatGPT conversation export is on"
+  },
+  "chatgptExportNoConversation": {
+    "message": "Ouvrez d'abord une conversation : cette page ne contient rien à exporter.",
+    "description": "Shown when the ChatGPT tab has no conversation to export"
+  },
+  "chatgptExportReloadTab": {
+    "message": "Rechargez cet onglet ChatGPT, puis réessayez.",
+    "description": "Shown when the ChatGPT tab has not loaded Voyager yet"
+  },
   "pluginsLoading": {
     "message": "Chargement des extensions…",
     "description": "Shown while the plugin catalog is loading"

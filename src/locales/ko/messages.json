@@ -2593,6 +2593,30 @@
     "message": "이 브라우저에서는 지원되지 않습니다. 플러그인에 필요한 사이트 권한을 부여할 수 없습니다.",
     "description": "Shown when a plugin can't be enabled because the browser can't grant the site access it needs (e.g. Safari)"
   },
+  "chatgptExportCardTitle": {
+    "message": "이 대화 내보내기",
+    "description": "Title of the popup card that exports the current ChatGPT conversation"
+  },
+  "chatgptExportCardOffHint": {
+    "message": "대화 내보내기를 켜면 ChatGPT 대화를 Markdown, JSON, PDF 또는 이미지로 저장할 수 있습니다. 각 대화 상단에도 내보내기 버튼이 표시됩니다.",
+    "description": "Popup hint shown while ChatGPT conversation export is turned off"
+  },
+  "chatgptExportTurnOn": {
+    "message": "켜기",
+    "description": "Popup button that turns on ChatGPT conversation export"
+  },
+  "chatgptExportCardOnHint": {
+    "message": "Markdown, JSON, PDF 또는 이미지로 저장합니다. 각 대화 상단에도 같은 내보내기 버튼이 있습니다.",
+    "description": "Popup hint shown while ChatGPT conversation export is on"
+  },
+  "chatgptExportNoConversation": {
+    "message": "먼저 대화를 여세요. 이 페이지에는 내보낼 내용이 없습니다.",
+    "description": "Shown when the ChatGPT tab has no conversation to export"
+  },
+  "chatgptExportReloadTab": {
+    "message": "이 ChatGPT 탭을 새로고침한 뒤 다시 시도하세요.",
+    "description": "Shown when the ChatGPT tab has not loaded Voyager yet"
+  },
   "pluginsLoading": {
     "message": "플러그인 불러오는 중…",
     "description": "Shown while the plugin catalog is loading"

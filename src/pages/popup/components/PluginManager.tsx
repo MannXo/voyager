@@ -3,11 +3,6 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import browser from 'webextension-polyfill';
 
 import {
-  isFirefox,
-  supportsDynamicContentScriptRegistration,
-  supportsOptionalHostPermissions,
-} from '@/core/utils/browser';
-import {
   type HostCatalogCacheEntry,
   loadHostCatalogCache,
   subscribeHostCatalog,
@@ -24,7 +19,6 @@ import {
   savePluginCatalogSettings,
   subscribePluginCatalogSettings,
 } from '@/features/plugins/remote/hostCatalogSettings';
-import { PLUGIN_CONTENT_SCRIPT_SYNC_MESSAGE } from '@/features/plugins/runtime/messages';
 import type { PluginStatus } from '@/features/plugins/runtime/pluginStatus';
 import { pluginToOriginPatternsForActiveUrl } from '@/features/plugins/runtime/siteRegistration';
 import { matchesAnyPattern } from '@/features/plugins/sites/matchPattern';
@@ -36,7 +30,6 @@ import {
   loadSeenPluginVersions,
   markPluginVersionsSeen,
   setPluginCollapsed,
-  setPluginEnabled,
   setPluginSetting,
   subscribePluginState,
 } from '@/features/plugins/storage/pluginState';
@@ -46,30 +39,15 @@ import type { TranslationKey } from '@/utils/translations';
 import { Card, CardContent, CardTitle } from '../../../components/ui/card';
 import { Switch } from '../../../components/ui/switch';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import {
+  canGrantPluginSiteAccess,
+  requestPluginContentScriptSync,
+  setPluginEnabledWithSiteAccess,
+} from '../utils/pluginEnablement';
 import { IconChatGPT, IconClaude, IconDeepSeek } from './WebsiteLogos';
 
 type EnabledMap = Record<string, boolean>;
 type SettingsMap = Record<string, Record<string, PluginSettingValue>>;
-
-/**
- * Ask the background service to reconcile dynamic plugin content scripts after
- * an optional host permission grant. This is best-effort because Chrome may
- * close the popup while displaying its permission prompt; the background
- * permissions listener remains the fallback in that case. Returns whether the
- * background confirmed that reconciliation completed.
- */
-async function requestPluginContentScriptSync(): Promise<boolean> {
-  try {
-    const response = (await browser.runtime.sendMessage({
-      type: PLUGIN_CONTENT_SCRIPT_SYNC_MESSAGE,
-    })) as { ok?: unknown } | null;
-    return response?.ok === true;
-  } catch {
-    // Chrome may close the popup while showing the optional-host prompt. The
-    // background permissions.onAdded listener remains the fallback in that case.
-    return false;
-  }
-}
 
 /**
  * Where a listed plugin came from. Anything else (an unknown source id, or a
@@ -484,62 +462,11 @@ export function PluginManager({
     async (plugin: PluginManifest, next: boolean) => {
       setDeniedId(null);
       setUnsupportedId(null);
-      if (next) {
-        const origins = pluginToOriginPatternsForActiveUrl(plugin, activeUrl);
-        if (origins.length > 0) {
-          // This plugin needs host access on a site Voyager reaches only via dynamic
-          // content-script registration. If the platform can't grant or inject that
-          // (an old Safari/build without the required APIs, or Firefox < 128 which
-          // ignores optional_host_permissions), enabling would be a silent no-op —
-          // so refuse and explain, instead of a misleading toggle.
-          if (
-            !browser.permissions?.request ||
-            !supportsOptionalHostPermissions() ||
-            !supportsDynamicContentScriptRegistration()
-          ) {
-            setUnsupportedId(plugin.id);
-            return;
-          }
-          try {
-            // Firefox requires permissions.request to be the first await in the
-            // user gesture, so skip the contains() pre-check there.
-            if (!isFirefox() && browser.permissions.contains) {
-              const alreadyGranted = await browser.permissions.contains({ origins });
-              if (!alreadyGranted) {
-                // Chrome closes extension popups while showing an optional-host
-                // prompt. Persist the user's intent BEFORE opening it so a
-                // successful grant can be completed by the background even if
-                // the popup is closed before permissions.request resolves.
-                setEnabledMap((prev) => ({ ...prev, [plugin.id]: true }));
-                await setPluginEnabled(plugin.id, true);
-                const granted = await browser.permissions.request({ origins });
-                if (!granted) {
-                  setEnabledMap((prev) => ({ ...prev, [plugin.id]: false }));
-                  await setPluginEnabled(plugin.id, false);
-                  setDeniedId(plugin.id);
-                } else {
-                  // Edge can resolve the request without reliably delivering the
-                  // permissions.onAdded event that normally performs registration.
-                  // Reconcile explicitly while retaining onAdded as Chrome's
-                  // popup-close fallback.
-                  await requestPluginContentScriptSync();
-                }
-                return;
-              }
-            } else if (!(await browser.permissions.request({ origins }))) {
-              setDeniedId(plugin.id);
-              return;
-            }
-          } catch {
-            setEnabledMap((prev) => ({ ...prev, [plugin.id]: false }));
-            await setPluginEnabled(plugin.id, false);
-            setDeniedId(plugin.id);
-            return;
-          }
-        }
-      }
-      setEnabledMap((prev) => ({ ...prev, [plugin.id]: next }));
-      await setPluginEnabled(plugin.id, next);
+      const outcome = await setPluginEnabledWithSiteAccess(plugin, next, activeUrl, (enabled) =>
+        setEnabledMap((prev) => ({ ...prev, [plugin.id]: enabled })),
+      );
+      if (outcome === 'denied') setDeniedId(plugin.id);
+      else if (outcome === 'unsupported') setUnsupportedId(plugin.id);
     },
     [activeUrl],
   );
@@ -590,11 +517,7 @@ export function PluginManager({
         });
         return;
       }
-      if (
-        !browser.permissions?.request ||
-        !supportsOptionalHostPermissions() ||
-        !supportsDynamicContentScriptRegistration()
-      ) {
+      if (!canGrantPluginSiteAccess()) {
         setUnsupportedId(plugin.id);
         return;
       }

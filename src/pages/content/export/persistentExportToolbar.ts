@@ -349,3 +349,15 @@ export function mountPersistentExportToolbar(
 export function isPersistentExportToolbarMounted(): boolean {
   return !!document.querySelector(`.${TOOLBAR_CLASS}`);
 }
+
+/**
+ * Open the export flow through the mounted toolbar, exactly as a click on it
+ * would. Returns false when no toolbar is mounted (the page holds nothing to
+ * export), so callers outside the page can explain why nothing opened.
+ */
+export function openPersistentExportToolbar(): boolean {
+  const button = document.querySelector<HTMLButtonElement>(`.${TOOLBAR_CLASS} .${BUTTON_CLASS}`);
+  if (!button) return false;
+  button.click();
+  return true;
+}

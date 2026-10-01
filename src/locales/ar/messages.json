@@ -2593,6 +2593,30 @@
     "message": "غير مدعوم في هذا المتصفّح — لا يمكن منح إذن الموقع الذي تحتاجه الإضافة.",
     "description": "Shown when a plugin can't be enabled because the browser can't grant the site access it needs (e.g. Safari)"
   },
+  "chatgptExportCardTitle": {
+    "message": "تصدير هذه المحادثة",
+    "description": "Title of the popup card that exports the current ChatGPT conversation"
+  },
+  "chatgptExportCardOffHint": {
+    "message": "فعّل تصدير المحادثات لحفظ محادثات ChatGPT بصيغة Markdown أو JSON أو PDF أو كصورة. سيظهر بعدها زر التصدير أعلى كل محادثة.",
+    "description": "Popup hint shown while ChatGPT conversation export is turned off"
+  },
+  "chatgptExportTurnOn": {
+    "message": "تفعيل",
+    "description": "Popup button that turns on ChatGPT conversation export"
+  },
+  "chatgptExportCardOnHint": {
+    "message": "احفظ بصيغة Markdown أو JSON أو PDF أو كصورة. يوجد زر التصدير نفسه أعلى كل محادثة.",
+    "description": "Popup hint shown while ChatGPT conversation export is on"
+  },
+  "chatgptExportNoConversation": {
+    "message": "افتح محادثة أولًا، فلا يوجد في هذه الصفحة ما يمكن تصديره.",
+    "description": "Shown when the ChatGPT tab has no conversation to export"
+  },
+  "chatgptExportReloadTab": {
+    "message": "أعد تحميل علامة تبويب ChatGPT هذه، ثم حاول مرة أخرى.",
+    "description": "Shown when the ChatGPT tab has not loaded Voyager yet"
+  },
   "pluginsLoading": {
     "message": "جارٍ تحميل الإضافات…",
     "description": "Shown while the plugin catalog is loading"

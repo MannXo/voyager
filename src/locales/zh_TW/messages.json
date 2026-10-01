@@ -2593,6 +2593,30 @@
     "message": "此瀏覽器不支援——無法授予此外掛所需的網站權限。",
     "description": "Shown when a plugin can't be enabled because the browser can't grant the site access it needs (e.g. Safari)"
   },
+  "chatgptExportCardTitle": {
+    "message": "匯出此對話",
+    "description": "Title of the popup card that exports the current ChatGPT conversation"
+  },
+  "chatgptExportCardOffHint": {
+    "message": "開啟「對話匯出」後，可將 ChatGPT 對話儲存為 Markdown、JSON、PDF 或圖片，每個對話頂端也會出現匯出按鈕。",
+    "description": "Popup hint shown while ChatGPT conversation export is turned off"
+  },
+  "chatgptExportTurnOn": {
+    "message": "開啟",
+    "description": "Popup button that turns on ChatGPT conversation export"
+  },
+  "chatgptExportCardOnHint": {
+    "message": "可儲存為 Markdown、JSON、PDF 或圖片。每個對話頂端也有同一個匯出按鈕。",
+    "description": "Popup hint shown while ChatGPT conversation export is on"
+  },
+  "chatgptExportNoConversation": {
+    "message": "請先開啟一個對話，目前頁面沒有可匯出的內容。",
+    "description": "Shown when the ChatGPT tab has no conversation to export"
+  },
+  "chatgptExportReloadTab": {
+    "message": "請重新整理此 ChatGPT 分頁後再試一次。",
+    "description": "Shown when the ChatGPT tab has not loaded Voyager yet"
+  },
   "pluginsLoading": {
     "message": "正在載入外掛…",
     "description": "Shown while the plugin catalog is loading"

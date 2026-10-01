@@ -2593,6 +2593,30 @@
     "message": "このブラウザでは利用できません。プラグインに必要なサイト権限を付与できません。",
     "description": "Shown when a plugin can't be enabled because the browser can't grant the site access it needs (e.g. Safari)"
   },
+  "chatgptExportCardTitle": {
+    "message": "この会話をエクスポート",
+    "description": "Title of the popup card that exports the current ChatGPT conversation"
+  },
+  "chatgptExportCardOffHint": {
+    "message": "「会話エクスポート」をオンにすると、ChatGPT の会話を Markdown、JSON、PDF、画像として保存できます。各会話の上部にもエクスポートボタンが表示されます。",
+    "description": "Popup hint shown while ChatGPT conversation export is turned off"
+  },
+  "chatgptExportTurnOn": {
+    "message": "オンにする",
+    "description": "Popup button that turns on ChatGPT conversation export"
+  },
+  "chatgptExportCardOnHint": {
+    "message": "Markdown、JSON、PDF、画像として保存できます。各会話の上部にも同じエクスポートボタンがあります。",
+    "description": "Popup hint shown while ChatGPT conversation export is on"
+  },
+  "chatgptExportNoConversation": {
+    "message": "先に会話を開いてください。このページにはエクスポートできる内容がありません。",
+    "description": "Shown when the ChatGPT tab has no conversation to export"
+  },
+  "chatgptExportReloadTab": {
+    "message": "この ChatGPT タブを再読み込みしてから、もう一度お試しください。",
+    "description": "Shown when the ChatGPT tab has not loaded Voyager yet"
+  },
   "pluginsLoading": {
     "message": "プラグインを読み込み中…",
     "description": "Shown while the plugin catalog is loading"
