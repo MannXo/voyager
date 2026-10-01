@@ -26,14 +26,14 @@ let route: string;
 let stars: NavigatorStars;
 
 /** The conversation a host that names it puts on the turn's container. */
-function stated(element: Element): string | undefined {
+function stated(element: Element): string | null {
   const id = element.closest('[data-conv]')?.getAttribute('data-conv');
-  return id ? `site:conv:${id}` : undefined;
+  return id ? `site:conv:${id}` : null;
 }
 
 function create(
   starId: () => string | null = () => route,
-  turnConversation?: (element: Element) => string | undefined,
+  turnConversation?: (element: Element) => string | null | undefined,
 ): NavigatorStars {
   stars = new NavigatorStars({
     routeId: () => route,
@@ -174,6 +174,14 @@ describe('navigator star writes', () => {
     other.setAttribute('data-conv', 'd');
     stars.observe([seen('draft-1', draft, 'x'), seen('item-d', other, 'y')]);
     expect(stars.canStar({ token: 'item-d', element: other })).toBe(false);
+
+    // Where the host names conversations, a turn without its id is not starrable,
+    // even one that entered the page under this conversation.
+    const pending = insert();
+    stars.observe([seen('draft-1', draft, 'x'), seen('item-e', pending, 'z')]);
+    expect(stars.canStar({ token: 'item-e', element: pending })).toBe(false);
+    pending.setAttribute('data-conv', 'c');
+    expect(stars.canStar({ token: 'item-e', element: pending })).toBe(true);
   });
 
   it('drops a press when the host files the turn elsewhere while its read is pending', async () => {

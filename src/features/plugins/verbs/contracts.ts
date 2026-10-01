@@ -87,7 +87,14 @@ export const PRIMITIVE_CONTRACTS: readonly PrimitiveContract[] = [
         required: false,
         sinceEngine: '1.5.0',
         description:
-          'Attribute on an ancestor of each turn holding the conversation id that conversationIdPattern captures from the URL. When a turn has one, a star is written only if it names the current conversation; it must change in the same render that swaps the turns.',
+          'Attribute holding the conversation id that conversationIdPattern captures from the URL, on an ancestor of each turn or inside its turnItem. When set, it is the only thing that lets a turn be starred: the id must name the current conversation; a turn without one stays unstarrable.',
+      },
+      turnItem: {
+        type: 'selector',
+        required: false,
+        sinceEngine: '1.5.0',
+        description:
+          'Element wrapping one exchange (prompt and reply). conversationIdAttribute is looked up inside it when no ancestor of the turn carries it.',
       },
       conversationIdPattern: {
         type: 'string',

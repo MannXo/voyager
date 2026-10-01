@@ -163,13 +163,16 @@ conversation, Projects routes included`).
   or a re-render (merge); one unattributed turn on screen withholds every later one. Where the
   host names a turn's conversation itself (`conversationIdAttribute`; Claude's `data-conv-id`
   thread container), that id, read live at the press and again after the read, decides instead,
-  both ways; the stamps apply only to turns under no such container. "On screen" means connected
+  both ways, and is the only thing that grants: it is taken from the nearest ancestor carrying
+  it, else from inside the turn's `turnItem`, and a turn without exactly one id there (a reply not
+  rendered yet) is unstarrable rather than left to the stamps. "On screen" means connected
   and under no `display: none` ancestor (`turnVisibility.ts`): ChatGPT keeps the pages of earlier
   conversations hidden in the DOM, so the rail, the withholding rules and remembered merge
   markers skip hidden turns, and a `style`/`hidden` change that shows or hides a thread refreshes.
 - **Guard:** `src/features/plugins/verbs/turnNavigator/turnOwnership.test.ts`,
   `src/features/plugins/verbs/turnNavigator/navigatorStars.test.ts`,
   `src/features/plugins/verbs/turnNavigator/turnVisibility.test.ts`,
+  `src/features/plugins/verbs/turnNavigator/conversationId.test.ts`,
   `src/features/plugins/verbs/turnNavigatorStarIsolation.test.ts` (`keeps the next conversation
 starrable while the previous thread stays hidden in the page`),
   `src/features/plugins/builtin/chatgptTimeline.test.ts` (`shows what is on screen

@@ -46,6 +46,11 @@
           "type": "string",
           "required": false,
           "sinceEngine": "1.5.0"
+        },
+        "turnItem": {
+          "type": "selector",
+          "required": false,
+          "sinceEngine": "1.5.0"
         }
       }
     }

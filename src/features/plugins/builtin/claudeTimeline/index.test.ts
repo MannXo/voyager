@@ -93,6 +93,8 @@ describe('Claude timeline', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     document.body.innerHTML = '';
+    // Claude's thread container names the conversation every turn belongs to.
+    document.body.setAttribute('data-conv-id', 'claude-123');
     history.replaceState({}, '', '/chat/claude-123');
     getStarredMessagesForConversation.mockResolvedValue([]);
     addStarredMessage.mockClear();
@@ -106,6 +108,7 @@ describe('Claude timeline', () => {
   });
 
   afterEach(async () => {
+    document.body.removeAttribute('data-conv-id');
     await stopClaudeTimeline();
     vi.useRealTimers();
   });

@@ -79,12 +79,14 @@ describe('turnNavigator primitive', () => {
         position: 'left',
         turnKey: 'data-turn-id-container',
         conversationIdAttribute: 'data-conv-id',
+        turnItem: '[data-turn-key]',
       }),
     ).toEqual({
       success: true,
       data: {
         turnKey: 'data-turn-id-container',
         conversationIdAttribute: 'data-conv-id',
+        turnItem: '[data-turn-key]',
         turn: '.t',
         conversationIdPattern: '^/c/(\\w+)',
         scrollContainer: '.scroll',

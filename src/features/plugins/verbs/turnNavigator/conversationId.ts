@@ -9,8 +9,10 @@ import { MAX_REGEX_INPUT_LENGTH } from '../../sites/safeRegex';
 interface ConversationIdConfig {
   readonly siteId: string;
   readonly conversationIdPattern?: string;
-  /** Attribute on an ancestor of each turn holding the id its route pattern captures. */
+  /** Attribute holding the id the route pattern captures, on the turn's ancestor or in its item. */
   readonly conversationIdAttribute?: string;
+  /** Element wrapping one exchange, searched when no ancestor of the turn carries the id. */
+  readonly turnItemSelector?: string;
 }
 
 /** `<siteId>:conv:<id>` from the site's route pattern, else a hash of the path. */
@@ -48,20 +50,28 @@ export function starConversationId(
 }
 
 /**
- * The conversation the host itself says a turn belongs to, as a star id, or
- * undefined when the site names no such attribute or the turn sits under none.
- * Read live: the host may move a turn's container to another conversation.
+ * The conversation the host itself says a turn belongs to, as a star id:
+ * from the nearest ancestor carrying the attribute (Claude's thread
+ * container), else from inside the turn's item (ChatGPT puts it on the reply).
+ * Null when the site names the attribute but the turn has none yet, or its
+ * item names more than one conversation; undefined when the site names none.
+ * Read live: the host may move a turn to another conversation.
  */
 export function turnConversationId(
   config: ConversationIdConfig,
   element: Element,
-): string | undefined {
+): string | null | undefined {
   const attribute = config.conversationIdAttribute;
   if (!attribute) return undefined;
   try {
-    const value = element.closest(`[${attribute}]`)?.getAttribute(attribute)?.trim();
-    return value ? `${config.siteId}:conv:${value}` : undefined;
+    const holder = `[${attribute}]`;
+    const own = element.closest(holder);
+    const item = own || !config.turnItemSelector ? null : element.closest(config.turnItemSelector);
+    const holders = own ? [own] : Array.from(item?.querySelectorAll(holder) ?? []);
+    const ids = new Set(holders.map((node) => node.getAttribute(attribute)?.trim() ?? ''));
+    const [id] = ids;
+    return ids.size === 1 && id ? `${config.siteId}:conv:${id}` : null;
   } catch {
-    return undefined;
+    return null;
   }
 }

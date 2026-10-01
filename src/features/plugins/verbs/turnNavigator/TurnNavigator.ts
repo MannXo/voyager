@@ -54,8 +54,10 @@ export interface TurnNavigatorConfig {
   readonly turnKeyAttribute?: string;
   /** Path regular expression whose first group is the conversation id. */
   readonly conversationIdPattern?: string;
-  /** Attribute on an ancestor of each turn holding that same id: decides star writes. */
+  /** Attribute holding that same id on a turn's ancestor or in its item: decides star writes. */
   readonly conversationIdAttribute?: string;
+  /** Element wrapping one exchange, where `conversationIdAttribute` is looked up. */
+  readonly turnItemSelector?: string;
   readonly scrollContainerSelector?: string;
   readonly yieldWhenSelector?: string;
   readonly position: 'left' | 'right';

@@ -6,9 +6,10 @@
  * read. A write needs more than the URL, because hosts change the URL and the
  * thread DOM in separate steps. A write is refused
  *   - before a refresh has seen the current route (`observe`), and
- *   - for a turn the host says belongs to another conversation, where the site
- *     names an attribute for that (`turnConversation`), and
- *   - otherwise for a turn that did not enter the page under the current
+ *   - where the site names an attribute for a turn's conversation
+ *     (`turnConversation`), for a turn whose attribute does not name the
+ *     current conversation or is missing, and
+ *   - elsewhere, for a turn that did not enter the page under the current
  *     conversation (`turnOwnership.ts`).
  * Each press takes its target, conversation and URL before any await, and is
  * dropped if the route changed by the time the stars it toggles have loaded.
@@ -40,8 +41,11 @@ interface StarSources {
   readonly alive: () => boolean;
   /** Whether the turns on screen are host turn keys (snapshot mode). */
   readonly keyedTurns: () => boolean;
-  /** The star id the host gives a turn's conversation, or undefined when it gives none. */
-  readonly turnConversation?: (element: Element) => string | undefined;
+  /**
+   * The star id the host gives a turn's conversation; null when the site
+   * names an attribute for it but the turn has none, undefined when it names none.
+   */
+  readonly turnConversation?: (element: Element) => string | null | undefined;
 }
 
 export class NavigatorStars {
@@ -115,8 +119,9 @@ export class NavigatorStars {
 
   /**
    * Whether a star written now on this turn is backed by what is on screen:
-   * the host's own conversation id for the turn when it gives one, else the
-   * conversation the turn entered the page under.
+   * the host's own conversation id for the turn where the site names one (the
+   * only thing that grants then), else the conversation the turn entered the
+   * page under.
    */
   canStar(turn: Pick<StarTarget, 'token' | 'element'>): boolean {
     const conversationId = this.sources.starId();
