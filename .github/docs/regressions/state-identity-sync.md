@@ -42,6 +42,27 @@ to a Gemini or AI Studio folder platform`),
   `src/pages/popup/__tests__/Popup.test.tsx` (`keeps Gemini folder data, isolation and Cloud Sync
 off a ChatGPT tab`).
 
+## ChatGPT folders keep their own unscoped bucket
+
+- **Trap:** ChatGPT folders run on the shared `FolderRepository`, which reads an isolation switch
+  for `config.platform` and, for an account-scoped bucket with no data, runs `migrateLegacyData`.
+  A config borrowed from Gemini (`platform: 'gemini'`, or `FOLDER_DATA`) would follow Gemini's
+  isolation switch on chatgpt.com and read or write Gemini's folders. A Gemini or AI Studio export
+  imported on ChatGPT would file conversations that can never open there.
+- **Rule:** `CHATGPT_FOLDER_CONFIG` uses `platform: null` (isolation off, no fallback to the legacy
+  switch), its own `gvFolderDataChatGPT` key and `chatgpt-folders` backup namespace, and a
+  `migrateLegacyData` that returns empty data. A ChatGPT folder entry is keyed by its bare id
+  (`chatgpt:conv:<id>`) across `/c/`, `/g/g-p-*/c/` and `/g/g-*/c/`. Import is merge-only and
+  rejects the whole file if it is marked for another site or any entry, root bucket included, is
+  not a ChatGPT conversation whose id matches its URL. `FolderPlatform` stays Gemini/AI Studio
+  until ChatGPT gets Drive sync.
+- **Guard:** `src/features/plugins/builtin/chatgptFolders/__tests__/ChatGptFolderStore.test.ts`
+  (`writes only the ChatGPT bucket, whatever Gemini and the legacy switch hold`),
+  `src/features/plugins/builtin/chatgptFolders/__tests__/activate.test.ts`
+  (`files the open conversation and writes only its own keys`),
+  `src/features/plugins/builtin/chatgptFolders/__tests__/transfer.test.ts` and
+  `src/features/plugins/builtin/chatgptFolders/chatgptIdentity.test.ts`.
+
 ## onMessage listeners must not return true unconditionally
 
 - **Trap:** Background broadcasts (e.g. `gv.remoteAnnouncement.show` via `chrome.tabs.sendMessage`)

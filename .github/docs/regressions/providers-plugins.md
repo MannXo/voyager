@@ -27,6 +27,22 @@
 Read this file when changing ChatGPT or Claude adapters, plugin lifecycles, temporary chat handoff,
 or prompt commands.
 
+## A plugin's shadow panel gets the key guard from its own document_start registration
+
+- **Trap:** The plugin host is registered at document_idle, after the page's own capture-phase key
+  listeners, so a guard installed by the plugin can never run first. Folding the guard into the
+  host's `registerContentScripts` call, or importing it from the background, would tie a guard
+  failure to the plugin host or turn the guard into a module that loads too late.
+- **Rule:** A plugin whose pages host a shadow-root panel with text fields is listed in
+  `SHADOW_KEY_GUARD_PLUGIN_IDS` (`src/pages/background/shadowKeyGuardRegistration.ts`). The
+  background registers the manifest's self-contained guard file at document_start for that
+  plugin's granted top-frame origins, under `gv-shadow-key-guard` and in its own call, and removes
+  it when the plugin is off. Tabs open before the plugin is turned on rely on the panel's bubble
+  interception until they reload.
+- **Guard:** `src/pages/background/__tests__/shadowKeyGuardRegistration.test.ts` and
+  `src/pages/content/shadowKeyGuard/__tests__/shadowKeyGuardEntry.test.ts`
+  (`is the only source that imports the guard`).
+
 ## Remote plugin catalog checks are triggered only by pages an enabled plugin targets
 
 - **Trap:** The plugin host starts on every injected page, including Gemini, AI Studio and
