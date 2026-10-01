@@ -2641,6 +2641,106 @@
     "message": "Catálogo online",
     "description": "Source label for a plugin fetched from the online catalog for this site"
   },
+  "pluginSourceLocal": {
+    "message": "Local",
+    "description": "Source label for a plugin the user imported locally"
+  },
+  "localPluginsTitle": {
+    "message": "Plugins locais",
+    "description": "Popup plugin page: title of the card for user-imported plugins"
+  },
+  "localPluginsDescription": {
+    "message": "Importe um plugin declarativo que você escreveu: um manifesto JSON com o CSS embutido, ou o manifesto selecionado junto com seus arquivos .css. Ele passa pelas mesmas verificações dos plugins oficiais e fica desativado até você ativá-lo.",
+    "description": "Popup plugin page: what importing a local plugin does"
+  },
+  "localPluginsImportFiles": {
+    "message": "Importar arquivos",
+    "description": "Popup plugin page: button that opens the file picker for a local plugin"
+  },
+  "localPluginsPasteJson": {
+    "message": "Colar JSON",
+    "description": "Popup plugin page: button that opens a text box to paste a plugin manifest"
+  },
+  "localPluginsPasteLabel": {
+    "message": "JSON do manifesto do plugin",
+    "description": "Popup plugin page: accessible label of the paste text box"
+  },
+  "localPluginsCheckAndImport": {
+    "message": "Verificar e importar",
+    "description": "Popup plugin page: validate the pasted manifest and import it"
+  },
+  "localPluginsCancel": {
+    "message": "Cancelar",
+    "description": "Popup plugin page: close the paste text box"
+  },
+  "localPluginsEmpty": {
+    "message": "Nenhum plugin local ainda.",
+    "description": "Popup plugin page: no local plugin is installed"
+  },
+  "localPluginsImported": {
+    "message": "{name} {version} importado. Ele está desativado: veja abaixo o que ele faz e depois ative-o na lista de plugins.",
+    "description": "Popup plugin page: import succeeded; {name} and {version} are placeholders"
+  },
+  "localPluginsRejected": {
+    "message": "Não importado. Corrija estes problemas e tente novamente:",
+    "description": "Popup plugin page: import failed validation; the issues follow"
+  },
+  "localPluginsPreviousKept": {
+    "message": "A versão instalada {version} continua igual.",
+    "description": "Popup plugin page: a failed re-import kept the installed version; {version} is a placeholder"
+  },
+  "localPluginsInspect": {
+    "message": "Inspecionar",
+    "description": "Popup plugin page: show what a local plugin does"
+  },
+  "localPluginsHideDetails": {
+    "message": "Ocultar",
+    "description": "Popup plugin page: hide the details of a local plugin"
+  },
+  "localPluginsRemove": {
+    "message": "Remover",
+    "description": "Popup plugin page: delete a local plugin"
+  },
+  "localPluginsConfirmRemove": {
+    "message": "Confirmar remoção",
+    "description": "Popup plugin page: second click that confirms removing a local plugin"
+  },
+  "localPluginsStoredInvalid": {
+    "message": "Esta versão do Voyager não aceita mais este plugin, então ele não será executado:",
+    "description": "Popup plugin page: a stored local plugin fails this build's checks; issues follow"
+  },
+  "localPluginInspectSites": {
+    "message": "Sites",
+    "description": "Inspect view: sites the plugin runs on"
+  },
+  "localPluginInspectCss": {
+    "message": "CSS",
+    "description": "Inspect view: injected stylesheet size label"
+  },
+  "localPluginInspectCssChars": {
+    "message": "{chars} caracteres",
+    "description": "Inspect view: injected CSS size; {chars} is a number"
+  },
+  "localPluginInspectDomOps": {
+    "message": "Alterações na página",
+    "description": "Inspect view: reversible DOM operations the plugin applies"
+  },
+  "localPluginInspectPrimitives": {
+    "message": "Recursos integrados do Voyager que usa",
+    "description": "Inspect view: first-party Voyager primitives the plugin invokes"
+  },
+  "localPluginInspectSettings": {
+    "message": "Configurações",
+    "description": "Inspect view: settings the plugin declares"
+  },
+  "localPluginInspectNone": {
+    "message": "Nenhum",
+    "description": "Inspect view: the plugin has nothing in this category"
+  },
+  "localPluginInspectNoCode": {
+    "message": "Nenhum código do plugin é executado: apenas CSS, alterações reversíveis na página e recursos integrados do Voyager.",
+    "description": "Inspect view: reassurance that a declarative plugin cannot run its own code"
+  },
   "pluginUpdateNeedsNewerVoyager": {
     "message": "A atualização {version} precisa de uma versão mais recente do Voyager.",
     "description": "Note shown when a plugin update is held back because it needs a newer Voyager; {version} is the held-back version"

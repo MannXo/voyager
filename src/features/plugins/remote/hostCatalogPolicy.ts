@@ -9,6 +9,7 @@
  *   - when a cached catalog may be used at all (successful fetch by this
  *     extension version).
  */
+import { isLocalPluginId } from '../local/localPluginId';
 import { matchesAnyPattern } from '../sites/matchPattern';
 import type { PluginStateMap } from '../storage/pluginState';
 import type { PluginManifest } from '../types';
@@ -86,7 +87,9 @@ export function hostCatalogFileUrl(baseUrl: string, host: string): string {
 /**
  * D4 trigger: a page may ask for a catalog check only when at least one
  * ENABLED plugin targets it. Gemini / AI Studio have no plugins, so they never
- * qualify and never produce a request.
+ * qualify and never produce a request. A user-imported (`local.*`) plugin
+ * never counts: the catalog cannot update it, so enabling one must not make
+ * Voyager contact the catalog host about that site.
  */
 export function hasEnabledPluginForUrl(
   manifests: readonly PluginManifest[],
@@ -94,7 +97,10 @@ export function hasEnabledPluginForUrl(
   url: string,
 ): boolean {
   return manifests.some(
-    (manifest) => state[manifest.id]?.enabled === true && matchesAnyPattern(url, manifest.matches),
+    (manifest) =>
+      !isLocalPluginId(manifest.id) &&
+      state[manifest.id]?.enabled === true &&
+      matchesAnyPattern(url, manifest.matches),
   );
 }
 
@@ -122,7 +128,8 @@ export function patternTargetsHost(pattern: string, host: string): boolean {
  * Background side of the D4 trigger: the request only names a host, so a
  * plugin qualifies when any of its patterns can apply to that host — a
  * path-scoped match such as `https://chat.deepseek.com/chat/*` must count,
- * although it would never match the bare `https://host/`.
+ * although it would never match the bare `https://host/`. Local plugins never
+ * count, as in `hasEnabledPluginForUrl`.
  */
 export function hasEnabledPluginForHost(
   manifests: readonly PluginManifest[],
@@ -131,6 +138,7 @@ export function hasEnabledPluginForHost(
 ): boolean {
   return manifests.some(
     (manifest) =>
+      !isLocalPluginId(manifest.id) &&
       state[manifest.id]?.enabled === true &&
       manifest.matches.some((pattern) => patternTargetsHost(pattern, host)),
   );

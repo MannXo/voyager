@@ -8,6 +8,7 @@ import type { TranslationKey } from '@/utils/translations';
 
 import type { PromptDataTransferController } from '../hooks/usePromptDataTransfer';
 import { ChatGptExportCard } from './ChatGptExportCard';
+import { LocalPluginsPanel } from './LocalPluginsPanel';
 import { PluginManager } from './PluginManager';
 import { PromptDataTransfer } from './PromptDataTransfer';
 
@@ -82,8 +83,9 @@ export function PluginSiteSettings({
           <PromptDataTransfer t={t} transfer={promptDataTransfer} />
         </CardContent>
       </Card>
-      <div style={{ order: -1 }}>
+      <div style={{ order: -1 }} className="flex flex-col gap-4">
         <PluginManager {...plugins} />
+        <LocalPluginsPanel t={t} />
       </div>
     </>
   );

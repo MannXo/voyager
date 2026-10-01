@@ -9,7 +9,8 @@
  *   4. reconcile: mount every plugin that (matches URL) AND (is enabled) AND
  *      (satisfies the engine version) AND (is not entitlement-locked); unmount the rest
  *   5. subscribe to state changes and re-reconcile (live enable/disable)
- *   6. subscribe to this host's remote catalog cache and reload on content change
+ *   6. subscribe to this host's remote catalog cache and to the user's local
+ *      plugins, and reload on content change
  *   7. in the top frame, when an ENABLED plugin targets this page, ask the
  *      background to check the remote catalog (it applies the user's interval,
  *      switch and backoff). Pages without an enabled plugin — every Gemini /
@@ -24,6 +25,7 @@ import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContex
 
 import { isScriptedTierSupported } from '../capabilities';
 import { LocalEntitlementProvider } from '../entitlement/LocalEntitlementProvider';
+import { subscribeLocalPlugins } from '../local/localPluginStore';
 import { subscribeHostCatalog } from '../remote/hostCatalogCache';
 import { catalogHostFromUrl, hasEnabledPluginForUrl } from '../remote/hostCatalogPolicy';
 import {
@@ -106,6 +108,7 @@ export class PluginHost {
   private state: PluginStateMap = {};
   private unsubscribeState: (() => void) | null = null;
   private unsubscribeCatalog: (() => void) | null = null;
+  private unsubscribeLocal: (() => void) | null = null;
   private started = false;
   /**
    * Monotonic lifecycle generation. start() and stop() each bump it; every
@@ -153,17 +156,18 @@ export class PluginHost {
       // applies live without a page reload.
       let engineReady = false;
       let catalogChangedBeforeEngine = false;
+      const onSourceChange = (): void => {
+        if (this.generation !== gen) return;
+        if (!engineReady) {
+          catalogChangedBeforeEngine = true;
+          return;
+        }
+        void this.enqueue(() => this.reloadCatalog(gen));
+      };
       const host = this.context.host;
-      if (host) {
-        this.unsubscribeCatalog = subscribeHostCatalog(host, () => {
-          if (this.generation !== gen) return;
-          if (!engineReady) {
-            catalogChangedBeforeEngine = true;
-            return;
-          }
-          void this.enqueue(() => this.reloadCatalog(gen));
-        });
-      }
+      if (host) this.unsubscribeCatalog = subscribeHostCatalog(host, onSourceChange);
+      // An import, update or removal of a local plugin is a catalog change too.
+      this.unsubscribeLocal = subscribeLocalPlugins(onSourceChange);
       // A published site override (plan §3) beats the bundled adapter for
       // pages it covers; resolved before the engine exists so semantic
       // selectors use the newest site knowledge from the first mount.
@@ -216,6 +220,8 @@ export class PluginHost {
     this.unsubscribeState = null;
     this.unsubscribeCatalog?.();
     this.unsubscribeCatalog = null;
+    this.unsubscribeLocal?.();
+    this.unsubscribeLocal = null;
     this.engine?.unmountAll();
     this.pushedSettings.clear();
     this.frozen.clear();
@@ -294,7 +300,8 @@ export class PluginHost {
    * Plan D7: a mounted plugin whose contributions run first-party code (a
    * `native` op) keeps the version it started with; its update is recorded
    * as pending and applies on the next full page load. Declarative plugins
-   * remount immediately.
+   * remount immediately. A user-imported (`local.*`) plugin follows the same
+   * rule.
    */
   private async reloadCatalog(gen: number): Promise<void> {
     const engine = this.engine;

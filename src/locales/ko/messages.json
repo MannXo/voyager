@@ -2641,6 +2641,106 @@
     "message": "온라인 카탈로그",
     "description": "Source label for a plugin fetched from the online catalog for this site"
   },
+  "pluginSourceLocal": {
+    "message": "로컬",
+    "description": "Source label for a plugin the user imported locally"
+  },
+  "localPluginsTitle": {
+    "message": "로컬 플러그인",
+    "description": "Popup plugin page: title of the card for user-imported plugins"
+  },
+  "localPluginsDescription": {
+    "message": "직접 작성한 선언형 플러그인을 가져옵니다. CSS를 포함한 매니페스트 JSON을 고르거나, 매니페스트와 .css 파일을 함께 선택하세요. 공식 플러그인과 같은 검사를 거치며, 직접 켜기 전까지 꺼진 상태로 유지됩니다.",
+    "description": "Popup plugin page: what importing a local plugin does"
+  },
+  "localPluginsImportFiles": {
+    "message": "파일 가져오기",
+    "description": "Popup plugin page: button that opens the file picker for a local plugin"
+  },
+  "localPluginsPasteJson": {
+    "message": "JSON 붙여넣기",
+    "description": "Popup plugin page: button that opens a text box to paste a plugin manifest"
+  },
+  "localPluginsPasteLabel": {
+    "message": "플러그인 매니페스트 JSON",
+    "description": "Popup plugin page: accessible label of the paste text box"
+  },
+  "localPluginsCheckAndImport": {
+    "message": "검사 후 가져오기",
+    "description": "Popup plugin page: validate the pasted manifest and import it"
+  },
+  "localPluginsCancel": {
+    "message": "취소",
+    "description": "Popup plugin page: close the paste text box"
+  },
+  "localPluginsEmpty": {
+    "message": "아직 로컬 플러그인이 없습니다.",
+    "description": "Popup plugin page: no local plugin is installed"
+  },
+  "localPluginsImported": {
+    "message": "{name} {version}을(를) 가져왔습니다. 지금은 꺼져 있습니다. 아래에서 동작을 확인한 뒤 플러그인 목록에서 켜세요.",
+    "description": "Popup plugin page: import succeeded; {name} and {version} are placeholders"
+  },
+  "localPluginsRejected": {
+    "message": "가져오지 못했습니다. 다음 문제를 고친 뒤 다시 시도하세요:",
+    "description": "Popup plugin page: import failed validation; the issues follow"
+  },
+  "localPluginsPreviousKept": {
+    "message": "설치된 버전 {version}은(는) 그대로 유지됩니다.",
+    "description": "Popup plugin page: a failed re-import kept the installed version; {version} is a placeholder"
+  },
+  "localPluginsInspect": {
+    "message": "살펴보기",
+    "description": "Popup plugin page: show what a local plugin does"
+  },
+  "localPluginsHideDetails": {
+    "message": "숨기기",
+    "description": "Popup plugin page: hide the details of a local plugin"
+  },
+  "localPluginsRemove": {
+    "message": "제거",
+    "description": "Popup plugin page: delete a local plugin"
+  },
+  "localPluginsConfirmRemove": {
+    "message": "제거 확인",
+    "description": "Popup plugin page: second click that confirms removing a local plugin"
+  },
+  "localPluginsStoredInvalid": {
+    "message": "현재 버전의 Voyager는 이 플러그인을 더 이상 허용하지 않아 실행되지 않습니다:",
+    "description": "Popup plugin page: a stored local plugin fails this build's checks; issues follow"
+  },
+  "localPluginInspectSites": {
+    "message": "사이트",
+    "description": "Inspect view: sites the plugin runs on"
+  },
+  "localPluginInspectCss": {
+    "message": "CSS",
+    "description": "Inspect view: injected stylesheet size label"
+  },
+  "localPluginInspectCssChars": {
+    "message": "{chars}자",
+    "description": "Inspect view: injected CSS size; {chars} is a number"
+  },
+  "localPluginInspectDomOps": {
+    "message": "페이지 변경",
+    "description": "Inspect view: reversible DOM operations the plugin applies"
+  },
+  "localPluginInspectPrimitives": {
+    "message": "호출하는 Voyager 내장 기능",
+    "description": "Inspect view: first-party Voyager primitives the plugin invokes"
+  },
+  "localPluginInspectSettings": {
+    "message": "설정",
+    "description": "Inspect view: settings the plugin declares"
+  },
+  "localPluginInspectNone": {
+    "message": "없음",
+    "description": "Inspect view: the plugin has nothing in this category"
+  },
+  "localPluginInspectNoCode": {
+    "message": "플러그인 자체 코드는 실행되지 않습니다. CSS, 되돌릴 수 있는 페이지 변경, Voyager 내장 기능만 사용합니다.",
+    "description": "Inspect view: reassurance that a declarative plugin cannot run its own code"
+  },
   "pluginUpdateNeedsNewerVoyager": {
     "message": "업데이트 {version}에는 더 새로운 Voyager가 필요합니다.",
     "description": "Note shown when a plugin update is held back because it needs a newer Voyager; {version} is the held-back version"

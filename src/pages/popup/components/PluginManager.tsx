@@ -58,6 +58,7 @@ const SOURCE_LABEL_KEYS: Readonly<Record<string, TranslationKey>> = {
   builtin: 'pluginSourceBuiltin',
   'bundled-catalog': 'pluginSourceBundled',
   'host-catalog': 'pluginSourceOnline',
+  local: 'pluginSourceLocal',
 };
 
 const CHECK_INTERVAL_LABEL_KEYS: Readonly<Record<PluginCatalogCheckInterval, TranslationKey>> = {

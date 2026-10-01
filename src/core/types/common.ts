@@ -357,6 +357,12 @@ export const StorageKeys = {
   // chrome.storage.local). Drives the "updated" badge after a catalog change
   // (plan D11); per-device UI state, never backed up.
   PLUGIN_SEEN_VERSIONS: 'gvPluginSeenVersions',
+  // User-authored declarative plugins imported from the popup
+  // (chrome.storage.local). Shape: Record<'local.<id>', LocalPluginRecord> (see
+  // src/features/plugins/local/localPluginStore.ts): the raw manifest with CSS
+  // inlined, re-validated on every read. Device-local; Drive backup of the
+  // manifests is a follow-up (their enable state rides PLUGINS_STATE).
+  PLUGIN_LOCAL_MANIFESTS: 'gvPluginLocalManifests',
   // Per-site custom accent colour overrides (chrome.storage.sync, backed up).
   // Shape: Record<siteId, string> keyed by SiteAdapter id ('gemini' | 'claude'
   // | 'chatgpt' | 'aistudio' | ...). A site WITH an entry uses that

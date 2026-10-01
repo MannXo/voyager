@@ -2641,6 +2641,106 @@
     "message": "Онлайн-каталог",
     "description": "Source label for a plugin fetched from the online catalog for this site"
   },
+  "pluginSourceLocal": {
+    "message": "Локальный",
+    "description": "Source label for a plugin the user imported locally"
+  },
+  "localPluginsTitle": {
+    "message": "Локальные плагины",
+    "description": "Popup plugin page: title of the card for user-imported plugins"
+  },
+  "localPluginsDescription": {
+    "message": "Импортируйте собственный декларативный плагин: JSON-манифест со встроенным CSS или манифест вместе с его файлами .css. Он проходит те же проверки, что и официальные плагины, и остаётся выключенным, пока вы его не включите.",
+    "description": "Popup plugin page: what importing a local plugin does"
+  },
+  "localPluginsImportFiles": {
+    "message": "Импорт файлов",
+    "description": "Popup plugin page: button that opens the file picker for a local plugin"
+  },
+  "localPluginsPasteJson": {
+    "message": "Вставить JSON",
+    "description": "Popup plugin page: button that opens a text box to paste a plugin manifest"
+  },
+  "localPluginsPasteLabel": {
+    "message": "JSON-манифест плагина",
+    "description": "Popup plugin page: accessible label of the paste text box"
+  },
+  "localPluginsCheckAndImport": {
+    "message": "Проверить и импортировать",
+    "description": "Popup plugin page: validate the pasted manifest and import it"
+  },
+  "localPluginsCancel": {
+    "message": "Отмена",
+    "description": "Popup plugin page: close the paste text box"
+  },
+  "localPluginsEmpty": {
+    "message": "Локальных плагинов пока нет.",
+    "description": "Popup plugin page: no local plugin is installed"
+  },
+  "localPluginsImported": {
+    "message": "{name} {version} импортирован. Он выключен: посмотрите ниже, что он делает, затем включите его в списке плагинов.",
+    "description": "Popup plugin page: import succeeded; {name} and {version} are placeholders"
+  },
+  "localPluginsRejected": {
+    "message": "Не импортировано. Исправьте эти ошибки и повторите попытку:",
+    "description": "Popup plugin page: import failed validation; the issues follow"
+  },
+  "localPluginsPreviousKept": {
+    "message": "Установленная версия {version} не изменилась.",
+    "description": "Popup plugin page: a failed re-import kept the installed version; {version} is a placeholder"
+  },
+  "localPluginsInspect": {
+    "message": "Подробнее",
+    "description": "Popup plugin page: show what a local plugin does"
+  },
+  "localPluginsHideDetails": {
+    "message": "Скрыть",
+    "description": "Popup plugin page: hide the details of a local plugin"
+  },
+  "localPluginsRemove": {
+    "message": "Удалить",
+    "description": "Popup plugin page: delete a local plugin"
+  },
+  "localPluginsConfirmRemove": {
+    "message": "Подтвердить удаление",
+    "description": "Popup plugin page: second click that confirms removing a local plugin"
+  },
+  "localPluginsStoredInvalid": {
+    "message": "Эта версия Voyager больше не принимает этот плагин, поэтому он не будет работать:",
+    "description": "Popup plugin page: a stored local plugin fails this build's checks; issues follow"
+  },
+  "localPluginInspectSites": {
+    "message": "Сайты",
+    "description": "Inspect view: sites the plugin runs on"
+  },
+  "localPluginInspectCss": {
+    "message": "CSS",
+    "description": "Inspect view: injected stylesheet size label"
+  },
+  "localPluginInspectCssChars": {
+    "message": "Символов: {chars}",
+    "description": "Inspect view: injected CSS size; {chars} is a number"
+  },
+  "localPluginInspectDomOps": {
+    "message": "Изменения страницы",
+    "description": "Inspect view: reversible DOM operations the plugin applies"
+  },
+  "localPluginInspectPrimitives": {
+    "message": "Встроенные функции Voyager",
+    "description": "Inspect view: first-party Voyager primitives the plugin invokes"
+  },
+  "localPluginInspectSettings": {
+    "message": "Настройки",
+    "description": "Inspect view: settings the plugin declares"
+  },
+  "localPluginInspectNone": {
+    "message": "Нет",
+    "description": "Inspect view: the plugin has nothing in this category"
+  },
+  "localPluginInspectNoCode": {
+    "message": "Собственный код плагина не выполняется: только CSS, обратимые изменения страницы и встроенные функции Voyager.",
+    "description": "Inspect view: reassurance that a declarative plugin cannot run its own code"
+  },
   "pluginUpdateNeedsNewerVoyager": {
     "message": "Для обновления {version} нужна более новая версия Voyager.",
     "description": "Note shown when a plugin update is held back because it needs a newer Voyager; {version} is the held-back version"

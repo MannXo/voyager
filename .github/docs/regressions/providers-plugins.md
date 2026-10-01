@@ -384,3 +384,21 @@ while an active plugin has domOps`).
   docs; a new platform needs its host there before its plugins appear correctly.
 - **Guard:** `docs/.vitepress/theme/components/pluginCatalog.test.ts`
   (`gives every catalog plugin a known platform`, `folds every platform of Vim Input into one card`).
+
+## User-imported plugins live only in the `local.*` namespace and never drive catalog checks
+
+- **Trap:** A user-imported manifest is untrusted input under an id the user chose. Kept as-is,
+  `voyager.formula-copy` would replace the official plugin and share its enable state and
+  settings; a `<all_urls>` match would make enabling it request every host; and an enabled local
+  plugin on DeepSeek would make the page eligible for a voyager.nagi.fun catalog check that has
+  nothing to do with it.
+- **Rule:** `validateLocalManifest` forces every id into `local.*`, runs the remote gate plus the
+  primitive contract and engine-floor checks, and keeps `matches` inside an existing plugin
+  platform. `mergePluginRecords` drops official records in `local.*` and merges local ones last,
+  outside the kill switch; `hasEnabledPluginForUrl` / `hasEnabledPluginForHost` skip `local.*`.
+  Import validates before it writes and always writes `enabled: false`.
+- **Guard:** `src/features/plugins/local/validateLocalManifest.test.ts`,
+  `src/features/plugins/local/localPluginImport.test.ts`,
+  `src/features/plugins/sources/defaultSources.test.ts` (`mergePluginRecords with local plugins`),
+  `src/features/plugins/remote/hostCatalogPolicy.test.ts`
+  (`catalog eligibility ignores local plugins`).

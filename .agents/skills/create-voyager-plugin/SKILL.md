@@ -2,7 +2,7 @@
 name: create-voyager-plugin
 description: Create or change a Voyager declarative plugin, site adapter, or native primitive.
 metadata:
-  version: '1.2.0'
+  version: '1.3.0'
 ---
 
 # Create a Voyager plugin
@@ -79,6 +79,18 @@ For architecture or distribution changes, read `src/features/plugins/README.md` 
   `gv-platform-themed` means "some brand applies" and three sites share it.
 - Never hand-edit `dist_*` or `docs/public/catalog`; `catalog:build` writes the
   published catalog.
+
+## Write your own plugin locally
+
+A declarative plugin for personal use needs no PR, catalog entry or release. Write `plugin.json` and its `.css` as the [declarative reference](references/declarative.md) describes, then in the popup's plugin page under **Local plugins** use **Import files** (manifest plus its `.css` files) or **Paste JSON** (CSS inlined).
+
+- The id is stored as `local.<id>`. Local plugins never replace an official id, are merged last and are outside the remote kill switch.
+- The gate is the remote catalog's (`validateManifest`, CSS and rendered-sink guards) plus: `tier: "declarative"` only; `native` ops only for shipped primitives, with params that fit `verbs/contracts.ts` and `engine` at or above their `sinceEngine`; and `matches` inside an existing plugin platform (Claude, ChatGPT, DeepSeek). No plugin-supplied JS, ever.
+- A rejected import lists `path: message` and keeps the installed version. An accepted import lands disabled with an inspect view of its sites, CSS size, page changes, primitives and settings; enable it from the plugin list. To update, edit and re-import: the new version also lands disabled, so re-inspect and turn it back on. A plugin with a `native` op that was running keeps its mounted version until the page reloads (D7).
+- Export downloads the manifest with CSS inlined; that file is also the starting point for an official contribution, after renaming the id out of `local.` and moving it into `catalog/sites/<site>/plugins/<id>/`.
+- Manifests stay on the device (no Drive backup yet); export to keep a copy.
+
+Implementation: `src/features/plugins/local/` and the "Write your own plugin locally" section of `src/features/plugins/README.md`.
 
 ## Verification and completion
 

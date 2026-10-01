@@ -2641,6 +2641,106 @@
     "message": "كتالوج عبر الإنترنت",
     "description": "Source label for a plugin fetched from the online catalog for this site"
   },
+  "pluginSourceLocal": {
+    "message": "محلي",
+    "description": "Source label for a plugin the user imported locally"
+  },
+  "localPluginsTitle": {
+    "message": "الإضافات المحلية",
+    "description": "Popup plugin page: title of the card for user-imported plugins"
+  },
+  "localPluginsDescription": {
+    "message": "استورد إضافة تصريحية كتبتها بنفسك: ملف بيان JSON يتضمن CSS، أو ملف البيان مع ملفات ‎.css الخاصة به. تخضع لنفس فحوصات الإضافات الرسمية وتبقى معطّلة حتى تفعّلها.",
+    "description": "Popup plugin page: what importing a local plugin does"
+  },
+  "localPluginsImportFiles": {
+    "message": "استيراد ملفات",
+    "description": "Popup plugin page: button that opens the file picker for a local plugin"
+  },
+  "localPluginsPasteJson": {
+    "message": "لصق JSON",
+    "description": "Popup plugin page: button that opens a text box to paste a plugin manifest"
+  },
+  "localPluginsPasteLabel": {
+    "message": "ملف JSON لبيان الإضافة",
+    "description": "Popup plugin page: accessible label of the paste text box"
+  },
+  "localPluginsCheckAndImport": {
+    "message": "تحقق واستورد",
+    "description": "Popup plugin page: validate the pasted manifest and import it"
+  },
+  "localPluginsCancel": {
+    "message": "إلغاء",
+    "description": "Popup plugin page: close the paste text box"
+  },
+  "localPluginsEmpty": {
+    "message": "لا توجد إضافات محلية بعد.",
+    "description": "Popup plugin page: no local plugin is installed"
+  },
+  "localPluginsImported": {
+    "message": "تم استيراد {name} {version}. الإضافة معطّلة: راجع ما تفعله أدناه، ثم فعّلها من قائمة الإضافات.",
+    "description": "Popup plugin page: import succeeded; {name} and {version} are placeholders"
+  },
+  "localPluginsRejected": {
+    "message": "لم يتم الاستيراد. أصلح هذه المشكلات ثم حاول مجددًا:",
+    "description": "Popup plugin page: import failed validation; the issues follow"
+  },
+  "localPluginsPreviousKept": {
+    "message": "يبقى الإصدار المثبّت {version} دون تغيير.",
+    "description": "Popup plugin page: a failed re-import kept the installed version; {version} is a placeholder"
+  },
+  "localPluginsInspect": {
+    "message": "فحص",
+    "description": "Popup plugin page: show what a local plugin does"
+  },
+  "localPluginsHideDetails": {
+    "message": "إخفاء",
+    "description": "Popup plugin page: hide the details of a local plugin"
+  },
+  "localPluginsRemove": {
+    "message": "إزالة",
+    "description": "Popup plugin page: delete a local plugin"
+  },
+  "localPluginsConfirmRemove": {
+    "message": "تأكيد الإزالة",
+    "description": "Popup plugin page: second click that confirms removing a local plugin"
+  },
+  "localPluginsStoredInvalid": {
+    "message": "لم يعد هذا الإصدار من Voyager يقبل هذه الإضافة، لذا لن تعمل:",
+    "description": "Popup plugin page: a stored local plugin fails this build's checks; issues follow"
+  },
+  "localPluginInspectSites": {
+    "message": "المواقع",
+    "description": "Inspect view: sites the plugin runs on"
+  },
+  "localPluginInspectCss": {
+    "message": "CSS",
+    "description": "Inspect view: injected stylesheet size label"
+  },
+  "localPluginInspectCssChars": {
+    "message": "{chars} حرفًا",
+    "description": "Inspect view: injected CSS size; {chars} is a number"
+  },
+  "localPluginInspectDomOps": {
+    "message": "تغييرات الصفحة",
+    "description": "Inspect view: reversible DOM operations the plugin applies"
+  },
+  "localPluginInspectPrimitives": {
+    "message": "ميزات Voyager المدمجة التي تستدعيها",
+    "description": "Inspect view: first-party Voyager primitives the plugin invokes"
+  },
+  "localPluginInspectSettings": {
+    "message": "الإعدادات",
+    "description": "Inspect view: settings the plugin declares"
+  },
+  "localPluginInspectNone": {
+    "message": "لا شيء",
+    "description": "Inspect view: the plugin has nothing in this category"
+  },
+  "localPluginInspectNoCode": {
+    "message": "لا يُنفَّذ أي كود من الإضافة: فقط CSS وتغييرات قابلة للتراجع في الصفحة وميزات Voyager المدمجة.",
+    "description": "Inspect view: reassurance that a declarative plugin cannot run its own code"
+  },
   "pluginUpdateNeedsNewerVoyager": {
     "message": "يتطلب التحديث {version} إصدارًا أحدث من Voyager.",
     "description": "Note shown when a plugin update is held back because it needs a newer Voyager; {version} is the held-back version"

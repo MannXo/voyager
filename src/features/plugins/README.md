@@ -31,7 +31,8 @@ Both constraints point at the same answer → **declarative-first** plugins.
 PluginSource[]  ──►  manifests        SiteRegistry ──► SiteAdapter (current URL)
    (native builtin,
     bundled catalog,
-    remote host catalog)                   ▼
+    remote host catalog,
+    local imports)                         ▼
 pluginState (storage) ─► enabled?    DeclarativeEngine (interprets contributions)
 EntitlementProvider  ─► entitled?         │  styles + domOps, reversible, idempotent
         └──────────►  PluginHost.reconcile() ──► engine.mount/unmount
@@ -63,8 +64,11 @@ EntitlementProvider  ─► entitled?         │  styles + domOps, reversible, 
 - **`storage/pluginState.ts`** — per-plugin enable state in `chrome.storage.local`.
 - **`sources/` `entitlement/`** — the swap points for native first-party
   features, bundled official declarative plugins, the per-host remote catalog,
-  and a future paid (Stripe/account) store. `sources/defaultSources.ts` also
+  the user's locally imported plugins, and a future paid (Stripe/account) store. `sources/defaultSources.ts` also
   owns `mergePluginRecords`, the rules that pick which copy of a plugin id wins.
+- **`local/`** — user-imported declarative plugins: the `local.*` id namespace,
+  the import gate, storage, the read-only `LocalPluginSource` and the inspect
+  summary the popup shows. See "Write your own plugin locally" below.
 - **`remote/`** — the per-host remote catalog channel: a read-only source over a
   storage cache, plus a background-only fetcher. See below.
 - **`catalog/`** — the bundled official data: one directory per plugin platform,
@@ -153,6 +157,52 @@ exact-match allowlist: `data-*`, `aria-*`, `title`, `role`, `lang`, `dir`,
 page element. `setStyle` values and `style` attributes follow the CSS rule
 above, and attribute values may not contain an external URL. All of this is
 checked again after `{{setting}}` substitution (`manifest/sinkGuards.ts`).
+
+## Write your own plugin locally (`local/`)
+
+A user can run a declarative plugin they wrote without publishing it:
+
+1. Write `plugin.json` exactly as above, plus its `style.css` (or inline the CSS
+   as `{ "css": "..." }`). Any lowercase reverse-dotted `id` works; it is stored
+   as `local.<id>`.
+2. Open the popup, go to the plugin page, and under **Local plugins** choose
+   **Import files** (pick the manifest together with its `.css` files) or
+   **Paste JSON** (a manifest with its CSS inlined).
+3. A rejected import lists every problem as `path: message` and leaves the
+   installed version untouched. An accepted one is stored **disabled** and its
+   inspect view shows the sites it matches, the CSS size, every page change,
+   each Voyager primitive it calls with its params, and its settings.
+4. Turn it on from the plugin list like any other plugin; it applies live. To
+   update it, edit the files and import again: a re-import also lands disabled,
+   so the user re-inspects the new version (it may add a `native` op) and turns
+   it back on. A plugin with a `native` op that was running when it was
+   re-imported keeps its mounted version until the page reloads, as official
+   ones do (D7). **Export** downloads the stored manifest with CSS inlined;
+   **Remove** deletes it with its enable state and settings.
+
+The gate (`local/validateLocalManifest.ts`) is the remote catalog's gate plus
+local-only rules, never a weaker one: `validateManifest` with the CSS and
+rendered-sink guards, `tier: "declarative"` only, `native` ops only for primitives
+this build ships with params that match their contract and an `engine` floor
+at or above their `sinceEngine` (`manifest/primitiveChecks.ts`, shared with
+`plugin:check`), and `matches` inside a plugin platform's `matches`, so enabling a
+local plugin can only request host access an official plugin could. Stored
+records are re-validated on every read by `local/LocalPluginSource.ts`.
+
+Ownership and precedence:
+
+- **`local.*` is reserved.** Ids are forced into it on import; `plugin:check`
+  rejects an official plugin in it and `mergePluginRecords` drops any builtin,
+  bundled or remote record that claims one. A local plugin can therefore never
+  replace an official one, and its enable state and settings in
+  `storage/pluginState.ts` never share a key with one.
+- **Merged last, outside the kill switch.** The remote catalog says nothing about
+  a user's own plugin, and an enabled local plugin never makes a page eligible
+  for a catalog check (`remote/hostCatalogPolicy.ts`).
+- **Storage.** Manifests live in `chrome.storage.local` under
+  `StorageKeys.PLUGIN_LOCAL_MANIFESTS` (at most 50, 1,000,000 characters per
+  import). They stay on the device: the enable state rides the plugin-state
+  Drive backup, but the manifests themselves do not; export them to keep a copy.
 
 ## Primitives (`verbs/`) and the `native` op
 
@@ -344,7 +394,10 @@ plugin id:
   targets the page and is absent from the catalog is dropped: the kill switch;
 - a 404, a failed fetch, or an entry written by a different extension version
   contributes nothing, so the bundled snapshot stays in force until the next
-  successful fetch.
+  successful fetch;
+- `local.*` ids belong to the user: an official or remote record in that
+  namespace is dropped, and local plugins are added last, never replace an
+  official id, and are outside the kill switch.
 
 ## What is NOT done yet (next milestones)
 

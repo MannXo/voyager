@@ -445,6 +445,12 @@ export const NON_SETTINGS_BACKUP_POLICIES = {
     disposition: 'device-local',
     reason: 'Which plugin versions this device has already shown is popup badge state.',
   },
+  [StorageKeys.PLUGIN_LOCAL_MANIFESTS]: {
+    storage: 'local',
+    disposition: 'local-data',
+    reason:
+      'User-authored plugin manifests stay on this device; the user exports them from the popup. Their enable state rides the plugin-state Drive file.',
+  },
   [StorageKeys.WATERMARK_NATIVE_NOTICE_SHOWN]: {
     storage: 'local',
     disposition: 'device-local',

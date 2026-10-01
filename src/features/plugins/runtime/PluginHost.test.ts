@@ -230,10 +230,11 @@ describe('PluginHost', () => {
     // The stale gen-1 start must NOT resume past its awaits and install a
     // second set of subscriptions over gen-3's (zombie listeners + clobbered
     // unsubscribe handles). Exactly one start's worth stays ACTIVE:
-    // state+catalog. (Gen 1 subscribed before it blocked; stop() removed those.)
+    // state+catalog+local plugins. (Gen 1 subscribed before it blocked; stop()
+    // removed those.)
     const added = (chrome.storage.onChanged.addListener as unknown as Mock).mock.calls.length;
     const removed = (chrome.storage.onChanged.removeListener as unknown as Mock).mock.calls.length;
-    expect(added - removed).toBe(2);
+    expect(added - removed).toBe(3);
     host.stop();
   });
 });
@@ -351,6 +352,26 @@ describe('PluginHost remote catalog', () => {
     const listeners = (chrome.storage.onChanged.addListener as unknown as Mock).mock.calls;
     for (const [listener] of listeners) {
       listener({ 'gvPluginHostCatalog:chatgpt.com': { newValue: catalogEntry(['y']) } }, 'local');
+    }
+    await flush();
+    expect(list).toHaveBeenCalledTimes(2);
+    host.stop();
+  });
+
+  it('reloads its sources when the user imports, updates or removes a local plugin', async () => {
+    mockState({ 'voyager.test': { enabled: true, installedAt: 1 } });
+    const list = vi.fn(async () => [manifest(['https://claude.ai/*'])]);
+    const host = new PluginHost({
+      url: 'https://claude.ai/chat/1',
+      sources: [{ id: 'spy', list }],
+      doc: document,
+    });
+    await host.start();
+    expect(list).toHaveBeenCalledTimes(1);
+
+    const listeners = (chrome.storage.onChanged.addListener as unknown as Mock).mock.calls;
+    for (const [listener] of listeners) {
+      listener({ gvPluginLocalManifests: { newValue: {} } }, 'local');
     }
     await flush();
     expect(list).toHaveBeenCalledTimes(2);

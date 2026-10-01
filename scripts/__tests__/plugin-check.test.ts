@@ -177,6 +177,12 @@ describe('plugin-check', () => {
     expect(result.issues[0]).toMatch(/sites\/<site>\/plugins\/<id>/);
   });
 
+  it('rejects an official plugin in the local.* namespace reserved for user imports', async () => {
+    const result = await checkPluginDir(makeFixturePlugin({ manifest: { id: 'local.widen' } }));
+    expect(result.ok).toBe(false);
+    expect(result.issues.join('\n')).toMatch(/reserved for user-imported plugins/);
+  });
+
   it('reports a primitive this build does not ship', async () => {
     const result = await checkPluginDir(
       makeFixturePlugin({

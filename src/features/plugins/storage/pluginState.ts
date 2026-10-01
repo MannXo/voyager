@@ -142,6 +142,23 @@ export async function setPluginEnabled(id: string, enabled: boolean): Promise<vo
   }
 }
 
+/** Forget a plugin's enable state and settings (a removed local plugin). */
+export async function removePluginState(id: string): Promise<void> {
+  const local = localArea();
+  if (!local) return;
+  try {
+    const current = await loadPluginState();
+    if (!Object.hasOwn(current, id)) return;
+    const next: Record<string, PluginStateEntry> = { ...current };
+    delete next[id];
+    await local.set({ [KEY]: next });
+  } catch (error) {
+    if (!isExtensionContextInvalidatedError(error)) {
+      logger.warn('removePluginState failed', { id, error: String(error) });
+    }
+  }
+}
+
 /** Persist a single setting value for a plugin (preserving enabled state + other settings). */
 export async function setPluginSetting(
   id: string,

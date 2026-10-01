@@ -290,10 +290,12 @@ export interface InstalledPlugin {
 /**
  * Which tier a source belongs to. Drives the merge rules in
  * `listPluginManifestsWithSources`: `builtin` ids are never overridden by a
- * remote entry, `remote` entries win over `bundled` snapshots when compatible.
- * A source without a kind is merged like a bundled snapshot.
+ * remote entry, `remote` entries win over `bundled` snapshots when compatible,
+ * and `local` (user-imported) plugins are merged last under their own
+ * `local.*` ids, outside the kill switch. A source without a kind is merged
+ * like a bundled snapshot.
  */
-export type PluginSourceKind = 'builtin' | 'bundled' | 'remote';
+export type PluginSourceKind = 'builtin' | 'bundled' | 'remote' | 'local';
 
 /**
  * Where a listing happens. `host` selects the per-host remote catalog; `url`
