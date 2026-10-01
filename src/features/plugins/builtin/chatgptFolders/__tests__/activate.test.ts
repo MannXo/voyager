@@ -169,6 +169,21 @@ describe('ChatGPT folders plugin', () => {
     expect(memory.values.local.get(StorageKeys.FOLDER_DATA_AISTUDIO)).toEqual(GEMINI_DATA);
   });
 
+  it('refuses to file a temporary chat that the URL does not mark', async () => {
+    memory.values.local.set(StorageKeys.CHATGPT_FOLDER_PANEL, { open: true });
+    document.body.innerHTML =
+      '<button data-testid="temporary-chat-toggle" aria-pressed="true"></button>';
+    await activate();
+
+    shadow().querySelector<HTMLButtonElement>('[class*="icon-button--add-current"]')!.click();
+    await settle(20);
+
+    expect(shadow().querySelector('[role="status"]')?.textContent).toBe(
+      "Open a saved conversation first. Temporary chats can't be filed.",
+    );
+    expect(memory.writes.filter((w) => w.key === StorageKeys.FOLDER_DATA_CHATGPT)).toEqual([]);
+  });
+
   it('reopens the panel the user left open', async () => {
     memory.values.local.set(StorageKeys.CHATGPT_FOLDER_PANEL, { open: true });
     await activate();

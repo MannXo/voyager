@@ -6,6 +6,7 @@ import type { FolderData } from '@/pages/content/folder/types';
 
 import { ChatGptFolderStore } from '../ChatGptFolderStore';
 import { CHATGPT_FOLDER_CONFIG } from '../config';
+import { exportChatGptFolders, importChatGptFolders } from '../transfer';
 import { type MemoryStorage, createMemoryStorage, settle } from './memoryStorage';
 
 vi.mock('webextension-polyfill', () => ({
@@ -81,6 +82,26 @@ describe('ChatGptFolderStore', () => {
     s.moveConversation('chatgpt:conv:b', ROOT_CONVERSATIONS_ID, folderId);
     s.removeConversation(folderId, 'chatgpt:conv:a');
     await settle();
+    const imported = await importChatGptFolders(
+      exportChatGptFolders({
+        folders: [
+          {
+            id: 'f9',
+            name: 'Imported',
+            parentId: null,
+            isExpanded: true,
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        ],
+        folderContents: { f9: [conversation('c')] },
+      }),
+      s.data,
+    );
+    expect(imported.ok).toBe(true);
+    if (imported.ok) await s.replaceData(imported.data);
+    await settle();
+    expect(s.data.folders.map((f) => f.name)).toEqual(['Projects', 'Imported']);
     await s.replaceData({ folders: [], folderContents: {} });
     await settle();
 
@@ -90,6 +111,7 @@ describe('ChatGptFolderStore', () => {
     );
     expect(memory.values.local.get(StorageKeys.FOLDER_DATA)).toEqual(GEMINI_DATA);
     expect(memory.values.local.get(StorageKeys.FOLDER_DATA_AISTUDIO)).toEqual(GEMINI_DATA);
+    expect(sessionStorage.length).toBe(0);
     // The repository's recovery slots live in this page's localStorage, under the
     // ChatGPT namespace only.
     const pageKeys = new Set(pageWrites.mock.calls.map(([key]) => key));

@@ -96,6 +96,20 @@ describe('openChatGptConversation', () => {
     expect(fullLoads.assign).not.toHaveBeenCalled();
   });
 
+  it('never clicks a link to the conversation outside the sidebar', () => {
+    document.body.innerHTML = `
+      <nav aria-label="Chat history"><a data-router-link target="_blank" href="/c/${A}">New tab</a></nav>
+      <main><a data-router-link href="https://chatgpt.com/c/${A}">Linked in a message</a></main>`;
+    const clicked = vi.fn((event: Event) => event.preventDefault());
+    for (const link of document.querySelectorAll('a')) link.addEventListener('click', clicked);
+    const { win } = guardedWindow();
+
+    openChatGptConversation(entry(`/c/${A}`), document, win);
+
+    expect(clicked).not.toHaveBeenCalled();
+    expect(router.routes).toEqual([`/c/${A}`]);
+  });
+
   it('stays put on the conversation already open', () => {
     history.replaceState(null, '', `/c/${A}`);
     const pushState = vi.spyOn(history, 'pushState');

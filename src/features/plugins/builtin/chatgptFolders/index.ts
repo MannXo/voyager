@@ -12,6 +12,7 @@ import { mountFloatingFab, unmountFloatingFab } from '@/pages/content/folder/flo
 import { type FloatingPanelHandle, mountFloatingPanel } from '@/pages/content/folder/floatingPanel';
 import { getTranslationSyncUnsafe as t, initI18n } from '@/utils/i18n';
 
+import { isTemporaryChat } from '../chatgptTemporaryHandoff/handoff';
 import { ChatGptFolderStore } from './ChatGptFolderStore';
 import { openChatGptConversation, readCurrentConversation } from './chatgptPage';
 import { CHATGPT_FOLDER_CONFIG } from './config';
@@ -128,7 +129,10 @@ class ChatGptFoldersView {
   }
 
   private addCurrent(folderId: string): void {
-    const conversation = readCurrentConversation(t('chatgptFoldersUntitled'));
+    // The handoff plugin's check also reads the temporary-chat toggle, not just the URL.
+    const conversation = isTemporaryChat()
+      ? null
+      : readCurrentConversation(t('chatgptFoldersUntitled'));
     if (!conversation) {
       this.panel?.flash(t('chatgptFoldersNoConversation'));
       return;

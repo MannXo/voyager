@@ -42,18 +42,25 @@ export function readCurrentConversation(
   };
 }
 
-/** A link ChatGPT rendered for conversation `id`, at whatever route it lives under. */
-function findNativeLink(doc: Document, id: string): HTMLAnchorElement | null {
-  for (const link of doc.querySelectorAll<HTMLAnchorElement>('a[href]')) {
-    if (readChatGptConversation(link.href)?.id === id) return link;
+/**
+ * The sidebar's router link for conversation `id`, at whatever route it lives
+ * under. Only the sidebar: a link inside a message may open a new tab or load
+ * the page in full.
+ */
+function findSidebarLink(doc: Document, id: string): HTMLAnchorElement | null {
+  for (const sidebar of doc.querySelectorAll(SIDEBAR_SELECTOR)) {
+    for (const link of sidebar.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+      if (link.target && link.target !== '_self') continue;
+      if (readChatGptConversation(link.href)?.id === id) return link;
+    }
   }
   return null;
 }
 
 /**
  * Opens a filed conversation inside the running app, never with a full load:
- * click ChatGPT's own link for it when one is rendered (its router handles the
- * click), else push the path and announce it with `popstate`, which client
+ * click ChatGPT's own sidebar link for it when one is rendered (its router
+ * handles the click), else push the path and announce it with `popstate`, which client
  * routers read as a navigation. Returns `false` for a non-ChatGPT entry.
  */
 export function openChatGptConversation(
@@ -65,7 +72,7 @@ export function openChatGptConversation(
   if (!identity) return false;
   if (readChatGptConversation(win.location.href)?.id === identity.id) return true;
 
-  const link = findNativeLink(doc, identity.id);
+  const link = findSidebarLink(doc, identity.id);
   if (link) {
     link.click();
     return true;
