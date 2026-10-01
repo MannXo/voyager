@@ -74,17 +74,19 @@ describe('ChatGPT folders is on by default', () => {
     expect(writtenState()[EXPORT].enabled).toBe(false);
   });
 
-  it('counts for the popup but never makes Voyager contact the catalog host by itself', () => {
+  it('never by itself offers visual effects or makes Voyager contact the catalog host', () => {
     const folders = BUILTIN_PLUGINS.filter((plugin) => plugin.id === FOLDERS);
-    expect(
+    const effects = (pluginState: Parameters<typeof canUseVisualEffects>[0]['pluginState']) =>
       canUseVisualEffects({
         isPluginSite: true,
         activeSiteDomain: 'chatgpt.com',
         customWebsites: [],
         sitePluginIds: [FOLDERS],
-        pluginState: {},
-      }),
-    ).toBe(true);
+        pluginState,
+      });
+    // No host access may have been granted, so no content script may run there.
+    expect(effects({})).toBe(false);
+    expect(effects({ [FOLDERS]: { enabled: true, installedAt: 1 } })).toBe(true);
     expect(hasEnabledPluginForUrl(folders, {}, 'https://chatgpt.com/')).toBe(false);
     expect(
       hasEnabledPluginForUrl(

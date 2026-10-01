@@ -1027,12 +1027,14 @@ template file`, `exports only the chosen template, never the pack or other promp
   plugin silently stored `enabled: false`.
 - **Rule:** Read enable state through `isPluginEnabled` (`features/plugins/storage/pluginDefaults.ts`):
   an explicit boolean wins, otherwise `DEFAULT_ENABLED_PLUGIN_IDS` decides. That covers the
-  plugin host, background registration, popup readers, brand theme and setting writes. The
-  catalog-host trigger (`hostCatalogPolicy`) deliberately counts only explicit `enabled: true`,
-  so a default never makes Voyager contact the catalog host.
+  plugin host, background registration, popup readers, brand theme and setting writes. Two
+  readers deliberately count only explicit `enabled: true`: the catalog-host trigger
+  (`hostCatalogPolicy`), so a default never makes Voyager contact the catalog host, and
+  `canUseVisualEffects`, because a default-on plugin may have no granted host access and so no
+  content script on the site.
 - **Guard:** `src/features/plugins/storage/pluginDefaults.test.ts` (`is registered by the
 background unless the user turned it off`, `stays on when a setting changes before the user ever
-flipped it`, `counts for the popup but never makes Voyager contact the catalog host by itself`).
+flipped it`, `never by itself offers visual effects or makes Voyager contact the catalog host`).
 
 ## A plugin-site coachmark has no `body.gv-rtl` and must not open over a host menu
 
