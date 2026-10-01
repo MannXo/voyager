@@ -414,28 +414,51 @@ describe('FolderStore persistence characterization', () => {
       expect(reload).toHaveBeenCalledTimes(1);
     });
 
-    it('arms once per write attempt, including the retry', async () => {
+    it('suppresses only the echo of the write attempt that landed', async () => {
       const { folderStore, listener } = await loadedStore();
       const reload = vi.spyOn(folderStore, 'reloadFoldersFromStorage').mockResolvedValue();
       vi.mocked(adapter.saveData).mockResolvedValueOnce(false);
 
       await folderStore.saveData();
-      listener({ [GLOBAL_KEY]: {} }, 'local');
-      listener({ [GLOBAL_KEY]: {} }, 'local');
+      listener({ [GLOBAL_KEY]: { newValue: saved.get(GLOBAL_KEY) } }, 'local');
       expect(reload).not.toHaveBeenCalled();
-      listener({ [GLOBAL_KEY]: {} }, 'local');
+      // The failed first attempt changed nothing, so it has no echo to swallow.
+      listener({ [GLOBAL_KEY]: { newValue: saved.get(GLOBAL_KEY) } }, 'local');
       expect(reload).toHaveBeenCalledTimes(1);
     });
 
-    it('stops suppressing after the 2s window and clears the stale counter', async () => {
+    it('reloads an external write that follows a no-op save', async () => {
+      const { folderStore, listener } = await loadedStore();
+      const reload = vi.spyOn(folderStore, 'reloadFoldersFromStorage').mockResolvedValue();
+      await folderStore.saveData();
+      listener({ [GLOBAL_KEY]: { newValue: saved.get(GLOBAL_KEY) } }, 'local');
+
+      // Unchanged data: chrome.storage emits no change event for this write.
+      await folderStore.saveData();
+      listener({ [GLOBAL_KEY]: { newValue: { ...expectedGlobalLoad(), folders: [] } } }, 'local');
+
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('reloads an external write that follows a rejected save', async () => {
+      const { folderStore, listener } = await loadedStore();
+      const reload = vi.spyOn(folderStore, 'reloadFoldersFromStorage').mockResolvedValue();
+      vi.mocked(adapter.saveData).mockResolvedValue(false);
+
+      await expect(folderStore.saveData()).resolves.toBe(false);
+      listener({ [GLOBAL_KEY]: { newValue: { ...expectedGlobalLoad(), folders: [] } } }, 'local');
+
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops suppressing after the 2s window and clears the stale echo', async () => {
       const { folderStore, listener } = await loadedStore();
       const reload = vi.spyOn(folderStore, 'reloadFoldersFromStorage').mockResolvedValue();
 
       await folderStore.saveData();
-      await folderStore.saveData();
       await vi.advanceTimersByTimeAsync(2001);
-      listener({ [GLOBAL_KEY]: {} }, 'local');
-      listener({ [GLOBAL_KEY]: {} }, 'local');
+      listener({ [GLOBAL_KEY]: { newValue: saved.get(GLOBAL_KEY) } }, 'local');
+      listener({ [GLOBAL_KEY]: { newValue: saved.get(GLOBAL_KEY) } }, 'local');
       expect(reload).toHaveBeenCalledTimes(2);
     });
 
@@ -445,7 +468,7 @@ describe('FolderStore persistence characterization', () => {
 
       await folderStore.saveData();
       await folderStore.refreshAccountScope();
-      listener({ [GLOBAL_KEY]: {} }, 'local');
+      listener({ [GLOBAL_KEY]: { newValue: saved.get(GLOBAL_KEY) } }, 'local');
       expect(reload).toHaveBeenCalledTimes(1);
     });
 

@@ -66,12 +66,20 @@ off a ChatGPT tab`).
   `chrome.storage.onChanged` fires in the SAME context that performed the write (unlike the window
   `storage` event). The manager's onChanged handler treated its own mirror write as an external
   change and reloaded.
-- **Rule:** Call `FolderRepository.armStorageEchoSuppression()` (counter + 2s window) before every
-  `storage.saveData` for the active account session. The onChanged handler consumes one suppression
-  per echo and still reloads on genuine external writes (popup sync, other tabs). Reset the counter
-  when switching accounts; delayed writes for a previous session must not arm the new session's
-  counter because the listener ignores events for their old storage key.
-- **Guard:** `src/pages/content/folder/FolderStore.test.ts` ("consumes one mirror echo per write and then applies an external update" and "applies an external update when no local write has armed echo suppression")
+- **Trap 2:** A bare echo counter swallowed genuine external updates. chrome.storage emits no
+  onChanged event for an unchanged value or a rejected write, so dropping a prompt onto its own
+  folder (or a quota failure) left suppression armed; another tab's update within 2s was ignored and
+  this stale tab's next save overwrote it. Echoes also come back with object keys sorted, so
+  insertion-order JSON never equals the written snapshot.
+- **Rule:** `FolderRepository.persistDataSession` arms a `StorageEchoTracker` token holding the
+  key-sorted serialization of the snapshot it writes, for the active session only, and disarms it
+  when that attempt fails or throws. The handler suppresses only an event whose `newValue` equals an
+  armed token; any other event for the key reloads and clears that key's tokens, because a later
+  external write could restore their value. Writes equal to the last value seen in onChanged arm
+  nothing. Each misjudgment must degrade to a redundant reload, never a swallowed update. Reset the
+  tracker when switching accounts; delayed writes for a previous session must not arm the new
+  session because the listener ignores events for their old storage key.
+- **Guard:** `src/pages/content/folder/FolderStore.test.ts` ("consumes one mirror echo per write and then applies an external update" and "applies an external update when no local write has armed echo suppression"), `src/pages/content/folder/__tests__/folderStorePersistenceCharacterization.test.ts` ("storage echo and cross-tab reload"), `src/pages/content/folder/__tests__/aistudioFolderSync.test.ts` (Chrome-like storage mock: no event for unchanged or rejected writes, sorted keys), `src/pages/content/folder/storage/__tests__/StorageEchoTracker.test.ts`
 
 ## Folder recovery and pending writes belong to an account session
 

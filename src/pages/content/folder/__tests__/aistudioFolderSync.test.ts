@@ -78,6 +78,17 @@ function emitStorageChange(values: Record<string, unknown>, area: string): void 
   }
 }
 
+/** chrome.storage hands listeners a fresh copy whose object keys come back sorted. */
+function sortedClone(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortedClone);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, sortedClone((value as Record<string, unknown>)[key])]),
+  );
+}
+
 /** Another tab, the popup or cloud sync writes local storage. */
 function writeFromElsewhere(values: Record<string, unknown>): void {
   Object.assign(local, structuredClone(values));
@@ -125,11 +136,16 @@ beforeEach(() => {
     geminiFolderEnabled: true,
   };
   mockBrowser.storage.local.get.mockImplementation(async (keys: unknown) => pick(local, keys));
-  // Like chrome.storage, every write echoes back to this context's listeners in a
-  // later task, after the writer has settled.
+  // Like chrome.storage: a write that changes a value echoes back to this context's
+  // listeners in a later task; an unchanged value or a rejected write emits nothing.
   mockBrowser.storage.local.set.mockImplementation(async (values: Record<string, unknown>) => {
+    const changed = Object.fromEntries(
+      Object.entries(values)
+        .filter(([key, value]) => JSON.stringify(local[key]) !== JSON.stringify(value))
+        .map(([key, value]) => [key, sortedClone(value)]),
+    );
     Object.assign(local, structuredClone(values));
-    setTimeout(() => emitStorageChange(values, 'local'), 0);
+    if (Object.keys(changed).length > 0) setTimeout(() => emitStorageChange(changed, 'local'), 0);
   });
   mockBrowser.storage.sync.get.mockImplementation(async (keys: unknown) => pick(sync, keys));
   mockBrowser.storage.sync.set.mockImplementation(async (values: Record<string, unknown>) => {
@@ -188,6 +204,45 @@ describe('AI Studio folder sync across contexts', () => {
     expect(bucketReads(GLOBAL_KEY)).toBe(readsAfterMount);
     expect(local.gvPromptItems).toEqual([prompt]);
     expect(manager.data.folders.map((folder) => folder.name)).toEqual(['Edited here', 'Cloud']);
+  });
+
+  it('reloads another tab write that follows an unchanged save', async () => {
+    local[GLOBAL_KEY] = folderData('Mine');
+    const manager = await mount();
+
+    await expect(manager.save()).resolves.toBe(true);
+    writeFromElsewhere({ [GLOBAL_KEY]: folderData('From another tab') });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(manager.data).toEqual(folderData('From another tab'));
+  });
+
+  it('reloads another tab write that follows a rejected save', async () => {
+    local[GLOBAL_KEY] = folderData('Mine');
+    const manager = await mount();
+    mockBrowser.storage.local.set.mockRejectedValueOnce(new Error('QUOTA_BYTES quota exceeded'));
+
+    manager.data.folders[0].name = 'Edited here';
+    await expect(manager.save()).resolves.toBe(false);
+    writeFromElsewhere({ [GLOBAL_KEY]: folderData('From another tab') });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(manager.data).toEqual(folderData('From another tab'));
+  });
+
+  it('reloads when another tab restores the value of an earlier own write', async () => {
+    local[GLOBAL_KEY] = folderData('Mine');
+    const manager = await mount();
+    const readsAfterMount = bucketReads(GLOBAL_KEY);
+
+    await expect(manager.save()).resolves.toBe(true);
+    writeFromElsewhere({ [GLOBAL_KEY]: folderData('From another tab') });
+    await vi.advanceTimersByTimeAsync(0);
+    writeFromElsewhere({ [GLOBAL_KEY]: folderData('Mine') });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(bucketReads(GLOBAL_KEY)).toBe(readsAfterMount + 2);
+    expect(manager.data).toEqual(folderData('Mine'));
   });
 
   it('ignores other buckets, other areas and a disabled folder feature', async () => {

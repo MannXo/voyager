@@ -12,13 +12,17 @@ import { cloneFolderData, validateFolderData } from '@/features/folder/model/fol
 import { FolderDataSession } from './FolderDataSession';
 import { GEMINI_FOLDER_CONFIG, type PlatformFolderConfig } from './platformFolderConfig';
 import type { IFolderStorageAdapter } from './storage/FolderStorageAdapter';
+import {
+  type StorageEcho,
+  StorageEchoTracker,
+  serializeStoredValue,
+} from './storage/StorageEchoTracker';
 import type { FolderData } from './types';
 
 /** Growing gaps between account-scope retries, in ms. Length caps the attempts. */
 const ACCOUNT_SCOPE_RETRY_DELAYS = [400, 1200, 3000] as const;
 const IS_DEBUG = false;
 const SAVE_DEBOUNCE_MS = 300;
-const STORAGE_ECHO_SUPPRESS_WINDOW_MS = 2000;
 
 export type FolderStoreChange =
   | 'account'
@@ -85,8 +89,7 @@ export class FolderRepository {
   private resolvedAccountScope: AccountScope | null = null;
   private activeStorageKey: string;
   private destroyed = false;
-  private pendingStorageEchoes = 0;
-  private lastStorageEchoArmedAt = 0;
+  private readonly storageEchoes = new StorageEchoTracker();
   private saveDebounceTimer: number | null = null;
   private beforeUnloadFlushHandler: (() => void) | null = null;
   private readonly tag: string;
@@ -97,8 +100,9 @@ export class FolderRepository {
     area: string,
   ): void => {
     if (this.destroyed) return;
-    if (area === 'local' && changes[this.activeStorageKey]) {
-      if (!this.consumeStorageEchoSuppression()) this.hooks.onExternalChange();
+    const change = area === 'local' ? changes[this.activeStorageKey] : undefined;
+    if (change && !this.storageEchoes.consume(this.activeStorageKey, change.newValue)) {
+      this.hooks.onExternalChange();
     }
     if (area === 'sync' && this.config.isolationSettingKeys.some((key) => changes[key])) {
       void accountIsolationService
@@ -388,21 +392,6 @@ export class FolderRepository {
     void this.saveData();
   }
 
-  private armStorageEchoSuppression(): void {
-    this.pendingStorageEchoes += 1;
-    this.lastStorageEchoArmedAt = Date.now();
-  }
-
-  private consumeStorageEchoSuppression(): boolean {
-    if (this.pendingStorageEchoes <= 0) return false;
-    if (Date.now() - this.lastStorageEchoArmedAt > STORAGE_ECHO_SUPPRESS_WINDOW_MS) {
-      this.pendingStorageEchoes = 0;
-      return false;
-    }
-    this.pendingStorageEchoes -= 1;
-    return true;
-  }
-
   /**
    * Persist a draft without exposing it to edits, exports or recovery before success.
    * `companions` are other storage keys written in the same atomic storage call.
@@ -491,6 +480,9 @@ export class FolderRepository {
     this.dataSessions.set(session.storageKey, session);
     session.saveInProgress = true;
     let success = false;
+    // Only the active session's echo arrives under the watched key.
+    const serialized = this.dataSession === session ? serializeStoredValue(snapshot) : undefined;
+    let echo: StorageEcho | null = null;
 
     try {
       // Additional safety check: warn if saving empty data
@@ -514,17 +506,19 @@ export class FolderRepository {
       }
 
       // Save via storage adapter (handles both Safari and non-Safari).
-      // Each write mirrors into chrome.storage.local and echoes back through
-      // storage.onChanged in this same context — arm suppression so the echo
-      // doesn't trigger a redundant full reload (see storageChangeHandler).
-      if (this.dataSession === session) this.armStorageEchoSuppression();
+      // A write that changes chrome.storage.local echoes back through
+      // storage.onChanged in this same context — arm suppression for exactly
+      // this value so the echo doesn't trigger a redundant full reload.
+      echo = this.storageEchoes.arm(session.storageKey, serialized);
       success = (await this.writeSnapshot(session.storageKey, snapshot, companions)) !== false;
+      if (!success) this.storageEchoes.disarm(echo);
 
       // Retry once if the first attempt fails (for transient errors)
       if (!success && this.config.retryFailedSave) {
         console.warn(`${this.tag} Save failed, retrying once...`);
-        if (this.dataSession === session) this.armStorageEchoSuppression();
+        echo = this.storageEchoes.arm(session.storageKey, serialized);
         success = (await this.writeSnapshot(session.storageKey, snapshot, companions)) !== false;
+        if (!success) this.storageEchoes.disarm(echo);
       }
 
       if (success) {
@@ -543,6 +537,7 @@ export class FolderRepository {
       }
     } catch (error) {
       console.error(`${this.tag} Save data error:`, error);
+      this.storageEchoes.disarm(echo);
       success = false;
     } finally {
       // A newer queued snapshot can still persist this edit; report only a final failure.
@@ -599,7 +594,7 @@ export class FolderRepository {
     this.unresolvedData = { folders: [], folderContents: {} };
     this.resolvedAccountScope = null;
     this.activeStorageKey = '';
-    this.pendingStorageEchoes = 0;
+    this.storageEchoes.reset();
     this.hooks.onAccountReleased();
     this.hooks.onChange('account');
     try {
