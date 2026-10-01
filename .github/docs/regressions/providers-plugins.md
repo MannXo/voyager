@@ -558,3 +558,14 @@ say`), `src/pages/content/platformTheme/__tests__/platformTheme.test.ts`.
 - **Guard:** `src/pages/popup/components/__tests__/CloudSyncSettingsRestore.test.tsx`
   (`does not name parts the backup had nothing for as restored`,
   `names restored highlights when an overwrite stops for missing folder data`).
+
+## A background plugin lookup must list with the page's catalog host
+
+- **Trap:** The `gv.plugins.setSetting` check listed plugins with only `{ url }`. `HostCatalogSource`
+  reads its cache by `context.host`, so a remote-only plugin was missing (its write answered
+  `invalid_payload`) and a remote-updated settings schema was ignored.
+- **Rule:** List with `{ url, host: catalogHostFromUrl(url) }`, the same context the page's
+  `PluginHost` uses. `catalogHostFromUrl` is undefined on Gemini / AI Studio, so native surfaces
+  still never read a catalog.
+- **Guard:** `src/pages/background/__tests__/pluginRuntimeMessages.test.ts`
+  (`plugin setting writes checked against the real plugin listing`).

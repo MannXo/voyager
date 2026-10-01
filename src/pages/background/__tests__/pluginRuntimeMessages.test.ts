@@ -1,6 +1,8 @@
 import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import { EXTENSION_VERSION } from '@/core/utils/version';
+import { hostCatalogStorageKey } from '@/features/plugins/remote/hostCatalogCache';
 import {
   PLUGIN_CATALOG_REFRESH_MESSAGE,
   PLUGIN_CONTENT_SCRIPT_SYNC_MESSAGE,
@@ -259,5 +261,92 @@ describe('other plugin background messages', () => {
       handlePluginRuntimeMessage({ type: 'gv.account.resolve' }, contentSender(), deps()),
     ).toBeNull();
     expect(handlePluginRuntimeMessage(null, contentSender(), deps())).toBeNull();
+  });
+});
+
+describe('plugin setting writes checked against the real plugin listing', () => {
+  const DEEPSEEK = 'https://chat.deepseek.com/a/chat/s/1';
+
+  function deepseekSender(url = DEEPSEEK): chrome.runtime.MessageSender {
+    return { id: 'test-extension-id', url, tab: { id: 9, url } as chrome.tabs.Tab };
+  }
+
+  /** What the background caches after a successful catalog fetch for `host`. */
+  function cacheCatalog(host: string, manifests: readonly PluginManifest[]): void {
+    memory[hostCatalogStorageKey(host)] = {
+      host,
+      status: 'ok',
+      manifests,
+      fetchedAt: 1,
+      lastAttemptAt: 1,
+      failureCount: 0,
+      extensionVersion: EXTENSION_VERSION,
+    };
+  }
+
+  async function bundledTimeline(): Promise<PluginManifest> {
+    const listed = await new BundledCatalogPluginSource().list();
+    const timeline = listed.find((manifest) => manifest.id === 'voyager.deepseek-timeline');
+    if (!timeline) throw new Error('bundled deepseek timeline missing');
+    return timeline;
+  }
+
+  const noFinder = () => ({
+    syncContentScripts: vi.fn().mockResolvedValue(undefined),
+    refreshCatalog: vi.fn().mockResolvedValue({ ok: true }),
+  });
+
+  it('stores the style choice of a timeline plugin only the remote catalog serves', async () => {
+    const timeline = await bundledTimeline();
+    cacheCatalog('chat.deepseek.com', [
+      { ...timeline, id: 'voyager.deepseek-remote-timeline', version: '9.0.0' },
+    ]);
+    const response = await handlePluginRuntimeMessage(
+      setSetting({ id: 'voyager.deepseek-remote-timeline', key: 'compactView', value: true }),
+      deepseekSender(),
+      noFinder(),
+    );
+    expect(response).toEqual({ ok: true });
+  });
+
+  it('validates against the remote-updated settings schema', async () => {
+    const timeline = await bundledTimeline();
+    cacheCatalog('chat.deepseek.com', [
+      {
+        ...timeline,
+        version: '9.0.0',
+        contributes: {
+          ...timeline.contributes,
+          settings: {
+            ...timeline.contributes.settings,
+            dense: { type: 'boolean', label: 'Dense', default: false },
+          },
+        },
+      },
+    ]);
+    const response = await handlePluginRuntimeMessage(
+      setSetting({ id: 'voyager.deepseek-timeline', key: 'dense', value: true }),
+      deepseekSender(),
+      noFinder(),
+    );
+    expect(response).toEqual({ ok: true });
+  });
+
+  it('never reads a catalog for a native surface', async () => {
+    const timeline = await bundledTimeline();
+    const gemini = 'https://gemini.google.com/app';
+    cacheCatalog('gemini.google.com', [
+      { ...timeline, id: 'voyager.gemini-remote', matches: ['https://gemini.google.com/*'] },
+    ]);
+    const response = await handlePluginRuntimeMessage(
+      setSetting({ id: 'voyager.gemini-remote', key: 'compactView', value: true }),
+      deepseekSender(gemini),
+      noFinder(),
+    );
+    expect(response).toEqual({ ok: false, error: 'invalid_payload' });
+    const reads = (chrome.storage.local.get as unknown as Mock).mock.calls.flatMap(([keys]) =>
+      Object.keys(keys as Record<string, unknown>),
+    );
+    expect(reads).not.toContain(hostCatalogStorageKey('gemini.google.com'));
   });
 });

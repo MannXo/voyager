@@ -2,6 +2,7 @@
  * Background handlers for plugin runtime messages from content scripts and the
  * popup. Returns null for any other message so the caller keeps routing it.
  */
+import { catalogHostFromUrl } from '@/features/plugins/remote/hostCatalogPolicy';
 import { parseHostCatalogRefreshPayload } from '@/features/plugins/remote/hostCatalogRefresh';
 import {
   PLUGIN_CATALOG_REFRESH_MESSAGE,
@@ -33,8 +34,14 @@ const INVALID_PAYLOAD = { ok: false, error: 'invalid_payload' } as const;
 const UNTRUSTED_SENDER = { ok: false, error: 'untrusted_sender' } as const;
 const WRITE_FAILED = { ok: false, error: 'write_failed' } as const;
 
+/**
+ * The plugin under `id` as the page's own host lists it: the cached remote
+ * catalog needs `host` (a remote-only plugin, a remote-updated schema), and
+ * `catalogHostFromUrl` is undefined on Gemini / AI Studio, which never read it.
+ */
 async function findListedManifest(id: string, pageUrl: string) {
-  return (await listPluginManifests(undefined, { url: pageUrl })).find((m) => m.id === id);
+  const context = { url: pageUrl, host: catalogHostFromUrl(pageUrl) };
+  return (await listPluginManifests(undefined, context)).find((m) => m.id === id);
 }
 
 /**
