@@ -449,3 +449,26 @@ while an active plugin has domOps`).
   changed; unchanged ones keep running. D7 freezing for `native` ops is unchanged.
 - **Guard:** `src/features/plugins/runtime/PluginHost.test.ts`
   (`keeps a running plugin mounted when an unrelated local plugin is imported`).
+
+## Turning Voyager off on AI Studio must turn its plugins off too
+
+- **Trap:** The content script checks `GV_AISTUDIO_ENABLED` only before starting AI Studio's
+  native features, after `PluginHost` has already started, so with local plugins able to target
+  AI Studio a user who switched Voyager off there still had their plugins running.
+- **Rule:** `PluginHost` takes the site's master switch (`runtime/surfaceSwitch.ts`, AI Studio
+  only; Gemini has none) and mounts nothing while it is off; a change reconciles live, so off
+  unmounts and on mounts the enabled plugins again.
+- **Guard:** `src/features/plugins/runtime/PluginHost.surfaceSwitch.test.ts`.
+
+## A Drive merge restore must not drop local-only plugin state on a failed read
+
+- **Trap:** `restorePluginState` merged cloud entries over `loadPluginState()`, which turns a
+  failed read into `{}`, so the restore wrote the cloud entries alone and every local-only
+  plugin's enable state and settings were lost, while the popup reported success.
+- **Rule:** The merge reads with `readPluginStateStrict` and rejects without writing; the popup
+  restores plugin state before settings and folders, so the failure surfaces as a failed restore
+  with nothing written.
+- **Guard:** `src/features/plugins/storage/pluginState.test.ts`
+  (`rejects a merge restore when local state cannot be read, keeping local-only entries`),
+  `src/pages/popup/components/__tests__/CloudSyncSettingsRestore.test.tsx`
+  (`fails the whole merge restore when local plugin state cannot be read`).

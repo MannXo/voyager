@@ -51,6 +51,7 @@ import { hasPrimitive } from '../verbs/registry';
 import { DeclarativeEngine } from './declarativeEngine';
 import { PLUGIN_CATALOG_REFRESH_MESSAGE } from './messages';
 import { type PluginStatus, findIncompatibility } from './pluginStatus';
+import { type SurfaceSwitch, surfaceSwitchForUrl } from './surfaceSwitch';
 
 export interface PluginHostOptions {
   readonly url?: string;
@@ -62,6 +63,11 @@ export interface PluginHostOptions {
   readonly requestCatalogRefresh?: (host: string) => void;
   /** Injectable for tests; defaults to `window.top === window`. */
   readonly isTopFrame?: boolean;
+  /**
+   * The site's master switch (AI Studio's "Voyager on AI Studio"); while it is
+   * off nothing mounts. Defaults to `surfaceSwitchForUrl(url)`.
+   */
+  readonly surfaceSwitch?: SurfaceSwitch | null;
 }
 
 /** Fire-and-forget: the background decides whether a network request is due. */
@@ -109,6 +115,10 @@ export class PluginHost {
   private unsubscribeState: (() => void) | null = null;
   private unsubscribeCatalog: (() => void) | null = null;
   private unsubscribeLocal: (() => void) | null = null;
+  private unsubscribeSurface: (() => void) | null = null;
+  private readonly surfaceSwitch: SurfaceSwitch | null;
+  /** Whether the site's master switch lets plugins run (always true without one). */
+  private surfaceOn = true;
   private started = false;
   /**
    * Monotonic lifecycle generation. start() and stop() each bump it; every
@@ -132,6 +142,8 @@ export class PluginHost {
     this.context = { url: this.url, host: catalogHostFromUrl(this.url) };
     this.requestCatalogRefresh = options.requestCatalogRefresh ?? sendCatalogRefreshRequest;
     this.isTopFrame = options.isTopFrame ?? detectTopFrame();
+    this.surfaceSwitch =
+      options.surfaceSwitch === undefined ? surfaceSwitchForUrl(this.url) : options.surfaceSwitch;
   }
 
   get activeAdapter(): SiteAdapter | null {
@@ -187,12 +199,26 @@ export class PluginHost {
         this.state = next;
         void this.enqueue(() => this.reconcile(gen));
       });
+      // The site's master switch follows the same pattern: off unmounts every
+      // plugin on the page, on mounts the enabled ones again.
+      let surfaceFromListener: boolean | null = null;
+      const surfaceSwitch = this.surfaceSwitch;
+      if (surfaceSwitch) {
+        this.unsubscribeSurface = surfaceSwitch.subscribe((on) => {
+          if (this.generation !== gen) return;
+          surfaceFromListener = on;
+          this.surfaceOn = on;
+          void this.enqueue(() => this.reconcile(gen));
+        });
+      }
       // The initial read runs ON the chain, so a catalog reload the listener
       // queued meanwhile runs after it and its fresher listing wins.
       await this.enqueue(async () => {
         const manifests = await this.loadManifests();
         const state = await loadPluginState();
+        const surfaceOn = surfaceSwitch ? await surfaceSwitch.read() : true;
         if (this.generation !== gen) return;
+        this.surfaceOn = surfaceFromListener ?? surfaceOn;
         this.manifests = manifests;
         // A listener revision that arrived mid-read is newer than what we read.
         this.state = stateFromListener ?? state;
@@ -222,6 +248,8 @@ export class PluginHost {
     this.unsubscribeCatalog = null;
     this.unsubscribeLocal?.();
     this.unsubscribeLocal = null;
+    this.unsubscribeSurface?.();
+    this.unsubscribeSurface = null;
     this.engine?.unmountAll();
     this.pushedSettings.clear();
     this.frozen.clear();
@@ -416,6 +444,7 @@ export class PluginHost {
   }
 
   private async shouldActivate(manifest: PluginManifest, state: PluginStateMap): Promise<boolean> {
+    if (!this.surfaceOn) return false;
     if (!matchesAnyPattern(this.url, manifest.matches)) return false;
     if (!state[manifest.id]?.enabled) return false;
     const incompatibility = findIncompatibility({

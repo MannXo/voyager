@@ -575,7 +575,9 @@ function handleVisibilityChange(): void {
     // user turns a plugin on in the popup.
     // Bind builtin "native function plugins" before the host starts, so
     // PluginHost can run them when enabled on Claude/ChatGPT (default off).
-    // Gemini/AI Studio keep their existing core feature lifecycle.
+    // Gemini/AI Studio keep their existing core feature lifecycle. The host
+    // itself follows AI Studio's master switch (runtime/surfaceSwitch.ts), so
+    // "Voyager off on AI Studio" also keeps local plugins off there.
     registerBuiltinNativeHandlers();
     cleanupManager.registerCleanupFunction(startPluginHost(), CleanupPositions.CleanupPluginHost);
 

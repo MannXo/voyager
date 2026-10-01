@@ -207,7 +207,10 @@ script and grants these hosts, so enabling one needs no permission prompt and
 `pluginsToOriginPatterns` leaves their origins out of dynamic registration
 (registering them would inject Voyager twice). `PluginHost` mounts them with
 the same reversible engine as elsewhere, and turning one off removes its
-classes and stylesheet. The zero-request promise
+classes and stylesheet. AI Studio's master switch (`GV_AISTUDIO_ENABLED`,
+`runtime/surfaceSwitch.ts`) governs plugins too: while Voyager is off on AI
+Studio nothing mounts, and flipping it unmounts or remounts them live. Gemini
+has no master switch. The zero-request promise
 holds: `isEligibleCatalogHost` refuses every native host, so a Gemini page has
 no catalog host, never asks for a check and never reads a catalog cache, and
 the background refuses a forced check for them too. A minimal Gemini plugin:
