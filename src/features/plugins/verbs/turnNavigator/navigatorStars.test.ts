@@ -24,11 +24,12 @@ const turn = { id: 'c-same', hash: 'same', summary: 'Same prompt' };
 
 let route: string;
 
-function create(): NavigatorStars {
+function create(keyedTurns = true): NavigatorStars {
   return new NavigatorStars({
     routeId: () => route,
     starId: () => route,
     alive: () => true,
+    keyedTurns: () => keyedTurns,
   });
 }
 
@@ -105,6 +106,16 @@ describe('navigator star writes', () => {
     stars.observe(new Set(['c-1']));
 
     expect(stars.canStar()).toBe(true);
+  });
+
+  it('does not take a swap of mounted elements as a new thread', async () => {
+    const stars = create(false);
+    stars.observe(new Set(['a-1']));
+    stars.observe(new Set(['a-2']));
+    route = 'site:conv:c';
+    stars.observe(new Set(['a-2']));
+
+    expect(stars.canStar()).toBe(false);
   });
 
   it('writes the turn as it was when pressed, even if the marker changes meanwhile', async () => {

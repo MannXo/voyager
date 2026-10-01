@@ -123,9 +123,12 @@ conversation, Projects routes included`).
   under the old route that finds every turn replaced marks the DOM-first order, so the new turns
   count as the new conversation's; a new chat gaining its id is exempt. A route change seen by a
   refresh cancels a pending long press. A press fixes its turn, conversation and URL before any
-  await and is dropped if the route changed by the time its read lands. Known limits: a switch
-  that keeps some old turns on screen leaves starring off until they go, and in merge mode a
-  virtualization swap of every mounted turn under one route also counts as a swap.
+  await and is dropped if the route changed by the time its read lands. A swap counts only in
+  snapshot mode: host list items stay mounted, so a disjoint key set is another thread, while a
+  far scroll on a virtualized host replaces every mounted element and left the guard off for the
+  rest of the visit. Known limits: a switch that keeps some old turns on screen leaves starring
+  off until they go; in merge mode, a DOM that changes more than one refresh before the URL
+  leaves starring off until those turns unmount.
 - **Guard:** `src/features/plugins/verbs/turnNavigator/navigatorStars.test.ts`,
   `src/features/plugins/builtin/chatgptTimeline.test.ts` (`shows what is on screen
 while the URL changes before the DOM`, `drops the previous conversation's off-screen turns`,
@@ -136,7 +139,8 @@ still on screen`, `ignores a star press in the moment between a URL change and t
   `cannot star while the previous conversation is on screen`, `drops a press begun in the previous
 conversation`, `drops a star press whose read was still pending`),
   `src/features/plugins/verbs/turnNavigatorStarIsolation.test.ts` (`drops the previous
-conversation's dots when a star change lands mid-switch`).
+conversation's dots when a star change lands mid-switch`, `cannot star the previous thread after a
+far scroll replaced every mounted turn`).
 
 ## A jump to an unloaded ChatGPT turn aims again when its message mounts
 

@@ -104,6 +104,7 @@ export class TurnNavigator {
     routeId: () => this.buildConversationId(),
     starId: () => starConversationId(this.config),
     alive: () => !this.disposed,
+    keyedTurns: () => this.snapshot !== null,
   });
   private stopRefreshTimer: Dispose | null = null;
   private stopLongPressTimer: Dispose | null = null;

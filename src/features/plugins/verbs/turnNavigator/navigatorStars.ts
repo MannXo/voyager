@@ -12,7 +12,10 @@
  *     conversation to come from, and the turns are its own.
  * When the DOM changes first, a refresh under the old route sees every turn
  * replaced at once; the turns from before that swap are the old
- * conversation's, and the new ones may be starred once the URL follows.
+ * conversation's, and the new ones may be starred once the URL follows. Only
+ * host turn keys show that: list items stay mounted for the whole thread, so
+ * a disjoint set is another thread. Mounted elements are replaced by any far
+ * scroll on a virtualized host, so there a swap proves nothing.
  * Each press takes its target, conversation and URL before any await, and is
  * dropped if the route changed by the time the stars it toggles have loaded.
  */
@@ -37,6 +40,8 @@ interface StarSources {
   /** Id stars are filed under for the current route, or null where starring is off. */
   readonly starId: () => string | null;
   readonly alive: () => boolean;
+  /** Whether the turns on screen are host turn keys (snapshot mode). */
+  readonly keyedTurns: () => boolean;
 }
 
 export class NavigatorStars {
@@ -99,7 +104,12 @@ export class NavigatorStars {
       this.generation += 1;
       this.carried = this.observedStarId === null ? null : (this.beforeSwap ?? this.lastSeen);
       this.beforeSwap = null;
-    } else if (onScreen.size && this.lastSeen.size && !overlaps(this.lastSeen, onScreen)) {
+    } else if (
+      this.sources.keyedTurns() &&
+      onScreen.size &&
+      this.lastSeen.size &&
+      !overlaps(this.lastSeen, onScreen)
+    ) {
       this.beforeSwap = this.lastSeen;
     }
     if (this.carried && !overlaps(this.carried, onScreen)) this.carried = null;

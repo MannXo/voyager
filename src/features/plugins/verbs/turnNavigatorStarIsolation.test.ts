@@ -9,10 +9,12 @@ import { turnNavigatorPrimitive } from './turnNavigator';
 import { buildTurnId } from './turnNavigator/TurnNavigator';
 import type { PrimitiveContext } from './types';
 
-const { getStarredMessagesForConversation, showTimelineStyleCoachmark } = vi.hoisted(() => ({
-  getStarredMessagesForConversation: vi.fn().mockResolvedValue([]),
-  showTimelineStyleCoachmark: vi.fn().mockResolvedValue(undefined),
-}));
+const { addStarredMessage, getStarredMessagesForConversation, showTimelineStyleCoachmark } =
+  vi.hoisted(() => ({
+    addStarredMessage: vi.fn().mockResolvedValue(undefined),
+    getStarredMessagesForConversation: vi.fn().mockResolvedValue([]),
+    showTimelineStyleCoachmark: vi.fn().mockResolvedValue(undefined),
+  }));
 
 vi.mock('@/utils/i18n', () => ({
   initI18n: vi.fn().mockResolvedValue(undefined),
@@ -20,7 +22,7 @@ vi.mock('@/utils/i18n', () => ({
 }));
 vi.mock('@/pages/content/timeline/StarredMessagesService', () => ({
   StarredMessagesService: {
-    addStarredMessage: vi.fn().mockResolvedValue(undefined),
+    addStarredMessage,
     getStarredMessagesForConversation,
     removeStarredMessage: vi.fn().mockResolvedValue(undefined),
   },
@@ -61,6 +63,7 @@ async function flush(): Promise<void> {
 beforeEach(() => {
   document.body.innerHTML = '';
   history.replaceState({}, '', '/a/chat/s/abc123');
+  addStarredMessage.mockClear();
   getStarredMessagesForConversation.mockClear();
   showTimelineStyleCoachmark.mockClear();
   window.scrollTo = vi.fn();
@@ -113,6 +116,33 @@ describe('turnNavigator async star isolation', () => {
     await flush();
     expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1);
     expect(document.querySelector('.timeline-dot')?.getAttribute('aria-pressed')).toBe('true');
+    await scope.dispose();
+  });
+
+  it('cannot star the previous thread after a far scroll replaced every mounted turn', async () => {
+    document.body.innerHTML = '<div class="ds-user">prompt A1</div>';
+    const scope = new PluginScope();
+    turnNavigatorPrimitive.activate(scope, {}, context(deepseek).ctx);
+    await vi.waitFor(() => expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1));
+    // Virtualization: a far scroll unmounts every turn on screen and mounts others.
+    document.querySelector('.ds-user')!.replaceWith(
+      Object.assign(document.createElement('div'), {
+        className: 'ds-user',
+        textContent: 'prompt A2',
+      }),
+    );
+    await vi.waitFor(() => expect(document.querySelectorAll('.timeline-dot')).toHaveLength(2));
+
+    // The URL changes first; this thread is still on screen.
+    history.pushState({}, '', '/a/chat/s/other');
+    await vi.waitFor(() =>
+      expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('deepseek:conv:other'),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    document.querySelector('.timeline-dot')!.dispatchEvent(new Event('pointerdown'));
+    await new Promise((resolve) => setTimeout(resolve, 700));
+
+    expect(addStarredMessage).not.toHaveBeenCalled();
     await scope.dispose();
   });
 
