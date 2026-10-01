@@ -17,7 +17,8 @@ const DEFAULT_RIGHT_OFFSET_PX = 84;
 const TOP_RIGHT_GAP_PX = 12;
 const TOP_RIGHT_MAX_Y_PX = 96;
 const TOP_RIGHT_MIN_LEFT_RATIO = 0.45;
-const TOP_RIGHT_AVOIDANCE_SELECTORS = [
+/** Selectors specific to top-bar controls. */
+const TOP_RIGHT_CONTROL_SELECTORS = [
   'top-bar-actions',
   '.top-bar-actions',
   '[data-test-id="top-bar-actions"]',
@@ -25,13 +26,18 @@ const TOP_RIGHT_AVOIDANCE_SELECTORS = [
   'side-nav-menu-button',
   '[data-test-id*="upgrade" i]',
   '[aria-label*="upgrade" i]',
-  '[aria-label*="pro" i]',
-  '[aria-label*="advanced" i]',
   // ChatGPT conversation header: Share / more sit in the same top-right cluster.
   '#conversation-header-actions',
   '[data-testid="share-chat-button"]',
   '[data-testid="conversation-options-button"]',
 ].join(',');
+/**
+ * Broad substring selectors that also match per-message buttons such as
+ * "Copy prompt". Tracking hidden matches of these would put every chat turn's
+ * ancestry under watch, so only visible ones count.
+ */
+const TOP_RIGHT_BROAD_SELECTORS = ['[aria-label*="pro" i]', '[aria-label*="advanced" i]'].join(',');
+const TOP_RIGHT_AVOIDANCE_SELECTORS = `${TOP_RIGHT_CONTROL_SELECTORS},${TOP_RIGHT_BROAD_SELECTORS}`;
 
 type OwnedToolbarRoot = HTMLDivElement & { _gvOwner?: symbol };
 type ToolbarButton = HTMLButtonElement & { _gvOnClick?: () => void };
@@ -43,16 +49,20 @@ const RIGHT_OFFSET_PROPERTY = '--gv-persistent-export-right';
 
 /**
  * Left edge of a visible top-right control; `'host'` for a visible top-band
- * match spanning past the right-side cluster; null when it should be ignored.
+ * match spanning past the right-side cluster; `'hidden'` for a zero-size
+ * top-bar control that an ancestor may reveal later; null when it should be
+ * ignored.
  */
 function classifyTopRightElement(
   element: Element,
   toolbarRoot: HTMLElement,
-): number | 'host' | null {
+): number | 'host' | 'hidden' | null {
   if (!(element instanceof HTMLElement)) return null;
   if (element === toolbarRoot || toolbarRoot.contains(element)) return null;
   const rect = element.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) return null;
+  if (rect.width <= 0 || rect.height <= 0) {
+    return element.matches(TOP_RIGHT_CONTROL_SELECTORS) ? 'hidden' : null;
+  }
   if (rect.bottom <= 0 || rect.top >= TOP_RIGHT_MAX_Y_PX) return null;
   // Some Gemini top-bar hosts span the full viewport. Treating those as
   // right-side controls makes the computed offset enormous and pushes the
@@ -61,22 +71,31 @@ function classifyTopRightElement(
   return rect.left >= window.innerWidth * TOP_RIGHT_MIN_LEFT_RATIO ? rect.left : 'host';
 }
 
-function measureTopRightControls(toolbarRoot: HTMLElement): {
+type TopRightMeasurement = {
   offset: number;
   /** Avoided controls plus full-width hosts whose children can push them left. */
   watched: HTMLElement[];
-} {
+  /** Zero-size matches: kept out of the offset, but an ancestor can reveal them. */
+  hidden: HTMLElement[];
+};
+
+function measureTopRightControls(toolbarRoot: HTMLElement): TopRightMeasurement {
   const watched: HTMLElement[] = [];
+  const hidden: HTMLElement[] = [];
   let leftMost: number | null = null;
   for (const element of Array.from(document.querySelectorAll(TOP_RIGHT_AVOIDANCE_SELECTORS))) {
     const left = classifyTopRightElement(element, toolbarRoot);
     if (left === null) continue;
+    if (left === 'hidden') {
+      hidden.push(element as HTMLElement);
+      continue;
+    }
     watched.push(element as HTMLElement);
     if (left !== 'host') leftMost = Math.min(leftMost ?? window.innerWidth, left);
   }
-  if (leftMost === null) return { offset: DEFAULT_RIGHT_OFFSET_PX, watched };
+  if (leftMost === null) return { offset: DEFAULT_RIGHT_OFFSET_PX, watched, hidden };
   const offset = Math.ceil(window.innerWidth - leftMost + TOP_RIGHT_GAP_PX);
-  return { offset: Math.max(DEFAULT_RIGHT_OFFSET_PX, offset), watched };
+  return { offset: Math.max(DEFAULT_RIGHT_OFFSET_PX, offset), watched, hidden };
 }
 
 /** The top-right elements found by the last measurement, for filtering mutations. */
@@ -84,17 +103,30 @@ type MeasuredControls = {
   watched: ReadonlySet<Element>;
   /** Every watched element plus its ancestors: attribute changes there can hide or move it. */
   watchedAndAncestors: ReadonlySet<Node>;
+  /** Every hidden match plus its ancestors: attribute changes there can reveal it. */
+  hiddenAndAncestors: ReadonlySet<Node>;
 };
 
-function indexMeasuredControls(watched: readonly HTMLElement[]): MeasuredControls {
-  const watchedAndAncestors = new Set<Node>();
-  for (const element of watched) {
+function collectWithAncestors(elements: readonly HTMLElement[]): Set<Node> {
+  const nodes = new Set<Node>();
+  for (const element of elements) {
     for (let node: Node | null = element; node; node = node.parentNode) {
-      if (watchedAndAncestors.has(node)) break;
-      watchedAndAncestors.add(node);
+      if (nodes.has(node)) break;
+      nodes.add(node);
     }
   }
-  return { watched: new Set(watched), watchedAndAncestors };
+  return nodes;
+}
+
+function indexMeasuredControls(
+  watched: readonly HTMLElement[],
+  hidden: readonly HTMLElement[] = [],
+): MeasuredControls {
+  return {
+    watched: new Set(watched),
+    watchedAndAncestors: collectWithAncestors(watched),
+    hiddenAndAncestors: collectWithAncestors(hidden),
+  };
 }
 
 function isInsideWatchedElement(node: Node, measured: MeasuredControls): boolean {
@@ -131,6 +163,7 @@ function mutationsMayMoveTopRightControls(
     if (toolbarRoot.contains(target)) continue;
     if (mutation.type === 'attributes') {
       if (measured.watchedAndAncestors.has(target)) return true;
+      if (measured.hiddenAndAncestors.has(target)) return true;
       if (isInsideWatchedElement(target, measured)) return true;
       if (target instanceof Element && target.matches(TOP_RIGHT_AVOIDANCE_SELECTORS)) return true;
       continue;
@@ -160,8 +193,8 @@ function installToolbarAvoidance(root: HTMLDivElement): void {
       activeAvoidanceCleanup?.();
       return;
     }
-    const { offset, watched } = measureTopRightControls(root);
-    measured = indexMeasuredControls(watched);
+    const { offset, watched, hidden } = measureTopRightControls(root);
+    measured = indexMeasuredControls(watched, hidden);
     const next = `${offset}px`;
     if (next === appliedOffset) return;
     appliedOffset = next;

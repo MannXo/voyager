@@ -188,18 +188,26 @@ while an active plugin has domOps`).
   offset each time; same-value `style.setProperty` queues no mutation record in Chromium 151,
   Firefox or jsdom, so this was one extra pass after each change, not an endless loop. Filtering
   records only by the avoided controls missed lr26's full-width `top-bar-actions`: a non-matching
-  button inserted there pushes the controls left without touching them.
+  button inserted there pushes the controls left without touching them. Dropping zero-size matches
+  from the watch set also dropped their ancestors, so a header revealed by a parent `class`,
+  `style` or `hidden` change left the toolbar overlapping it until the next resize.
 - **Rule:** Skip records inside the toolbar. Re-measure only when an added node is or contains an
   avoided control, a removed node or attribute target is a watched element or its ancestor, a
   change lands inside a watched element, or an attribute target itself matches the selectors.
   Watched elements are the measured controls plus visible top-band matches that span past the
-  right-side cluster; the latter never enter the offset. Read each rect once and write the offset
-  only when it changes.
+  right-side cluster; the latter never enter the offset. Track zero-size matches of the specific
+  top-bar selectors and their ancestors separately: an attribute change there re-measures, but
+  they never enter the offset. Never track hidden matches of the broad substring selectors; hidden
+  per-message buttons such as "Copy prompt" would put every chat turn's ancestry under watch. Read each
+  rect once and write the offset only when it changes.
 - **Guard:** `src/pages/content/export/__tests__/persistentExportToolbar.test.ts`
   (`does not query or measure while unrelated content streams into the page`,
   `settles after one measurement instead of re-triggering itself`,
   `follows controls pushed left inside a full-width top-bar host`,
-  `follows a top-right control that grows or hides`).
+  `follows a top-right control that grows or hides`,
+  `moves aside when an ancestor class change reveals it, and back when it hides`,
+  `does not measure for attribute churn outside its ancestry`,
+  `does not measure when turns with hidden per-message buttons change class`).
 
 ## ChatGPT export UI must belong to the active plugin lifecycle
 

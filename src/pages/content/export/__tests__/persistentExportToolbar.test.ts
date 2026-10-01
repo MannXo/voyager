@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   isPersistentExportToolbarMounted,
@@ -374,6 +374,111 @@ describe('persistentExportToolbar', () => {
       topBar.setAttribute('hidden', '');
       await settle();
       expect(handle.root.style.getPropertyValue('--gv-persistent-export-right')).toBe('84px');
+    });
+
+    describe('a control hidden by an ancestor', () => {
+      let header: HTMLElement;
+      let rectReads = 0;
+
+      beforeEach(() => {
+        vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(1280);
+        rectReads = 0;
+        header = document.createElement('header');
+        header.className = 'page-header collapsed';
+        const actions = document.createElement('div');
+        actions.id = 'conversation-header-actions';
+        // Visible only while no ancestor hides it, as `display: none` would.
+        Object.defineProperty(actions, 'getBoundingClientRect', {
+          configurable: true,
+          value: () => {
+            rectReads += 1;
+            const shown = !header.hasAttribute('hidden') && !header.classList.contains('collapsed');
+            return {
+              top: shown ? 8 : 0,
+              bottom: shown ? 44 : 0,
+              left: shown ? 1000 : 0,
+              right: shown ? 1240 : 0,
+              width: shown ? 240 : 0,
+              height: shown ? 36 : 0,
+            } as DOMRect;
+          },
+        });
+        header.appendChild(actions);
+        document.body.appendChild(header);
+      });
+
+      afterEach(() => {
+        header.remove();
+      });
+
+      async function mountToolbar(): Promise<HTMLDivElement> {
+        const handle = mountPersistentExportToolbar({
+          label: 'Export',
+          tooltip: 'Export chat history',
+          onClick: vi.fn(),
+        });
+        await settle();
+        return handle.root;
+      }
+
+      it('moves aside when an ancestor class change reveals it, and back when it hides', async () => {
+        const root = await mountToolbar();
+        expect(root.style.getPropertyValue('--gv-persistent-export-right')).toBe('84px');
+
+        header.classList.remove('collapsed');
+        await settle();
+        expect(root.style.getPropertyValue('--gv-persistent-export-right')).toBe('292px');
+
+        header.setAttribute('hidden', '');
+        await settle();
+        expect(root.style.getPropertyValue('--gv-persistent-export-right')).toBe('84px');
+
+        header.removeAttribute('hidden');
+        await settle();
+        expect(root.style.getPropertyValue('--gv-persistent-export-right')).toBe('292px');
+      });
+
+      it('does not measure for attribute churn outside its ancestry', async () => {
+        await mountToolbar();
+        const chat = document.createElement('div');
+        document.body.appendChild(chat);
+        const readsBefore = rectReads;
+
+        for (let i = 0; i < 20; i++) {
+          chat.classList.toggle('streaming');
+          chat.setAttribute('style', `min-height: ${i}px`);
+          await settle();
+        }
+
+        expect(rectReads).toBe(readsBefore);
+        chat.remove();
+      });
+
+      it('does not measure when turns with hidden per-message buttons change class', async () => {
+        const chat = document.createElement('div');
+        const turn = document.createElement('div');
+        turn.className = 'conversation-turn';
+        const copyPrompt = document.createElement('button');
+        // Matches the substring selector `[aria-label*="pro" i]`; zero-size until hovered.
+        copyPrompt.setAttribute('aria-label', 'Copy prompt');
+        mockRect(copyPrompt, { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 });
+        turn.appendChild(copyPrompt);
+        chat.appendChild(turn);
+        document.body.appendChild(chat);
+        await mountToolbar();
+        const querySpy = vi.spyOn(document, 'querySelectorAll');
+        const readsBefore = rectReads;
+
+        for (let i = 0; i < 20; i++) {
+          turn.classList.toggle('hovered');
+          chat.setAttribute('style', `min-height: ${i}px`);
+          await settle();
+        }
+
+        expect(querySpy).not.toHaveBeenCalled();
+        expect(rectReads).toBe(readsBefore);
+        chat.remove();
+      });
     });
   });
 });
