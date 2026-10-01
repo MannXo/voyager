@@ -2597,7 +2597,7 @@
     "message": "已在此資料夾中。",
     "description": "ChatGPT folder panel status when the open conversation is already in that folder"
   },
-  "chatgptFoldersImportWrongSite": {
+  "folder_import_wrong_site": {
     "message": "此檔案包含其他網站的資料夾，因此未匯入任何內容。",
     "description": "ChatGPT folder import error when the file holds conversations from another site"
   },

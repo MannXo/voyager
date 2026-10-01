@@ -2601,7 +2601,7 @@
     "message": "Already in this folder.",
     "description": "ChatGPT folder panel status when the open conversation is already in that folder"
   },
-  "chatgptFoldersImportWrongSite": {
+  "folder_import_wrong_site": {
     "message": "This file holds folders from another site, so nothing was imported.",
     "description": "ChatGPT folder import error when the file holds conversations from another site"
   },

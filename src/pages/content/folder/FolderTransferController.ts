@@ -93,6 +93,13 @@ export class FolderTransferController {
         }
       }
 
+      // A file another site marked as its own holds conversations Gemini cannot
+      // open; merging it would mix platforms in one bucket.
+      if (FolderImportExportService.exportedPlatform(parsed.data) !== null) {
+        this.host.notify(t('folder_import_wrong_site'), 'error');
+        return false;
+      }
+
       const validated = FolderImportExportService.validatePayload(parsed.data);
       if (!validated.success) {
         this.host.notify(

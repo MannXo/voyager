@@ -175,7 +175,7 @@ class ChatGptFoldersView {
     if (!outcome.ok) {
       const message =
         outcome.reason === 'wrong-site'
-          ? t('chatgptFoldersImportWrongSite')
+          ? t('folder_import_wrong_site')
           : outcome.reason === 'invalid'
             ? t('folder_import_invalid_format')
             : format('folder_import_error', { error: outcome.message ?? '' });

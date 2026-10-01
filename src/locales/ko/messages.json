@@ -2597,7 +2597,7 @@
     "message": "이미 이 폴더에 있습니다.",
     "description": "ChatGPT folder panel status when the open conversation is already in that folder"
   },
-  "chatgptFoldersImportWrongSite": {
+  "folder_import_wrong_site": {
     "message": "이 파일에는 다른 사이트의 폴더가 들어 있어 아무것도 가져오지 않았습니다.",
     "description": "ChatGPT folder import error when the file holds conversations from another site"
   },

@@ -45,6 +45,16 @@ export class FolderImportExportService {
   }
 
   /**
+   * The site a folder file says it came from, or null for an unmarked file.
+   * Gemini and AI Studio write unmarked files; ChatGPT marks its own.
+   */
+  static exportedPlatform(payload: unknown): string | null {
+    if (!payload || typeof payload !== 'object') return null;
+    const platform = (payload as { platform?: unknown }).platform;
+    return typeof platform === 'string' && platform ? platform : null;
+  }
+
+  /**
    * Validate import payload format and structure
    * Includes version compatibility checking
    */

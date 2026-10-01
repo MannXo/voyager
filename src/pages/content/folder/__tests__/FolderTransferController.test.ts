@@ -115,6 +115,34 @@ describe('folder transfer commands', () => {
     },
   );
 
+  it.each(['merge', 'overwrite'] as const)(
+    'refuses to %s a folder file ChatGPT exported',
+    async (strategy) => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const h = harness(importedData());
+      const chatgpt = {
+        conversationId: 'chatgpt:conv:abc',
+        title: 'Trip plan',
+        url: 'https://chatgpt.com/c/abc',
+        addedAt: 1,
+      };
+      const text = JSON.stringify({
+        ...FolderImportExportService.exportToPayload({
+          folders: [],
+          folderContents: { __root_conversations__: [chatgpt] },
+        }),
+        platform: 'chatgpt',
+      });
+
+      expect(await h.transfer.import({ text }, strategy)).toBe(false);
+
+      expect(h.notify).toHaveBeenCalledWith('folder_import_wrong_site', 'error');
+      expect(h.session.data).toEqual(importedData());
+      expect(h.applyData).not.toHaveBeenCalled();
+      expect(FolderImportExportService.hasBackup()).toBe(false);
+    },
+  );
+
   it('cancels an overwrite without changing the current data or backup', async () => {
     const h = harness(importedData());
     vi.spyOn(window, 'confirm').mockReturnValue(false);
