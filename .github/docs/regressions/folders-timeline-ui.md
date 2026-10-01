@@ -670,3 +670,22 @@ drop, or hover layout.
   (`does not rebind or restore when a retry fires after stopping`,
   `does not rebind or restore when the draft load resolves after stopping`,
   `ignores a slow startup read once the user has changed the setting`).
+
+## Gemini health reports need evidence that does not come from the missing anchor
+
+- **Trap:** An owner finding zero matches for its anchor looks the same whether Gemini renamed the
+  element or the page simply has nothing yet. That includes a new chat (`/app`, `/gem/<id>`), a
+  conversation still streaming in on a slow network, a background tab and a collapsed sidebar.
+  Judged by the same selectors that just missed, every one of those would show "Gemini may have
+  changed" in the popup and send users to file false bug reports.
+- **Rule:** `nativeHealthReporter.reportMissing` arms a verdict only on the route the probe needs
+  (`conversation` probes never on a new chat). The verdict runs after the grace period, waits while
+  the tab is hidden and re-runs the owner's own check. It then requires anchor-independent
+  evidence: rendered text in `main` (outside buttons, the composer and Voyager UI) for turn
+  anchors, and an open sidebar in sidebar mode for folders. Any found result, owner teardown or
+  route change clears the entry. Probes reuse the owner's existing detection result and never add
+  an observer.
+- **Guard:** `src/pages/content/nativeHealth/__tests__/reporter.test.ts` (`never alarms on a new
+chat`, `never alarms on a conversation route that has not rendered content`, `postpones the
+verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/owners.test.ts`
+  (`does not count a collapsed sidebar as breakage`, `does not probe while chat width is off`).

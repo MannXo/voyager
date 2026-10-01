@@ -3,6 +3,7 @@ import browser from 'webextension-polyfill';
 import { StorageKeys } from '@/core/types/common';
 import { getTranslationSyncUnsafe } from '@/utils/i18n';
 
+import { nativeHealthReporter } from '../nativeHealth';
 import type { NativeConversationMenus } from './NativeConversationMenus';
 import type { NativeSidebarObserver } from './NativeSidebarObserver';
 
@@ -96,6 +97,7 @@ export class FolderSidebarRuntime {
 
     if (mode === 'floating') {
       if (wasRunning && previousMode === mode) return;
+      nativeHealthReporter.withdraw('folders');
       this.invalidateMount();
       this.fallbackActive = false;
       this.anchorMissingSince = null;
@@ -183,6 +185,7 @@ export class FolderSidebarRuntime {
   /** Disable/destroy ends every mounted-runtime timer, observer and pending sidebar wait. */
   stop(): void {
     this.running = false;
+    nativeHealthReporter.withdraw('folders');
     this.floatingOpenPanel = null;
     this.invalidateMount();
     this.teardownRecoveryWatchers();
@@ -415,6 +418,7 @@ export class FolderSidebarRuntime {
     const anchor = sidebar && this.findAnchor(sidebar);
     if (this.isMountedInCurrentSidebar(sidebar)) {
       this.anchorMissingSince = null;
+      nativeHealthReporter.reportFound('folders');
       if (sidebar && this.sidebarElement !== sidebar) {
         this.bindNativeSidebar(sidebar);
         this.observePosition();
@@ -438,13 +442,33 @@ export class FolderSidebarRuntime {
     this.hiddenPanelSince = null;
     if (anchor) {
       this.anchorMissingSince = null;
+      nativeHealthReporter.reportFound('folders');
       this.retireFallback();
       void this.remount();
       return;
     }
     const now = Date.now();
     this.anchorMissingSince ??= now;
-    if (now - this.anchorMissingSince >= ANCHOR_MISSING_GRACE_MS) await this.openFallback();
+    if (now - this.anchorMissingSince < ANCHOR_MISSING_GRACE_MS) return;
+    this.reportMissingAnchor();
+    await this.openFallback();
+  }
+
+  /**
+   * Folders still work from the floating fallback, so a lost sidebar anchor is `degraded`. It
+   * counts only while the user keeps the sidebar open in sidebar mode; a collapsed sidebar or an
+   * explicit floating choice is not breakage.
+   */
+  private reportMissingAnchor(): void {
+    nativeHealthReporter.reportMissing('folders', {
+      route: 'any',
+      status: 'degraded',
+      recheck: () => {
+        const sidebar = this.findSidebar();
+        return !!sidebar && !!this.findAnchor(sidebar);
+      },
+      expected: () => this.running && this.mode === 'sidebar' && this.isSidebarOpen(),
+    });
   }
 
   private async openFallback(): Promise<void> {

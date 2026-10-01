@@ -3,6 +3,9 @@
  */
 import { getGeminiTurnSelectors } from '@/core/gemini/turnSelectors';
 
+import { nativeHealthReporter } from '../nativeHealth';
+import { hasRenderedConversationContent } from '../nativeHealth/pageEvidence';
+
 const STYLE_ID = 'gemini-voyager-chat-width';
 const DEFAULT_PERCENT = 70;
 const MIN_PERCENT = 30;
@@ -280,9 +283,41 @@ function removeStyles() {
 
 const ENABLED_KEY = 'gvChatWidthEnabled';
 
+function hasWidenedUserTurn(): boolean {
+  return document.querySelector(getGeminiTurnSelectors('chatWidth.userTurn').join(',')) !== null;
+}
+
+/**
+ * Probe once per route while the width rules are applied: the verdict re-runs the query if the
+ * first look came before Gemini rendered the turns.
+ */
+function createUserTurnProbe(): { check: () => void; reset: () => void } {
+  let probedPath: string | null = null;
+  return {
+    check() {
+      if (probedPath === location.pathname) return;
+      probedPath = location.pathname;
+      if (hasWidenedUserTurn()) {
+        nativeHealthReporter.reportFound('chat-width');
+        return;
+      }
+      nativeHealthReporter.reportMissing('chat-width', {
+        route: 'conversation',
+        recheck: hasWidenedUserTurn,
+        expected: () => hasRenderedConversationContent(),
+      });
+    },
+    reset() {
+      probedPath = null;
+      nativeHealthReporter.withdraw('chat-width');
+    },
+  };
+}
+
 export function startChatWidthAdjuster() {
   let currentWidthPercent = DEFAULT_PERCENT;
   let enabled = false;
+  const userTurnProbe = createUserTurnProbe();
 
   // Load initial state — request keys without defaults so we can distinguish
   // "key never existed" (upgrade) from "explicitly set to false"
@@ -310,6 +345,7 @@ export function startChatWidthAdjuster() {
 
     if (enabled) {
       applyWidth(currentWidthPercent);
+      userTurnProbe.check();
     }
 
     if (typeof storedWidth === 'number' && storedWidth !== normalized) {
@@ -332,8 +368,10 @@ export function startChatWidthAdjuster() {
       enabled = changes[ENABLED_KEY].newValue === true;
       if (enabled) {
         applyWidth(currentWidthPercent);
+        userTurnProbe.check();
       } else {
         removeStyles();
+        userTurnProbe.reset();
       }
     }
 
@@ -369,6 +407,7 @@ export function startChatWidthAdjuster() {
     debounceTimer = window.setTimeout(() => {
       if (enabled) {
         applyWidth(currentWidthPercent);
+        userTurnProbe.check();
       }
       debounceTimer = null;
     }, 200);
@@ -389,6 +428,7 @@ export function startChatWidthAdjuster() {
     () => {
       observer.disconnect();
       removeStyles();
+      userTurnProbe.reset();
       // Remove storage listener
       try {
         chrome.storage?.onChanged?.removeListener(storageChangeHandler);

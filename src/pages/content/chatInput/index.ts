@@ -1,3 +1,5 @@
+import { nativeHealthReporter } from '../nativeHealth';
+
 const CHAT_INPUT_SELECTORS = [
   '[data-testid="chat-input"][contenteditable="true"]',
   '#prompt-textarea[contenteditable="true"]',
@@ -170,8 +172,26 @@ export function findChatInput(options: FindChatInputOptions = {}): HTMLElement |
   return requireVisible ? null : fallback;
 }
 
+/**
+ * A prompt insertion that finds no composer is the probe. The verdict accepts a hidden composer
+ * (input collapse can shrink it), so only a missing one counts. Other hosts never start the
+ * reporter, so their insertions report nothing.
+ */
+function noteComposer(found: boolean): void {
+  if (found) {
+    nativeHealthReporter.reportFound('composer');
+    return;
+  }
+  nativeHealthReporter.reportMissing('composer', {
+    route: 'app',
+    recheck: () => findChatInput({ requireVisible: false }) !== null,
+  });
+}
+
 export function insertTextIntoChatInput(text: string, input = findChatInput()): boolean {
-  if (!input || text.length === 0) return false;
+  if (text.length === 0) return false;
+  noteComposer(input !== null);
+  if (!input) return false;
 
   if (input instanceof HTMLTextAreaElement) {
     return insertTextIntoTextarea(input, text);

@@ -6,6 +6,8 @@ import { StorageKeys, isTimelineStyle } from '@/core/types/common';
 import { applyRTLClass } from '@/core/utils/rtl';
 import { initI18n } from '@/utils/i18n';
 
+import { nativeHealthReporter } from '../nativeHealth';
+import { hasRenderedConversationContent } from '../nativeHealth/pageEvidence';
 import { TimelineMarkerInteractions } from './TimelineMarkerInteractions';
 import { TimelineNavigation } from './TimelineNavigation';
 import { TimelineState } from './TimelineState';
@@ -169,6 +171,7 @@ export class TimelineManager {
     this.intersectionObserver?.disconnect();
     if (this.recalcTimer !== null) clearTimeout(this.recalcTimer);
     if (this.zeroTurnsTimer !== null) clearTimeout(this.zeroTurnsTimer);
+    nativeHealthReporter.withdraw('timeline');
     this.navigation.destroy();
     this.interactions?.destroy();
     this.tooltip?.destroy();
@@ -505,6 +508,7 @@ export class TimelineManager {
     const userTurnNodeList = this.conversationContainer.querySelectorAll(this.userTurnSelector);
     if (userTurnNodeList.length === 0) {
       this.timestamps.update([], []);
+      this.reportMissingTurns();
       if (!this.zeroTurnsTimer) {
         this.zeroTurnsRetryCount++;
         // Empty-page polling with backoff: 200ms for the first 30 attempts,
@@ -525,6 +529,7 @@ export class TimelineManager {
       this.zeroTurnsTimer = null;
     }
     this.zeroTurnsRetryCount = 0;
+    nativeHealthReporter.reportFound('timeline');
 
     const previousMarkers = this.state.markers;
 
@@ -553,6 +558,17 @@ export class TimelineManager {
     this.navigation.scheduleScrollSync();
     this.view.updatePreviewMarkers();
   };
+
+  /** The zero-turn poll is the probe: no extra observer, and the verdict re-runs this query. */
+  private reportMissingTurns(): void {
+    nativeHealthReporter.reportMissing('timeline', {
+      route: 'conversation',
+      recheck: () =>
+        !!this.userTurnSelector &&
+        !!this.conversationContainer?.querySelector(this.userTurnSelector),
+      expected: () => hasRenderedConversationContent(),
+    });
+  }
 
   private setupObservers(): void {
     if (this.destroyed) return;

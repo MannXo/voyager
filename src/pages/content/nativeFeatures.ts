@@ -11,6 +11,7 @@ import { isForkFeatureEnabledValue } from './fork/featureFlag';
 import { startFork } from './fork/index';
 import { startGemsHider } from './gemsHider/index';
 import { startGemsSidebar } from './gemsSidebar/index';
+import { startNativeHealth } from './nativeHealth/index';
 import { startBrandTheme } from './platformTheme';
 import { startPromptHistory } from './promptHistory/index';
 import { startRemoteAnnouncements } from './remoteAnnouncements/index';
@@ -107,6 +108,11 @@ export const NATIVE_FEATURES = {
     id: 'gems-hider',
     position: CleanupPositions.CleanupGemsHider,
     start: startGemsHider,
+  },
+  nativeHealth: {
+    id: 'native-health',
+    position: CleanupPositions.CleanupNativeHealth,
+    start: startNativeHealth,
   },
   fork: {
     id: 'fork',

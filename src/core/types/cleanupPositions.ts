@@ -25,6 +25,7 @@ export enum CleanupPositions {
   CleanupUsageStatus,
   CleanupWatermarkNativeNotice,
   CleanupGemsHider,
+  CleanupNativeHealth,
   RemoveStorageOnChangedListener,
   /** Last: every surface it styles is gone by now. */
   CleanupSchemeBridge,

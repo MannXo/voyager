@@ -50,6 +50,7 @@ import {
 } from './conversationMenuInjection';
 import { withExportCollectingBanner } from './exportCollectingBanner';
 import { startExportEntryGate } from './exportEntryGate';
+import { noteExportTurns } from './exportHealth';
 import { resolveExportLogoAnchor } from './exportLogoAnchor';
 import {
   type PendingExportState,
@@ -323,7 +324,6 @@ function waitForAnyElement(
   timeoutMs: number = 10000,
 ): Promise<Element | null> {
   return new Promise((resolve) => {
-    // Check first
     for (const s of selectors) {
       const el = document.querySelector(s);
       if (el) return resolve(el);
@@ -1395,7 +1395,7 @@ async function performFinalExport(
 
   const pairs = collectChatPairs();
   const messages = resolveSelectionMessages(pairs);
-  if (messages.length === 0) {
+  if (!noteExportTurns(messages.length > 0, () => collectChatPairs().length > 0)) {
     alert(t('export_dialog_warning'));
     return;
   }

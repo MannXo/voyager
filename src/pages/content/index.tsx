@@ -271,6 +271,8 @@ async function initializeFeatures(): Promise<void> {
     }
 
     if (location.hostname === 'gemini.google.com') {
+      // Owners below report anchor health to it, so it listens before they start.
+      await mountNativeFeature(cleanupManager, NATIVE_FEATURES.nativeHealth);
       // Timeline is most resource-intensive, start it first
       startTimeline();
       await delay(HEAVY_FEATURE_INIT_DELAY);
