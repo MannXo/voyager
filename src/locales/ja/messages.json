@@ -3657,5 +3657,109 @@
   "researchPackHandoffFailed": {
     "message": "ここにリサーチパックを入力できませんでした。Gemini に戻ってコピーしてください。",
     "description": "Research pack: toast on ChatGPT/Claude when the pack could not be put in the message box"
+  },
+  "researchPackTemplates": {
+    "message": "テンプレート",
+    "description": "Research pack: templates section toggle"
+  },
+  "researchPackTemplatesHint": {
+    "message": "テンプレートは再利用できる指示です。プロンプトマネージャーに research-pack タグ付きで保存されます。書き出しで共有されるのは名前と指示だけで、パックの中身は含まれません。",
+    "description": "Research pack: what a template is and what exporting shares"
+  },
+  "researchPackTemplatePick": {
+    "message": "テンプレートを選択",
+    "description": "Research pack: template picker placeholder and label"
+  },
+  "researchPackTemplateNone": {
+    "message": "テンプレートはまだありません",
+    "description": "Research pack: template picker when no template is saved"
+  },
+  "researchPackTemplateUse": {
+    "message": "使う",
+    "description": "Research pack: put the chosen template into the instruction"
+  },
+  "researchPackTemplateUseConfirm": {
+    "message": "現在の指示をこのテンプレートで置き換えますか？",
+    "description": "Research pack: confirm replacing a typed instruction with a template"
+  },
+  "researchPackTemplateReplace": {
+    "message": "置き換える",
+    "description": "Research pack: confirm button that replaces the instruction"
+  },
+  "researchPackTemplateExport": {
+    "message": "書き出す",
+    "description": "Research pack: download the chosen template as a file"
+  },
+  "researchPackTemplateName": {
+    "message": "テンプレート名",
+    "description": "Research pack: name field for a new template"
+  },
+  "researchPackTemplateSave": {
+    "message": "指示をテンプレートとして保存",
+    "description": "Research pack: save the typed instruction as a template"
+  },
+  "researchPackTemplateSaved": {
+    "message": "テンプレートをプロンプトマネージャーに保存しました",
+    "description": "Research pack: a template was saved"
+  },
+  "researchPackTemplateNeedName": {
+    "message": "先にテンプレート名を入力してください",
+    "description": "Research pack: saving a template without a name"
+  },
+  "researchPackTemplateNeedInstruction": {
+    "message": "保存する指示を入力してください",
+    "description": "Research pack: saving a template with an empty instruction"
+  },
+  "researchPackTemplateInvalid": {
+    "message": "名前は 1 行・100 文字以内、指示は 4,000 文字以内にしてください。",
+    "description": "Research pack: template name or instruction breaks a limit"
+  },
+  "researchPackTemplateDuplicate": {
+    "message": "この指示はすでにプロンプトマネージャーにあります",
+    "description": "Research pack: the library already has this instruction text"
+  },
+  "researchPackTemplateNameTaken": {
+    "message": "この名前のプロンプトはすでにプロンプトマネージャーにあります",
+    "description": "Research pack: the library already has a prompt with this name"
+  },
+  "researchPackTemplateImport": {
+    "message": "ファイルを読み込む…",
+    "description": "Research pack: choose a template file to import"
+  },
+  "researchPackTemplateImportInvalid": {
+    "message": "このファイルは有効なリサーチパックのテンプレートファイルではありません。",
+    "description": "Research pack: the chosen file is not a valid template file"
+  },
+  "researchPackTemplatePreviewTitle": {
+    "message": "このファイルのテンプレートです。保存する前に確認してください。",
+    "description": "Research pack: heading of the import preview"
+  },
+  "researchPackTemplateStatusNew": {
+    "message": "新規",
+    "description": "Research pack: import preview badge for a template that will be saved"
+  },
+  "researchPackTemplateStatusDuplicate": {
+    "message": "保存済み",
+    "description": "Research pack: import preview badge for an instruction that is already saved"
+  },
+  "researchPackTemplateStatusNameTaken": {
+    "message": "名前が重複するためスキップ",
+    "description": "Research pack: import preview badge for a template skipped because its name is in use"
+  },
+  "researchPackTemplateImportSave": {
+    "message": "新しいテンプレートを保存",
+    "description": "Research pack: save the new templates from the import preview"
+  },
+  "researchPackTemplateImported": {
+    "message": "プロンプトマネージャーに保存したテンプレート：{count}",
+    "description": "Research pack: templates were imported; {count} is how many"
+  },
+  "researchPackTemplateImportNothing": {
+    "message": "保存する新しいテンプレートはありません",
+    "description": "Research pack: an import had nothing new to save"
+  },
+  "researchPackTemplateFailed": {
+    "message": "テンプレートを更新できませんでした。もう一度お試しください。",
+    "description": "Research pack: reading or writing templates failed"
   }
 }

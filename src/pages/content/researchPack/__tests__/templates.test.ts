@@ -1,0 +1,295 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { StorageKeys } from '@/core/types/common';
+import {
+  PROMPT_EXPORT_FORMAT,
+  RESEARCH_PACK_TEMPLATE_LIMITS,
+  RESEARCH_PACK_TEMPLATE_TAG,
+  type TemplateLibraryArea,
+  createTemplateLibrary,
+} from '@/features/researchPack/services/templates';
+
+import { startResearchPack } from '../index';
+import { emitStorageChange, flush, packOf, readBlob, sharedStorage } from './fixtures';
+
+const KEY = StorageKeys.RESEARCH_PACK;
+const PROMPTS = StorageKeys.PROMPT_ITEMS;
+const TAG = RESEARCH_PACK_TEMPLATE_TAG;
+
+function promptLibrary(initial: unknown[] = []) {
+  const data = new Map<string, unknown>([[PROMPTS, structuredClone(initial)]]);
+  let writes = 0;
+  const area: TemplateLibraryArea = {
+    get: async (key) => (data.has(key) ? { [key]: structuredClone(data.get(key)) } : {}),
+    set: async (items) => {
+      writes += 1;
+      for (const [key, value] of Object.entries(items)) data.set(key, structuredClone(value));
+    },
+  };
+  let id = 0;
+  const library = createTemplateLibrary({
+    area,
+    key: PROMPTS,
+    now: () => 100,
+    makeId: () => `new-${++id}`,
+  });
+  return {
+    library,
+    prompts: () => data.get(PROMPTS) as Array<Record<string, unknown>>,
+    writes: () => writes,
+  };
+}
+
+const $ = <T extends HTMLElement = HTMLElement>(selector: string) =>
+  document.querySelector<T>(selector)!;
+const instructionBox = () => $<HTMLTextAreaElement>('#gv-rp-instruction');
+const picker = () => $<HTMLSelectElement>('.gv-rp-template-select');
+const pickerNames = () =>
+  Array.from(picker().options)
+    .filter((option) => option.value)
+    .map((option) => option.textContent);
+
+function typeInstruction(text: string): void {
+  const box = instructionBox();
+  box.focus();
+  box.value = text;
+  box.dispatchEvent(new Event('input'));
+}
+
+function pick(id: string): void {
+  picker().value = id;
+  picker().dispatchEvent(new Event('change'));
+}
+
+function chooseFile(content: string, size?: number): void {
+  const file = new File([content], 'template.json', { type: 'application/json' });
+  if (size !== undefined) Object.defineProperty(file, 'size', { value: size });
+  const input = $<HTMLInputElement>('.gv-rp-template-file');
+  Object.defineProperty(input, 'files', { value: [file], configurable: true });
+  input.dispatchEvent(new Event('change'));
+}
+
+function templateFile(items: unknown[]): string {
+  return JSON.stringify({ format: PROMPT_EXPORT_FORMAT, items });
+}
+
+describe('research pack templates in the panel', () => {
+  let stop: (() => void) | null = null;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  afterEach(() => {
+    stop?.();
+    stop = null;
+    vi.useRealTimers();
+    document.body.innerHTML = '';
+  });
+
+  async function start(
+    prompts: unknown[] = [],
+    pack = packOf('Stored answer'),
+  ): Promise<ReturnType<typeof promptLibrary> & ReturnType<typeof sharedStorage>> {
+    const lib = promptLibrary(prompts);
+    const shared = sharedStorage({ [KEY]: pack });
+    stop = startResearchPack({
+      store: shared.store,
+      resolveKey: async () => KEY,
+      templateLibrary: lib.library,
+    });
+    await flush();
+    return { ...lib, ...shared };
+  }
+
+  it('lists only prompts tagged as templates and fills an empty instruction with one', async () => {
+    const shared = await start([
+      { id: 'a', name: 'Literature review', text: 'Compare the sources.', tags: [TAG] },
+      { id: 'b', name: 'Email', text: 'Write an email.', tags: ['writing'] },
+    ]);
+
+    expect(pickerNames()).toEqual(['Literature review']);
+    pick('a');
+    $<HTMLButtonElement>('.gv-rp-template-use').click();
+    await flush();
+
+    expect(instructionBox().value).toBe('Compare the sources.');
+    expect(shared.instruction(KEY)).toBe('Compare the sources.');
+    expect(document.querySelector('.gv-pm-confirm')).toBeNull();
+  });
+
+  it('asks before replacing a typed instruction, and the template wins over the pending save', async () => {
+    const shared = await start([{ id: 'a', name: 'Review', text: 'Compare.', tags: [TAG] }]);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
+    typeInstruction('Half-typed text');
+    pick('a');
+    $<HTMLButtonElement>('.gv-rp-template-use').click();
+    expect(instructionBox().value).toBe('Half-typed text');
+
+    $<HTMLButtonElement>('.gv-pm-confirm-yes').click();
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(instructionBox().value).toBe('Compare.');
+    expect(shared.instruction(KEY)).toBe('Compare.');
+  });
+
+  it('saves the typed instruction as a named template in the prompt library', async () => {
+    const lib = await start([{ id: 'mine', name: 'Mine', text: 'Private', tags: ['x'] }]);
+    typeInstruction('Find counter-evidence.');
+
+    $<HTMLButtonElement>('.gv-rp-template-save').click();
+    await flush();
+    expect(lib.writes()).toBe(0);
+
+    $<HTMLInputElement>('.gv-rp-template-name').value = 'Skeptic';
+    $<HTMLButtonElement>('.gv-rp-template-save').click();
+    await flush();
+
+    expect(lib.prompts()).toEqual([
+      { id: 'new-1', name: 'Skeptic', text: 'Find counter-evidence.', tags: [TAG], createdAt: 100 },
+      { id: 'mine', name: 'Mine', text: 'Private', tags: ['x'] },
+    ]);
+    expect(pickerNames()).toEqual(['Skeptic']);
+
+    // The same instruction again is refused, as Prompt Manager refuses it.
+    $<HTMLInputElement>('.gv-rp-template-name').value = 'Another';
+    $<HTMLButtonElement>('.gv-rp-template-save').click();
+    await flush();
+    expect(lib.prompts()).toHaveLength(2);
+  });
+
+  it('exports only the chosen template, never the pack or other prompts', async () => {
+    const blobs: Blob[] = [];
+    Object.assign(URL, {
+      createObjectURL: vi.fn((blob: Blob) => {
+        blobs.push(blob);
+        return 'blob:test';
+      }),
+      revokeObjectURL: vi.fn(),
+    });
+    await start(
+      [
+        { id: 'a', name: 'Review', text: 'Compare the sources.', tags: [TAG] },
+        { id: 'b', name: 'Secret', text: 'Private prompt', tags: ['x'] },
+      ],
+      { ...packOf('Confidential answer'), instruction: 'Typed instruction' },
+    );
+
+    pick('a');
+    $<HTMLButtonElement>('.gv-rp-template-export').click();
+
+    expect(blobs).toHaveLength(1);
+    const content = await readBlob(blobs[0]);
+    expect(content).not.toContain('Confidential answer');
+    expect(content).not.toContain('Private prompt');
+    expect(JSON.parse(content).items).toEqual([
+      expect.objectContaining({ name: 'Review', text: 'Compare the sources.', tags: [TAG] }),
+    ]);
+  });
+
+  it('previews an imported file as plain text and saves only on Save', async () => {
+    const lib = await start([{ id: 'p1', name: 'Mine', text: 'Original', tags: [TAG] }]);
+
+    chooseFile(
+      templateFile([
+        { id: 'p1', name: '<img src=x onerror="alert(1)">', text: '<b>bold</b> plan', tags: [TAG] },
+        { name: 'Copy of mine', text: 'original', tags: [TAG] },
+      ]),
+    );
+    await vi.waitFor(() => expect($('.gv-rp-template-preview').hidden).toBe(false));
+
+    const preview = $('.gv-rp-template-preview');
+    expect(preview.querySelector('img, b')).toBeNull();
+    expect(
+      Array.from(preview.querySelectorAll('.gv-rp-template-preview-name')).map(
+        (n) => n.textContent,
+      ),
+    ).toEqual(['<img src=x onerror="alert(1)">', 'Copy of mine']);
+    expect(
+      Array.from(preview.querySelectorAll<HTMLElement>('.gv-rp-template-preview-item')).map(
+        (row) => row.dataset.status,
+      ),
+    ).toEqual(['new', 'duplicate_text']);
+    expect(lib.writes()).toBe(0);
+
+    $<HTMLButtonElement>('.gv-rp-template-preview-save').click();
+    await flush();
+
+    expect(lib.prompts()).toEqual([
+      {
+        id: 'new-1',
+        name: '<img src=x onerror="alert(1)">',
+        text: '<b>bold</b> plan',
+        tags: [TAG],
+        createdAt: 100,
+      },
+      { id: 'p1', name: 'Mine', text: 'Original', tags: [TAG] },
+    ]);
+    expect($('.gv-rp-template-preview').hidden).toBe(true);
+  });
+
+  it('writes nothing when an import is cancelled, too large, or not a template file', async () => {
+    const lib = await start();
+
+    chooseFile(templateFile([{ name: 'A', text: 'B', tags: [TAG] }]));
+    await vi.waitFor(() => expect($('.gv-rp-template-preview').hidden).toBe(false));
+    $<HTMLButtonElement>('.gv-rp-template-preview-cancel').click();
+    expect($('.gv-rp-template-preview').hidden).toBe(true);
+
+    const readAsText = vi.spyOn(FileReader.prototype, 'readAsText');
+    try {
+      chooseFile(
+        templateFile([{ name: 'A', text: 'B', tags: [TAG] }]),
+        RESEARCH_PACK_TEMPLATE_LIMITS.maxFileBytes + 1,
+      );
+      await flush();
+      expect(readAsText).not.toHaveBeenCalled();
+    } finally {
+      readAsText.mockRestore();
+    }
+
+    chooseFile(JSON.stringify([{ name: 'A', text: 'B', tags: [TAG] }]));
+    await vi.waitFor(() => expect($('.gv-rp-toast').textContent).not.toBe(''));
+    expect($('.gv-rp-template-preview').hidden).toBe(true);
+    expect(lib.writes()).toBe(0);
+  });
+
+  it('keeps every template control off until the pack has loaded', async () => {
+    const lib = promptLibrary([{ id: 'a', name: 'Review', text: 'Compare.', tags: [TAG] }]);
+    const shared = sharedStorage({ [KEY]: packOf('Stored answer') });
+    let resolveKey: (key: string) => void = () => undefined;
+    stop = startResearchPack({
+      store: shared.store,
+      resolveKey: () => new Promise<string>((resolve) => (resolveKey = resolve)),
+      templateLibrary: lib.library,
+    });
+    await flush();
+
+    const controls = [
+      '.gv-rp-template-select',
+      '.gv-rp-template-use',
+      '.gv-rp-template-export',
+      '.gv-rp-template-name',
+      '.gv-rp-template-save',
+      '.gv-rp-template-import',
+    ].map((selector) => $<HTMLButtonElement | HTMLInputElement | HTMLSelectElement>(selector));
+    expect(controls.every((control) => control.disabled)).toBe(true);
+
+    resolveKey(KEY);
+    await flush();
+    expect(picker().disabled).toBe(false);
+    expect($<HTMLButtonElement>('.gv-rp-template-save').disabled).toBe(false);
+  });
+
+  it('follows template changes made in Prompt Manager', async () => {
+    const lib = await start([{ id: 'a', name: 'Review', text: 'Compare.', tags: [TAG] }]);
+    expect(pickerNames()).toEqual(['Review']);
+
+    await lib.library.save([{ name: 'Added elsewhere', text: 'New text' }]);
+    emitStorageChange({ [PROMPTS]: { newValue: lib.prompts() } }, 'local');
+    await flush();
+
+    expect(pickerNames()).toEqual(['Added elsewhere', 'Review']);
+  });
+});

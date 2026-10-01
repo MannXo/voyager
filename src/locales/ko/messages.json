@@ -3657,5 +3657,109 @@
   "researchPackHandoffFailed": {
     "message": "여기에 리서치 팩을 넣지 못했습니다. Gemini로 돌아가 복사하세요.",
     "description": "Research pack: toast on ChatGPT/Claude when the pack could not be put in the message box"
+  },
+  "researchPackTemplates": {
+    "message": "템플릿",
+    "description": "Research pack: templates section toggle"
+  },
+  "researchPackTemplatesHint": {
+    "message": "템플릿은 다시 쓸 수 있는 지시문으로, 프롬프트 관리자에 research-pack 태그로 저장됩니다. 내보내면 이름과 지시문만 공유되며 팩 내용은 절대 포함되지 않습니다.",
+    "description": "Research pack: what a template is and what exporting shares"
+  },
+  "researchPackTemplatePick": {
+    "message": "템플릿 선택",
+    "description": "Research pack: template picker placeholder and label"
+  },
+  "researchPackTemplateNone": {
+    "message": "아직 템플릿이 없습니다",
+    "description": "Research pack: template picker when no template is saved"
+  },
+  "researchPackTemplateUse": {
+    "message": "사용",
+    "description": "Research pack: put the chosen template into the instruction"
+  },
+  "researchPackTemplateUseConfirm": {
+    "message": "현재 지시문을 이 템플릿으로 바꿀까요?",
+    "description": "Research pack: confirm replacing a typed instruction with a template"
+  },
+  "researchPackTemplateReplace": {
+    "message": "바꾸기",
+    "description": "Research pack: confirm button that replaces the instruction"
+  },
+  "researchPackTemplateExport": {
+    "message": "내보내기",
+    "description": "Research pack: download the chosen template as a file"
+  },
+  "researchPackTemplateName": {
+    "message": "템플릿 이름",
+    "description": "Research pack: name field for a new template"
+  },
+  "researchPackTemplateSave": {
+    "message": "지시문을 템플릿으로 저장",
+    "description": "Research pack: save the typed instruction as a template"
+  },
+  "researchPackTemplateSaved": {
+    "message": "템플릿을 프롬프트 관리자에 저장했습니다",
+    "description": "Research pack: a template was saved"
+  },
+  "researchPackTemplateNeedName": {
+    "message": "먼저 템플릿 이름을 입력하세요",
+    "description": "Research pack: saving a template without a name"
+  },
+  "researchPackTemplateNeedInstruction": {
+    "message": "저장할 지시문을 입력하세요",
+    "description": "Research pack: saving a template with an empty instruction"
+  },
+  "researchPackTemplateInvalid": {
+    "message": "이름은 한 줄 100자 이내, 지시문은 4,000자 이내로 입력하세요.",
+    "description": "Research pack: template name or instruction breaks a limit"
+  },
+  "researchPackTemplateDuplicate": {
+    "message": "프롬프트 관리자에 이미 같은 지시문이 있습니다",
+    "description": "Research pack: the library already has this instruction text"
+  },
+  "researchPackTemplateNameTaken": {
+    "message": "프롬프트 관리자에 같은 이름의 프롬프트가 이미 있습니다",
+    "description": "Research pack: the library already has a prompt with this name"
+  },
+  "researchPackTemplateImport": {
+    "message": "파일 가져오기…",
+    "description": "Research pack: choose a template file to import"
+  },
+  "researchPackTemplateImportInvalid": {
+    "message": "올바른 리서치 팩 템플릿 파일이 아닙니다.",
+    "description": "Research pack: the chosen file is not a valid template file"
+  },
+  "researchPackTemplatePreviewTitle": {
+    "message": "이 파일의 템플릿입니다. 저장하기 전에 확인하세요.",
+    "description": "Research pack: heading of the import preview"
+  },
+  "researchPackTemplateStatusNew": {
+    "message": "새 템플릿",
+    "description": "Research pack: import preview badge for a template that will be saved"
+  },
+  "researchPackTemplateStatusDuplicate": {
+    "message": "이미 저장됨",
+    "description": "Research pack: import preview badge for an instruction that is already saved"
+  },
+  "researchPackTemplateStatusNameTaken": {
+    "message": "이름이 이미 있어 건너뜀",
+    "description": "Research pack: import preview badge for a template skipped because its name is in use"
+  },
+  "researchPackTemplateImportSave": {
+    "message": "새 템플릿 저장",
+    "description": "Research pack: save the new templates from the import preview"
+  },
+  "researchPackTemplateImported": {
+    "message": "프롬프트 관리자에 저장한 템플릿: {count}",
+    "description": "Research pack: templates were imported; {count} is how many"
+  },
+  "researchPackTemplateImportNothing": {
+    "message": "저장할 새 템플릿이 없습니다",
+    "description": "Research pack: an import had nothing new to save"
+  },
+  "researchPackTemplateFailed": {
+    "message": "템플릿을 업데이트하지 못했습니다. 다시 시도하세요.",
+    "description": "Research pack: reading or writing templates failed"
   }
 }

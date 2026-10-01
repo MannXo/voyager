@@ -9,11 +9,13 @@
 import { safeHttpUrl } from '@/features/researchPack/services/citations';
 import { HANDOFF_TARGET_IDS, type HandoffTarget } from '@/features/researchPack/services/handoff';
 import { platformLabel } from '@/features/researchPack/services/markdown';
+import type { TemplateLibrary } from '@/features/researchPack/services/templates';
 import type { ResearchPack, ResearchPackItem } from '@/features/researchPack/services/types';
 import type { TranslationKey } from '@/utils/translations';
 
 import { createPromptRowSurfaces } from '../prompt/promptRowConfirm';
 import { formatTarget } from './continueIn';
+import { createTemplatesSection } from './templatesSection';
 
 export interface ResearchPackPanelActions {
   onMove: (id: string, delta: number) => void;
@@ -30,6 +32,10 @@ export interface ResearchPackPanelActions {
   onClear: () => void;
   /** Read the pack again after a failed load. */
   onRetry: () => void;
+  /** Where instruction templates are kept: the Prompt Manager library. */
+  templateLibrary: TemplateLibrary;
+  /** Save a text file, such as an exported template. */
+  onDownloadFile: (filename: string, content: string) => void;
 }
 
 export interface ResearchPackPanel {
@@ -61,6 +67,8 @@ export interface ResearchPackPanel {
   notify: (message: string, tone?: 'ok' | 'error') => void;
   /** Re-read every label after a language change. */
   relabel: () => void;
+  /** Read the template list again after the prompt library changed. */
+  refreshTemplates: () => void;
   destroy: () => void;
 }
 
@@ -198,6 +206,29 @@ export function createResearchPackPanel(
     saveInstruction();
   };
 
+  /**
+   * Replace the instruction outright, as picking a template does. Unlike a
+   * snapshot from storage, this wins over focus and pending saves: any typing
+   * still waiting to be saved is dropped in favour of the chosen text.
+   */
+  const applyInstruction = (text: string): void => {
+    if (instructionTimer !== null) clearTimeout(instructionTimer);
+    instructionTimer = null;
+    instruction.value = text;
+    saveInstruction();
+  };
+
+  const templates = createTemplatesSection({
+    t,
+    library: actions.templateLibrary,
+    instruction: () => instruction.value,
+    applyInstruction,
+    confirm: (request) => confirmSurfaces.openConfirm(request),
+    notify: (message, tone) => notify(message, tone),
+    download: actions.onDownloadFile,
+  });
+  preview.before(templates.root);
+
   const syncLauncher = (): void => {
     const itemCount = currentPack?.items.length ?? 0;
     // A failed load leaves nothing to count, so the badge shows the failure instead.
@@ -217,6 +248,7 @@ export function createResearchPackPanel(
     panel.hidden = false;
     toast.hidden = true;
     syncLauncher();
+    templates.refresh();
     closeButton.focus({ preventScroll: true });
     actions.onOpen?.();
   };
@@ -303,6 +335,7 @@ export function createResearchPackPanel(
       button.textContent = formatTarget(t('researchPackContinueIn'), target);
       button.title = formatTarget(t('researchPackContinueHint'), target);
     }
+    templates.relabel();
     if (currentPack) {
       count.textContent = format(t('researchPackItemCount'), { count: currentPack.items.length });
     }
@@ -320,6 +353,7 @@ export function createResearchPackPanel(
     currentPack = pack;
     panel.setAttribute('aria-busy', String(locked));
     instruction.disabled = locked;
+    templates.setLocked(locked);
     // A confirm opened for the old content must not act on what replaces it.
     if (locked) confirmSurfaces.close();
     count.textContent = format(t('researchPackItemCount'), { count: pack.items.length });
@@ -425,10 +459,12 @@ export function createResearchPackPanel(
     },
     notify,
     relabel,
+    refreshTemplates: templates.refresh,
     destroy: () => {
       flushInstruction();
       if (statusTimer !== null) clearTimeout(statusTimer);
       statusTimer = null;
+      templates.destroy();
       confirmSurfaces.destroy();
       root.remove();
     },

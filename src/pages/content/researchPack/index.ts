@@ -25,6 +25,10 @@ import type {
   ResearchPackApplyResult,
   ResearchPackStore,
 } from '@/features/researchPack/services/packStore';
+import {
+  type TemplateLibrary,
+  createTemplateLibrary,
+} from '@/features/researchPack/services/templates';
 import type { AddItemOutcome, ResearchPack } from '@/features/researchPack/services/types';
 import { getTranslationSync } from '@/utils/i18n';
 
@@ -73,6 +77,17 @@ function createChromeClient(): ResearchPackStore {
   });
 }
 
+/** Templates live in the Prompt Manager library, read and added to in place. */
+function createChromeTemplateLibrary(): TemplateLibrary {
+  return createTemplateLibrary({
+    area: {
+      get: (key) => chrome.storage.local.get(key),
+      set: (items) => chrome.storage.local.set(items),
+    },
+    key: StorageKeys.PROMPT_ITEMS,
+  });
+}
+
 const ADD_OUTCOME_MESSAGES = {
   added: 'researchPackAdded',
   duplicate: 'researchPackDuplicate',
@@ -88,6 +103,8 @@ export interface StartResearchPackOptions {
   pageUrl?: () => string;
   /** How "Continue in ChatGPT / Claude" reaches the background and the clipboard. */
   continueIn?: ContinueInDeps;
+  /** Where instruction templates are kept (defaults to the Prompt Manager library). */
+  templateLibrary?: TemplateLibrary;
 }
 
 /** A context whose pack key is being resolved, tagged with that context's identity. */
@@ -260,6 +277,24 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     return apply(view.key, op);
   };
 
+  /** Save `content` as a file. The object URL is revoked shortly after the click. */
+  const downloadFile = (filename: string, content: string, type: string): void => {
+    const url = URL.createObjectURL(new Blob([content], { type }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    // Firefox only downloads from an anchor that is in the document.
+    anchor.hidden = true;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    const timer = setTimeout(() => {
+      pendingDownloads.delete(timer);
+      URL.revokeObjectURL(url);
+    }, DOWNLOAD_URL_REVOKE_MS);
+    pendingDownloads.set(timer, url);
+  };
+
   const continueIn = createContinueInController(
     options.continueIn ?? {
       send: (message) => chrome.runtime.sendMessage(message),
@@ -283,24 +318,12 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
         .then(() => panel.notify(t('researchPackCopied')))
         .catch(() => panel.notify(t('researchPackCopyFailed'), 'error'));
     },
-    onDownload: () => {
-      const url = URL.createObjectURL(
-        new Blob([exportMarkdown()], { type: 'text/markdown;charset=utf-8' }),
-      );
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = buildResearchPackFilename(Date.now());
-      // Firefox only downloads from an anchor that is in the document.
-      anchor.hidden = true;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      const timer = setTimeout(() => {
-        pendingDownloads.delete(timer);
-        URL.revokeObjectURL(url);
-      }, DOWNLOAD_URL_REVOKE_MS);
-      pendingDownloads.set(timer, url);
-    },
+    onDownload: () =>
+      downloadFile(
+        buildResearchPackFilename(Date.now()),
+        exportMarkdown(),
+        'text/markdown;charset=utf-8',
+      ),
     onInsert: () => {
       // Fill the composer only. The user reviews the pack and sends it.
       const input = findChatInput();
@@ -314,6 +337,9 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     // Hands over the same pack Copy does: the one on screen, with the typed instruction.
     onContinue: (target) => continueIn.continueIn(target, exportMarkdown()),
     onOpen: () => continueIn.refresh(),
+    templateLibrary: options.templateLibrary ?? createChromeTemplateLibrary(),
+    onDownloadFile: (filename, content) =>
+      downloadFile(filename, content, 'application/json;charset=utf-8'),
   });
 
   const onAdd = async (
@@ -399,6 +425,10 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
       } else {
         offer(shownKey, parsePack(newValue), generation);
       }
+    }
+    if (areaName === 'local' && StorageKeys.PROMPT_ITEMS in changes) {
+      // Templates are edited, added and deleted in Prompt Manager too.
+      panel.refreshTemplates();
     }
     if (isIsolationSettingChange(changes, areaName, pageUrl())) {
       isolationEpoch += 1;

@@ -184,7 +184,7 @@ export function planTemplateSave(library: unknown, drafts: TemplateDraft[]): Pla
 }
 
 export interface TemplateLibraryArea {
-  get(key: string): Promise<Record<string, unknown> | undefined>;
+  get(key: string): Promise<Record<string, unknown>>;
   set(items: Record<string, unknown>): Promise<void>;
 }
 

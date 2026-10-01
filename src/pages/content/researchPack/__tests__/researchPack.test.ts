@@ -98,7 +98,7 @@ describe('research pack on Gemini', () => {
 
     clickAdd(host);
     await flush();
-    const insert = document.querySelector<HTMLButtonElement>('.gv-rp-btn-primary')!;
+    const insert = document.querySelector<HTMLButtonElement>('.gv-rp-actions .gv-rp-btn-primary')!;
     insert.click();
 
     expect(insertTextIntoChatInput).toHaveBeenCalledOnce();
