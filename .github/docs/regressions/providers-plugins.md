@@ -73,10 +73,12 @@ and turn ids`).
   markers pairs in order, which no uniform shift can upset. Among the markers it may reach, a turn
   takes the nearest by position (earliest on a tie); a turn that can reach none skips the blocking
   marker only when it sits nearer the next one with its text, else it is new. Positions are
-  searched on centres made sorted in DOM order: the longest non-decreasing run of remembered
-  centres is kept and each other centre takes the kept one before it, so a stale centre ahead of
-  or behind its neighbours moves no other estimate (a running max let one high centre near the
-  start pull a deep window to the front). Known limit: when a turn unmounts, a new one arrives
+  searched on estimates that trust fresher measurements: the navigator stamps each centre with
+  its measuring pass (`measuredAt`), each centre is clamped between the strictly fresher centres
+  before and after it, freshest pass first, and a final running max sorts the rest. A centre
+  left from before the page above grew or shrank then moves no fresher estimate. (A running max
+  let one stale high centre near the start pull a deep window to the front; keeping the longest
+  sorted run of centres preferred a stale block over fewer fresh centres.) Known limit: when a turn unmounts, a new one arrives
   and the rest slide by exactly one turn's height, the two readings tie and the first turn may
   come out new. (A nearest-centre scan per turn was quadratic
   on equal centres, and after an anchorless +100px shift it matched the first turn to the second
@@ -94,10 +96,12 @@ of repeats after a shift, past the alignment budget`, `keeps every turn of a lon
 after a uniform shift with no anchor`, `reads a bounded number of remembered positions`, `files a
 window mounted deep in a long identical run by position`, `keeps other texts in place when a
 long mixed run remounts shifted without one turn`, `files a deep window by position past a stale
-remembered centre mid-run`, `files a deep window by position past a stale remembered centre ahead
-of the run`, `keeps every id when the first turn of a mixed run unmounts as a new one arrives`,
+centre that lags behind`, `files a deep window by position past a stale centre that runs ahead`,
+  `files the top of a long run by its fresh centres past a stale block below`, `keeps every id when the first turn of a mixed run unmounts as a new one arrives`,
   `adds a turn loaded above a mixed run without shifting the run`, `does not file a turn under a
 far-off remembered centre that is out of order`),
+  `src/features/plugins/builtin/claudeTimeline/index.test.ts` (`files a remounted window of
+repeats past a turn measured before the page above shrank`),
   `src/features/plugins/builtin/chatgptTimeline.test.ts` (`keeps repeated identical prompts
 apart`, `folds a turn ChatGPT briefly renders twice`, `follows a turn whose list id ChatGPT
 renames`, `updates the dot when a prompt is edited in place`, `does not treat a wrapper around

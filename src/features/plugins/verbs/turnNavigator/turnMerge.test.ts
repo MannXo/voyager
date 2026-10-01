@@ -173,45 +173,68 @@ describe('mergeMountedTurns without a turn key', () => {
     );
   });
 
-  it('files a deep window by position past a stale remembered centre mid-run', () => {
-    const known = merge(
+  /**
+   * 700 identical prompts measured at 100px steps, then all but `stale`
+   * re-measured in a later pass at `remeasured(index)`.
+   */
+  function longRunWithStale(
+    stale: readonly number[],
+    remeasured: (index: number) => number,
+  ): Marker[] {
+    const known = mergeMountedTurns(
       [],
-      Array.from(
-        { length: 700 },
-        // A turn measured before its neighbours were re-measured lags behind them.
-        (_, index) => ['continue', index === 350 ? 0 : 100 * (index + 1)] as const,
-      ),
+      render(Array.from({ length: 700 }, (_, index) => ['continue', 100 * (index + 1)] as const)),
+      (element) => centers.get(element) ?? 0,
     );
+    known.forEach((marker, index) => {
+      marker.measuredAt = 1;
+      if (stale.includes(index)) return;
+      marker.center = remeasured(index);
+      marker.measuredAt = 2;
+    });
+    return known;
+  }
+
+  function filedIds(known: Marker[], window: Mounted[]): Array<string | null> {
+    mergeMountedTurns(known, window, (element) => centers.get(element) ?? 0);
+    return window.map((turn) => turn.element.getAttribute('data-gv-turn-id'));
+  }
+
+  it('files a deep window by position past a stale centre that lags behind', () => {
+    // Content above grew by 50px before the re-measure; turn 350 kept its old place.
+    const known = longRunWithStale([350], (index) => 100 * (index + 1) + 50);
+    known[350].center = 0;
     const ids = known.map((marker) => marker.id);
     const window = render(
-      Array.from({ length: 400 }, (_, r) => ['continue', 100 * (300 + r + 1)] as const),
+      Array.from({ length: 400 }, (_, r) => ['continue', 100 * (300 + r + 1) + 50] as const),
     );
 
-    mergeMountedTurns(known, window, (element) => centers.get(element) ?? 0);
-
-    expect(window.map((turn) => turn.element.getAttribute('data-gv-turn-id'))).toEqual(
-      ids.slice(300),
-    );
+    expect(filedIds(known, window)).toEqual(ids.slice(300));
   });
 
-  it('files a deep window by position past a stale remembered centre ahead of the run', () => {
-    const known = merge(
-      [],
-      Array.from(
-        { length: 700 },
-        (_, index) => ['continue', index === 1 ? 100_000 : 100 * (index + 1)] as const,
-      ),
-    );
+  it('files a deep window by position past a stale centre that runs ahead', () => {
+    const known = longRunWithStale([1], (index) => 100 * (index + 1));
+    known[1].center = 100_000;
     const ids = known.map((marker) => marker.id);
     const window = render(
       Array.from({ length: 400 }, (_, r) => ['continue', 100 * (300 + r + 1)] as const),
     );
 
-    mergeMountedTurns(known, window, (element) => centers.get(element) ?? 0);
+    expect(filedIds(known, window)).toEqual(ids.slice(300));
+  });
 
-    expect(window.map((turn) => turn.element.getAttribute('data-gv-turn-id'))).toEqual(
-      ids.slice(300),
+  it('files the top of a long run by its fresh centres past a stale block below', () => {
+    // An answer near the top grew by 40000px; only the first 300 turns were re-measured.
+    const known = longRunWithStale(
+      Array.from({ length: 400 }, (_, r) => 300 + r),
+      (index) => 100 * (index + 1) + 40_000,
     );
+    const ids = known.map((marker) => marker.id);
+    const window = render(
+      Array.from({ length: 400 }, (_, r) => ['continue', 100 * (r + 1) + 40_000] as const),
+    );
+
+    expect(filedIds(known, window)).toEqual(ids.slice(0, 400));
   });
 
   it('keeps every id when the first turn of a mixed run unmounts as a new one arrives', () => {

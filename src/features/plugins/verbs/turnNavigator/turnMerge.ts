@@ -35,6 +35,12 @@ export interface Marker {
   element: HTMLElement;
   /** Last-known center offset within the scroll target; reused while unmounted. */
   center: number;
+  /**
+   * The navigator's measuring pass that last wrote `center`. Centres from one
+   * pass share a frame; an older one may predate content that grew or shrank
+   * above it.
+   */
+  measuredAt?: number;
   dotElement: HTMLButtonElement | null;
   /** Snapshot mode: `element` is a list item whose message is unloaded. */
   placeholder?: boolean;
@@ -241,8 +247,8 @@ function alignRun(
  * when it sits nearer to that one, so a turn that went missing does not
  * shift every turn after it onto its neighbour's id.
  *
- * Positions are searched on estimates sorted in DOM order (`sortedCenters`),
- * so a stale centre out of order cannot attract a turn far from its place.
+ * Positions are searched on estimates sorted in DOM order (`freshCenters`),
+ * so a stale centre cannot attract a turn far from its place.
  *
  * The reachable bound only moves forward, so finding it is linear overall;
  * each turn and the estimates add binary searches. Cost: (run + markers) x
@@ -255,7 +261,7 @@ function alignInOrder(
   hi: number,
   drifts: readonly number[],
 ): number[] {
-  const estimate = sortedCenters(known, lo, hi);
+  const estimate = freshCenters(known, lo, hi);
   const indexesByHash = new Map<string, number[]>();
   const markersLeft = new Map<string, number>();
   for (let j = lo; j < hi; j++) {
@@ -323,37 +329,51 @@ function alignInOrder(
 }
 
 /**
- * Remembered centres of `known[lo, hi)` made non-decreasing in DOM order.
- * The longest non-decreasing subsequence is kept as it is: the fewest
- * centres to distrust. A distrusted centre, stale behind or ahead of its
- * neighbours, takes the kept one before it (or, at the start, the first
- * kept one), so one outlier at either end moves no other estimate.
+ * Remembered centres of `known[lo, hi)` as estimates sorted in DOM order,
+ * trusting fresher measurements over older ones. Centres from one pass are
+ * in one frame; an older centre may predate content that grew or shrank
+ * above it. So each centre is clamped between the fresher centres around it
+ * (at least every fresher one before it, at most every fresher one after
+ * it), freshest first, and a final running max sorts what a single pass left
+ * out of order. Cost: markers x log(markers).
  */
-function sortedCenters(known: readonly Marker[], lo: number, hi: number): Float64Array {
+function freshCenters(known: readonly Marker[], lo: number, hi: number): Float64Array {
   const n = hi - lo;
-  // tails[l]: index of the smallest last centre of a kept sequence of length l + 1.
-  const tails: number[] = [];
-  const before = new Int32Array(n).fill(-1);
-  for (let i = 0; i < n; i++) {
-    const center = known[lo + i].center;
-    let low = 0;
-    let high = tails.length;
-    while (low < high) {
-      const mid = (low + high) >> 1;
-      if (known[lo + tails[mid]].center <= center) low = mid + 1;
-      else high = mid;
-    }
-    if (low > 0) before[i] = tails[low - 1];
-    tails[low] = i;
-  }
-  const kept = new Uint8Array(n);
-  for (let i = tails.length ? tails[tails.length - 1] : -1; i !== -1; i = before[i]) kept[i] = 1;
   const estimate = new Float64Array(n);
-  let previous = n ? known[lo + kept.indexOf(1)].center : 0;
-  for (let i = 0; i < n; i++) {
-    if (kept[i]) previous = known[lo + i].center;
-    estimate[i] = previous;
+  const order = Array.from({ length: n }, (_, i) => i).sort(
+    (a, b) => (known[lo + b].measuredAt ?? 0) - (known[lo + a].measuredAt ?? 0),
+  );
+  // Fenwick trees over positions: highest accepted estimate up to i, lowest from i on.
+  const highest = new Float64Array(n + 1).fill(-Infinity);
+  const lowest = new Float64Array(n + 1).fill(Infinity);
+  const highestUpTo = (i: number): number => {
+    let value = -Infinity;
+    for (let k = i + 1; k > 0; k -= k & -k) value = Math.max(value, highest[k]);
+    return value;
+  };
+  const lowestFrom = (i: number): number => {
+    let value = Infinity;
+    for (let k = n - i; k > 0; k -= k & -k) value = Math.min(value, lowest[k]);
+    return value;
+  };
+  const accept = (i: number): void => {
+    for (let k = i + 1; k <= n; k += k & -k) highest[k] = Math.max(highest[k], estimate[i]);
+    for (let k = n - i; k <= n; k += k & -k) lowest[k] = Math.min(lowest[k], estimate[i]);
+  };
+  for (let start = 0; start < n;) {
+    const epoch = known[lo + order[start]].measuredAt ?? 0;
+    let end = start;
+    while (end < n && (known[lo + order[end]].measuredAt ?? 0) === epoch) end++;
+    // Clamp one pass against strictly fresher ones only, then accept it whole.
+    for (let k = start; k < end; k++) {
+      const i = order[k];
+      const own = known[lo + i].center;
+      estimate[i] = Math.min(Math.max(own, highestUpTo(i - 1)), lowestFrom(i + 1));
+    }
+    for (let k = start; k < end; k++) accept(order[k]);
+    start = end;
   }
+  for (let i = 1; i < n; i++) estimate[i] = Math.max(estimate[i], estimate[i - 1]);
   return estimate;
 }
 

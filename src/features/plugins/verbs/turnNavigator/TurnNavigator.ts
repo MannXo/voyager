@@ -98,6 +98,8 @@ export class TurnNavigator {
   private observing = false;
   private markers: Marker[] = [];
   private markerCenters: number[] = [];
+  /** Merge mode: counts measuring passes so stale centres can be told from fresh ones. */
+  private measuringPass = 0;
   /** Route the merged markers were collected under; star reads never change it. */
   private markerRouteId = '';
   private readonly snapshot: TurnSnapshot | null;
@@ -894,10 +896,12 @@ export class TurnNavigator {
   private computeMarkerCenters(): number[] {
     const scrollTop = this.getScrollTop();
     const viewportTop = this.getViewportTop();
+    const pass = ++this.measuringPass;
     const centers: number[] = [];
     for (const marker of this.markers) {
       if (marker.element.isConnected) {
         marker.center = this.computeElementCenter(marker.element, scrollTop, viewportTop);
+        marker.measuredAt = pass;
       }
       // Keep the array monotonic for the active-turn binary search: stale
       // centers of virtualized-out turns can lag behind re-measured neighbours.

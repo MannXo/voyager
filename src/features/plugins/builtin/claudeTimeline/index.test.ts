@@ -527,6 +527,39 @@ describe('Claude timeline', () => {
     expect(dotLabels()).toEqual(['first prompt', 'second prompt', 'third prompt', 'fourth prompt']);
   });
 
+  it('files a remounted window of repeats past a turn measured before the page above shrank', async () => {
+    const placeAt = (turn: HTMLElement, top: number): void => {
+      turn.getBoundingClientRect = () => ({ top, bottom: top + 40, height: 40 }) as DOMRect;
+    };
+    // 700 identical prompts below a 100000px answer.
+    const turns = Array.from({ length: 700 }, (_, index) => {
+      const turn = addTurn('continue');
+      placeAt(turn, 100_000 + 100 * index);
+      return turn;
+    });
+    startClaudeTimeline();
+    await flush();
+    const ids = turns.map((turn) => turn.getAttribute('data-gv-turn-id'));
+    expect(new Set(ids).size).toBe(700);
+
+    // The answer collapses while turn 1 is virtualized out: only it keeps its old place.
+    turns[1].remove();
+    turns.forEach((turn, index) => placeAt(turn, 100 * index));
+    document.body.appendChild(createTurn('marker'));
+    await settleRefresh();
+
+    // Claude remounts a window deeper in the run as new elements.
+    document.body.innerHTML = '';
+    const window = Array.from({ length: 400 }, (_, r) => {
+      const turn = addTurn('continue');
+      placeAt(turn, 100 * (300 + r));
+      return turn;
+    });
+    await settleRefresh();
+
+    expect(window.map((turn) => turn.getAttribute('data-gv-turn-id'))).toEqual(ids.slice(300));
+  });
+
   it('never shrinks when the mounted window turns sparse mid-transition', async () => {
     const turns = ['one', 'two', 'three', 'four', 'five'].map((text) => addTurn(text));
     startClaudeTimeline();
