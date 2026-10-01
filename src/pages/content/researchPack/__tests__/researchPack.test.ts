@@ -53,6 +53,15 @@ function turn(answerHtml: string, prompt = 'Why is the sky blue?'): HTMLElement 
   return container.querySelector('model-response') as HTMLElement;
 }
 
+function readBlob(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(blob);
+  });
+}
+
 async function flush(): Promise<void> {
   for (let i = 0; i < 5; i += 1) await Promise.resolve();
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -137,6 +146,73 @@ describe('research pack on Gemini', () => {
     expect(target).toBe(composer);
     expect(text).toContain('# Research pack');
     expect(text).toContain('Answer text.');
+  });
+
+  describe('exports the instruction exactly as typed, even before it is saved', () => {
+    const typeInstruction = (value: string): void => {
+      const textarea = document.querySelector<HTMLTextAreaElement>('#gv-rp-instruction')!;
+      textarea.focus();
+      textarea.value = value;
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    // Footer order: Insert, Copy, Download, Clear.
+    const FOOTER_INDEX = { insert: 0, copy: 1, download: 2 } as const;
+    const button = (action: keyof typeof FOOTER_INDEX): HTMLButtonElement =>
+      document.querySelectorAll<HTMLButtonElement>('.gv-rp-actions button')[FOOTER_INDEX[action]];
+
+    async function startWithOneItem() {
+      const host = turn('<p>Answer text.</p>');
+      const memory = memoryStore();
+      stop = startResearchPack({ store: memory.store });
+      clickAdd(host);
+      await flush();
+      return memory;
+    }
+
+    it('Copy', async () => {
+      const writeText = vi.fn(async (_text: string) => undefined);
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+      await startWithOneItem();
+
+      typeInstruction('Compare with the 2025 survey.');
+      button('copy').click();
+
+      expect(writeText).toHaveBeenCalledOnce();
+      expect(writeText.mock.calls[0][0]).toContain(
+        '## Instruction\n\nCompare with the 2025 survey.',
+      );
+    });
+
+    it('Download .md', async () => {
+      const blobs: Blob[] = [];
+      const createObjectURL = vi.fn((blob: Blob) => {
+        blobs.push(blob);
+        return 'blob:test';
+      });
+      Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() });
+      await startWithOneItem();
+
+      typeInstruction('Find counter-evidence.');
+      button('download').click();
+
+      expect(blobs).toHaveLength(1);
+      expect(await readBlob(blobs[0])).toContain('## Instruction\n\nFind counter-evidence.');
+    });
+
+    it('Insert into chat', async () => {
+      vi.mocked(findChatInput).mockReturnValue(document.createElement('div'));
+      vi.mocked(insertTextIntoChatInput).mockReturnValue(true);
+      const { stored } = await startWithOneItem();
+
+      typeInstruction('Summarize in a table.');
+      button('insert').click();
+
+      expect(vi.mocked(insertTextIntoChatInput).mock.calls[0][0]).toContain(
+        '## Instruction\n\nSummarize in a table.',
+      );
+      await flush();
+      expect(stored()!.instruction).toBe('Summarize in a table.');
+    });
   });
 
   it('adds only the selected part of an answer as an excerpt', async () => {

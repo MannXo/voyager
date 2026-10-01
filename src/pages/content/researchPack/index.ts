@@ -96,6 +96,11 @@ export function startResearchPack(options: { store?: ResearchPackStore } = {}): 
   const pendingDownloads = new Map<ReturnType<typeof setTimeout>, string>();
 
   const markdown = (): string => buildResearchPackMarkdown(pack, Date.now());
+  /** What Copy, Download and Insert hand over: the stored items plus the typed instruction. */
+  const exportMarkdown = (): string => {
+    const now = Date.now();
+    return buildResearchPackMarkdown(setInstruction(pack, panel.instructionDraft(), now), now);
+  };
 
   const reportError = (error: unknown): void => {
     if (stopped || isExtensionContextInvalidatedError(error)) return;
@@ -130,7 +135,7 @@ export function startResearchPack(options: { store?: ResearchPackStore } = {}): 
     onRemove: (id) =>
       void apply((current) => ({ pack: removeItem(current, id, Date.now()), result: null })),
     onInstructionChange: (instruction) =>
-      void apply((current) => ({
+      apply((current) => ({
         pack: setInstruction(current, instruction, Date.now()),
         result: null,
       })),
@@ -138,13 +143,13 @@ export function startResearchPack(options: { store?: ResearchPackStore } = {}): 
       void apply((current) => ({ pack: clearItems(current, Date.now()), result: null })),
     onCopy: () => {
       void navigator.clipboard
-        .writeText(markdown())
+        .writeText(exportMarkdown())
         .then(() => panel.notify(t('researchPackCopied')))
         .catch(() => panel.notify(t('researchPackCopyFailed'), 'error'));
     },
     onDownload: () => {
       const url = URL.createObjectURL(
-        new Blob([markdown()], { type: 'text/markdown;charset=utf-8' }),
+        new Blob([exportMarkdown()], { type: 'text/markdown;charset=utf-8' }),
       );
       const anchor = document.createElement('a');
       anchor.href = url;
@@ -163,7 +168,7 @@ export function startResearchPack(options: { store?: ResearchPackStore } = {}): 
     onInsert: () => {
       // Fill the composer only. The user reviews the pack and sends it.
       const input = findChatInput();
-      if (!input || !insertTextIntoChatInput(markdown(), input)) {
+      if (!input || !insertTextIntoChatInput(exportMarkdown(), input)) {
         panel.notify(t('researchPackNoComposer'), 'error');
         return;
       }

@@ -16,7 +16,8 @@ import { createPromptRowSurfaces } from '../prompt/promptRowConfirm';
 export interface ResearchPackPanelActions {
   onMove: (id: string, delta: number) => void;
   onRemove: (id: string) => void;
-  onInstructionChange: (instruction: string) => void;
+  /** Persist the instruction; the returned promise settles when the save does. */
+  onInstructionChange: (instruction: string) => Promise<unknown> | void;
   onCopy: () => void;
   onDownload: () => void;
   onInsert: () => void;
@@ -29,6 +30,11 @@ export interface ResearchPackPanel {
   open: () => void;
   close: () => void;
   isOpen: () => boolean;
+  /**
+   * The instruction as currently typed. Exports read this rather than the
+   * stored pack, so a click right after typing never loses the last edit.
+   */
+  instructionDraft: () => string;
   /** Feedback in the panel's status line, or as a toast by the launcher while closed. */
   notify: (message: string, tone?: 'ok' | 'error') => void;
   /** Re-read every label after a language change. */
@@ -130,13 +136,25 @@ export function createResearchPackPanel(
   const confirmSurfaces = createPromptRowSurfaces();
   let currentPack: ResearchPack | null = null;
   let instructionTimer: ReturnType<typeof setTimeout> | null = null;
+  let savesInFlight = 0;
   let statusTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const saveInstruction = (): void => {
+    const pending = actions.onInstructionChange(instruction.value);
+    if (!pending) return;
+    savesInFlight += 1;
+    void Promise.resolve(pending)
+      .catch(() => undefined)
+      .finally(() => {
+        savesInFlight -= 1;
+      });
+  };
 
   const flushInstruction = (): void => {
     if (instructionTimer === null) return;
     clearTimeout(instructionTimer);
     instructionTimer = null;
-    actions.onInstructionChange(instruction.value);
+    saveInstruction();
   };
 
   const syncLauncher = (): void => {
@@ -242,7 +260,12 @@ export function createResearchPackPanel(
     list.replaceChildren(
       ...pack.items.map((item, index) => renderItem(item, index, pack.items.length)),
     );
-    if (document.activeElement !== instruction && instructionTimer === null) {
+    // Never replace text the user is typing or that is still being saved.
+    if (
+      document.activeElement !== instruction &&
+      instructionTimer === null &&
+      savesInFlight === 0
+    ) {
       instruction.value = pack.instruction;
     }
     markdownView.textContent = markdown;
@@ -279,7 +302,7 @@ export function createResearchPackPanel(
     if (instructionTimer !== null) clearTimeout(instructionTimer);
     instructionTimer = setTimeout(() => {
       instructionTimer = null;
-      actions.onInstructionChange(instruction.value);
+      saveInstruction();
     }, INSTRUCTION_SAVE_DELAY_MS);
   });
   instruction.addEventListener('blur', flushInstruction);
@@ -313,6 +336,7 @@ export function createResearchPackPanel(
     open,
     close,
     isOpen: () => !panel.hidden,
+    instructionDraft: () => instruction.value,
     notify,
     relabel,
     destroy: () => {
