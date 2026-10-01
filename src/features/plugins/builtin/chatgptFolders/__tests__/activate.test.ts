@@ -184,6 +184,53 @@ describe('ChatGPT folders plugin', () => {
     expect(memory.writes.filter((w) => w.key === StorageKeys.FOLDER_DATA_CHATGPT)).toEqual([]);
   });
 
+  it('asks before removing a filed conversation, and drops the question when turned off', async () => {
+    const oneFiled: FolderData = {
+      folders: [],
+      folderContents: {
+        [ROOT_CONVERSATIONS_ID]: [
+          {
+            conversationId: `chatgpt:conv:${A}`,
+            title: 'Trip plan',
+            url: `https://chatgpt.com/c/${A}`,
+            addedAt: 1,
+          },
+        ],
+      },
+    };
+    memory.values.local.set(StorageKeys.CHATGPT_FOLDER_PANEL, { open: true });
+    memory.values.local.set(StorageKeys.FOLDER_DATA_CHATGPT, structuredClone(oneFiled));
+    await activate();
+    const filed = () =>
+      (memory.values.local.get(StorageKeys.FOLDER_DATA_CHATGPT) as FolderData).folderContents[
+        ROOT_CONVERSATIONS_ID
+      ];
+    const remove = () =>
+      shadow().querySelector<HTMLButtonElement>('[class*="icon-button--remove"]')!.click();
+
+    remove();
+    await settle(20);
+    const question = document.querySelector('.gv-folder-confirm-dialog');
+    expect(question?.textContent).toContain('Trip plan');
+    expect(filed()).toHaveLength(1);
+
+    document.querySelector<HTMLButtonElement>('.gv-folder-confirm-yes')!.click();
+    await settle(20);
+    expect(filed()).toEqual([]);
+    expect(document.querySelector('.gv-folder-confirm-dialog')).toBeNull();
+
+    // Filed again from another tab; this time the plugin is turned off mid-question.
+    memory.external('local', StorageKeys.FOLDER_DATA_CHATGPT, oneFiled);
+    await settle(30);
+    remove();
+    await settle(20);
+    expect(document.querySelector('.gv-folder-confirm-dialog')).not.toBeNull();
+
+    await scope.dispose();
+    expect(document.querySelector('.gv-folder-confirm-dialog')).toBeNull();
+    expect(filed()).toHaveLength(1);
+  });
+
   it('reopens the panel the user left open', async () => {
     memory.values.local.set(StorageKeys.CHATGPT_FOLDER_PANEL, { open: true });
     await activate();

@@ -10,6 +10,7 @@ import type { PluginScope } from '@/features/plugins/runtime/pluginScope';
 import type { PluginSettings } from '@/features/plugins/types';
 import { mountFloatingFab, unmountFloatingFab } from '@/pages/content/folder/floatingModeFab';
 import { type FloatingPanelHandle, mountFloatingPanel } from '@/pages/content/folder/floatingPanel';
+import { createFolderDialogs } from '@/pages/content/folder/folderDialogs';
 import { getTranslationSyncUnsafe as t, initI18n } from '@/utils/i18n';
 
 import { isTemporaryChat } from '../chatgptTemporaryHandoff/handoff';
@@ -35,6 +36,8 @@ function format(key: string, values: Record<string, string | number>): string {
 
 class ChatGptFoldersView {
   private panel: FloatingPanelHandle | null = null;
+  // Gemini's removal confirm; it closes with the panel.
+  private readonly dialogs = createFolderDialogs();
 
   constructor(
     private readonly scope: PluginScope,
@@ -106,6 +109,7 @@ class ChatGptFoldersView {
       onPosChange: (pos) => this.savePrefs({ pos }),
       onSizeChange: (size) => this.savePrefs({ size }),
       onClose: () => {
+        this.dialogs.closeAll();
         this.panel = null;
         this.savePrefs({ open: false });
       },
@@ -114,6 +118,7 @@ class ChatGptFoldersView {
       onRenameFolder: (folderId, name) => store.renameFolder(folderId, name),
       onDeleteFolder: (folderId) => store.removeFolder(folderId),
       onRemoveConversation: (folderId, id) => store.removeConversation(folderId, id),
+      confirmConversationRemoval: this.dialogs.confirmConversationRemoval,
       onToggleStar: (folderId, id) => store.toggleStar(folderId, id),
       onToggleFolderPinned: (folderId) => store.toggleFolderPinned(folderId),
       onToggleFolderExpanded: (folderId) => store.toggleFolderExpanded(folderId),
@@ -124,6 +129,7 @@ class ChatGptFoldersView {
   }
 
   private unmountPanel(): void {
+    this.dialogs.closeAll();
     this.panel?.destroy();
     this.panel = null;
   }
