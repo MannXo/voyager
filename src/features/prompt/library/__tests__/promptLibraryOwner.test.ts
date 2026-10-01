@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { mergeImportedPrompts } from '@/features/backup/services/PromptImportExportService';
+import {
+  PromptImportExportService,
+  mergeImportedPrompts,
+} from '@/features/backup/services/PromptImportExportService';
 import type { PromptItem } from '@/features/backup/types/backup';
 
 import {
@@ -14,7 +17,7 @@ import {
   createPromptLibraryOwner,
 } from '../promptLibraryOwner';
 
-/** One storage area; `gate` holds every read until released, to force interleaving. */
+/** One in-memory storage area, counting writes. */
 function memoryArea(initial?: unknown) {
   const data = new Map<string, unknown>(
     initial === undefined ? [] : [[PROMPT_LIBRARY_KEY, structuredClone(initial)]],
@@ -179,6 +182,23 @@ describe('prompt library messages', () => {
     ]) {
       expect(parsePromptLibraryOp(op)).toBeNull();
     }
+  });
+
+  it('accepts every prompt the prompts import accepts', () => {
+    const validated = PromptImportExportService.validatePayload({
+      format: 'gemini-voyager.prompts.v1',
+      items: [
+        { text: '  No id, tags or date  ' },
+        { id: 'b', text: 'Named', tags: ['A', 'a', 3], name: ' Name ', pinnedAt: 2 },
+        { id: 'c', text: 'Dated', tags: [], createdAt: 5, updatedAt: 6 },
+      ],
+    });
+    if (!validated.success) throw new Error('expected a valid payload');
+
+    expect(parsePromptLibraryOp({ kind: 'import', items: validated.data.items })).toEqual({
+      kind: 'import',
+      items: validated.data.items,
+    });
   });
 
   it('carries an op from a writer to the owner and its result back', async () => {

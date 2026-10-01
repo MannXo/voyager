@@ -2,10 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
 import {
+  type PromptLibraryArea,
+  createPromptLibraryOwner,
+} from '@/features/prompt/library/promptLibraryOwner';
+import {
   PROMPT_EXPORT_FORMAT,
   RESEARCH_PACK_TEMPLATE_LIMITS,
   RESEARCH_PACK_TEMPLATE_TAG,
-  type TemplateLibraryArea,
   createTemplateLibrary,
 } from '@/features/researchPack/services/templates';
 
@@ -19,7 +22,7 @@ const TAG = RESEARCH_PACK_TEMPLATE_TAG;
 function promptLibrary(initial: unknown[] = []) {
   const data = new Map<string, unknown>([[PROMPTS, structuredClone(initial)]]);
   let writes = 0;
-  const area: TemplateLibraryArea = {
+  const area: PromptLibraryArea = {
     get: async (key) => (data.has(key) ? { [key]: structuredClone(data.get(key)) } : {}),
     set: async (items) => {
       writes += 1;
@@ -27,9 +30,11 @@ function promptLibrary(initial: unknown[] = []) {
     },
   };
   let id = 0;
+  const owner = createPromptLibraryOwner({ area });
   const library = createTemplateLibrary({
     area,
     key: PROMPTS,
+    apply: (op) => owner.apply(op),
     now: () => 100,
     makeId: () => `new-${++id}`,
   });

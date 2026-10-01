@@ -10,6 +10,7 @@
 import { accountIsolationService } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
+import { createRuntimePromptLibraryClient } from '@/features/prompt/library/promptLibraryMessages';
 import {
   buildResearchPackFilename,
   buildResearchPackMarkdown,
@@ -80,11 +81,9 @@ function createChromeClient(): ResearchPackStore {
 /** Templates live in the Prompt Manager library, read and added to in place. */
 function createChromeTemplateLibrary(): TemplateLibrary {
   return createTemplateLibrary({
-    area: {
-      get: (key) => chrome.storage.local.get(key),
-      set: (items) => chrome.storage.local.set(items),
-    },
+    area: { get: (key) => chrome.storage.local.get(key) },
     key: StorageKeys.PROMPT_ITEMS,
+    apply: createRuntimePromptLibraryClient().apply,
   });
 }
 

@@ -2,12 +2,19 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
 import { PromptImportExportService } from '@/features/backup/services/PromptImportExportService';
+import {
+  createPromptLibraryClient,
+  handlePromptLibraryApplyMessage,
+} from '@/features/prompt/library/promptLibraryMessages';
+import {
+  type PromptLibraryArea,
+  createPromptLibraryOwner,
+} from '@/features/prompt/library/promptLibraryOwner';
 
 import {
   PROMPT_EXPORT_FORMAT,
   RESEARCH_PACK_TEMPLATE_LIMITS,
   RESEARCH_PACK_TEMPLATE_TAG,
-  type TemplateLibraryArea,
   buildTemplateFile,
   createTemplateLibrary,
   listTemplates,
@@ -22,10 +29,22 @@ function fileOf(items: unknown[], format: unknown = PROMPT_EXPORT_FORMAT): strin
   return JSON.stringify({ format, exportedAt: '2026-10-01T00:00:00.000Z', version: '1', items });
 }
 
+/** The background owner every tab writes through, one per storage area. */
+const owners = new WeakMap<PromptLibraryArea, ReturnType<typeof createPromptLibraryOwner>>();
+
+/** What a tab sends its writes through: a message to the area's owner. */
+function writerFor(area: PromptLibraryArea) {
+  const owner = owners.get(area) ?? createPromptLibraryOwner({ area });
+  owners.set(area, owner);
+  return createPromptLibraryClient((request) =>
+    handlePromptLibraryApplyMessage(structuredClone(request), owner),
+  ).apply;
+}
+
 function memoryArea(initial?: unknown) {
   const data = new Map<string, unknown>(initial === undefined ? [] : [[KEY, initial]]);
   let writes = 0;
-  const area: TemplateLibraryArea = {
+  const area: PromptLibraryArea = {
     get: async (key) => (data.has(key) ? { [key]: structuredClone(data.get(key)) } : {}),
     set: async (items) => {
       writes += 1;
@@ -254,6 +273,7 @@ describe('research pack templates in the prompt library', () => {
     const library = createTemplateLibrary({
       area,
       key: KEY,
+      apply: writerFor(area),
       now: () => 50,
       makeId: () => 'new-id',
     });
@@ -269,7 +289,12 @@ describe('research pack templates in the prompt library', () => {
   it('never edits a stored prompt, even when an imported file carries its id', async () => {
     const existing = [{ id: 'p1', name: 'Mine', text: 'Original', tags: [TAG], createdAt: 1 }];
     const { area, stored } = memoryArea(existing);
-    const library = createTemplateLibrary({ area, key: KEY, makeId: () => 'fresh' });
+    const library = createTemplateLibrary({
+      area,
+      key: KEY,
+      apply: writerFor(area),
+      makeId: () => 'fresh',
+    });
     const parsed = parseTemplateFile(
       fileOf([{ id: 'p1', name: 'Other', text: 'Overwritten', tags: [TAG], updatedAt: 9e12 }]),
     );
@@ -284,22 +309,47 @@ describe('research pack templates in the prompt library', () => {
 
   it('writes nothing when every draft is already saved, or the stored value is not a list', async () => {
     const { area, writes } = memoryArea([{ id: 'a', name: 'A', text: 'Same', tags: [] }]);
-    const library = createTemplateLibrary({ area, key: KEY });
+    const library = createTemplateLibrary({ area, key: KEY, apply: writerFor(area) });
     await expect(library.save([{ name: 'B', text: 'same' }])).resolves.toBe(0);
     expect(writes()).toBe(0);
 
     const corrupt = memoryArea({ not: 'a list' });
     await expect(
-      createTemplateLibrary({ area: corrupt.area, key: KEY }).save([{ name: 'B', text: 'C' }]),
+      createTemplateLibrary({
+        area: corrupt.area,
+        key: KEY,
+        apply: writerFor(corrupt.area),
+      }).save([{ name: 'B', text: 'C' }]),
     ).rejects.toThrow();
     expect(corrupt.stored()).toEqual({ not: 'a list' });
   });
 
   it('starts the library when there is none yet', async () => {
     const { area, stored } = memoryArea();
-    await createTemplateLibrary({ area, key: KEY, makeId: () => 'n', now: () => 3 }).save([
-      { name: 'First', text: 'Go' },
-    ]);
+    await createTemplateLibrary({
+      area,
+      key: KEY,
+      apply: writerFor(area),
+      makeId: () => 'n',
+      now: () => 3,
+    }).save([{ name: 'First', text: 'Go' }]);
     expect(stored()).toEqual([{ id: 'n', name: 'First', text: 'Go', tags: [TAG], createdAt: 3 }]);
+  });
+
+  it('keeps both templates when two tabs save at the same moment', async () => {
+    const { area, stored } = memoryArea([]);
+    let id = 0;
+    const tab = () =>
+      createTemplateLibrary({ area, key: KEY, apply: writerFor(area), makeId: () => `id-${++id}` });
+
+    await Promise.all([
+      tab().save([{ name: 'From tab one', text: 'One' }]),
+      tab().save([{ name: 'From tab two', text: 'Two' }]),
+    ]);
+
+    expect((stored() as Array<{ name: string }>).map((item) => item.name).sort()).toEqual([
+      'From tab one',
+      'From tab two',
+    ]);
   });
 });

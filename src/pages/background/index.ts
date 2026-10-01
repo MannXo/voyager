@@ -62,7 +62,6 @@ import {
   HighlightImportExportService,
   highlightImportExportService,
 } from '@/features/backup/services/HighlightImportExportService';
-import { PromptImportExportService } from '@/features/backup/services/PromptImportExportService';
 import { FOLDER_PLATFORMS } from '@/features/folder/platforms';
 import { registerWelcomePageOnInstall } from '@/features/onboarding/welcomePage';
 import {
@@ -96,6 +95,8 @@ import type { TranslationKey } from '@/utils/translations';
 import { unregisterRegisteredContentScripts } from './contentScriptRegistration';
 import { resolveOptionalHighlightSetting } from './highlightOptionalSetting';
 import { handlePluginRuntimeMessage } from './pluginRuntimeMessages';
+import { mergeCloudPrompts, mergeCloudPromptsForUpload } from './promptDriveMerge';
+import { promptLibraryOwner, startPromptLibraryOwner } from './promptLibraryOwner';
 import { startResearchPackOwner } from './researchPackOwner';
 import {
   canSenderPageUseSyncPlatform,
@@ -150,6 +151,7 @@ const hostCatalogRefresher = new HostCatalogRefresher();
 startChatGptTemporaryHandoffBackgroundService();
 startStorageQuotaWarningBackgroundService();
 startResearchPackOwner();
+startPromptLibraryOwner();
 
 async function disableRetiredTabTitleUpdateSetting(): Promise<void> {
   try {
@@ -2661,23 +2663,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               accountScope,
               interactive !== false,
             );
-            const validated = PromptImportExportService.validatePayload(payload);
-            if (!validated.success) {
-              sendResponse({
-                ok: true,
-                empty: true,
-                state: await googleDriveSyncService.getState(),
-              });
-              return;
-            }
-            const merged = await PromptImportExportService.importFromPayload(validated.data);
-            sendResponse({
-              ok: merged.success,
-              imported: merged.success ? merged.data.imported : 0,
-              duplicates: merged.success ? merged.data.duplicates : 0,
-              nameConflicts: merged.success ? merged.data.nameConflicts : 0,
-              state: await googleDriveSyncService.getState(),
-            });
+            const outcome = await mergeCloudPrompts(promptLibraryOwner, payload);
+            sendResponse({ ...outcome, state: await googleDriveSyncService.getState() });
             return;
           }
           case 'gv.sync.pushPromptsMerge': {
@@ -2695,19 +2682,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               accountScope,
               interactive !== false,
             );
-            const validated = PromptImportExportService.validatePayload(cloudPayload);
-            if (validated.success) {
-              const merged = await PromptImportExportService.importFromPayload(validated.data);
-              if (!merged.success) {
-                sendResponse({
-                  ok: false,
-                  state: await googleDriveSyncService.getState(),
-                });
-                return;
-              }
+            const localPrompts = await mergeCloudPromptsForUpload(promptLibraryOwner, cloudPayload);
+            if (!localPrompts) {
+              sendResponse({ ok: false, state: await googleDriveSyncService.getState() });
+              return;
             }
-            const localResult = await PromptImportExportService.loadPrompts();
-            const localPrompts = localResult.success ? localResult.data : [];
             const uploaded = await googleDriveSyncService.uploadPromptsOnly(
               localPrompts,
               accountScope,

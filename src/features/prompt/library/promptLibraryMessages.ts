@@ -15,7 +15,7 @@ import type {
 export const PROMPT_LIBRARY_APPLY_MESSAGE = 'gv.promptLibrary.apply';
 
 /** Far above any real library; it only bounds what one message can carry. */
-const MAX_OP_ITEMS = 10_000;
+const MAX_OP_ITEMS = 100_000;
 
 export interface PromptLibraryApplyRequest {
   type: typeof PROMPT_LIBRARY_APPLY_MESSAGE;
@@ -153,4 +153,9 @@ export function createPromptLibraryClient(
       return response.result;
     },
   };
+}
+
+/** A client that reaches the owner in this extension's background. */
+export function createRuntimePromptLibraryClient(): ReturnType<typeof createPromptLibraryClient> {
+  return createPromptLibraryClient((request) => chrome.runtime.sendMessage(request));
 }

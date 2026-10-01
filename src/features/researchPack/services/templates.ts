@@ -15,6 +15,10 @@ import { getPromptNameComparisonKey } from '@/core/utils/promptName';
  * or edit anything already in the library.
  */
 import { PromptImportExportService } from '@/features/backup/services/PromptImportExportService';
+import type {
+  PromptLibraryOp,
+  PromptLibraryResult,
+} from '@/features/prompt/library/promptLibraryOwner';
 
 import { RESEARCH_PACK_LIMITS } from './types';
 
@@ -189,7 +193,6 @@ export function planTemplateSave(library: unknown, drafts: TemplateDraft[]): Pla
 
 export interface TemplateLibraryArea {
   get(key: string): Promise<Record<string, unknown>>;
-  set(items: Record<string, unknown>): Promise<void>;
 }
 
 export interface TemplateLibrary {
@@ -207,12 +210,16 @@ function newPromptId(): string {
 }
 
 /**
- * The prompt library under `key`. Existing prompts are written back exactly
- * as stored. A stored value that is not a list is never overwritten.
+ * The prompt library under `key`, read straight from storage. Saving goes
+ * through `apply`, the prompt library's single writer, which adds the new
+ * templates against the library as stored at that moment, so a save from
+ * another tab, Prompt Manager or a Drive merge is never written over. A stored
+ * value that is not a list is never overwritten.
  */
 export function createTemplateLibrary(options: {
   area: TemplateLibraryArea;
   key: string;
+  apply: (op: PromptLibraryOp) => Promise<PromptLibraryResult>;
   now?: () => number;
   makeId?: () => string;
 }): TemplateLibrary {
@@ -226,9 +233,8 @@ export function createTemplateLibrary(options: {
       if (stored !== undefined && !Array.isArray(stored)) {
         throw new Error('The prompt library is not a list');
       }
-      const existing: unknown[] = stored ?? [];
       const createdAt = now();
-      const added = planTemplateSave(existing, drafts)
+      const items = planTemplateSave(stored ?? [], drafts)
         .filter((planned) => planned.status === 'new')
         .map(({ name, text }) => ({
           id: makeId(),
@@ -237,9 +243,8 @@ export function createTemplateLibrary(options: {
           tags: [RESEARCH_PACK_TEMPLATE_TAG],
           createdAt,
         }));
-      if (added.length === 0) return 0;
-      await options.area.set({ [options.key]: [...added, ...existing] });
-      return added.length;
+      if (items.length === 0) return 0;
+      return (await options.apply({ kind: 'add', items })).added;
     },
   };
 }
