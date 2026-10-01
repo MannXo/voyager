@@ -46,13 +46,14 @@ describe('research pack receiver on ChatGPT and Claude', () => {
   let send: ReturnType<typeof vi.fn<(message: HandoffMessage) => Promise<unknown>>>;
   let url: string;
   let insert: ReturnType<typeof vi.fn<(text: string, input: HTMLElement) => boolean>>;
-  /** The route listener the receiver subscribed, and whether it unsubscribed. */
-  let routeListeners: Set<() => void>;
-  let watchRoute: ReturnType<typeof vi.fn<(listener: () => void) => () => void>>;
-  /** An SPA navigation: the URL changes and the route watcher reports it. */
+  /** A stand-in for `window.navigation` that counts its listeners. */
+  let navigation: EventTarget;
+  let navigationListeners: number;
+  /** An SPA navigation as the Navigation API reports it: navigate, commit, entry change. */
   const navigate = (next: string) => {
+    navigation.dispatchEvent(Object.assign(new Event('navigate'), { destination: { url: next } }));
     url = next;
-    for (const listener of routeListeners) listener();
+    navigation.dispatchEvent(new Event('currententrychange'));
   };
 
   const sent = () => send.mock.calls.map(([message]) => message.type);
@@ -63,7 +64,7 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     stop = startResearchPackReceiver({
       send,
       insert,
-      watchRoute,
+      navigation,
       pageUrl: () => url,
       isTopFrame: () => isTopFrame,
     });
@@ -86,11 +87,18 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     document.body.innerHTML = '';
     pending = true;
     insert = vi.fn((text: string, input: HTMLElement) => insertTextIntoChatInput(text, input));
-    routeListeners = new Set();
-    watchRoute = vi.fn((listener: () => void) => {
-      routeListeners.add(listener);
-      return () => routeListeners.delete(listener);
-    });
+    navigation = new EventTarget();
+    navigationListeners = 0;
+    const add = navigation.addEventListener.bind(navigation);
+    const remove = navigation.removeEventListener.bind(navigation);
+    navigation.addEventListener = (...args: Parameters<EventTarget['addEventListener']>) => {
+      navigationListeners += 1;
+      add(...args);
+    };
+    navigation.removeEventListener = (...args: Parameters<EventTarget['removeEventListener']>) => {
+      navigationListeners -= 1;
+      remove(...args);
+    };
     claimReply = { ok: true, markdown: PACK };
     send = vi.fn(async (message: HandoffMessage) => {
       if (message.type === HANDOFF_MESSAGES.peek) return { ok: true, pending };
@@ -386,15 +394,15 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     pending = false;
     start();
     await vi.advanceTimersByTimeAsync(0);
-    expect(watchRoute).toHaveBeenCalledOnce();
-    expect(routeListeners.size).toBe(0);
+    expect(navigationListeners).toBe(0);
 
     pending = true;
     stop!();
     chatgptComposer();
     start();
     await vi.advanceTimersByTimeAsync(SETTLE_MS);
-    expect(routeListeners.size).toBe(0);
+    expect(insert).toHaveBeenCalledOnce();
+    expect(navigationListeners).toBe(0);
   });
 
   it('treats an image in the composer as content', async () => {
@@ -442,5 +450,37 @@ describe('research pack receiver on ChatGPT and Claude', () => {
 
     expect(insert).toHaveBeenCalledOnce();
     expect(composer.textContent).toContain('Rayleigh scattering.');
+  });
+
+  it('refuses without the Navigation API: no peek, no claim', async () => {
+    chatgptComposer();
+    stop = startResearchPackReceiver({
+      send,
+      insert,
+      navigation: null,
+      pageUrl: () => 'https://chatgpt.com/',
+    });
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+    stop();
+    // jsdom has no window.navigation, so the default refuses too.
+    stop = startResearchPackReceiver({ send, insert, pageUrl: () => 'https://chatgpt.com/' });
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+
+    expect(send).not.toHaveBeenCalled();
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('cancels on a navigate event alone, before the URL commits', async () => {
+    chatgptComposer();
+    const release = holdClaim();
+    start();
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+    navigation.dispatchEvent(
+      Object.assign(new Event('navigate'), { destination: { url: 'https://chatgpt.com/c/A' } }),
+    );
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(insert).not.toHaveBeenCalled();
   });
 });

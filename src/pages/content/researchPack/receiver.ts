@@ -23,7 +23,7 @@ import type { TranslationKey } from '@/utils/translations';
 
 import { insertTextIntoChatInput } from '../chatInput';
 import type { StopNativeFeature } from '../featureLifecycle';
-import { watchRouteChanges } from '../utils/routeWatcher';
+import { navigationApi } from './navigationApi';
 
 export const RECEIVER_POLL_MS = 150;
 /** The same element on this many polls in a row: the app has finished mounting it. */
@@ -37,11 +37,8 @@ export interface ResearchPackReceiverDeps {
   pageUrl?: () => string;
   isTopFrame?: () => boolean;
   t?: (key: TranslationKey) => string;
-  /**
-   * Subscribe to same-document navigations; returns the unsubscribe. The
-   * listener gets the destination URL when it is known before the URL commits.
-   */
-  watchRoute?: (onChange: (href?: string) => void) => () => void;
+  /** `window.navigation`; null (no Navigation API) makes the receiver refuse. */
+  navigation?: EventTarget | null;
 }
 
 interface NavigateEventLike extends Event {
@@ -49,23 +46,19 @@ interface NavigateEventLike extends Event {
 }
 
 /**
- * Every same-document navigation the content script can see: the shared route
- * watcher (popstate, hashchange and its poll), plus the Navigation API where
- * the browser has it, which also reports the page's own pushState and
- * replaceState from the main world, so a quick round trip is not missed
- * between polls.
+ * Every same-document navigation, as it happens: `navigate` fires for the
+ * page's own pushState, replaceState, traversals and hash changes with the
+ * destination before it commits, and `currententrychange` once it has. No
+ * polling, so a round trip cannot slip between two checks (see `navigationApi`).
  */
-function watchHandoffRoute(onChange: (href?: string) => void): () => void {
-  const stopWatcher = watchRouteChanges(() => onChange());
-  const navigation = (window as { navigation?: EventTarget }).navigation;
+function watchHandoffRoute(navigation: EventTarget, onChange: (href?: string) => void): () => void {
   const onNavigate = (event: Event) => onChange((event as NavigateEventLike).destination?.url);
   const onEntryChange = () => onChange();
-  navigation?.addEventListener('navigate', onNavigate);
-  navigation?.addEventListener('currententrychange', onEntryChange);
+  navigation.addEventListener('navigate', onNavigate);
+  navigation.addEventListener('currententrychange', onEntryChange);
   return () => {
-    stopWatcher();
-    navigation?.removeEventListener('navigate', onNavigate);
-    navigation?.removeEventListener('currententrychange', onEntryChange);
+    navigation.removeEventListener('navigate', onNavigate);
+    navigation.removeEventListener('currententrychange', onEntryChange);
   };
 }
 
@@ -159,7 +152,8 @@ export function startResearchPackReceiver(deps: ResearchPackReceiverDeps = {}): 
   const pageUrl = deps.pageUrl ?? (() => window.location.href);
   const isTopFrame = deps.isTopFrame ?? (() => window.top === window);
   const target = handoffNewChatTargetForUrl(pageUrl());
-  if (!target || !isTopFrame()) return () => {};
+  const navigation = 'navigation' in deps ? deps.navigation : navigationApi();
+  if (!target || !isTopFrame() || !navigation) return () => {};
   const startDocument = document;
   /**
    * Set for good by any departure from the new-chat page. Coming back (an SPA
@@ -183,7 +177,7 @@ export function startResearchPackReceiver(deps: ResearchPackReceiverDeps = {}): 
   let abandonWait: (() => void) | null = null;
 
   // Watched from the first peek until the pack is in or given up on.
-  let stopRoute: (() => void) | null = (deps.watchRoute ?? watchHandoffRoute)((href) => {
+  let stopRoute: (() => void) | null = watchHandoffRoute(navigation, (href) => {
     if (departed) return;
     if (handoffNewChatTargetForUrl(href ?? pageUrl()) === target && document === startDocument) {
       return;

@@ -27,6 +27,8 @@ describe('research pack: continue in ChatGPT / Claude', () => {
   let openReply: unknown;
   let send: ReturnType<typeof vi.fn<(message: HandoffMessage) => Promise<unknown>>>;
   let writeClipboard: ReturnType<typeof vi.fn<(text: string) => Promise<void>>>;
+  /** Whether this browser has the Navigation API the receiver needs. */
+  let hasNavigationApi: boolean;
   /** What had been asked of the extension when the clipboard was written. */
   let sentBeforeCopy: string[];
 
@@ -40,7 +42,7 @@ describe('research pack: continue in ChatGPT / Claude', () => {
     stop = startResearchPack({
       store: sharedStorage().store,
       resolveKey: async () => KEY,
-      continueIn: { send, writeClipboard },
+      continueIn: { send, writeClipboard, hasNavigationApi: () => hasNavigationApi },
     });
     clickAdd(host);
     await flush();
@@ -51,6 +53,7 @@ describe('research pack: continue in ChatGPT / Claude', () => {
     status = { chatgpt: false, claude: false };
     openReply = { ok: true };
     sentBeforeCopy = [];
+    hasNavigationApi = true;
     send = vi.fn(async (message: HandoffMessage) =>
       message.type === HANDOFF_MESSAGES.status ? status : openReply,
     );
@@ -69,7 +72,7 @@ describe('research pack: continue in ChatGPT / Claude', () => {
     stop = startResearchPack({
       store: sharedStorage().store,
       resolveKey: async () => KEY,
-      continueIn: { send, writeClipboard },
+      continueIn: { send, writeClipboard, hasNavigationApi: () => hasNavigationApi },
     });
     await flush();
     expect(continueButton('chatgpt').disabled).toBe(true);
@@ -180,5 +183,18 @@ describe('research pack: continue in ChatGPT / Claude', () => {
 
     expect(document.querySelector('.gv-rp-continue-btn')).toBeNull();
     expect(document.querySelector('.gv-rp-root')).toBeNull();
+  });
+
+  it('copies instead of handing off in a browser without the Navigation API', async () => {
+    status = { chatgpt: true, claude: true };
+    hasNavigationApi = false;
+    await startWithOneItem();
+
+    continueButton('chatgpt').click();
+    expect(writeClipboard).toHaveBeenCalledOnce();
+    await flush();
+
+    expect(opens()).toEqual([{ type: HANDOFF_MESSAGES.open, target: 'chatgpt' }]);
+    expect(shownMessage()).toBe('Pack copied. Paste it into the new ChatGPT chat.');
   });
 });

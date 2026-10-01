@@ -600,16 +600,22 @@ say`), `src/pages/content/platformTheme/__tests__/platformTheme.test.ts`.
   alarm failed, and across a browser restart.
 - **Rule:** Peek and claim only on the exact new-chat path (ChatGPT `/`, Claude `/new`; a query or
   hash is tolerated), and check the route, the document and the composer again after the claim.
-  Watch navigations from the peek on (the shared route watcher plus the Navigation API): any
-  departure cancels the receiver for good, even if the tab comes back, because an SPA round trip
-  such as `/` → `/c/A` → `/` keeps the document and may leave the old conversation's composer on
-  screen. Use each site's main composer selector, require exactly one, and require it to be empty:
-  blank text and only the empty-editor skeleton (`<p>`, `<br>`, ProseMirror's separator image),
-  since an image or a mention chip has no text but is content. Collapse the selection to its end
-  before inserting. Any failed check inserts nothing and points
+  From the peek on, watch the Navigation API's `navigate` and `currententrychange`: any departure
+  cancels the receiver for good, even if the tab comes back, because an SPA round trip such as `/`
+  → `/c/A` → `/` keeps the document and may leave the old conversation's composer on screen. Only
+  the Navigation API reports every same-document navigation as it happens, including the page's
+  own `pushState`; a polling route watcher can miss a quick round trip, and an empty, unique
+  composer on the right URL does not prove it belongs to the new chat. So a browser without the
+  Navigation API cannot run the handoff: the Gemini click takes the clipboard path, and the
+  receiver refuses to peek. Use each site's main composer selector, require exactly one, and
+  require it to be empty: blank text and only the empty-editor skeleton (`<p>`, `<br>`,
+  ProseMirror's separator image), since an image or a mention chip has no text but is content.
+  Collapse the selection to its end before inserting. Any failed check inserts nothing and points
   the user back to Gemini's Copy. Keep the record in `storage.session` only; without it, report
   every target unready.
 - **Guard:** `src/pages/content/researchPack/__tests__/receiver.test.ts`,
+  `src/pages/content/researchPack/__tests__/continueIn.test.ts` (`copies instead of handing off in
+a browser without the Navigation API`),
   `src/features/researchPack/services/__tests__/handoff.test.ts` (`cannot be taken once its tab
 has left the new-chat page`, `stores nothing and reports every target unready without
 storage.session`) and `src/pages/background/__tests__/researchPackHandoffWiring.test.ts`.

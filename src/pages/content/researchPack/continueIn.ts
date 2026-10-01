@@ -7,8 +7,9 @@
  * copies first and asks the background to open the chat only after the copy
  * succeeds; the handoff path sends the Markdown to the background, which
  * opens the chat and lets Voyager on that tab fill the composer. An unknown
- * status counts as "Voyager cannot run there". This page itself makes no
- * network request: it only messages the extension.
+ * status counts as "Voyager cannot run there", and so does a browser without
+ * the Navigation API, which the receiver needs (see `navigationApi`). This
+ * page itself makes no network request: it only messages the extension.
  */
 import {
   HANDOFF_MESSAGES,
@@ -21,9 +22,13 @@ import {
 } from '@/features/researchPack/services/handoff';
 import type { TranslationKey } from '@/utils/translations';
 
+import { navigationApi } from './navigationApi';
+
 export interface ContinueInDeps {
   send: (message: HandoffMessage) => Promise<unknown>;
   writeClipboard: (text: string) => Promise<void>;
+  /** Whether this browser has the Navigation API (defaults to checking `window`). */
+  hasNavigationApi?: () => boolean;
 }
 
 export interface ContinueInController {
@@ -57,6 +62,7 @@ export function createContinueInController(
 ): ContinueInController {
   let stopped = false;
   let status: HandoffStatus = NOT_READY;
+  const hasNavigationApi = deps.hasNavigationApi ?? (() => navigationApi() !== null);
   let request = 0;
   /** A click is being handled: a double click must not open a second tab. */
   let busy = false;
@@ -128,7 +134,10 @@ export function createContinueInController(
     continueIn(target, markdown) {
       if (stopped || busy) return;
       busy = true;
-      const handled = status[target] ? handOff(target, markdown) : copyThenOpen(target, markdown);
+      const handled =
+        status[target] && hasNavigationApi()
+          ? handOff(target, markdown)
+          : copyThenOpen(target, markdown);
       void handled
         .catch(() => undefined)
         .finally(() => {
