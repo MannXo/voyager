@@ -60,7 +60,7 @@ let preparation = 0;
  */
 const lastHosts = new Map<string, HTMLElement>();
 
-/** Test hook: forget the last crawl. */
+/** Forget the last crawl and stop watching the thread, once the export session ends. */
 export function resetChatGptThreadSnapshot(): void {
   snapshot = null;
   watch?.stop();

@@ -85,6 +85,8 @@ export interface ExportPlatformAdapter {
    * scrolling the conversation to the top.
    */
   prepareConversation?: (options: ExportSelectionOptions) => Promise<boolean>;
+  /** Drop what `prepareConversation` kept once the export session ends. */
+  releaseConversation?: () => void;
 
   collectTurnContainers?: () => ChatGptTurnContainer[];
   buildTurnsForSelection?: (

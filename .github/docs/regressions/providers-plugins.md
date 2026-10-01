@@ -398,6 +398,17 @@ while an active plugin has domOps`).
   `drops the crawl when a turn's ids change in place and it unmounts in the same task`,
   `keeps the crawl when turns mount and unmount in the same task without changing`).
 
+## ChatGPT thread watch ends with the export session
+
+- **Trap:** A successful preparation kept its thread watch after the selection was exported,
+  cancelled or torn down, so every later mutation in the conversation rescanned turns.
+- **Rule:** `runPreparedExport` (`src/pages/content/export/preparedExport.ts`) calls the adapter's
+  `releaseConversation` once the selection session settles, however it ends; ChatGPT's release
+  forgets the crawl and stops the watch.
+- **Guard:** `src/pages/content/export/__tests__/preparedExport.test.ts`
+  (`watches the ChatGPT thread during selection and stops once the session ends`,
+  `stops watching the ChatGPT thread when the session fails`).
+
 ## ChatGPT export publishes only its latest, uncancelled crawl
 
 - **Trap:** Restoring the scroll position cannot be cancelled, so a preparation cancelled meanwhile,

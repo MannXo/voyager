@@ -48,6 +48,7 @@ import {
   injectConversationMenuExportButton,
   injectResponseMenuExportButton,
 } from './conversationMenuInjection';
+import { isAbortError, throwIfExportCancelled } from './exportCancellation';
 import { withExportCollectingBanner } from './exportCollectingBanner';
 import { startExportEntryGate } from './exportEntryGate';
 import { noteExportTurns } from './exportHealth';
@@ -62,6 +63,7 @@ import {
   restorePendingExportState,
 } from './pendingExportState';
 import { mountPersistentExportToolbar } from './persistentExportToolbar';
+import { runPreparedExport } from './preparedExport';
 import { injectResponseActionCopyImageButtons } from './responseActionImageButton';
 import { showResponseActionCopyImageMenu } from './responseActionImageMenu';
 import {
@@ -115,14 +117,6 @@ let cachedCanvasDocs: CanvasDoc[] | null = null;
 let activeExportDialog: ExportDialog | null = null;
 let activeExportController: AbortController | null = null;
 let activeExportSelectionCleanup: (() => void) | null = null;
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === 'AbortError';
-}
-
-function throwIfExportCancelled(signal?: AbortSignal): void {
-  if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
-}
 
 function exportRouteKey(url: string): string {
   const parsed = new URL(url, location.href);
@@ -1263,12 +1257,14 @@ async function executeExportSequence(
 
   // No preload loop: the adapter reads the thread itself, or we scroll to the top.
   if (!exportAdapter.shouldPreloadHistory()) {
-    if (!(await exportAdapter.prepareConversation?.({ signal, expectedUrl: state.url }))) {
-      await scrollToTopAndRender(getUserSelectors());
-    }
-    throwIfExportCancelled(signal);
-    await performFinalExport(state, dict, lang);
-    return;
+    return runPreparedExport(
+      exportAdapter,
+      { signal, expectedUrl: state.url },
+      {
+        scrollToTop: () => scrollToTopAndRender(getUserSelectors()),
+        exportSelection: () => performFinalExport(state, dict, lang),
+      },
+    );
   }
 
   if (state.attempt > 25) {
