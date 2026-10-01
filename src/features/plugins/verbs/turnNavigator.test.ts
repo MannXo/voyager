@@ -77,14 +77,12 @@ describe('turnNavigator primitive', () => {
         scrollContainer: '.scroll',
         yieldWhen: '.panel',
         position: 'left',
-        turnKey: 'data-turn-id-container',
         conversationIdAttribute: 'data-conv-id',
         turnItem: '[data-turn-key]',
       }),
     ).toEqual({
       success: true,
       data: {
-        turnKey: 'data-turn-id-container',
         conversationIdAttribute: 'data-conv-id',
         turnItem: '[data-turn-key]',
         turn: '.t',
@@ -112,13 +110,15 @@ describe('turnNavigator primitive', () => {
       'params.conversationIdPattern',
     ]);
     expect(issues({ turn: '' })).toEqual(['params.turn']);
-    // turnKey is interpolated into `[name]`: an attribute name, nothing more.
-    expect(issues({ turnKey: 'data-x] , *' })).toEqual(['params.turnKey']);
-    expect(issues({ turnKey: 'Data-Upper' })).toEqual(['params.turnKey']);
-    expect(issues({ turnKey: 42 })).toEqual(['params.turnKey']);
+    // conversationIdAttribute is interpolated into `[name]`: an attribute name, nothing more.
     expect(issues({ conversationIdAttribute: 'data-x] , *' })).toEqual([
       'params.conversationIdAttribute',
     ]);
+    expect(issues({ conversationIdAttribute: 'Data-Upper' })).toEqual([
+      'params.conversationIdAttribute',
+    ]);
+    expect(issues({ conversationIdAttribute: 42 })).toEqual(['params.conversationIdAttribute']);
+    expect(issues({ turnKey: 'data-turn-id-container' })).toEqual(['params.turnKey']);
     expect(issues({ speed: 3 })).toEqual(['params.speed']);
   });
 

@@ -219,7 +219,7 @@ describe('plugin-check', () => {
   });
 
   it('reports an engine range that admits builds older than a primitive param it sets', async () => {
-    const usingTurnKey = (engine: string) =>
+    const usingTurnItem = (engine: string) =>
       makeFixturePlugin({
         selectors: { userTurn: '.turn' },
         manifest: {
@@ -230,7 +230,7 @@ describe('plugin-check', () => {
               {
                 op: 'native',
                 handler: 'turnNavigator',
-                params: { turnKey: 'data-turn-id-container' },
+                params: { turnItem: '[data-turn-key]' },
               },
             ],
           },
@@ -238,13 +238,13 @@ describe('plugin-check', () => {
       });
 
     // A 1.4.0 engine skips a native op whose params it does not know.
-    const old = await checkPluginDir(usingTurnKey('>=1.4.0'));
+    const old = await checkPluginDir(usingTurnItem('>=1.4.0'));
     expect(old.ok).toBe(false);
     expect(old.issues.join('\n')).toMatch(
-      /admits builds older than 1\.5\.0.*"turnNavigator" param "turnKey"/s,
+      /admits builds older than 1\.5\.0.*"turnNavigator" param "turnItem"/s,
     );
 
-    const current = await checkPluginDir(usingTurnKey('>=1.5.0'));
+    const current = await checkPluginDir(usingTurnItem('>=1.5.0'));
     expect(current.issues).toEqual([]);
   });
 

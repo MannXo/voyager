@@ -312,12 +312,11 @@ Ownership and precedence:
 Shipped primitives (`verbs/contracts.ts`): `formulaCopy` (since 1.3.0), `vimInput` (since 1.4.0,
 `composer` param, defaults to the adapter's `composer` selector) and `turnNavigator` (since 1.4.0,
 `turn` / `conversationIdPattern` / `scrollContainer` / `yieldWhen` / `position`, all optional and
-defaulting to the adapter, plus the optional `turnKey` and `conversationIdAttribute` attributes
-and the `turnItem` selector since 1.5.0). The formula-copy,
+defaulting to the adapter, plus the optional `conversationIdAttribute` attribute and `turnItem`
+selector since 1.5.0). The formula-copy,
 Vim, Claude-timeline and ChatGPT-timeline builtins are now manifests that invoke these primitives;
-the timeline engine lives in `verbs/turnNavigator/TurnNavigator.ts`. Without `turnKey` it
-accumulates markers across virtualized windows (`turnMerge.ts`); with it, the rail is rebuilt from
-the host's per-turn list items on every refresh (`turnSnapshot.ts`). Star ids come from the URL at
+the timeline engine lives in `verbs/turnNavigator/TurnNavigator.ts`. It accumulates markers across
+virtualized windows (`turnMerge.ts`). Star ids come from the URL at
 each read or write (`conversationId.ts`); a site with a `conversationIdPattern` cannot star a route
 that does not match it. A star is written only for a turn proven to be the current conversation's:
 the host's own id for it where the site names one (`conversationIdAttribute` on an ancestor, as

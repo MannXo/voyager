@@ -62,8 +62,9 @@ and turn ids`).
   `[continue, x, continue]` known and only the last `continue` mounted, first-hash matching
   re-pointed marker 0 at the third turn; picking the nearest raw centre per turn instead turned a
   remount that shifted every centre into extra dots on Claude/DeepSeek. Accumulating ChatGPT's
-  turns the same way kept a phantom `~2` dot when ChatGPT briefly rendered one list item twice.
-- **Rule:** Without a `turnKey`, `turnMerge.ts` first takes certain matches (the stamped id with
+  turns the same way kept a phantom `~2` dot when its earlier DOM briefly rendered one list item
+  twice.
+- **Rule:** `turnMerge.ts` first takes certain matches (the stamped id with
   the same text, a hash only one marker carries), then aligns each run of uncertain turns between
   two certain matches with the markers between them: most matches first, then the smallest
   distance after the nearer anchor's drift. That alignment costs run x markers in time and memory,
@@ -90,9 +91,9 @@ and turn ids`).
   `[data-turn-key]` items off-screen (4-7 of a long thread mounted, measured live), so it uses
   merge mode too. Only a marker whose element left the DOM is remembered as virtualized out: one
   whose element is still in the page but hidden, no longer a turn, or now reads as another text (a
-  prompt edited in place) is dropped and its element re-filed (`rememberedMarkers`). In snapshot
-  mode (`turnKey`, `sinceEngine` 1.5.0), duplicate items fold by id, preferring the copy with a
-  mounted message, and an element holding other items or several turns is never a turn.
+  prompt edited in place) is dropped and its element re-filed (`rememberedMarkers`). The keyed
+  snapshot mode (`turnKey`) built for ChatGPT's earlier DOM was removed unreleased; a duplicate
+  render on the current DOM, not observed, would again show as a phantom dot only.
 - **Guard:** `src/features/plugins/verbs/turnNavigator/turnMerge.test.ts` (`re-matches a long run
 of repeats after a shift, past the alignment budget`, `keeps every turn of a long identical run
 after a uniform shift with no anchor`, `reads a bounded number of remembered positions`, `files a
@@ -138,29 +139,24 @@ the next conversation, Projects routes included`).
   null) could be starred into an unrelated conversation opened before it rendered; a turn mounted
   under the old URL but first seen after the URL changed was given to the new conversation;
   same-text "renames" and one surviving sibling handed a new thread's turns to the old one.
-- **Rule:** No timing heuristics. In snapshot mode (`turnSnapshot.ts`) the rail is rebuilt from
-  the list items in the DOM on every refresh, with labels of unloaded items remembered by the
-  host's turn id, and removing an item (even an empty one) triggers a refresh. Merge mode resets
-  when the route differs from `markerRouteId`, which only `refresh()` writes. Stars are read and
+- **Rule:** No timing heuristics. The rail resets when the route differs from `markerRouteId`,
+  which only `refresh()` writes. Stars are read and
   written for the id the URL names at that moment (`conversationId.ts`); a site with a
   `conversationIdPattern` cannot star a route that does not match it, so star records never move.
   A write also needs a refresh to have seen the current route and the pressed turn to be owned by
   the current conversation (`turnOwnership.ts`). Ownership is evidence, not inference: a
   MutationObserver attached before the first refresh stamps every inserted node with the URL's id
-  at the end of the inserting task, and a turn takes the latest stamp on itself or its ancestors
-  (its list item in snapshot mode, so renames and messages mounting inside old items keep the
-  item's owner). Turns on the page at start take the URL at start. Rules only ever withhold: no
-  id in the URL (new chat), another conversation's or an unattributed turn still on screen, keyed
-  items after the route's own all left, merge-mode texts that all repeat the previous
-  conversation. The first owner is kept (by host key in snapshot mode, in a bounded map, else by
-  element in a WeakMap); nothing adopts a turn. Ambiguous turns are unstarrable, never filed
+  at the end of the inserting task, and a turn takes the latest stamp on itself or its ancestors.
+  Turns on the page at start take the URL at start. Rules only ever withhold: no id in the URL
+  (new chat), another conversation's or an unattributed turn still on screen, new turns whose
+  texts all repeat the previous conversation. The first owner is kept, per element in a WeakMap;
+  nothing adopts a turn. Ambiguous turns are unstarrable, never filed
   elsewhere. A route change seen by a refresh cancels a pending long press. A press fixes its
   turn, conversation and URL before any await and is dropped if the route changed by the time its
   read lands. This proves a turn's conversation only on hosts that change the URL
   before they render the next thread (measured on ChatGPT, Claude and DeepSeek). Known limits:
   a DOM-first host, and a navigator started mid-switch, give the old URL's id to the new
-  thread's turns until the URL changes; a new chat's turns stay unstarrable until a reload (keyed)
-  or a re-render (merge); one unattributed turn on screen withholds every later one. Where the
+  thread's turns until the URL changes; a new chat's turns stay unstarrable until a re-render; one unattributed turn on screen withholds every later one. Where the
   host names a turn's conversation itself (`conversationIdAttribute`; Claude's `data-conv-id`
   thread container), that id, read live at the press and again after the read, decides instead,
   both ways, and is the only thing that grants: it is taken from the nearest ancestor carrying

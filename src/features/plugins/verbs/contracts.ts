@@ -75,13 +75,6 @@ export const PRIMITIVE_CONTRACTS: readonly PrimitiveContract[] = [
         required: false,
         description: "User-turn elements to index; defaults to the site adapter's userTurn.",
       },
-      turnKey: {
-        type: 'string',
-        required: false,
-        sinceEngine: '1.5.0',
-        description:
-          "Attribute holding the host's own per-turn id on the virtual-list item it keeps mounted for every turn, even while the message inside unloads. The rail is then rebuilt from those items on every refresh, with labels remembered by this id, instead of accumulated.",
-      },
       conversationIdAttribute: {
         type: 'string',
         required: false,

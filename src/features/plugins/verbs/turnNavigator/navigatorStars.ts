@@ -23,8 +23,6 @@ export interface StarTarget {
   readonly id: string;
   readonly hash: string;
   readonly summary: string;
-  /** The turn's host key, else its element: what ownership was recorded for. */
-  readonly token: string | object;
   readonly element: Element;
 }
 
@@ -39,8 +37,6 @@ interface StarSources {
   /** Id stars are filed under for the current route, or null where starring is off. */
   readonly starId: () => string | null;
   readonly alive: () => boolean;
-  /** Whether the turns on screen are host turn keys (snapshot mode). */
-  readonly keyedTurns: () => boolean;
   /**
    * The star id the host gives a turn's conversation; null when the site
    * names an attribute for it but the turn has none, undefined when it names none.
@@ -62,7 +58,7 @@ export class NavigatorStars {
   private readonly owners: TurnOwnership;
 
   constructor(private readonly sources: StarSources) {
-    this.owners = new TurnOwnership(sources.keyedTurns, sources.starId);
+    this.owners = new TurnOwnership(sources.starId);
   }
 
   /** Turns on the page now belong to the URL now; call before `recordInsertions`. */
@@ -123,13 +119,13 @@ export class NavigatorStars {
    * only thing that grants then), else the conversation the turn entered the
    * page under.
    */
-  canStar(turn: Pick<StarTarget, 'token' | 'element'>): boolean {
+  canStar(element: Element): boolean {
     const conversationId = this.sources.starId();
     if (conversationId === null || this.sources.routeId() !== this.observedRoute) return false;
-    const stated = this.sources.turnConversation?.(turn.element);
+    const stated = this.sources.turnConversation?.(element);
     return stated !== undefined
       ? stated === conversationId
-      : this.owners.allows(turn.token, conversationId);
+      : this.owners.allows(element, conversationId);
   }
 
   /**
@@ -141,10 +137,9 @@ export class NavigatorStars {
     describe: () => { readonly url: string; readonly title: string },
   ): Promise<boolean> {
     // Everything the write needs is fixed before the first await.
-    const { id, hash, summary, token, element } = target;
-    const turn = { token, element };
+    const { id, hash, summary, element } = target;
     const conversationId = this.sources.starId();
-    if (!conversationId || !this.canStar(turn)) return false;
+    if (!conversationId || !this.canStar(element)) return false;
     const generation = this.generation;
     const { url, title } = describe();
     if (this.loadedFor !== conversationId) {
@@ -154,7 +149,7 @@ export class NavigatorStars {
         this.generation !== generation ||
         this.sources.starId() !== conversationId ||
         this.loadedFor !== conversationId ||
-        !this.canStar(turn)
+        !this.canStar(element)
       ) {
         return false;
       }

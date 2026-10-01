@@ -5,16 +5,14 @@
  * conversation, so the DOM is never the full conversation. Markers are
  * therefore ACCUMULATED across refreshes (ids keyed by content hash, not mount
  * index) and stitched into order via turns shared between overlapping windows.
- * Known turns are NEVER dropped: virtualization can mount sparse,
- * non-contiguous windows mid-transition, so a missing turn only means "not
- * mounted right now", not "deleted" — mirroring the Gemini timeline's
- * grow-only behaviour.
+ * A known turn whose element left the DOM is never dropped: virtualization
+ * can mount sparse, non-contiguous windows mid-transition, so a missing turn
+ * only means "not mounted right now", not "deleted" — mirroring the Gemini
+ * timeline's grow-only behaviour. One whose element is still in the page but
+ * no longer stands for it is dropped (`rememberedMarkers`).
  *
  * Pure apart from stamping `data-gv-turn-id` on the turns it files; the
  * navigator owns the marker list and passes it in.
- *
- * A host that keeps one list item per turn mounted (ChatGPT, `turnKey`) does
- * not need any of this: see turnSnapshot.ts.
  */
 import { hashString } from '@/core/utils/hash';
 
@@ -42,10 +40,6 @@ export interface Marker {
    */
   measuredAt?: number;
   dotElement: HTMLButtonElement | null;
-  /** Snapshot mode: `element` is a list item whose message is unloaded. */
-  placeholder?: boolean;
-  /** Snapshot mode: the host's id for the turn's list item. */
-  key?: string | null;
 }
 
 export interface MountedTurn {

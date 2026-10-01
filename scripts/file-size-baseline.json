@@ -11,7 +11,6 @@
     "src/features/formulaCopy/FormulaCopyService.ts": 1037,
     "src/features/plugins/builtin/chatgptTemporaryHandoff/handoff.ts": 1050,
     "src/features/plugins/builtin/claudeUsage/index.ts": 1011,
-    "src/features/plugins/verbs/turnNavigator/TurnNavigator.ts": 1172,
     "src/pages/background/index.ts": 2829,
     "src/pages/content/chatInput/__tests__/vimMode.test.ts": 1969,
     "src/pages/content/chatInput/vimMode.ts": 2821,

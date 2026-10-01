@@ -37,11 +37,6 @@
           "type": "string",
           "required": false
         },
-        "turnKey": {
-          "type": "string",
-          "required": false,
-          "sinceEngine": "1.5.0"
-        },
         "conversationIdAttribute": {
           "type": "string",
           "required": false,

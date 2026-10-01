@@ -17,7 +17,6 @@ import type { Primitive } from './types';
 
 export interface TurnNavigatorParams {
   readonly turn?: string;
-  readonly turnKey?: string;
   readonly conversationIdAttribute?: string;
   readonly turnItem?: string;
   readonly conversationIdPattern?: string;
@@ -51,7 +50,6 @@ export const turnNavigatorPrimitive: Primitive<TurnNavigatorParams> = {
     const issues: ManifestIssue[] = [];
     const params: {
       turn?: string;
-      turnKey?: string;
       conversationIdAttribute?: string;
       turnItem?: string;
       conversationIdPattern?: string;
@@ -87,7 +85,7 @@ export const turnNavigatorPrimitive: Primitive<TurnNavigatorParams> = {
         }
         continue;
       }
-      if (key === 'turnKey' || key === 'conversationIdAttribute') {
+      if (key === 'conversationIdAttribute') {
         if (typeof value === 'string' && ATTRIBUTE_NAME.test(value)) params[key] = value;
         else issues.push({ path: `params.${key}`, message: 'must be a lower-case attribute name' });
         continue;
@@ -123,7 +121,6 @@ export const turnNavigatorPrimitive: Primitive<TurnNavigatorParams> = {
       siteId: adapter?.id ?? 'site',
       siteLabel: adapter?.label ?? 'Conversation',
       turnSelector,
-      turnKeyAttribute: params.turnKey,
       conversationIdAttribute: params.conversationIdAttribute,
       turnItemSelector: params.turnItem,
       conversationIdPattern: params.conversationIdPattern ?? adapter?.conversationIdPattern,

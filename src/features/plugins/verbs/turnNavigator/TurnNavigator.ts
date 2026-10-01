@@ -11,9 +11,7 @@
  *     while, say, an artifact frame is open; `position` picks the rail side.
  *
  * Markers are accumulated across refreshes by content hash so virtualised
- * conversations (Claude, DeepSeek) never lose turns; see turnMerge.ts. A site
- * that names a `turnKeyAttribute` keeps one item per turn mounted (ChatGPT),
- * and its rail is rebuilt from the DOM instead; see turnSnapshot.ts.
+ * conversations (Claude, DeepSeek, ChatGPT) never lose turns; see turnMerge.ts.
  */
 import { StorageKeys, type TimelineStyle } from '@/core/types/common';
 import { type Dispose, PluginScope } from '@/features/plugins/runtime/pluginScope';
@@ -43,8 +41,7 @@ import {
   mergeMountedTurns,
   rememberedMarkers,
 } from './turnMerge';
-import { mountedOwnershipTurns, snapshotOwnershipTurns, turnToken } from './turnOwnership';
-import { snapshotMarkers, TurnSnapshot } from './turnSnapshot';
+import { mountedOwnershipTurns } from './turnOwnership';
 import { renderedCheck, togglesVisibility } from './turnVisibility';
 export { buildConversationId } from './conversationId';
 export { extractTurnHash } from './starSnapshot';
@@ -56,8 +53,6 @@ export interface TurnNavigatorConfig {
   /** Display label, stripped from `document.title` for starred-message titles. */
   readonly siteLabel: string;
   readonly turnSelector: string;
-  /** Attribute on the list item the host keeps mounted for every turn: snapshot mode. */
-  readonly turnKeyAttribute?: string;
   /** Path regular expression whose first group is the conversation id. */
   readonly conversationIdPattern?: string;
   /** Attribute holding that same id on a turn's ancestor or in its item: decides star writes. */
@@ -113,12 +108,10 @@ export class TurnNavigator {
   private measuringPass = 0;
   /** Route the merged markers were collected under; star reads never change it. */
   private markerRouteId = '';
-  private readonly snapshot: TurnSnapshot | null;
   private readonly stars = new NavigatorStars({
     routeId: () => this.buildConversationId(),
     starId: () => starConversationId(this.config),
     alive: () => !this.disposed,
-    keyedTurns: () => this.snapshot !== null,
     turnConversation: (element) => turnConversationId(this.config, element),
   });
   private stopRefreshTimer: Dispose | null = null;
@@ -147,8 +140,6 @@ export class TurnNavigator {
     private readonly config: TurnNavigatorConfig,
   ) {
     this.barSelector = `.gemini-timeline-bar[data-gv-turn-navigator="${config.siteId}"]`;
-    const key = config.turnKeyAttribute;
-    this.snapshot = key ? new TurnSnapshot(config.turnSelector, key) : null;
   }
 
   /** `<siteId>:conv:<id>` from the site's route pattern, else a hash of the path. */
@@ -233,15 +224,13 @@ export class TurnNavigator {
   private observe(): void {
     if (!document.body || this.observing) return;
     this.observing = true;
-    const keyAttribute = this.config.turnKeyAttribute;
-    // A renamed turn key re-keys its marker even when no turn node changes,
-    // and a host may show or hide a whole thread without touching its turns.
+    // A host may show or hide a whole thread without touching its turns.
     const options: MutationObserverInit = {
       childList: true,
       subtree: true,
       attributes: true,
       attributeOldValue: true,
-      attributeFilter: keyAttribute ? [keyAttribute, 'style', 'hidden'] : ['style', 'hidden'],
+      attributeFilter: ['style', 'hidden'],
     };
     this.scope.observe(document.body, options, (records) => {
       if (!records.some((record) => this.shouldRefreshForMutation(record))) return;
@@ -281,8 +270,7 @@ export class TurnNavigator {
   private shouldRefreshForMutation(record: MutationRecord): boolean {
     if (this.isOwnMutation(record)) return false;
     if (record.type === 'attributes') {
-      const keyChanged = record.attributeName === this.config.turnKeyAttribute;
-      return (keyChanged || togglesVisibility(record)) && this.touchesTurn(record.target);
+      return togglesVisibility(record) && this.touchesTurn(record.target);
     }
     return (
       !!this.toElement(record.target)?.closest(this.config.turnSelector) ||
@@ -293,14 +281,9 @@ export class TurnNavigator {
   }
 
   private touchesTurn(node: Node): boolean {
-    const { turnSelector, turnKeyAttribute } = this.config;
+    const { turnSelector } = this.config;
     const element = this.toElement(node);
-    if (element?.closest(turnSelector) || element?.querySelector?.(turnSelector)) return true;
-    // A list item whose message is already unloaded still holds a turn.
-    const item = turnKeyAttribute && `[${turnKeyAttribute}]`;
-    return (
-      !!item && node instanceof window.Element && (node.matches(item) || !!node.querySelector(item))
-    );
+    return !!(element?.closest(turnSelector) || element?.querySelector?.(turnSelector));
   }
 
   private toElement(node: Node): Element | null {
@@ -392,22 +375,15 @@ export class TurnNavigator {
     const previousIds = this.markers.map((marker) => marker.id);
     const readText = (element: HTMLElement) => this.extractText(element);
     const centerOf = (element: HTMLElement) => this.computeElementCenter(element);
-    const turns = this.snapshot?.collect(document, readText);
-    const isRendered = renderedCheck();
-    const mounted: MountedTurn[] =
-      turns ??
-      Array.from(document.querySelectorAll<HTMLElement>(this.config.turnSelector))
-        .filter(isRendered)
-        .map((element) => ({ element, summary: readText(element) }));
+    const mounted: MountedTurn[] = Array.from(
+      document.querySelectorAll<HTMLElement>(this.config.turnSelector),
+    )
+      .filter(renderedCheck())
+      .map((element) => ({ element, summary: readText(element) }));
     if (mounted[0]) this.setScrollTarget(this.getScrollTarget(mounted[0].element));
-    this.markers = turns
-      ? snapshotMarkers(this.markers, turns, centerOf)
-      : mergeMountedTurns(rememberedMarkers(this.markers, mounted), mounted, centerOf);
-    const onScreen = this.snapshot
-      ? snapshotOwnershipTurns(this.markers, this.snapshot.items)
-      : mountedOwnershipTurns(mounted);
+    this.markers = mergeMountedTurns(rememberedMarkers(this.markers, mounted), mounted, centerOf);
     // A press that began under the previous route must not land under this one.
-    if (this.stars.observe(onScreen)) this.cancelLongPress();
+    if (this.stars.observe(mountedOwnershipTurns(mounted))) this.cancelLongPress();
     this.markerCenters = this.computeMarkerCenters();
     const sameMarkers =
       previousIds.length === this.markers.length &&
@@ -504,7 +480,7 @@ export class TurnNavigator {
     this.cancelLongPress();
     const marker = this.markers.find((item) => item.id === dot.dataset.targetTurnId);
     if (this.disposed || !marker) return;
-    if (!this.stars.canStar({ token: turnToken(marker), element: marker.element })) return;
+    if (!this.stars.canStar(marker.element)) return;
     this.longPressDot = dot;
     dot.classList.add('holding');
     this.stopLongPressTimer = this.scope.timer(() => {
@@ -527,8 +503,7 @@ export class TurnNavigator {
     const marker = this.markers.find((item) => item.id === turnId);
     if (!marker) return;
     const describe = () => ({ url: location.href.split('#')[0], title: this.getTitle() });
-    const target = { ...marker, token: turnToken(marker) };
-    if (await this.stars.toggle(target, describe)) this.applyStarredState();
+    if (await this.stars.toggle({ ...marker }, describe)) this.applyStarredState();
   }
 
   private applyStarredState(): void {
@@ -691,11 +666,6 @@ export class TurnNavigator {
           this.getScrollTop(),
           this.getViewportHeight(),
         );
-        // Aim again once the message mounts: ChatGPT re-measures the items then.
-        if (marker.placeholder) {
-          this.beginPendingNavigation(marker);
-          this.schedulePendingNavigationHop();
-        }
         return;
       }
       // Long jump to a mounted turn: Claude re-measures once the landing region
@@ -775,8 +745,6 @@ export class TurnNavigator {
     }
     this.navigationActiveLockUntil = Date.now() + NAVIGATION_ACTIVE_LOCK_MS;
     if (marker.element.isConnected) {
-      // An unloaded item was already aimed at: wait for its message to mount.
-      if (marker.placeholder) return this.schedulePendingNavigationHop();
       this.clearPendingNavigation();
       scrollElementToAnchor(
         this.getScrollTarget(marker.element),
