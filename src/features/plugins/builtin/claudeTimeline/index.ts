@@ -28,6 +28,10 @@ export const CLAUDE_TURN_NAVIGATOR_CONFIG: TurnNavigatorConfig = {
   siteLabel: 'Claude',
   turnSelector: CLAUDE_USER_MESSAGE_SELECTOR,
   conversationIdPattern: '^/chat/([^/?#]+)',
+  // Claude's thread container carries the conversation's id and changes it in
+  // the same render that swaps the turns, so it decides which conversation a
+  // turn may be starred in.
+  conversationIdAttribute: 'data-conv-id',
   // Never open a scrimmed guide over an active artifact: the panel is part of
   // the top document view. Skipping does not burn the once-per-user seen
   // state, so the guide simply shows on a later artifact-free page load.

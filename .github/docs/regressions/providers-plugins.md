@@ -160,7 +160,10 @@ conversation, Projects routes included`).
   before they render the next thread (measured on ChatGPT, Claude and DeepSeek). Known limits:
   a DOM-first host, and a navigator started mid-switch, give the old URL's id to the new
   thread's turns until the URL changes; a new chat's turns stay unstarrable until a reload (keyed)
-  or a re-render (merge); one unattributed turn on screen withholds every later one.
+  or a re-render (merge); one unattributed turn on screen withholds every later one. Where the
+  host names a turn's conversation itself (`conversationIdAttribute`; Claude's `data-conv-id`
+  thread container), that id, read live at the press and again after the read, decides instead,
+  both ways; the stamps apply only to turns under no such container.
 - **Guard:** `src/features/plugins/verbs/turnNavigator/turnOwnership.test.ts`,
   `src/features/plugins/verbs/turnNavigator/navigatorStars.test.ts`,
   `src/features/plugins/builtin/chatgptTimeline.test.ts` (`shows what is on screen
@@ -182,7 +185,9 @@ conversation's dots when a star change lands mid-switch`, `cannot star the previ
 far scroll replaced every mounted turn`, `cannot star a turn that mounted before the URL named the
 next conversation`, `stars a turn that mounted after the URL named the conversation`, `cannot star
 the previous thread when its turns remount after the DOM briefly empties`, `stars a new chat
-re-rendered under the id it was given`).
+re-rendered under the id it was given`),
+  `src/features/plugins/builtin/claudeTimeline/index.test.ts` (`refuses a turn Claude files under
+another conversation`, `stars a new chat's turn once Claude files it under the id in the URL`).
 
 ## A jump to an unloaded ChatGPT turn aims again when its message mounts
 

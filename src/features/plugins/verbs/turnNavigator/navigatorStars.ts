@@ -6,8 +6,10 @@
  * read. A write needs more than the URL, because hosts change the URL and the
  * thread DOM in separate steps. A write is refused
  *   - before a refresh has seen the current route (`observe`), and
- *   - for a turn that did not enter the page under the current conversation
- *     (`turnOwnership.ts`).
+ *   - for a turn the host says belongs to another conversation, where the site
+ *     names an attribute for that (`turnConversation`), and
+ *   - otherwise for a turn that did not enter the page under the current
+ *     conversation (`turnOwnership.ts`).
  * Each press takes its target, conversation and URL before any await, and is
  * dropped if the route changed by the time the stars it toggles have loaded.
  */
@@ -22,6 +24,7 @@ export interface StarTarget {
   readonly summary: string;
   /** The turn's host key, else its element: what ownership was recorded for. */
   readonly token: string | object;
+  readonly element: Element;
 }
 
 interface StarEntry {
@@ -37,6 +40,8 @@ interface StarSources {
   readonly alive: () => boolean;
   /** Whether the turns on screen are host turn keys (snapshot mode). */
   readonly keyedTurns: () => boolean;
+  /** The star id the host gives a turn's conversation, or undefined when it gives none. */
+  readonly turnConversation?: (element: Element) => string | undefined;
 }
 
 export class NavigatorStars {
@@ -108,14 +113,18 @@ export class NavigatorStars {
     return changed;
   }
 
-  /** Whether a star written now on this turn is backed by what is on screen. */
-  canStar(token: string | object): boolean {
+  /**
+   * Whether a star written now on this turn is backed by what is on screen:
+   * the host's own conversation id for the turn when it gives one, else the
+   * conversation the turn entered the page under.
+   */
+  canStar(turn: Pick<StarTarget, 'token' | 'element'>): boolean {
     const conversationId = this.sources.starId();
-    return (
-      conversationId !== null &&
-      this.sources.routeId() === this.observedRoute &&
-      this.owners.allows(token, conversationId)
-    );
+    if (conversationId === null || this.sources.routeId() !== this.observedRoute) return false;
+    const stated = this.sources.turnConversation?.(turn.element);
+    return stated !== undefined
+      ? stated === conversationId
+      : this.owners.allows(turn.token, conversationId);
   }
 
   /**
@@ -127,9 +136,10 @@ export class NavigatorStars {
     describe: () => { readonly url: string; readonly title: string },
   ): Promise<boolean> {
     // Everything the write needs is fixed before the first await.
-    const { id, hash, summary, token } = target;
+    const { id, hash, summary, token, element } = target;
+    const turn = { token, element };
     const conversationId = this.sources.starId();
-    if (!conversationId || !this.canStar(token)) return false;
+    if (!conversationId || !this.canStar(turn)) return false;
     const generation = this.generation;
     const { url, title } = describe();
     if (this.loadedFor !== conversationId) {
@@ -138,7 +148,8 @@ export class NavigatorStars {
         !this.sources.alive() ||
         this.generation !== generation ||
         this.sources.starId() !== conversationId ||
-        this.loadedFor !== conversationId
+        this.loadedFor !== conversationId ||
+        !this.canStar(turn)
       ) {
         return false;
       }

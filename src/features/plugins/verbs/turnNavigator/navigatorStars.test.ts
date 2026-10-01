@@ -25,12 +25,22 @@ const turn = { id: 'c-same', hash: 'same', summary: 'Same prompt', token: 'item-
 let route: string;
 let stars: NavigatorStars;
 
-function create(starId: () => string | null = () => route): NavigatorStars {
+/** The conversation a host that names it puts on the turn's container. */
+function stated(element: Element): string | undefined {
+  const id = element.closest('[data-conv]')?.getAttribute('data-conv');
+  return id ? `site:conv:${id}` : undefined;
+}
+
+function create(
+  starId: () => string | null = () => route,
+  turnConversation?: (element: Element) => string | undefined,
+): NavigatorStars {
   stars = new NavigatorStars({
     routeId: () => route,
     starId,
     alive: () => true,
     keyedTurns: () => true,
+    turnConversation,
   });
   stars.begin();
   return stars;
@@ -67,11 +77,15 @@ beforeEach(() => {
 describe('navigator star writes', () => {
   it('writes what was pressed, where it was pressed, once the read lands', async () => {
     create();
-    stars.observe([seen(turn.token, insert())]);
+    const element = insert();
+    stars.observe([seen(turn.token, element)]);
     const release = deferRead();
     void stars.load();
 
-    const toggled = stars.toggle(turn, () => ({ url: 'https://site/c/b', title: 'B' }));
+    const toggled = stars.toggle({ ...turn, element }, () => ({
+      url: 'https://site/c/b',
+      title: 'B',
+    }));
     release([]);
 
     expect(await toggled).toBe(true);
@@ -86,11 +100,15 @@ describe('navigator star writes', () => {
 
   it('drops a press when the conversation changes while its read is pending', async () => {
     create();
-    stars.observe([seen(turn.token, insert())]);
+    const element = insert();
+    stars.observe([seen(turn.token, element)]);
     const release = deferRead();
     void stars.load();
 
-    const toggled = stars.toggle(turn, () => ({ url: 'https://site/c/b', title: 'B' }));
+    const toggled = stars.toggle({ ...turn, element }, () => ({
+      url: 'https://site/c/b',
+      title: 'B',
+    }));
     route = 'site:conv:c';
     stars.observe([seen('item-c', insert())]);
     void stars.load();
@@ -102,9 +120,10 @@ describe('navigator star writes', () => {
 
   it('refuses a press before a refresh has seen the current route', () => {
     create();
-    stars.observe([seen(turn.token, insert())]);
+    const element = insert();
+    stars.observe([seen(turn.token, element)]);
     route = 'site:conv:c';
-    expect(stars.canStar(turn.token)).toBe(false);
+    expect(stars.canStar({ token: turn.token, element })).toBe(false);
   });
 
   it("never stars a new chat's turn, not even under the id the chat gets", () => {
@@ -115,7 +134,7 @@ describe('navigator star writes', () => {
     route = 'site:conv:c';
     stars.observe([seen('draft-1', draft, 'x')]);
 
-    expect(stars.canStar('draft-1')).toBe(false);
+    expect(stars.canStar({ token: 'draft-1', element: draft })).toBe(false);
   });
 
   it('refuses a turn that entered the page under another conversation', () => {
@@ -133,17 +152,56 @@ describe('navigator star writes', () => {
     stars.recordInsertions([{ addedNodes: [later] } as unknown as MutationRecord]);
     stars.observe([seen('item-d', later, 'other')]);
 
-    expect(stars.canStar(turn.token)).toBe(false);
-    expect(stars.canStar('item-c')).toBe(false);
-    expect(stars.canStar('item-d')).toBe(true);
+    expect(stars.canStar({ token: turn.token, element: item })).toBe(false);
+    expect(stars.canStar({ token: 'item-c', element: early })).toBe(false);
+    expect(stars.canStar({ token: 'item-d', element: later })).toBe(true);
+  });
+
+  it("lets the host's id for a turn's conversation decide, both ways", () => {
+    route = '/';
+    create(() => (route.startsWith('site:conv:') ? route : null), stated);
+    const draft = insert();
+    stars.observe([seen('draft-1', draft, 'x')]);
+    route = 'site:conv:c';
+    stars.observe([seen('draft-1', draft, 'x')]);
+    expect(stars.canStar({ token: 'draft-1', element: draft })).toBe(false);
+
+    // The host says the new chat became this conversation.
+    draft.setAttribute('data-conv', 'c');
+    expect(stars.canStar({ token: 'draft-1', element: draft })).toBe(true);
+    // A turn that entered under this URL, but the host files it elsewhere.
+    const other = insert();
+    other.setAttribute('data-conv', 'd');
+    stars.observe([seen('draft-1', draft, 'x'), seen('item-d', other, 'y')]);
+    expect(stars.canStar({ token: 'item-d', element: other })).toBe(false);
+  });
+
+  it('drops a press when the host files the turn elsewhere while its read is pending', async () => {
+    create(() => route, stated);
+    const element = insert();
+    element.setAttribute('data-conv', 'b');
+    stars.observe([seen(turn.token, element)]);
+    const release = deferRead();
+    void stars.load();
+
+    const toggled = stars.toggle({ ...turn, element }, () => ({
+      url: 'https://site/c/b',
+      title: 'B',
+    }));
+    element.setAttribute('data-conv', 'c');
+    release([]);
+
+    expect(await toggled).toBe(false);
+    expect(addStarredMessage).not.toHaveBeenCalled();
   });
 
   it('writes the turn as it was when pressed, even if the marker changes meanwhile', async () => {
     create();
-    stars.observe([seen(turn.token, insert())]);
+    const element = insert();
+    stars.observe([seen(turn.token, element)]);
     const release = deferRead();
     void stars.load();
-    const target = { ...turn };
+    const target = { ...turn, element };
 
     const toggled = stars.toggle(target, () => ({ url: 'https://site/c/b', title: 'B' }));
     target.summary = 'Edited later';

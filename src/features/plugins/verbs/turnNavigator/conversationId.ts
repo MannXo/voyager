@@ -9,6 +9,8 @@ import { MAX_REGEX_INPUT_LENGTH } from '../../sites/safeRegex';
 interface ConversationIdConfig {
   readonly siteId: string;
   readonly conversationIdPattern?: string;
+  /** Attribute on an ancestor of each turn holding the id its route pattern captures. */
+  readonly conversationIdAttribute?: string;
 }
 
 /** `<siteId>:conv:<id>` from the site's route pattern, else a hash of the path. */
@@ -43,4 +45,23 @@ export function starConversationId(
 ): string | null {
   const id = buildConversationId(config, input);
   return !config.conversationIdPattern || id.startsWith(`${config.siteId}:conv:`) ? id : null;
+}
+
+/**
+ * The conversation the host itself says a turn belongs to, as a star id, or
+ * undefined when the site names no such attribute or the turn sits under none.
+ * Read live: the host may move a turn's container to another conversation.
+ */
+export function turnConversationId(
+  config: ConversationIdConfig,
+  element: Element,
+): string | undefined {
+  const attribute = config.conversationIdAttribute;
+  if (!attribute) return undefined;
+  try {
+    const value = element.closest(`[${attribute}]`)?.getAttribute(attribute)?.trim();
+    return value ? `${config.siteId}:conv:${value}` : undefined;
+  } catch {
+    return undefined;
+  }
 }

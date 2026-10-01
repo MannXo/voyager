@@ -362,6 +362,66 @@ describe('Claude timeline', () => {
     expect(dot.getAttribute('aria-pressed')).toBe('true');
   });
 
+  describe("with Claude's conversation id on the thread", () => {
+    function thread(conversation: string | null): HTMLElement {
+      const container = document.createElement('div');
+      if (conversation) container.setAttribute('data-conv-id', conversation);
+      document.body.appendChild(container);
+      return container;
+    }
+
+    async function press(label: string): Promise<void> {
+      const dot = queryDots().find((item) => item.getAttribute('aria-label') === label);
+      dot?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      await vi.advanceTimersByTimeAsync(600);
+      await flush();
+    }
+
+    /** Route watcher poll plus the refresh debounce. */
+    async function settleRoute(): Promise<void> {
+      await vi.advanceTimersByTimeAsync(600);
+      await flush();
+    }
+
+    it('refuses a turn Claude files under another conversation, then stars it there', async () => {
+      const container = thread('claude-123');
+      container.appendChild(createTurn('first'));
+      startClaudeTimeline();
+      await flush();
+
+      // Claude swaps the thread before the URL names the next conversation.
+      container.setAttribute('data-conv-id', 'claude-456');
+      container.replaceChildren(createTurn('other'));
+      await settleRefresh();
+      await press('other');
+      expect(addStarredMessage).not.toHaveBeenCalled();
+
+      history.pushState({}, '', '/chat/claude-456');
+      await settleRoute();
+      await press('other');
+      expect(addStarredMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ conversationId: 'claude:conv:claude-456', content: 'other' }),
+      );
+    });
+
+    it("stars a new chat's turn once Claude files it under the id in the URL", async () => {
+      history.replaceState({}, '', '/new');
+      const container = thread(null);
+      container.appendChild(createTurn('brand new'));
+      startClaudeTimeline();
+      await flush();
+
+      history.pushState({}, '', '/chat/claude-789');
+      container.setAttribute('data-conv-id', 'claude-789');
+      await settleRoute();
+      await press('brand new');
+
+      expect(addStarredMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ conversationId: 'claude:conv:claude-789', content: 'brand new' }),
+      );
+    });
+  });
+
   it('long-presses a compact preview item to star without navigating', async () => {
     addTurn('remember compact item');
     startClaudeTimeline({ compactView: true });

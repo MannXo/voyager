@@ -26,7 +26,7 @@ import { watchRouteChanges } from '@/pages/content/utils/routeWatcher';
 import { initI18n } from '@/utils/i18n';
 
 import type { PrimitiveHandle } from '../types';
-import { buildConversationId, starConversationId } from './conversationId';
+import { buildConversationId, starConversationId, turnConversationId } from './conversationId';
 import { NavigatorStars } from './navigatorStars';
 import {
   afterScrollSettles,
@@ -53,6 +53,8 @@ export interface TurnNavigatorConfig {
   readonly turnKeyAttribute?: string;
   /** Path regular expression whose first group is the conversation id. */
   readonly conversationIdPattern?: string;
+  /** Attribute on an ancestor of each turn holding that same id: decides star writes. */
+  readonly conversationIdAttribute?: string;
   readonly scrollContainerSelector?: string;
   readonly yieldWhenSelector?: string;
   readonly position: 'left' | 'right';
@@ -108,6 +110,7 @@ export class TurnNavigator {
     starId: () => starConversationId(this.config),
     alive: () => !this.disposed,
     keyedTurns: () => this.snapshot !== null,
+    turnConversation: (element) => turnConversationId(this.config, element),
   });
   private stopRefreshTimer: Dispose | null = null;
   private stopLongPressTimer: Dispose | null = null;
@@ -483,7 +486,8 @@ export class TurnNavigator {
   private startLongPress(dot: Dot): void {
     this.cancelLongPress();
     const marker = this.markers.find((item) => item.id === dot.dataset.targetTurnId);
-    if (this.disposed || !marker || !this.stars.canStar(turnToken(marker))) return;
+    if (this.disposed || !marker) return;
+    if (!this.stars.canStar({ token: turnToken(marker), element: marker.element })) return;
     this.longPressDot = dot;
     dot.classList.add('holding');
     this.stopLongPressTimer = this.scope.timer(() => {
