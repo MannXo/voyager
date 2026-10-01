@@ -88,7 +88,10 @@ export class FolderStore {
   ) {
     this.repository = new FolderRepository(GEMINI_FOLDER_CONFIG, storage, {
       onChange: (reason) => this.options.onChange(reason),
-      onRecovery: (result) => this.options.onRecovery(result),
+      // Gemini keeps in-memory folders silently; only restores and resets are announced.
+      onRecovery: (result) => {
+        if (result !== 'kept') this.options.onRecovery(result);
+      },
       onExternalChange: () => void this.reloadFoldersFromStorage(),
       onAccountReleased: () => this.pendingTitleUpdates.clear(),
       isEnabled: () => this.options.getContext().enabled,

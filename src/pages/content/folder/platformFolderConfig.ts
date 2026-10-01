@@ -1,7 +1,7 @@
 import type { AccountScope } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
-import { cloneFolderData } from '@/features/folder/model/folderData';
+import { cloneFolderData, normalizeFolderData } from '@/features/folder/model/folderData';
 import { FOLDER_PLATFORMS, type FolderPlatform } from '@/features/folder/platforms';
 
 import type { ConversationReference, FolderData } from './types';
@@ -22,6 +22,28 @@ export interface PlatformFolderConfig {
   isolationSettingKeys: readonly string[];
   /** Selects what an account inherits from the legacy global bucket on first scoped load. */
   migrateLegacyData: (legacy: FolderData, scope: AccountScope | null) => FolderData;
+  /** Prefix of persistence log lines. */
+  logPrefix: string;
+  /** Page `localStorage` key that enables debug logs when set to `'1'`. */
+  debugFlag: string;
+  /**
+   * Repairs data on load, recovery, migration and before each write. A platform
+   * that never normalized passes `identity`: `normalizeFolderData` seeds missing
+   * `sortIndex` values by name and dedupes refs, which users would see.
+   */
+  normalize: (data: FolderData) => FolderData;
+  /** Drop `folderContents` buckets without a folder, except `rootBucketId`, on load. */
+  pruneOrphanBuckets: boolean;
+  /** Recover an absent bucket from backup, as for a corrupt one, instead of starting empty. */
+  recoverMissingData: boolean;
+  /** Write once more when the adapter reports a failed write. */
+  retryFailedSave: boolean;
+  /** Read the bucket before writing empty data, to log an overwrite of non-empty data. */
+  checkEmptyOverwrite: boolean;
+}
+
+export function keepFolderData(data: FolderData): FolderData {
+  return data;
 }
 
 function getUserIdFromUrl(url: string): string | null {
@@ -105,4 +127,11 @@ export const GEMINI_FOLDER_CONFIG: PlatformFolderConfig = {
     FOLDER_PLATFORMS.gemini.accountIsolationStorageKey,
   ],
   migrateLegacyData: filterLegacyFolderDataByCurrentAccount,
+  logPrefix: '[FolderStore]',
+  debugFlag: 'gvFolderDebug',
+  normalize: normalizeFolderData,
+  pruneOrphanBuckets: true,
+  recoverMissingData: false,
+  retryFailedSave: true,
+  checkEmptyOverwrite: true,
 };

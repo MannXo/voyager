@@ -1,19 +1,16 @@
 import browser, { type Storage } from 'webextension-polyfill';
 
 import {
+  type AccountContext,
   type AccountScope,
   accountIsolationService,
   buildScopedStorageKey,
   detectAccountContextFromDocument,
 } from '@/core/services/AccountIsolationService';
-import {
-  cloneFolderData,
-  normalizeFolderData,
-  validateFolderData,
-} from '@/features/folder/model/folderData';
+import { cloneFolderData, validateFolderData } from '@/features/folder/model/folderData';
 
 import { FolderDataSession } from './FolderDataSession';
-import type { PlatformFolderConfig } from './platformFolderConfig';
+import { GEMINI_FOLDER_CONFIG, type PlatformFolderConfig } from './platformFolderConfig';
 import type { IFolderStorageAdapter } from './storage/FolderStorageAdapter';
 import type { FolderData } from './types';
 
@@ -34,36 +31,42 @@ export type FolderStoreChange =
 
 export interface FolderRepositoryHooks {
   onChange: (reason: FolderStoreChange) => void;
-  onRecovery: (result: 'recovered' | 'lost') => void;
+  /** A failed load restored backup data, kept in-memory data, or reset to empty. */
+  onRecovery: (result: 'recovered' | 'kept' | 'lost') => void;
   /** Another context wrote the active bucket. Resolved at call time by the owner. */
   onExternalChange: () => void;
   /** The active account was released; runs before the `account` change. */
   onAccountReleased: () => void;
   /** Whether the folder feature is enabled, which gates the isolation-switch repaint. */
   isEnabled: () => boolean;
+  /** The final write of a save chain failed while its session is current. */
+  onSaveFailed?: () => void;
+  /** A write settled, either way, for the current session outside a draft replacement. */
+  onPersistSettled?: () => void;
+  /** A session was bound for `context`, which is `null` while isolation is off. */
+  onAccountBound?: (context: AccountContext | null) => void;
 }
 
-function isDebugEnabled(): boolean {
+function isDebugEnabled(flag: string): boolean {
   try {
-    // Enable by setting localStorage.gvFolderDebug = '1'
-    return IS_DEBUG || localStorage.getItem('gvFolderDebug') === '1';
+    // Enable by setting localStorage.<debugFlag> = '1'
+    return IS_DEBUG || localStorage.getItem(flag) === '1';
   } catch {
     // Ignore - localStorage may not be available in some contexts (e.g. incognito mode)
     return IS_DEBUG;
   }
 }
 
-export function folderDebug(...args: unknown[]): void {
-  if (isDebugEnabled()) {
-    console.log('[FolderStore]', ...args);
-  }
+function createDebugLog(config: PlatformFolderConfig, write: 'log' | 'warn') {
+  return (...args: unknown[]): void => {
+    if (isDebugEnabled(config.debugFlag)) {
+      console[write](config.logPrefix, ...args);
+    }
+  };
 }
 
-export function folderDebugWarn(...args: unknown[]): void {
-  if (isDebugEnabled()) {
-    console.warn('[FolderStore]', ...args);
-  }
-}
+export const folderDebug = createDebugLog(GEMINI_FOLDER_CONFIG, 'log');
+export const folderDebugWarn = createDebugLog(GEMINI_FOLDER_CONFIG, 'warn');
 
 /**
  * Owns one platform's folder persistence: account sessions, load, recovery,
@@ -86,6 +89,9 @@ export class FolderRepository {
   private lastStorageEchoArmedAt = 0;
   private saveDebounceTimer: number | null = null;
   private beforeUnloadFlushHandler: (() => void) | null = null;
+  private readonly tag: string;
+  private readonly debug: (...args: unknown[]) => void;
+  private readonly debugWarn: (...args: unknown[]) => void;
   private readonly storageChangeHandler = (
     changes: Record<string, Storage.StorageChange>,
     area: string,
@@ -116,6 +122,9 @@ export class FolderRepository {
       validateFolderData,
     );
     this.activeStorageKey = config.storageKey;
+    this.tag = config.logPrefix;
+    this.debug = createDebugLog(config, 'log');
+    this.debugWarn = createDebugLog(config, 'warn');
   }
 
   get data(): FolderData {
@@ -156,7 +165,22 @@ export class FolderRepository {
     if (this.destroyed) return;
     await this.refreshAccountScope();
     await this.loadData();
+    this.watchStorage();
+  }
+
+  /** Reload on writes to the active bucket from other contexts. */
+  watchStorage(): void {
     if (!this.destroyed) browser.storage.onChanged.addListener(this.storageChangeHandler);
+  }
+
+  /**
+   * Release the active session without destroying the repository: edits stop,
+   * in-flight scope work goes stale, and a later `refreshAccountScope` resumes.
+   */
+  suspend(): void {
+    this.clearAccountScopeRetry();
+    this.dataSession?.deactivate();
+    this.accountScopeRequest += 1;
   }
 
   destroy(): void {
@@ -171,6 +195,11 @@ export class FolderRepository {
     if (this.beforeUnloadFlushHandler)
       window.removeEventListener('beforeunload', this.beforeUnloadFlushHandler);
     this.beforeUnloadFlushHandler = null;
+  }
+
+  /** Record the isolation switch without rebinding; the caller refreshes the scope. */
+  setAccountIsolationFlag(enabled: boolean): void {
+    this.isolationEnabled = enabled;
   }
 
   async setAccountIsolationEnabled(enabled: boolean): Promise<void> {
@@ -218,33 +247,38 @@ export class FolderRepository {
 
       if (loadedData && validateFolderData(loadedData)) {
         // Validate and repair data integrity
-        this.data = normalizeFolderData(loadedData);
+        this.data = this.config.normalize(loadedData);
 
         // Clean up orphaned folderContents (folders that no longer exist)
-        const validFolderIds = new Set(this.data.folders.map((f) => f.id));
-        validFolderIds.add(this.config.rootBucketId); // Keep root conversations
-        Object.keys(this.data.folderContents).forEach((folderId) => {
-          if (!validFolderIds.has(folderId)) {
-            folderDebugWarn(`Removing orphaned folderContents for: ${folderId}`);
-            delete this.data.folderContents[folderId];
-          }
-        });
+        if (this.config.pruneOrphanBuckets) {
+          const validFolderIds = new Set(this.data.folders.map((f) => f.id));
+          validFolderIds.add(this.config.rootBucketId); // Keep root conversations
+          Object.keys(this.data.folderContents).forEach((folderId) => {
+            if (!validFolderIds.has(folderId)) {
+              this.debugWarn(`Removing orphaned folderContents for: ${folderId}`);
+              delete this.data.folderContents[folderId];
+            }
+          });
+        }
 
         // Create primary backup on successful load
         session.backup.createPrimaryBackup(this.data);
         session.markReady();
 
-        folderDebug('Data loaded and validated successfully');
+        this.debug('Data loaded and validated successfully');
       } else if (loadedData) {
         // Data exists but validation failed - this is a real corruption case
         console.warn(
-          '[FolderStore] Storage returned invalid data structure, attempting recovery from backup',
+          `${this.tag} Storage returned invalid data structure, attempting recovery from backup`,
         );
         await this.attemptDataRecovery({ reason: 'corrupted', originalData: loadedData }, session);
+      } else if (this.config.recoverMissingData) {
+        console.warn(`${this.tag} Storage returned no data, attempting recovery from backup`);
+        await this.attemptDataRecovery(null, session);
       } else {
         // No data found - likely a first-time user
         console.log(
-          '[FolderStore] No folder data found, initializing empty state (likely first-time user)',
+          `${this.tag} No folder data found, initializing empty state (likely first-time user)`,
         );
         this.data = { folders: [], folderContents: {} };
         session.markReady();
@@ -252,7 +286,7 @@ export class FolderRepository {
       }
     } catch (error) {
       if (!isCurrent()) return;
-      console.error('[FolderStore] Load data error:', error);
+      console.error(`${this.tag} Load data error:`, error);
 
       // CRITICAL: Do NOT clear data on error - this causes data loss!
       // Instead, try to recover from backup or keep existing data
@@ -279,7 +313,7 @@ export class FolderRepository {
         return null;
       }
 
-      const migratedData = normalizeFolderData(
+      const migratedData = this.config.normalize(
         this.config.migrateLegacyData(legacyData, session.accountScope),
       );
       session.data = migratedData;
@@ -287,30 +321,30 @@ export class FolderRepository {
       session.activeSave = this.persistDataSession(session, cloneFolderData(session.data));
       const saved = await session.activeSave;
       if (!saved) {
-        console.warn('[FolderStore] Failed to persist scoped migration data');
+        console.warn(`${this.tag} Failed to persist scoped migration data`);
       }
-      folderDebug(
+      this.debug(
         'Migrated legacy folder data to scoped storage:',
         session.storageKey,
         migratedData.folders.length,
       );
       return migratedData;
     } catch (error) {
-      console.error('[FolderStore] Failed to migrate legacy folder data:', error);
+      console.error(`${this.tag} Failed to migrate legacy folder data:`, error);
       return null;
     }
   }
 
   private async attemptDataRecovery(error: unknown, session: FolderDataSession): Promise<void> {
     if (this.dataSession !== session) return;
-    console.warn('[FolderStore] Attempting data recovery after load failure');
+    console.warn(`${this.tag} Attempting data recovery after load failure`);
 
     // Step 1: Try to restore from localStorage backups (primary, emergency, beforeUnload)
     const recovered = session.backup.recoverFromBackup();
     if (recovered && validateFolderData(recovered)) {
-      this.data = normalizeFolderData(recovered);
+      this.data = this.config.normalize(recovered);
       session.markReady();
-      console.warn('[FolderStore] Data recovered from localStorage backup');
+      console.warn(`${this.tag} Data recovered from localStorage backup`);
       this.hooks.onRecovery('recovered');
       // Save recovered data to persistent storage
       await this.saveData();
@@ -319,15 +353,16 @@ export class FolderRepository {
 
     // Step 2: If current this.data already has valid structure, keep it
     if (validateFolderData(this.data) && this.data.folders.length > 0) {
-      console.warn('[FolderStore] Keeping existing in-memory data after load error');
-      this.data = normalizeFolderData(this.data);
+      console.warn(`${this.tag} Keeping existing in-memory data after load error`);
+      this.data = this.config.normalize(this.data);
       session.markReady();
+      this.hooks.onRecovery('kept');
       return;
     }
 
     // Step 3: Last resort - initialize empty data and log critical error
-    console.error('[FolderStore] CRITICAL: Unable to recover data, initializing empty state');
-    console.error('[FolderStore] Original error:', error);
+    console.error(`${this.tag} CRITICAL: Unable to recover data, initializing empty state`);
+    console.error(`${this.tag} Original error:`, error);
     this.data = { folders: [], folderContents: {} };
     session.markReady();
 
@@ -368,12 +403,15 @@ export class FolderRepository {
     return true;
   }
 
-  /** Persist a draft without exposing it to edits, exports or recovery before success. */
-  async replaceData(data: FolderData): Promise<boolean> {
+  /**
+   * Persist a draft without exposing it to edits, exports or recovery before success.
+   * `companions` are other storage keys written in the same atomic storage call.
+   */
+  async replaceData(data: FolderData, companions?: Record<string, unknown>): Promise<boolean> {
     const session = this.dataSession;
     const activation = this.accountScopeRequest;
     if (!session || !this.canEdit) return false;
-    const snapshot = normalizeFolderData(cloneFolderData(data));
+    const snapshot = this.config.normalize(cloneFolderData(data));
 
     this.flushPendingSaveData();
     session.replacingData = true;
@@ -387,7 +425,7 @@ export class FolderRepository {
       if (this.destroyed || this.dataSession !== session || this.accountScopeRequest !== activation)
         return false;
 
-      session.activeSave = this.persistDataSession(session, snapshot);
+      session.activeSave = this.persistDataSession(session, snapshot, companions);
       saved = await session.activeSave;
       // An issued write still belongs to this session if the user has since left it.
       if (saved) session.data = snapshot;
@@ -406,7 +444,7 @@ export class FolderRepository {
     const session = this.dataSession;
     if (!session || !this.canEdit) return false;
     try {
-      this.data = normalizeFolderData(this.data);
+      this.data = this.config.normalize(this.data);
       const snapshot = cloneFolderData(session.data);
       // A mutation supersedes any storage read already in flight for this session.
       session.loadVersion += 1;
@@ -422,21 +460,33 @@ export class FolderRepository {
           });
           session.pendingSaveCompletion = { promise, resolve };
         }
-        folderDebug('Save already in progress, queueing one trailing save');
+        this.debug('Save already in progress, queueing one trailing save');
         return session.pendingSaveCompletion.promise;
       }
 
       session.activeSave = this.persistDataSession(session, snapshot);
       return session.activeSave;
     } catch (error) {
-      console.error('[FolderStore] Save data error:', error);
+      console.error(`${this.tag} Save data error:`, error);
+      this.hooks.onSaveFailed?.();
       return false;
     }
+  }
+
+  private writeSnapshot(
+    key: string,
+    snapshot: FolderData,
+    companions: Record<string, unknown> | undefined,
+  ): Promise<boolean> {
+    return companions
+      ? this.storage.saveData(key, snapshot, companions)
+      : this.storage.saveData(key, snapshot);
   }
 
   private async persistDataSession(
     session: FolderDataSession,
     snapshot: FolderData,
+    companions?: Record<string, unknown>,
   ): Promise<boolean> {
     this.dataSessions.set(session.storageKey, session);
     session.saveInProgress = true;
@@ -444,7 +494,11 @@ export class FolderRepository {
 
     try {
       // Additional safety check: warn if saving empty data
-      if (snapshot.folders.length === 0 && Object.keys(snapshot.folderContents).length === 0) {
+      if (
+        this.config.checkEmptyOverwrite &&
+        snapshot.folders.length === 0 &&
+        Object.keys(snapshot.folderContents).length === 0
+      ) {
         // Check if we're about to overwrite non-empty data
         const existingData = await this.storage.loadData(session.storageKey);
         if (
@@ -452,9 +506,9 @@ export class FolderRepository {
           (existingData.folders.length > 0 || Object.keys(existingData.folderContents).length > 0)
         ) {
           console.warn(
-            '[FolderStore] WARNING: Attempting to save empty data over existing non-empty data',
+            `${this.tag} WARNING: Attempting to save empty data over existing non-empty data`,
           );
-          console.warn('[FolderStore] This may indicate a bug.');
+          console.warn(`${this.tag} This may indicate a bug.`);
           // Still proceed, but log it prominently
         }
       }
@@ -464,19 +518,19 @@ export class FolderRepository {
       // storage.onChanged in this same context — arm suppression so the echo
       // doesn't trigger a redundant full reload (see storageChangeHandler).
       if (this.dataSession === session) this.armStorageEchoSuppression();
-      success = await this.storage.saveData(session.storageKey, snapshot);
+      success = await this.writeSnapshot(session.storageKey, snapshot, companions);
 
       // Retry once if the first attempt fails (for transient errors)
-      if (!success) {
-        console.warn('[FolderStore] Save failed, retrying once...');
+      if (!success && this.config.retryFailedSave) {
+        console.warn(`${this.tag} Save failed, retrying once...`);
         if (this.dataSession === session) this.armStorageEchoSuppression();
-        success = await this.storage.saveData(session.storageKey, snapshot);
+        success = await this.writeSnapshot(session.storageKey, snapshot, companions);
       }
 
       if (success) {
         // Create primary backup AFTER successful save
         session.backup.createPrimaryBackup(snapshot);
-        folderDebug('Data saved successfully');
+        this.debug('Data saved successfully');
         // Centralised floating-panel sync. Any code path that persists folder
         // data (sidebar actions, cloud download, native menu → "Move to
         // folder", etc.) ends up here, so one hook keeps the floating view
@@ -485,12 +539,16 @@ export class FolderRepository {
           this.hooks.onChange('saved');
         }
       } else {
-        console.error('[FolderStore] Save failed after retry');
+        console.error(`${this.tag} Save failed after retry`);
       }
     } catch (error) {
-      console.error('[FolderStore] Save data error:', error);
+      console.error(`${this.tag} Save data error:`, error);
       success = false;
     } finally {
+      // A newer queued snapshot can still persist this edit; report only a final failure.
+      if (!success && this.dataSession === session && !session.pendingSave) {
+        this.hooks.onSaveFailed?.();
+      }
       session.saveInProgress = false;
       const pending = session.pendingSave;
       const completion = session.pendingSaveCompletion;
@@ -506,6 +564,9 @@ export class FolderRepository {
         }
       }
     }
+    if (this.dataSession === session && !session.replacingData) {
+      this.hooks.onPersistSettled?.();
+    }
 
     return success;
   }
@@ -516,9 +577,9 @@ export class FolderRepository {
         platform: this.config.platform,
         pageUrl: window.location.href,
       });
-      folderDebug('Loaded account isolation setting:', this.isolationEnabled);
+      this.debug('Loaded account isolation setting:', this.isolationEnabled);
     } catch (error) {
-      console.error('[FolderStore] Failed to load account isolation setting:', error);
+      console.error(`${this.tag} Failed to load account isolation setting:`, error);
       this.isolationEnabled = false;
     }
   }
@@ -543,8 +604,9 @@ export class FolderRepository {
     this.hooks.onChange('account');
     try {
       let resolvedScope: AccountScope | null = null;
+      let context: AccountContext | null = null;
       if (this.isolationEnabled) {
-        const context = detectAccountContextFromDocument(window.location.href, document);
+        context = detectAccountContextFromDocument(window.location.href, document);
         resolvedScope = await accountIsolationService.resolveAccountScope({
           pageUrl: window.location.href,
           routeUserId: context.routeUserId,
@@ -572,6 +634,7 @@ export class FolderRepository {
       this.dataSession = session;
       this.resolvedAccountScope = resolvedScope;
       this.activeStorageKey = storageKey;
+      this.hooks.onAccountBound?.(context);
       session.activate();
       this.accountScopeRetryAttempt = 0;
       if (session.ready) {
@@ -579,7 +642,7 @@ export class FolderRepository {
         this.hooks.onChange('loaded');
       }
     } catch (error) {
-      console.error('[FolderStore] Failed to resolve account scope:', error);
+      console.error(`${this.tag} Failed to resolve account scope:`, error);
       // Keep persistence unbound on failure. A global fallback has no known owner.
       this.scheduleAccountScopeRetry(request);
     }
