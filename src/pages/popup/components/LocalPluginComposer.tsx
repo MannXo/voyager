@@ -120,6 +120,8 @@ export function LocalPluginComposer({
   /** Close the preview; like an edit, it starts a new run so no pending result reopens it. */
   const dismissPreview = (): void => {
     checkRun.current += 1;
+    // A superseded check returns before clearing this, so the dismiss clears it.
+    setChecking(false);
     setChecked(null);
     setDetails(false);
     setChangedSinceReview(false);

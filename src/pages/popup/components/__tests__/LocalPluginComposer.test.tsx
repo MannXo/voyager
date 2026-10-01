@@ -375,6 +375,21 @@ describe('describe a change → prompt → pasted reply → preview → import',
     expect(container.querySelector('[data-testid="local-plugin-preview"]')).toBeNull();
   });
 
+  it('lets the reply be checked again after Cancel closed a check that was still running', async () => {
+    await openComposer();
+    await checkReply(fenced(AUTHORED));
+
+    const release = holdStorageReads();
+    await act(async () => button(container, 'localPluginDescribeCheck').click());
+    await act(async () => button(container, 'localPluginsCancel').click());
+    await act(async () => release());
+    await flush();
+    await flush();
+
+    expect(container.querySelector('[data-testid="local-plugin-preview"]')).toBeNull();
+    expect(button(container, 'localPluginDescribeCheck').disabled).toBe(false);
+  });
+
   it('keeps a reply edited while a successful import ran', async () => {
     await openComposer();
     await checkReply(fenced(AUTHORED));
