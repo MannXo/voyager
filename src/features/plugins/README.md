@@ -191,8 +191,11 @@ at or above their `sinceEngine` (`manifest/primitiveChecks.ts`, shared with
 `plugin:check`), and `matches` inside a plugin platform's `matches` or a native
 surface's (`sites/nativeSurfaces.ts`: Gemini, AI Studio), so enabling a local
 plugin can only request host access an official plugin could, or none at all.
-A plugin for Gemini or AI Studio may not declare `theme`: those pages keep
-Voyager's own accent. Stored records are re-validated on every read by
+A plugin for Gemini or AI Studio may not declare `theme` (those pages keep
+Voyager's own accent) or any `native` op (every shipped primitive, the
+timeline, formula copy and Vim, already runs there as a native Voyager
+feature, and a second copy would fight it): CSS and reversible DOM ops only.
+Stored records are re-validated on every read by
 `local/LocalPluginSource.ts`.
 
 **Gemini and AI Studio.** Only local plugins can target them; the bundled and
@@ -203,8 +206,8 @@ prefer a precise CSS selector there). The manifest already injects the content
 script and grants these hosts, so enabling one needs no permission prompt and
 `pluginsToOriginPatterns` leaves their origins out of dynamic registration
 (registering them would inject Voyager twice). `PluginHost` mounts them with
-the same reversible engine as elsewhere; turning one off removes its classes
-and stylesheet, and D7 applies to `native` ops. The zero-request promise
+the same reversible engine as elsewhere, and turning one off removes its
+classes and stylesheet. The zero-request promise
 holds: `isEligibleCatalogHost` refuses every native host, so a Gemini page has
 no catalog host, never asks for a check and never reads a catalog cache, and
 the background refuses a forced check for them too. A minimal Gemini plugin:

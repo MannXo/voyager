@@ -86,7 +86,7 @@ A declarative plugin for personal use needs no PR, catalog entry or release. Wri
 
 - The id is stored as `local.<id>`. Local plugins never replace an official id, are merged last and are outside the remote kill switch.
 - The gate is the remote catalog's (`validateManifest`, CSS and rendered-sink guards) plus: `tier: "declarative"` only; `native` ops only for shipped primitives, with params that fit `verbs/contracts.ts` and `engine` at or above their `sinceEngine`; and `matches` inside an existing plugin platform (Claude, ChatGPT, DeepSeek) or a native surface (Gemini, AI Studio). No plugin-supplied JS, ever.
-- Gemini and AI Studio accept only local plugins (official plugins and the online catalog never target them). Semantic keys resolve through the native adapters (`userTurn`, `assistantTurn`, `composer`, `sidebar`); `theme` is rejected there because those pages keep Voyager's accent. No permission prompt: the manifest already injects these hosts. The page still makes zero catalog requests. Example that tightens your own turns on Gemini:
+- Gemini and AI Studio accept only local plugins (official plugins and the online catalog never target them). Semantic keys resolve through the native adapters (`userTurn`, `assistantTurn`, `composer`, `sidebar`); `theme` is rejected there because those pages keep Voyager's accent, and `native` ops are rejected because the timeline, formula copy and Vim already run there natively: CSS and reversible DOM ops only. No permission prompt: the manifest already injects these hosts. The page still makes zero catalog requests. Example that tightens your own turns on Gemini:
 
   ```json
   {

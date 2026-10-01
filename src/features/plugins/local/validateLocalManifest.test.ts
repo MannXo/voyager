@@ -104,6 +104,24 @@ describe('validateLocalManifest', () => {
     expect(paths(authored({ theme }))).toEqual([]);
   });
 
+  it('rejects native ops on Gemini and AI Studio, which already run every primitive natively', () => {
+    const native = (matches: string[]) =>
+      authored({
+        engine: '>=1.4.0',
+        matches,
+        contributes: {
+          styles: [{ css: '.gv-x{color:red}' }],
+          domOps: [
+            { op: 'addClass', target: 'body', className: 'gv-x' },
+            { op: 'native', target: 'body', handler: 'turnNavigator', params: {} },
+          ],
+        },
+      });
+    expect(paths(native(['https://gemini.google.com/*']))).toEqual(['contributes.domOps[1]']);
+    expect(paths(native(['https://aistudio.google.com/*']))).toEqual(['contributes.domOps[1]']);
+    expect(paths(native(['https://claude.ai/*']))).toEqual([]);
+  });
+
   it('allows a native op only for a shipped primitive with params that fit its contract', () => {
     const native = (handler: string, params: Record<string, unknown>, engine = '>=1.4.0') =>
       authored({

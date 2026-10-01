@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { StorageKeys } from '@/core/types/common';
+import { PLUGIN_CATALOG_REFRESH_MESSAGE } from '@/features/plugins/runtime/messages';
 import { TRANSLATIONS } from '@/utils/translations';
 
 import Popup from '../Popup';
@@ -216,6 +217,48 @@ describe('Popup settings integration', () => {
     });
     expect(container.querySelectorAll('button[aria-pressed]')).toHaveLength(4);
     expect(container.querySelectorAll('button[aria-pressed="true"]')).toHaveLength(1);
+  });
+
+  it('reaches local plugins from a Gemini tab without any catalog request', async () => {
+    local[StorageKeys.PLUGIN_LOCAL_MANIFESTS] = {
+      'local.me.gemini-tweak': {
+        manifest: {
+          id: 'local.me.gemini-tweak',
+          name: 'My Gemini tweak',
+          version: '1.0.0',
+          description: 'd',
+          author: 'me',
+          category: 'layout',
+          license: 'MIT',
+          engine: '>=1.0.0',
+          tier: 'declarative',
+          matches: ['https://gemini.google.com/*'],
+          contributes: { styles: [{ css: '.gv-x{color:red}' }] },
+        },
+        importedAt: 1,
+        updatedAt: 1,
+      },
+    };
+    await mount();
+    // The page targets a local plugin, so the entry opens with its toggle and the import card.
+    expect(container.textContent).toContain('My Gemini tweak');
+    expect(container.textContent).toContain(TRANSLATIONS.en.localPluginsTitle);
+    expect(container.querySelector('#folder-enabled')).not.toBeNull();
+    const messageTypes = extensionApi.runtime.sendMessage.mock.calls.map(
+      ([message]) => (message as { type?: string } | undefined)?.type ?? '',
+    );
+    expect(messageTypes).not.toContain(PLUGIN_CATALOG_REFRESH_MESSAGE);
+  });
+
+  it('keeps the native local plugins entry off plugin sites, which have their own plugin page', async () => {
+    await mount();
+    expect(container.textContent).toContain(TRANSLATIONS.en.localPluginsNativeHint);
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    extensionApi.tabs.query.mockResolvedValue([{ id: 9, url: 'https://claude.ai/new' }]);
+    await mount();
+    expect(container.textContent).not.toContain(TRANSLATIONS.en.localPluginsNativeHint);
+    expect(container.textContent).toContain(TRANSLATIONS.en.localPluginsTitle);
   });
 
   it('keeps Gemini folder data, isolation and Cloud Sync off a ChatGPT tab', async () => {

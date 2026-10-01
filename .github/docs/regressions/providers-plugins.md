@@ -415,7 +415,8 @@ while an active plugin has domOps`).
   so `catalogHostFromUrl` is undefined there and neither the page, the popup nor a forced
   background check can fetch for it. `pluginsToOriginPatterns` drops native-surface origins and
   `pluginToOriginPatternsForActiveUrl` returns nothing on a native page. Local plugins there may
-  not declare `theme`. Keep `nativeSurfaces.ts` in step with `manifest.json`.
+  not declare `theme` or `native` ops (each primitive already runs there as a native feature).
+  Keep `nativeSurfaces.ts` in step with `manifest.json`.
 - **Guard:** `src/features/plugins/runtime/PluginHost.test.ts`
   (`PluginHost with a local plugin on Gemini`),
   `src/features/plugins/remote/hostCatalogPolicy.test.ts`
