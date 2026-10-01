@@ -2,7 +2,12 @@ import type { ExtractedContent } from '@/features/export/services/DOMContentExtr
 import type { ChatTurn } from '@/features/export/types/export';
 import type { SiteAdapter } from '@/features/plugins/types';
 
-import type { ChatGptTurnContainer, ChatGptTurnRole, ExportSelectionOptions } from '../type';
+import type {
+  ChatGptTurnContainer,
+  ChatGptTurnRole,
+  ConversationPreparation,
+  ExportSelectionOptions,
+} from '../type';
 
 /**
  * Platform boundary for the shared conversation export pipeline.
@@ -81,12 +86,12 @@ export interface ExportPlatformAdapter {
   /**
    * Read the conversation before selection mode opens, for platforms whose
    * DOM cannot be walked in place (ChatGPT's virtualized thread). Resolves
-   * true when it handled the preparation; false or omitted falls back to
-   * scrolling the conversation to the top.
+   * with what it keeps for the session when it handled the preparation; null
+   * or omitted falls back to scrolling the conversation to the top.
    */
-  prepareConversation?: (options: ExportSelectionOptions) => Promise<boolean>;
-  /** Drop what `prepareConversation` kept once the export session ends. */
-  releaseConversation?: () => void;
+  prepareConversation?: (
+    options: ExportSelectionOptions,
+  ) => Promise<ConversationPreparation | null>;
 
   collectTurnContainers?: () => ChatGptTurnContainer[];
   buildTurnsForSelection?: (

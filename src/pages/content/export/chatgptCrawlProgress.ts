@@ -4,6 +4,7 @@ import type { TranslationKey } from '@/utils/translations';
 import type { ChatGptCrawlOptions } from './adapter/chatgptCrawl';
 import { hasRenderedThread } from './adapter/chatgptThread';
 import { prepareChatGptExport } from './adapter/chatgptThreadExport';
+import type { ConversationPreparation } from './adapter/type';
 
 /**
  * Progress for ChatGPT's thread crawl, which reads a long conversation for a
@@ -76,7 +77,7 @@ function showCrawlProgress(t: Translate, onCancel: () => void): CrawlProgressPil
 export async function prepareChatGptExportWithProgress(
   options: ChatGptCrawlOptions = {},
   t: Translate = getTranslationSync,
-): Promise<boolean> {
+): Promise<ConversationPreparation | null> {
   if (!hasRenderedThread()) return prepareChatGptExport(options);
 
   const crawl = new AbortController();

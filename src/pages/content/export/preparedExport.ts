@@ -1,5 +1,5 @@
 import type { ExportPlatformAdapter } from './adapter/platformAdapters';
-import type { ExportSelectionOptions } from './adapter/type';
+import type { ConversationPreparation, ExportSelectionOptions } from './adapter/type';
 import { throwIfExportCancelled } from './exportCancellation';
 
 export interface PreparedExportSteps {
@@ -13,18 +13,20 @@ export interface PreparedExportSteps {
  * The export on a platform that does not preload history: prepare the
  * conversation, then run the selection session. Whatever the preparation keeps
  * for the session (ChatGPT's crawl and its thread watch) is released once the
- * session ends, however it ends.
+ * session ends, however it ends, and only by the preparation that kept it.
  */
 export async function runPreparedExport(
-  adapter: Pick<ExportPlatformAdapter, 'prepareConversation' | 'releaseConversation'>,
+  adapter: Pick<ExportPlatformAdapter, 'prepareConversation'>,
   options: ExportSelectionOptions,
   steps: PreparedExportSteps,
 ): Promise<void> {
+  let prepared: ConversationPreparation | null | undefined = null;
   try {
-    if (!(await adapter.prepareConversation?.(options))) await steps.scrollToTop();
+    prepared = await adapter.prepareConversation?.(options);
+    if (!prepared) await steps.scrollToTop();
     throwIfExportCancelled(options.signal);
     await steps.exportSelection();
   } finally {
-    adapter.releaseConversation?.();
+    prepared?.release();
   }
 }

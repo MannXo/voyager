@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DOMContentExtractor } from '@/features/export/services/DOMContentExtractor';
-import type { SiteAdapter } from '@/features/plugins/types';
 
 import { makeTurns, mountThreadFixture } from '../adapter/__tests__/chatgptThreadFixture';
 import type { ChatGptCrawlTiming } from '../adapter/chatgptCrawl';
@@ -9,7 +8,6 @@ import {
   collectChatGptTurnContainers,
   resetChatGptThreadSnapshot,
 } from '../adapter/chatgptThreadExport';
-import { buildChatGptAdapter } from '../adapter/platform/chatgpt';
 import type { ExportPlatformAdapter } from '../adapter/platformAdapters';
 import { prepareChatGptExportWithProgress } from '../chatgptCrawlProgress';
 import { runPreparedExport } from '../preparedExport';
@@ -38,20 +36,15 @@ class TrackedMutationObserver extends MutationObserver {
 }
 
 /**
- * The ChatGPT export adapter's preparation and release, crawling at test speed.
+ * The ChatGPT export adapter's preparation, crawling at test speed.
  * `onProgress` lets a test act mid-crawl.
  */
 function chatGptAdapter(
   onProgress?: (turns: number) => void,
-): Pick<ExportPlatformAdapter, 'prepareConversation' | 'releaseConversation'> {
-  const adapter = buildChatGptAdapter({
-    selectors: { userTurn: '[data-turn-key]', assistantTurn: '[data-turn-key]' },
-  } as unknown as SiteAdapter);
+): Pick<ExportPlatformAdapter, 'prepareConversation'> {
   return {
-    // The adapter's own preparation, given test timing it does not expose.
     prepareConversation: (options) =>
       prepareChatGptExportWithProgress({ ...options, timing: FAST, onProgress }),
-    releaseConversation: adapter.releaseConversation,
   };
 }
 
@@ -149,31 +142,80 @@ describe('runPreparedExport', () => {
     expect(observing.size).toBe(0);
   });
 
+  it('leaves the export that replaced one cancelled during its scroll restore intact', async () => {
+    const turns = makeTurns(6);
+    mountThreadFixture({ turns });
+    const first = new AbortController();
+    let second: Promise<void> | null = null;
+    let firstEnded: Promise<unknown> = Promise.resolve();
+    const seen = { listed: 0, observing: 0 };
+    const startSecond = () =>
+      runPreparedExport(
+        chatGptAdapter(),
+        { expectedUrl: location.href },
+        {
+          scrollToTop: async () => {},
+          exportSelection: async () => {
+            // The cancelled export's cleanup has run by now.
+            await firstEnded;
+            seen.listed = collectChatGptTurnContainers().length;
+            seen.observing = observing.size;
+          },
+        },
+      );
+    // Export B starts once A has read everything: A is cancelled and restores the scroll.
+    const adapter = chatGptAdapter((count) => {
+      if (count !== turns.length || second) return;
+      first.abort();
+      second = startSecond();
+    });
+
+    firstEnded = runPreparedExport(
+      adapter,
+      { signal: first.signal, expectedUrl: location.href },
+      { scrollToTop: async () => {}, exportSelection: async () => {} },
+    ).catch((error: unknown) => error);
+
+    await expect(firstEnded).resolves.toMatchObject({ name: 'AbortError' });
+    await second;
+    expect(seen).toEqual({ listed: 12, observing: 1 });
+    expect(observing.size).toBe(0);
+  });
+
+  it('ignores a release from a preparation that a newer one replaced', async () => {
+    mountThreadFixture({ turns: makeTurns(3) });
+    const older = await prepareChatGptExportWithProgress({ timing: FAST });
+    const newer = await prepareChatGptExportWithProgress({ timing: FAST });
+
+    older?.release();
+    expect(collectChatGptTurnContainers()).toHaveLength(6);
+    expect(observing.size).toBe(1);
+
+    newer?.release();
+    expect(collectChatGptTurnContainers()).toEqual([]);
+    expect(observing.size).toBe(0);
+  });
+
   it('does not open selection when the export is cancelled while scrolling to the top', async () => {
     const controller = new AbortController();
     const exportSelection = vi.fn(async () => {});
-    const releaseConversation = vi.fn();
 
     await expect(
       runPreparedExport(
-        { prepareConversation: async () => false, releaseConversation },
+        { prepareConversation: async () => null },
         { signal: controller.signal, expectedUrl: location.href },
         { scrollToTop: async () => controller.abort(), exportSelection },
       ),
     ).rejects.toMatchObject({ name: 'AbortError' });
 
     expect(exportSelection).not.toHaveBeenCalled();
-    expect(releaseConversation).toHaveBeenCalledOnce();
   });
 
   it('scrolls to the top when the adapter does not prepare the conversation itself', async () => {
     const steps: string[] = [];
 
     await runPreparedExport(
-      {
-        prepareConversation: async () => false,
-        releaseConversation: () => steps.push('release'),
-      },
+      { prepareConversation: async () => null },
       { expectedUrl: location.href },
       {
         scrollToTop: async () => {
@@ -185,6 +227,6 @@ describe('runPreparedExport', () => {
       },
     );
 
-    expect(steps).toEqual(['scroll', 'select', 'release']);
+    expect(steps).toEqual(['scroll', 'select']);
   });
 });

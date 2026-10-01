@@ -9,7 +9,6 @@ import { TURN_ITEM_SELECTOR, resolveVisibleConversationRoot } from '../chatgptTh
 import {
   buildChatGptExportTurns,
   collectChatGptTurnContainers,
-  resetChatGptThreadSnapshot,
   resolveChatGptExportRoles,
 } from '../chatgptThreadExport';
 import type { ExportPlatformAdapter } from './contract';
@@ -255,7 +254,6 @@ export function buildChatGptAdapter(site: SiteAdapter): ExportPlatformAdapter {
     extractCodeBlock,
     extractInlineFormula: chatgptExtractInlineFormula,
     prepareConversation: (options) => prepareChatGptExportWithProgress(options),
-    releaseConversation: resetChatGptThreadSnapshot,
     collectTurnContainers: collectChatGptTurnContainers,
     buildTurnsForSelection: buildChatGptExportTurns,
     resolveSelectionRoles: resolveChatGptExportRoles,

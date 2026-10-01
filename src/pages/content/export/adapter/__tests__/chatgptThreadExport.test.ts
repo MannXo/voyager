@@ -298,7 +298,7 @@ describe('ChatGPT selection export on the live thread', () => {
     ];
     mountThreadFixture({ turns });
 
-    await expect(prepareChatGptExport({ timing: FAST })).resolves.toBe(true);
+    await expect(prepareChatGptExport({ timing: FAST })).resolves.not.toBeNull();
     const containers = collectChatGptTurnContainers();
 
     expect(containers.map((turn) => turn.id)).toEqual(ids(turns));
@@ -325,7 +325,7 @@ describe('ChatGPT selection export on the live thread', () => {
   it('offers nothing to select when the crawl cannot prove the thread complete', async () => {
     mountThreadFixture({ turns: makeTurns(8), initiallyLoaded: 3, historyDelayMs: Infinity });
 
-    await expect(prepareChatGptExport({ timing: FAST })).resolves.toBe(true);
+    await expect(prepareChatGptExport({ timing: FAST })).resolves.not.toBeNull();
 
     expect(collectChatGptTurnContainers()).toEqual([]);
   });
@@ -339,7 +339,7 @@ describe('ChatGPT selection export on the live thread', () => {
   it('leaves the earlier DOM to its scroll-to-top preparation', async () => {
     document.body.innerHTML = '<main><div data-turn-id-container="a"></div></main>';
 
-    await expect(prepareChatGptExport({ timing: FAST })).resolves.toBe(false);
+    await expect(prepareChatGptExport({ timing: FAST })).resolves.toBeNull();
   });
 
   it('pairs a prompt with its reply and keeps a lone selection one-sided', async () => {
@@ -517,7 +517,7 @@ describe('ChatGPT selection export on the live thread', () => {
 
   it('does not let a superseded preparation publish over a newer one that failed', async () => {
     mountThreadFixture({ turns: makeTurns(8) });
-    let newer: Promise<boolean> | null = null;
+    let newer: ReturnType<typeof prepareChatGptExport> | null = null;
     const onProgress = (count: number) => {
       if (count !== 2 || newer) return;
       // A newer export starts mid-crawl on the same route and fails at once.
@@ -527,8 +527,8 @@ describe('ChatGPT selection export on the live thread', () => {
       main.querySelector('[data-testid="stop-button"]')!.remove();
     };
 
-    await expect(prepareChatGptExport({ timing: FAST, onProgress })).resolves.toBe(true);
-    await expect(newer).resolves.toBe(true);
+    await expect(prepareChatGptExport({ timing: FAST, onProgress })).resolves.not.toBeNull();
+    await expect(newer).resolves.not.toBeNull();
 
     expect(collectChatGptTurnContainers()).toEqual([]);
   });

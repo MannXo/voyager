@@ -66,7 +66,7 @@ describe('prepareChatGptExportWithProgress', () => {
           shown.push(pill()?.textContent ?? '');
         },
       }),
-    ).resolves.toBe(true);
+    ).resolves.not.toBeNull();
 
     expect(shown.at(-1)).toContain('Reading conversation');
     expect(shown.at(-1)).toContain('Turns read: 5');
@@ -110,7 +110,7 @@ describe('prepareChatGptExportWithProgress', () => {
   it('shows nothing on the earlier DOM, which has no crawl', async () => {
     document.body.innerHTML = '<main><div data-turn-id-container="a"></div></main>';
 
-    await expect(prepareChatGptExportWithProgress({ timing: FAST })).resolves.toBe(false);
+    await expect(prepareChatGptExportWithProgress({ timing: FAST })).resolves.toBeNull();
     expect(pill()).toBeNull();
   });
 });

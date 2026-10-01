@@ -21,7 +21,12 @@ import {
   userSelectionHost,
 } from './chatgptThread';
 import { type ThreadVersionWatch, watchThreadVersions } from './chatgptThreadWatch';
-import type { ChatGptTurnContainer, ChatGptTurnRole, ExportSelectionOptions } from './type';
+import type {
+  ChatGptTurnContainer,
+  ChatGptTurnRole,
+  ConversationPreparation,
+  ExportSelectionOptions,
+} from './type';
 
 /**
  * Export entry points for ChatGPT.
@@ -60,7 +65,7 @@ let preparation = 0;
  */
 const lastHosts = new Map<string, HTMLElement>();
 
-/** Forget the last crawl and stop watching the thread, once the export session ends. */
+/** Forget the last crawl and stop watching the thread. */
 export function resetChatGptThreadSnapshot(): void {
   snapshot = null;
   watch?.stop();
@@ -73,19 +78,30 @@ function isAbortError(error: unknown): boolean {
 }
 
 /**
- * Crawl the current thread before selection mode opens. Resolves true when it
- * handled the preparation: a failed crawl leaves an empty snapshot and still
- * resolves true. Resolves false on the earlier DOM; cancellation rejects.
+ * Crawl the current thread before selection mode opens. Resolves with the
+ * release for its session when it handled the preparation: a failed crawl
+ * leaves an empty snapshot and still resolves. Resolves null on the earlier
+ * DOM; cancellation rejects after releasing.
+ *
+ * The release drops the snapshot and its watch only while this is still the
+ * latest preparation, so an export that ends late (one cancelled during its
+ * scroll restore, say) cannot clear the export that replaced it.
  */
-export async function prepareChatGptExport(options: ChatGptCrawlOptions = {}): Promise<boolean> {
+export async function prepareChatGptExport(
+  options: ChatGptCrawlOptions = {},
+): Promise<ConversationPreparation | null> {
   resetChatGptThreadSnapshot();
   // The earlier DOM keeps its scroll-to-top preparation.
-  if (!hasRenderedThread()) return false;
+  if (!hasRenderedThread()) return null;
   const current = ++preparation;
   const route = normalizedConversationUrl(options.expectedUrl ?? location.href);
   snapshot = { route, messages: null, failure: 'chatgpt_export_thread_incomplete' };
   const versions = watchThreadVersions();
   watch = versions;
+  // A newer preparation has already stopped this one's watch and replaced its snapshot.
+  const release = (): void => {
+    if (current === preparation) resetChatGptThreadSnapshot();
+  };
   try {
     const messages = await crawlChatGptThread(options);
     // A newer preparation owns the snapshot, even when it failed.
@@ -94,12 +110,14 @@ export async function prepareChatGptExport(options: ChatGptCrawlOptions = {}): P
       snapshot = { route, messages, failure: '' };
     }
   } catch (error) {
-    // Only this preparation's own watch: a newer one has already replaced it.
+    if (isAbortError(error)) {
+      release();
+      throw error;
+    }
     versions.stop();
-    if (isAbortError(error)) throw error;
     console.warn('[Gemini Voyager] ChatGPT export could not read the whole conversation:', error);
   }
-  return true;
+  return { release };
 }
 
 function currentSnapshot(): ThreadSnapshot | null {

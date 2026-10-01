@@ -402,12 +402,24 @@ while an active plugin has domOps`).
 
 - **Trap:** A successful preparation kept its thread watch after the selection was exported,
   cancelled or torn down, so every later mutation in the conversation rescanned turns.
-- **Rule:** `runPreparedExport` (`src/pages/content/export/preparedExport.ts`) calls the adapter's
-  `releaseConversation` once the selection session settles, however it ends; ChatGPT's release
-  forgets the crawl and stops the watch.
+- **Rule:** `runPreparedExport` (`src/pages/content/export/preparedExport.ts`) calls `release()` on
+  what the adapter's `prepareConversation` returned once the selection session settles, however it
+  ends; ChatGPT's release forgets the crawl and stops the watch.
 - **Guard:** `src/pages/content/export/__tests__/preparedExport.test.ts`
   (`watches the ChatGPT thread during selection and stops once the session ends`,
   `stops watching the ChatGPT thread when the session fails`).
+
+## A late ChatGPT export cleanup leaves the newer export intact
+
+- **Trap:** The crawl's scroll restore cannot be cancelled, so a new export could start preparing
+  while the cancelled one was still restoring; the old export's cleanup then cleared the global
+  snapshot and watch the new one had just made, and the new export listed an empty conversation.
+- **Rule:** `prepareConversation` resolves a `ConversationPreparation` whose `release()` is bound to
+  that preparation's generation and does nothing once a newer preparation has started;
+  `runPreparedExport` releases only what its own preparation returned.
+- **Guard:** `src/pages/content/export/__tests__/preparedExport.test.ts`
+  (`leaves the export that replaced one cancelled during its scroll restore intact`,
+  `ignores a release from a preparation that a newer one replaced`).
 
 ## ChatGPT export publishes only its latest, uncancelled crawl
 
