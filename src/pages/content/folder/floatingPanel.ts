@@ -3,6 +3,7 @@ import { isSafari } from '@/core/utils/browser';
 import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import type { ConversationSortMode } from '@/features/folder/model/folderData';
 
+import { clearOfPromptTrigger } from '../prompt/triggerClearance';
 import panelCss from './floatingPanel.css?raw';
 import { FLOATING_PANEL_CLASS, type TreeActions, t } from './floatingTree/shared';
 import { mountFolderTree } from './floatingTree/treeController';
@@ -106,10 +107,11 @@ function isSameSize(a: FloatingPanelSize, b: FloatingPanelSize): boolean {
 }
 
 function defaultPos(size: FloatingPanelSize): FloatingPanelPos {
-  return {
+  return clearOfPromptTrigger({
     x: Math.max(MIN_MARGIN, window.innerWidth - size.w - 24),
     y: Math.max(MIN_MARGIN, window.innerHeight - size.h - 24),
-  };
+    ...size,
+  });
 }
 
 function createIconButton(

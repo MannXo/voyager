@@ -82,6 +82,7 @@ import { collectAllTags, dedupeTags } from './promptTags';
 import { getScrollHintState } from './scrollHint';
 import { formatStarredMessageTime } from './starredLibrary';
 import { sanitizeSelectedTags } from './tagFilterState';
+import { PROMPT_TRIGGER_ELEMENT_ID } from './triggerClearance';
 import {
   applyTriggerLogoFromStorageChange,
   createTriggerLogoImage,
@@ -107,7 +108,7 @@ const STORAGE_KEYS = {
 } as const;
 
 const ID = {
-  trigger: 'gv-pm-trigger',
+  trigger: PROMPT_TRIGGER_ELEMENT_ID,
   panel: 'gv-pm-panel',
 } as const;
 

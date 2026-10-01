@@ -216,6 +216,20 @@ drop, or hover layout.
   `does not leave a FAB or immediately reopen after closing an automatic fallback`, and
   `clears every floating fallback entry point when the sidebar recovers`).
 
+## The floating folder button and panel must open clear of the Prompt Manager ball
+
+- **Trap:** In floating folder mode the closed-panel button defaulted to 24px in from the
+  bottom-right corner and the ball to 18px, so the button (z-index 2147483645) sat on the ball at
+  every window size and the ball could not be clicked. The open panel's default spot covered it
+  too. Both features own that corner independently, and the ChatGPT folder plugin mounts the same
+  button and panel.
+- **Rule:** Default spots in `floatingModeFab.ts` and `floatingPanel.ts` go through
+  `clearOfPromptTrigger` (`src/pages/content/prompt/triggerClearance.ts`): the ball's live box
+  when it is on screen, else its default slot mirrored for RTL; beside it towards the page first,
+  since the Research Pack launcher sits above it. A default button follows the corner on resize.
+  A position the user saved by dragging is never moved.
+- **Guard:** `src/pages/content/folder/__tests__/promptTriggerClearance.test.ts`.
+
 ## A pending floating mount must preserve the latest requested mode
 
 - **Trap:** Stopping and restarting the folder runtime during an asynchronous floating mount could
