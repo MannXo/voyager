@@ -5,9 +5,19 @@ export const SHADOW_RTL_ATTR = 'data-gv-rtl';
 
 const RTL_CLASS = 'gv-rtl';
 
+const TYPING_EVENTS = ['keydown', 'keypress', 'keyup'] as const;
+
+function isTextField(target: EventTarget | undefined): boolean {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    (target instanceof HTMLElement && target.isContentEditable)
+  );
+}
+
 export type ShadowSurface = {
   root: ShadowRoot;
-  /** Stops mirroring the page; the caller removes the host. */
+  /** Stops mirroring the page and releases the key boundary; the caller removes the host. */
   disconnect: () => void;
 };
 
@@ -36,7 +46,22 @@ export function attachShadowSurface(host: HTMLElement, css: string): ShadowSurfa
     observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
   }
 
-  return { root, disconnect: () => observer.disconnect() };
+  // Page listeners see the host, not the field, as the target, so a page's
+  // "type anywhere to focus the prompt" or single-key shortcut would take
+  // keystrokes meant for a field in this surface. Keep them inside. This runs
+  // after the field's own handlers; page capture listeners still run first.
+  const keepTypingInside = (event: Event) => {
+    if (isTextField(event.composedPath()[0])) event.stopPropagation();
+  };
+  for (const type of TYPING_EVENTS) root.addEventListener(type, keepTypingInside);
+
+  return {
+    root,
+    disconnect: () => {
+      observer.disconnect();
+      for (const type of TYPING_EVENTS) root.removeEventListener(type, keepTypingInside);
+    },
+  };
 }
 
 /** Whether `event` passed through `node`, across shadow boundaries. */

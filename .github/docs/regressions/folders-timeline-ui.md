@@ -630,12 +630,17 @@ locale for every literal key the folder UI translates`, `confirms library drops 
   retargeted to the shadow host. The timeline shortcuts (plain `j`/`k`/`g` in a window
   capture listener that calls `preventDefault`) and input vim mode's `i` therefore swallowed
   letters typed into a folder name, and `panel.contains(e.target)` checks treated clicks inside
-  the panel as outside clicks.
+  the panel as outside clicks. The host page's own listeners have the same blind spot: in
+  headless Chrome, a page "type anywhere to focus the prompt" handler moved every keystroke from
+  the folder name into the page's prompt box.
 - **Rule:** A guard that skips "the user is typing" reads `composedEventTarget` and
   `deepActiveElement` from `src/core/utils/composedTarget.ts`. Inside-or-outside checks against
   a shadow-rooted panel use `event.composedPath()` (`eventPassedThrough` in
   `folder/shadowHost.ts`), and focus checks read the shadow root's `activeElement`. Read
-  `composedPath()` during dispatch; it is empty afterwards.
+  `composedPath()` during dispatch; it is empty afterwards. Page code cannot be changed, so
+  `attachShadowSurface` stops `keydown`, `keypress` and `keyup` from a text field at the shadow
+  root. That stops page bubble-phase listeners only; a page capture-phase listener still runs
+  before the field sees the key.
 - **Guard:** `src/core/services/__tests__/KeyboardShortcutService.test.ts` (`ignores shortcuts
 typed into an input inside an open shadow root`),
   `src/pages/content/chatInput/__tests__/vimModeShadowTarget.test.ts`,

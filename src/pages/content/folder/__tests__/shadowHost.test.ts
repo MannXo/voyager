@@ -71,6 +71,55 @@ describe('attachShadowSurface', () => {
   });
 });
 
+describe('typing inside a shadow surface', () => {
+  function keysSeenByPage(dispatchFrom: (root: ShadowRoot) => Element): string[] {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const surface = attachShadowSurface(host, '');
+    const seen: string[] = [];
+    const pageShortcut = (e: KeyboardEvent) => seen.push(`${e.type}:${e.key}`);
+    document.addEventListener('keydown', pageShortcut);
+    document.addEventListener('keyup', pageShortcut);
+    try {
+      const origin = dispatchFrom(surface.root);
+      for (const type of ['keydown', 'keyup']) {
+        origin.dispatchEvent(new KeyboardEvent(type, { key: 'j', bubbles: true, composed: true }));
+      }
+      surface.disconnect();
+      origin.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'k', bubbles: true, composed: true }),
+      );
+    } finally {
+      document.removeEventListener('keydown', pageShortcut);
+      document.removeEventListener('keyup', pageShortcut);
+    }
+    return seen;
+  }
+
+  it('keeps keys typed into a field away from page listeners until disconnected', () => {
+    const fieldKeys = keysSeenByPage((root) => root.appendChild(document.createElement('input')));
+    expect(fieldKeys).toEqual(['keydown:k']);
+  });
+
+  it('still lets keys on other controls reach the page', () => {
+    const buttonKeys = keysSeenByPage((root) => root.appendChild(document.createElement('button')));
+    expect(buttonKeys).toEqual(['keydown:j', 'keyup:j', 'keydown:k']);
+  });
+
+  it('still runs the field’s own key handler', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const { root } = attachShadowSurface(host, '');
+    const input = root.appendChild(document.createElement('input'));
+    const own = vi.fn();
+    input.addEventListener('keydown', own);
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, composed: true }),
+    );
+    expect(own).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('floating panel host', () => {
   it('follows the page scheme until the panel is destroyed', async () => {
     document.documentElement.setAttribute(SCHEME_ATTR, 'light');
