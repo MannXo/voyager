@@ -3305,5 +3305,13 @@
   "researchPackNoComposer": {
     "message": "No hay cuadro de mensaje en esta página",
     "description": "Research pack: no composer found"
+  },
+  "researchPackLoadFailed": {
+    "message": "No se pudo cargar el paquete",
+    "description": "Research pack: the stored pack could not be read; shown with a retry button"
+  },
+  "researchPackRetry": {
+    "message": "Reintentar",
+    "description": "Research pack: button that reads the pack again after a failure"
   }
 }

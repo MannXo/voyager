@@ -1,18 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import type { ResearchPackStore } from '@/features/researchPack/services/packStore';
 
 import { startResearchPack } from '../index';
 import {
+  clickAdd,
   emitStorageChange,
   flush,
   geminiPageUrl,
   packOf,
   sharedStorage,
   shownItems,
+  turn,
 } from './fixtures';
 
 const GLOBAL = StorageKeys.RESEARCH_PACK;
+
+const loadError = () => document.querySelector<HTMLElement>('.gv-rp-load-error')!;
+const retryButton = () => loadError().querySelector<HTMLButtonElement>('button')!;
+const instructionBox = () => document.querySelector<HTMLTextAreaElement>('#gv-rp-instruction')!;
+const footerButtons = () =>
+  Array.from(document.querySelectorAll<HTMLButtonElement>('.gv-rp-actions button'));
 
 describe('research pack recovery', () => {
   let stop: (() => void) | null = null;
@@ -28,6 +37,89 @@ describe('research pack recovery', () => {
     stop = null;
     document.body.innerHTML = '';
     history.replaceState(null, '', '/');
+  });
+
+  describe('when the scope cannot be resolved at first', () => {
+    const failingOnce = () => {
+      let calls = 0;
+      return vi.fn(async () => {
+        calls += 1;
+        if (calls === 1) throw new Error('isolation setting unreadable');
+        return GLOBAL;
+      });
+    };
+
+    it('resolves it again when the user adds an answer', async () => {
+      const shared = sharedStorage();
+      const host = turn('<p>Added after storage recovered.</p>');
+      stop = startResearchPack({
+        pageUrl: geminiPageUrl,
+        store: shared.store,
+        resolveKey: failingOnce(),
+      });
+      await flush();
+      expect(loadError().hidden).toBe(false);
+
+      clickAdd(host);
+      await flush();
+
+      expect(shared.at(GLOBAL).map((item) => item.text)).toEqual([
+        'Added after storage recovered.',
+      ]);
+      expect(shownItems()).toEqual(['Added after storage recovered.']);
+      expect(loadError().hidden).toBe(true);
+    });
+
+    it('resolves it again from the Retry button', async () => {
+      const shared = sharedStorage({ [GLOBAL]: packOf('stored item') });
+      stop = startResearchPack({
+        pageUrl: geminiPageUrl,
+        store: shared.store,
+        resolveKey: failingOnce(),
+      });
+      await flush();
+      expect(shownItems()).toEqual([]);
+
+      retryButton().click();
+      await flush();
+
+      expect(shownItems()).toEqual(['stored item']);
+      expect(loadError().hidden).toBe(true);
+      expect(instructionBox().disabled).toBe(false);
+    });
+  });
+
+  it('shows a load failure with Retry, and keeps editing blocked until a load succeeds', async () => {
+    const shared = sharedStorage({ [GLOBAL]: { ...packOf('stored item'), instruction: 'Keep' } });
+    let failLoads = 2;
+    const store: ResearchPackStore = {
+      load: async (key) => {
+        if (failLoads > 0) {
+          failLoads -= 1;
+          throw new Error('storage.local unavailable');
+        }
+        return shared.store.load(key);
+      },
+      apply: (key, op) => shared.store.apply(key, op),
+    };
+    stop = startResearchPack({ pageUrl: geminiPageUrl, store, resolveKey: async () => GLOBAL });
+    await flush();
+
+    expect(loadError().hidden).toBe(false);
+    expect(instructionBox().disabled).toBe(true);
+    expect(footerButtons().every((button) => button.disabled)).toBe(true);
+
+    retryButton().click();
+    await flush();
+    expect(loadError().hidden).toBe(false);
+    expect(instructionBox().disabled).toBe(true);
+
+    retryButton().click();
+    await flush();
+    expect(loadError().hidden).toBe(true);
+    expect(shownItems()).toEqual(['stored item']);
+    expect(instructionBox().disabled).toBe(false);
+    expect(instructionBox().value).toBe('Keep');
   });
 
   it('never brings back a pack from before it was removed, once it has been recreated', async () => {

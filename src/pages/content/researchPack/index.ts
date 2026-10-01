@@ -155,11 +155,16 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     }
   };
 
+  /** Editing stays blocked; the panel says the pack could not be read and offers Retry. */
+  const showLoadFailure = (): void => {
+    panel.render(pack, markdown(), { replaceInstruction: true, loadFailed: true });
+  };
+
   const load = async (key: string): Promise<void> => {
     try {
       offer(key, await store.load(key));
     } catch {
-      // Stay locked and empty; the next write to this pack still renders.
+      if (!stopped && key === view.key && view.revision === null) showLoadFailure();
     }
   };
 
@@ -176,7 +181,8 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     view = { key, revision: null };
     pack = createEmptyPack();
     panel.render(pack, markdown(), { replaceInstruction: true, locked: true });
-    if (key !== null) void load(key);
+    if (key === null) showLoadFailure();
+    else void load(key);
   };
 
   const settle = (check: ScopeCheck, key: string | null): void => {
@@ -188,20 +194,21 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
       return;
     }
     settled = { identity: check.identity, key };
-    if (key !== view.key) showPack(key);
+    if (key !== view.key || key === null) showPack(key);
   };
 
   /**
    * Match the scope to the page as it is now. Any change of route, email,
    * platform or isolation setting is resolved; only a different key switches
    * the pack on screen. Returns the running check for the current context, or
-   * null when the settled scope already matches it.
+   * null when the settled scope already matches it. A scope that failed to
+   * resolve is only tried again on `retryFailed` (Add and Retry), not on every scan.
    */
-  const checkScope = (): ScopeCheck | null => {
+  const checkScope = (retryFailed = false): ScopeCheck | null => {
     const context = readContext();
     const identity = identityOf(context);
     if (checking?.identity === identity) return checking;
-    if (settled?.identity === identity) {
+    if (settled?.identity === identity && !(retryFailed && settled.key === null)) {
       checking = null;
       return null;
     }
@@ -217,10 +224,18 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
 
   /** The pack for what the page shows now, waiting for its check if one is running. */
   const keyForPage = async (): Promise<string> => {
-    const check = checkScope();
+    const check = checkScope(true);
     const key = check ? await check.key : (settled?.key ?? null);
     if (key === null) throw new Error('This page has no research pack scope');
     return key;
+  };
+
+  /** After a failure: resolve the scope again, or read the pack on screen again. */
+  const retry = (): void => {
+    if (view.revision !== null) return;
+    panel.render(pack, markdown(), { replaceInstruction: true, locked: true });
+    if (view.key === null) checkScope(true);
+    else void load(view.key);
   };
 
   /** Panel edits act on the pack on screen, and only once it has rendered. */
@@ -235,6 +250,7 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     // The text belongs to the pack on screen, so it is saved there.
     onInstructionChange: (instruction) => editShown({ kind: 'setInstruction', instruction }),
     onClear: () => void editShown({ kind: 'clear' }),
+    onRetry: retry,
     // Exports hand over the pack on screen; the buttons are disabled while it loads.
     onCopy: () => {
       void navigator.clipboard

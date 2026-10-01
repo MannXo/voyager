@@ -22,6 +22,8 @@ export interface ResearchPackPanelActions {
   onDownload: () => void;
   onInsert: () => void;
   onClear: () => void;
+  /** Read the pack again after a failed load. */
+  onRetry: () => void;
 }
 
 export interface ResearchPackPanel {
@@ -30,12 +32,13 @@ export interface ResearchPackPanel {
    * Show `pack`. The instruction box keeps what the user is typing unless
    * `replaceInstruction` is set, which the first snapshot of a scope uses so
    * one account's text never stays on screen for another. `locked` disables
-   * every edit and action while a scope has no snapshot yet.
+   * every edit and action while a scope has no snapshot yet; `loadFailed` also
+   * says so and offers Retry.
    */
   render: (
     pack: ResearchPack,
     markdown: string,
-    options?: { replaceInstruction?: boolean; locked?: boolean },
+    options?: { replaceInstruction?: boolean; locked?: boolean; loadFailed?: boolean },
   ) => void;
   open: () => void;
   close: () => void;
@@ -107,6 +110,14 @@ export function createResearchPackPanel(
   closeButton.type = 'button';
   header.append(title, count, closeButton);
 
+  const loadError = el('div', 'gv-rp-load-error');
+  loadError.hidden = true;
+  loadError.setAttribute('role', 'alert');
+  const loadErrorText = el('p', 'gv-rp-load-error-text');
+  const retryButton = el('button', 'gv-rp-btn');
+  retryButton.type = 'button';
+  loadError.append(loadErrorText, retryButton);
+
   const empty = el('p', 'gv-rp-empty');
   const list = el('ol', 'gv-rp-list');
 
@@ -137,7 +148,7 @@ export function createResearchPackPanel(
   footer.append(insertButton, copyButton, downloadButton, clearButton);
 
   const body = el('div', 'gv-rp-body');
-  body.append(empty, list, instructionLabel, instruction, preview);
+  body.append(loadError, empty, list, instructionLabel, instruction, preview);
   panel.append(header, body, status, footer);
   const toast = el('div', 'gv-rp-toast');
   toast.hidden = true;
@@ -251,6 +262,8 @@ export function createResearchPackPanel(
     closeButton.setAttribute('aria-label', t('researchPackClose'));
     closeButton.title = t('researchPackClose');
     empty.textContent = t('researchPackEmpty');
+    loadErrorText.textContent = t('researchPackLoadFailed');
+    retryButton.textContent = t('researchPackRetry');
     instructionLabel.textContent = t('researchPackInstructionLabel');
     instruction.placeholder = t('researchPackInstructionPlaceholder');
     previewSummary.textContent = t('researchPackPreview');
@@ -267,9 +280,11 @@ export function createResearchPackPanel(
   const render = (
     pack: ResearchPack,
     markdown: string,
-    options: { replaceInstruction?: boolean; locked?: boolean } = {},
+    options: { replaceInstruction?: boolean; locked?: boolean; loadFailed?: boolean } = {},
   ): void => {
-    const locked = options.locked === true;
+    const loadFailed = options.loadFailed === true;
+    const locked = loadFailed || options.locked === true;
+    loadError.hidden = !loadFailed;
     currentPack = pack;
     panel.setAttribute('aria-busy', String(locked));
     instruction.disabled = locked;
@@ -277,7 +292,7 @@ export function createResearchPackPanel(
     if (locked) confirmSurfaces.close();
     count.textContent = format(t('researchPackItemCount'), { count: pack.items.length });
     const hasItems = pack.items.length > 0;
-    empty.hidden = hasItems;
+    empty.hidden = hasItems || loadFailed;
     list.replaceChildren(
       ...pack.items.map((item, index) => renderItem(item, index, pack.items.length)),
     );
@@ -311,6 +326,7 @@ export function createResearchPackPanel(
   };
 
   launcher.addEventListener('click', open);
+  retryButton.addEventListener('click', () => actions.onRetry());
   closeButton.addEventListener('click', close);
   panel.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape' || confirmSurfaces.isOpen()) return;

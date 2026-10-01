@@ -3305,5 +3305,13 @@
   "researchPackNoComposer": {
     "message": "このページに入力欄が見つかりません",
     "description": "Research pack: no composer found"
+  },
+  "researchPackLoadFailed": {
+    "message": "パックを読み込めませんでした",
+    "description": "Research pack: the stored pack could not be read; shown with a retry button"
+  },
+  "researchPackRetry": {
+    "message": "再試行",
+    "description": "Research pack: button that reads the pack again after a failure"
   }
 }

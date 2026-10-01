@@ -3305,5 +3305,13 @@
   "researchPackNoComposer": {
     "message": "На этой странице нет поля ввода",
     "description": "Research pack: no composer found"
+  },
+  "researchPackLoadFailed": {
+    "message": "Не удалось загрузить пакет",
+    "description": "Research pack: the stored pack could not be read; shown with a retry button"
+  },
+  "researchPackRetry": {
+    "message": "Повторить",
+    "description": "Research pack: button that reads the pack again after a failure"
   }
 }

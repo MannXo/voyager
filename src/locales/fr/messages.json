@@ -3305,5 +3305,13 @@
   "researchPackNoComposer": {
     "message": "Aucune zone de saisie sur cette page",
     "description": "Research pack: no composer found"
+  },
+  "researchPackLoadFailed": {
+    "message": "Impossible de charger le dossier",
+    "description": "Research pack: the stored pack could not be read; shown with a retry button"
+  },
+  "researchPackRetry": {
+    "message": "Réessayer",
+    "description": "Research pack: button that reads the pack again after a failure"
   }
 }
