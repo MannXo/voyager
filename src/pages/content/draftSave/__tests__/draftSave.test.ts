@@ -4,6 +4,9 @@ import { StorageKeys } from '@/core/types/common';
 
 import { buildInstructionBlock } from '../../folderProject/instructionBlock';
 
+/** Mirrors the module's send-detection poll interval. */
+const SEND_CHECK_INTERVAL_MS = 1000;
+
 type StorageChangeListener = (
   changes: Record<string, chrome.storage.StorageChange>,
   area: string,
@@ -402,5 +405,58 @@ describe('draftSave', () => {
 
     // Storage listener should be removed
     expect(chrome.storage.onChanged.removeListener).toHaveBeenCalled();
+  });
+
+  it('does not look up the input while unrelated content streams into the page', async () => {
+    setupMocks(true);
+    let rectReads = 0;
+    const input = document.createElement('div');
+    input.setAttribute('contenteditable', 'true');
+    input.setAttribute('role', 'textbox');
+    Object.defineProperty(input, 'getBoundingClientRect', {
+      value: () => {
+        rectReads += 1;
+        return { height: 100, width: 500, top: 0, left: 0, bottom: 100, right: 500 };
+      },
+    });
+    document.body.appendChild(input);
+    const { startDraftSave } = await import('../index');
+    const cleanup = await startDraftSave();
+    // Start right after a send-detection tick so the poller stays out of the window.
+    vi.advanceTimersByTime(SEND_CHECK_INTERVAL_MS);
+
+    rectReads = 0;
+    const querySpy = vi.spyOn(document, 'querySelectorAll');
+    const chat = document.createElement('div');
+    document.body.appendChild(chat);
+    for (let i = 0; i < 30; i++) {
+      const chunk = document.createElement('p');
+      chunk.textContent = `Streamed chunk ${i}`;
+      chat.appendChild(chunk);
+      await vi.advanceTimersByTimeAsync(16);
+    }
+
+    expect(rectReads).toBe(0);
+    expect(querySpy).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  it('follows Gemini when it replaces the chat input', async () => {
+    setupMocks(true);
+    const original = createContentEditable();
+    const { startDraftSave } = await import('../index');
+    const cleanup = await startDraftSave();
+
+    original.remove();
+    const replacement = createContentEditable();
+    await vi.advanceTimersByTimeAsync(16);
+
+    replacement.textContent = 'Typed into the new composer';
+    replacement.dispatchEvent(new Event('input', { bubbles: true }));
+    vi.advanceTimersByTime(1000);
+
+    const draft = localStore['gvDraft_/app/test-conversation-123'] as { content: string };
+    expect(draft.content).toBe('Typed into the new composer');
+    cleanup();
   });
 });

@@ -580,11 +580,17 @@ drop, or hover layout.
   reported the list freezing (#1040). Quote Reply's body observer resolved the live chat input for
   every mutation record, and that lookup calls `getBoundingClientRect()`. Gemini appends sidebar
   rows individually, so each page forced repeated synchronous layout over the growing sidebar.
+  Draft auto-save did the same: every body mutation batch re-ran its visible-input lookup, which
+  reads `getBoundingClientRect()`, even while its attached input was still connected.
 - **Rule:** Filter body-wide observer records with selectors (`closest`, `matches`,
   `querySelector`) only. Resolve live elements or read geometry after the debounce, once, and only
-  when a record is relevant.
+  when a record is relevant. A listener bound to a live element needs a lookup only when that
+  element is detached or an added node is or contains a candidate.
 - **Guard:** `src/pages/content/quoteReply/__tests__/renderedQuotes.test.ts`
-  (`does not measure layout while unrelated rows stream into the page`).
+  (`does not measure layout while unrelated rows stream into the page`) and
+  `src/pages/content/draftSave/__tests__/draftSave.test.ts`
+  (`does not look up the input while unrelated content streams into the page`,
+  `follows Gemini when it replaces the chat input`).
 
 ## Native title sync must not match every sidebar row against every stored conversation
 

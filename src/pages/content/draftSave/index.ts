@@ -65,6 +65,7 @@ const INPUT_SELECTORS = [
   '.input-area textarea',
   'textarea[placeholder*="Ask"]',
 ] as const;
+const INPUT_SELECTOR_LIST = INPUT_SELECTORS.join(', ');
 
 // ============================================================================
 // State
@@ -72,6 +73,7 @@ const INPUT_SELECTORS = [
 
 let isEnabled = false;
 let observer: MutationObserver | null = null;
+let inputLookupFrame: number | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let sendCheckTimer: ReturnType<typeof setInterval> | null = null;
 let stopRouteWatcher: (() => void) | null = null;
@@ -533,16 +535,36 @@ function stopUrlWatcher(): void {
 // ============================================================================
 
 /**
+ * Whether a body mutation batch can change which chat input to listen to.
+ * Selector and identity checks only: finding the input reads layout, and
+ * Gemini mutates `body` for every streamed chunk and sidebar row (#1040).
+ */
+function mutationsMayReplaceChatInput(mutations: readonly MutationRecord[]): boolean {
+  if (!attachedInput?.isConnected) return true;
+  for (const mutation of mutations) {
+    for (const node of Array.from(mutation.addedNodes)) {
+      if (!(node instanceof Element)) continue;
+      if (node.matches(INPUT_SELECTOR_LIST) || node.querySelector(INPUT_SELECTOR_LIST)) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Setup observer to watch for dynamically added input elements.
  */
 function setupObserver(): void {
   if (observer) return;
 
-  observer = new MutationObserver(() => {
-    const input = findChatInput();
-    if (input) {
-      attachInputListener(input);
-    }
+  observer = new MutationObserver((mutations) => {
+    if (inputLookupFrame !== null || !mutationsMayReplaceChatInput(mutations)) return;
+    inputLookupFrame = window.requestAnimationFrame(() => {
+      inputLookupFrame = null;
+      const input = findChatInput();
+      if (input) {
+        attachInputListener(input);
+      }
+    });
   });
 
   observer.observe(document.body, {
@@ -558,6 +580,10 @@ function disconnectObserver(): void {
   if (observer) {
     observer.disconnect();
     observer = null;
+  }
+  if (inputLookupFrame !== null) {
+    window.cancelAnimationFrame(inputLookupFrame);
+    inputLookupFrame = null;
   }
 }
 
