@@ -247,6 +247,26 @@ describe('ChatGPT folders sidebar guide', () => {
     expect(bubble()).not.toBeNull();
   });
 
+  it('waits while the header is hidden, and shows once it is visible', async () => {
+    // jsdom caches computed styles inside a shadow root, so the style is stubbed.
+    let hidden = true;
+    const computed = window.getComputedStyle.bind(window);
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+      const style = computed(element, pseudo);
+      if (!hidden || !isHeader(element)) return style;
+      return new Proxy(style, {
+        get: (target, key) => (key === 'visibility' ? 'hidden' : Reflect.get(target, key)),
+      });
+    });
+    await activate();
+    expect(bubble()).toBeNull();
+
+    hidden = false;
+    sidebar.sidebar.dispatchEvent(new Event('scroll'));
+    await nextPass();
+    expect(bubble()).not.toBeNull();
+  });
+
   it('closes unseen when the header scrolls away, and comes back with it', async () => {
     sidebar.sidebar.style.overflowY = 'auto';
     place((element) => element === sidebar.sidebar, { top: 0, left: 0, width: 260, height: 400 });
