@@ -18,6 +18,7 @@ import { resolveStyleFileContributions } from '../sources/styleFiles';
 import type { PluginManifest } from '../types';
 import { toLocalPluginId } from './localPluginId';
 import {
+  LocalPluginChangedError,
   type LocalPluginRecord,
   type LocalPluginRecordMap,
   loadLocalPluginRecords,
@@ -137,18 +138,41 @@ export type LocalPluginImportResult =
       readonly issues: readonly ManifestIssue[];
       /** Version still installed under the same id; a failed import never replaces it. */
       readonly previousVersion?: string;
+      /** The install changed after the user reviewed it; review again before importing. */
+      readonly changedSinceReview?: true;
     };
 
 export interface LocalPluginImportDeps {
   readonly loadRecords: () => Promise<LocalPluginRecordMap>;
-  /** Store the manifest and switch the plugin off in one write; reject on any failure. */
-  readonly installDisabled: (manifest: Readonly<Record<string, unknown>>) => Promise<void>;
+  /**
+   * Store the manifest and switch the plugin off in one write; reject on any
+   * failure, and with `LocalPluginChangedError` when `expectedInstalled` is
+   * given and the install under the id is no longer that one.
+   */
+  readonly installDisabled: (
+    manifest: Readonly<Record<string, unknown>>,
+    expectedInstalled?: string | null,
+  ) => Promise<void>;
 }
 
 const DEFAULT_DEPS: LocalPluginImportDeps = {
   loadRecords: loadLocalPluginRecords,
-  installDisabled: (manifest) => saveLocalPluginRecord(manifest),
+  installDisabled: (manifest, expectedInstalled) =>
+    saveLocalPluginRecord(
+      manifest,
+      Date.now(),
+      expectedInstalled === undefined ? {} : { expectedInstalled },
+    ),
 };
+
+export interface LocalPluginImportOptions {
+  /**
+   * `localPluginRecordSnapshot` of what was installed under the id when the
+   * user reviewed this manifest (the AI-reply preview). The import then lands
+   * only over that exact install; anything else returns `changedSinceReview`.
+   */
+  readonly expectedInstalled?: string | null;
+}
 
 function recordVersion(record: LocalPluginRecord | undefined): string | undefined {
   return typeof record?.manifest.version === 'string' ? record.manifest.version : undefined;
@@ -158,6 +182,7 @@ function recordVersion(record: LocalPluginRecord | undefined): string | undefine
 export async function importLocalPlugin(
   raw: unknown,
   deps: LocalPluginImportDeps = DEFAULT_DEPS,
+  options: LocalPluginImportOptions = {},
 ): Promise<LocalPluginImportResult> {
   const rawId =
     typeof raw === 'object' && raw !== null && 'id' in raw && typeof raw.id === 'string'
@@ -172,8 +197,17 @@ export async function importLocalPlugin(
 
   const { manifest } = result.data;
   try {
-    await deps.installDisabled(result.data.raw);
+    await deps.installDisabled(result.data.raw, options.expectedInstalled);
   } catch (error) {
+    if (error instanceof LocalPluginChangedError) {
+      const current = recordVersion((await deps.loadRecords())[manifest.id]);
+      return {
+        ok: false,
+        issues: [issue('', error.message)],
+        changedSinceReview: true,
+        ...(current ? { previousVersion: current } : {}),
+      };
+    }
     return {
       ok: false,
       issues: [issue('', error instanceof Error ? error.message : String(error))],

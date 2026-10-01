@@ -539,6 +539,21 @@ say`), `src/pages/content/platformTheme/__tests__/platformTheme.test.ts`.
 - **Guard:** `src/pages/popup/utils/__tests__/pluginEnablement.test.ts`
   (`refuses when the same id was re-imported with other content while the enable was pending`).
 
+## A previewed import lands only over the install it was previewed against
+
+- **Trap:** The AI-reply preview read the installed record when the reply was checked, and Import
+  ran later. Another popup could install, edit or remove the same id in between, so Import replaced
+  content the preview never mentioned (no "replaces vX" warning, or a stale one).
+- **Rule:** The preview keeps `localPluginRecordSnapshot` of the install (null when none), and the
+  import passes it as `expectedInstalled`. `saveLocalPluginRecord` compares it under the
+  plugin-storage lock and throws `LocalPluginChangedError` on any difference, writing nothing;
+  `importLocalPlugin` returns `changedSinceReview` and the popup re-checks the reply and asks for a
+  new review. Hand imports pass no snapshot and keep plain replace semantics.
+- **Guard:** `src/features/plugins/local/localPluginMutations.test.ts`
+  (`importing a reviewed manifest over the install it was reviewed against`),
+  `src/pages/popup/components/__tests__/LocalPluginComposer.test.tsx`
+  (`does not overwrite a plugin installed after the preview; it asks for a new review`).
+
 ## A content-script setting write must be ours, declared and reported
 
 - **Trap:** `gv.plugins.setSetting` stored any id/key/value from any sender, and the shared state

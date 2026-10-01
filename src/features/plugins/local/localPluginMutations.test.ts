@@ -11,6 +11,7 @@ import { setPluginEnabled } from '../storage/pluginState';
 import { importLocalPlugin } from './localPluginImport';
 import {
   loadLocalPluginRecords,
+  localPluginRecordSnapshot,
   removeLocalPluginRecord,
   saveLocalPluginRecord,
 } from './localPluginStore';
@@ -338,5 +339,66 @@ describe('restoring plugin state from Drive', () => {
     const { restorePluginState } = await import('../storage/pluginState');
     await restorePluginState({ [ID]: { enabled: true, installedAt: 1 } }, 'overwrite');
     expect(enabledIn(memory)).toBe(true);
+  });
+});
+
+describe('importing a reviewed manifest over the install it was reviewed against', () => {
+  async function reviewedSnapshot(): Promise<string | null> {
+    return localPluginRecordSnapshot((await loadLocalPluginRecords())[ID]);
+  }
+
+  it('refuses when the id was installed after the review, and overwrites nothing', async () => {
+    const reviewed = await reviewedSnapshot(); // nothing installed yet
+    memory[RECORDS] = { [ID]: stored(ID, '1.5.0') };
+    memory[STATE] = { [ID]: { enabled: true, installedAt: 1 } };
+    setCalls = 0;
+
+    const result = await importLocalPlugin(authored({ version: '2.0.0' }), undefined, {
+      expectedInstalled: reviewed,
+    });
+
+    expect(result).toMatchObject({ ok: false, changedSinceReview: true, previousVersion: '1.5.0' });
+    expect(setCalls).toBe(0);
+    expect(versionIn(memory)).toBe('1.5.0');
+    expect(enabledIn(memory)).toBe(true);
+  });
+
+  it('refuses when another import replaced the reviewed version first', async () => {
+    memory[RECORDS] = { [ID]: stored(ID, '1.0.0') };
+    const reviewed = await reviewedSnapshot();
+    // Another popup imports the same id between the preview and Import.
+    await importLocalPlugin(authored({ version: '1.0.0', description: 'edited elsewhere' }));
+
+    const result = await importLocalPlugin(authored({ version: '2.0.0' }), undefined, {
+      expectedInstalled: reviewed,
+    });
+    expect(result).toMatchObject({ ok: false, changedSinceReview: true });
+    const records = memory[RECORDS] as Record<string, { manifest: { description: string } }>;
+    expect(records[ID].manifest.description).toBe('edited elsewhere');
+  });
+
+  it('refuses when the reviewed install was removed meanwhile', async () => {
+    memory[RECORDS] = { [ID]: stored(ID, '1.0.0') };
+    const reviewed = await reviewedSnapshot();
+    await removeLocalPluginRecord(ID);
+
+    const result = await importLocalPlugin(authored({ version: '2.0.0' }), undefined, {
+      expectedInstalled: reviewed,
+    });
+    expect(result).toMatchObject({ ok: false, changedSinceReview: true });
+    expect(versionIn(memory)).toBeUndefined();
+  });
+
+  it('imports when the install is still the reviewed one', async () => {
+    memory[RECORDS] = { [ID]: stored(ID, '1.0.0') };
+    memory[STATE] = { [ID]: { enabled: true, installedAt: 1 } };
+    const reviewed = await reviewedSnapshot();
+
+    const result = await importLocalPlugin(authored({ version: '2.0.0' }), undefined, {
+      expectedInstalled: reviewed,
+    });
+    expect(result).toMatchObject({ ok: true, previousVersion: '1.0.0' });
+    expect(versionIn(memory)).toBe('2.0.0');
+    expect(enabledIn(memory)).toBe(false);
   });
 });

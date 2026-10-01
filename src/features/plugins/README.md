@@ -211,7 +211,9 @@ with any AI the user already uses, while Voyager itself stays offline:
   included, since reading its effect would be a guess. It builds on `inspectPlugin`, and
   the same inspect view opens under it on demand. **Import** hands the exact previewed
   object to `importLocalPlugin`, so it lands disabled and follows the re-import
-  rules above.
+  rules above, but only over the install the preview saw: if the same id was
+  installed, changed or removed meanwhile, nothing is written and the preview
+  is refreshed for a new review.
 
 The gate (`local/validateLocalManifest.ts`) is the remote catalog's gate plus
 local-only rules, never a weaker one: `validateManifest` with the CSS and

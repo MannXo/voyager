@@ -2889,6 +2889,10 @@
     "message": "the conversation area",
     "description": "Preview target: the scrolling conversation area"
   },
+  "localPluginChangedSinceReview": {
+    "message": "This plugin changed in Voyager while you were reviewing it, so nothing was overwritten. Check the updated preview, then import again.",
+    "description": "Shown when the previewed plugin id was installed, changed or removed before Import; nothing was written"
+  },
   "localPluginWarnCss": {
     "message": "Its CSS can change anything on the page, hiding included. Voyager doesn’t summarize CSS: read it below.",
     "description": "Warning: the plugin has CSS, which the preview shows but does not summarize"

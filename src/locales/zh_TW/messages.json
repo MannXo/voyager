@@ -2889,6 +2889,10 @@
     "message": "對話區域",
     "description": "Preview target: the scrolling conversation area"
   },
+  "localPluginChangedSinceReview": {
+    "message": "你檢視期間，Voyager 裡的這個外掛有了變動，所以沒有覆寫任何內容。請看一下更新後的預覽，再重新匯入。",
+    "description": "Shown when the previewed plugin id was installed, changed or removed before Import; nothing was written"
+  },
   "localPluginWarnCss": {
     "message": "它的 CSS 可以改動頁面上的任何東西，包括隱藏內容。Voyager 不會替你摘要 CSS，請直接看下方的原始碼。",
     "description": "Warning: the plugin has CSS, which the preview shows but does not summarize"

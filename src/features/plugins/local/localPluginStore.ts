@@ -101,6 +101,32 @@ export async function loadLocalPluginRecords(): Promise<LocalPluginRecordMap> {
 }
 
 /**
+ * What a review saw installed under one id: null when nothing was, else the
+ * stored record exactly (content and update time), so any import, edit or
+ * removal since then reads as a change.
+ */
+export function localPluginRecordSnapshot(record: LocalPluginRecord | undefined): string | null {
+  return record ? JSON.stringify([record.updatedAt, record.manifest]) : null;
+}
+
+/** The install under an id is no longer the one the user reviewed; nothing was written. */
+export class LocalPluginChangedError extends Error {
+  constructor(id: string) {
+    super(`${id} changed since it was reviewed`);
+    this.name = 'LocalPluginChangedError';
+  }
+}
+
+export interface SaveLocalPluginOptions {
+  /**
+   * `localPluginRecordSnapshot` of the install the user reviewed. When given,
+   * the save happens only while the install is still exactly that one, checked
+   * under the storage lock; otherwise it rejects with `LocalPluginChangedError`.
+   */
+  readonly expectedInstalled?: string | null;
+}
+
+/**
  * Store a VALIDATED manifest under its (namespaced) id, replacing any previous
  * version, and switch the plugin off in the SAME storage write. One write means
  * no observer (a page's PluginHost, another popup) can ever see the new
@@ -112,6 +138,7 @@ export async function loadLocalPluginRecords(): Promise<LocalPluginRecordMap> {
 export async function saveLocalPluginRecord(
   manifest: Readonly<Record<string, unknown>>,
   now: number = Date.now(),
+  options: SaveLocalPluginOptions = {},
 ): Promise<void> {
   const id = manifest.id;
   if (typeof id !== 'string' || !isLocalPluginId(id)) {
@@ -124,6 +151,12 @@ export async function saveLocalPluginRecord(
     const state = await readPluginStateStrict(local);
     const current = sanitizeLocalPluginRecords(stored);
     const previous = current[id];
+    if (
+      options.expectedInstalled !== undefined &&
+      localPluginRecordSnapshot(previous) !== options.expectedInstalled
+    ) {
+      throw new LocalPluginChangedError(id);
+    }
     if (!previous && Object.keys(current).length >= MAX_LOCAL_PLUGINS) {
       throw new Error(`at most ${MAX_LOCAL_PLUGINS} local plugins can be installed`);
     }

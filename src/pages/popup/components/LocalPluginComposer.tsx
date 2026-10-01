@@ -55,6 +55,7 @@ export function LocalPluginComposer({
   const [checked, setChecked] = useState<CheckedPluginReply | null>(null);
   const [checking, setChecking] = useState(false);
   const [details, setDetails] = useState(false);
+  const [changedSinceReview, setChangedSinceReview] = useState(false);
   const checkRun = useRef(0);
 
   const site = sites.find((candidate) => candidate.id === siteId) ?? null;
@@ -92,11 +93,13 @@ export function LocalPluginComposer({
     setChecked(null);
     setChecking(false);
     setDetails(false);
+    setChangedSinceReview(false);
   };
 
   const checkReply = async (): Promise<void> => {
     const run = (checkRun.current += 1);
     local.clearResult();
+    setChangedSinceReview(false);
     setChecking(true);
     let outcome: CheckedPluginReply;
     try {
@@ -114,8 +117,14 @@ export function LocalPluginComposer({
 
   const importPreviewed = async (): Promise<void> => {
     if (!checked?.ok) return;
-    const outcome = await local.importManifest(checked.raw);
-    if (outcome.ok) changeReply('');
+    const outcome = await local.importManifest(checked.raw, checked.installed);
+    if (outcome.ok) {
+      changeReply('');
+    } else if (outcome.changedSinceReview) {
+      // Nothing was written: refresh the preview against what is installed now.
+      await checkReply();
+      setChangedSinceReview(true);
+    }
   };
 
   return (
@@ -238,6 +247,12 @@ export function LocalPluginComposer({
             </>
           )}
         </div>
+      )}
+
+      {changedSinceReview && (
+        <p className="text-[11px] text-amber-700 dark:text-amber-400" role="alert">
+          {t('localPluginChangedSinceReview')}
+        </p>
       )}
 
       {checked?.ok && preview && (

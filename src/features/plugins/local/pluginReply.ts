@@ -8,7 +8,11 @@
 import type { ManifestIssue } from '../manifest/validate';
 import type { PluginManifest } from '../types';
 import { MAX_LOCAL_PLUGIN_IMPORT_CHARS, readLocalPluginFiles } from './localPluginImport';
-import { type LocalPluginRecordMap, loadLocalPluginRecords } from './localPluginStore';
+import {
+  type LocalPluginRecordMap,
+  loadLocalPluginRecords,
+  localPluginRecordSnapshot,
+} from './localPluginStore';
 import { validateLocalManifest } from './validateLocalManifest';
 
 /** Why no manifest text could be taken from a reply. */
@@ -85,6 +89,8 @@ export type CheckedPluginReply =
       readonly manifest: PluginManifest;
       /** Version installed under the same id, which an import would replace. */
       readonly previousVersion?: string;
+      /** `localPluginRecordSnapshot` of that install: the import lands only over it. */
+      readonly installed: string | null;
     }
   | { readonly ok: false; readonly problem: PluginReplyProblem }
   | { readonly ok: false; readonly issues: readonly ManifestIssue[] };
@@ -101,11 +107,13 @@ export async function checkPluginReply(
   const result = validateLocalManifest(read.data);
   if (!result.success) return { ok: false, issues: result.error };
   const { manifest } = result.data;
-  const installed = (await loadRecords())[manifest.id]?.manifest.version;
+  const record = (await loadRecords())[manifest.id];
+  const installedVersion = record?.manifest.version;
   return {
     ok: true,
     raw: read.data,
     manifest,
-    ...(typeof installed === 'string' ? { previousVersion: installed } : {}),
+    installed: localPluginRecordSnapshot(record),
+    ...(typeof installedVersion === 'string' ? { previousVersion: installedVersion } : {}),
   };
 }

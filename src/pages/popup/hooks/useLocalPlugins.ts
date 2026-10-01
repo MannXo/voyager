@@ -131,9 +131,13 @@ export function useLocalPlugins() {
     [runImport],
   );
 
-  /** A manifest already read and previewed (the AI-reply flow), imported as is. */
+  /**
+   * A manifest already read and previewed (the AI-reply flow), imported as is,
+   * and only over the install the preview was made against (`expectedInstalled`).
+   */
   const importManifest = useCallback(
-    (raw: unknown) => runImport(() => importLocalPlugin(raw)),
+    (raw: unknown, expectedInstalled: string | null) =>
+      runImport(() => importLocalPlugin(raw, undefined, { expectedInstalled })),
     [runImport],
   );
 

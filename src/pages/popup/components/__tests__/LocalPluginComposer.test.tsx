@@ -273,6 +273,36 @@ describe('describe a change → prompt → pasted reply → preview → import',
     ).not.toContain('localPluginWarnNotOnSite');
   });
 
+  it('does not overwrite a plugin installed after the preview; it asks for a new review', async () => {
+    await openComposer();
+    await checkReply(fenced(AUTHORED));
+    expect(
+      container.querySelector('[data-testid="local-plugin-warnings"]')?.textContent,
+    ).not.toContain('localPluginWarnReplaces');
+
+    // Another popup installs the same id while this preview is open.
+    memory[StorageKeys.PLUGIN_LOCAL_MANIFESTS] = {
+      'local.me.narrow': {
+        manifest: { ...AUTHORED, id: 'local.me.narrow', version: '0.5.0' },
+        importedAt: 1,
+        updatedAt: 1,
+      },
+    };
+    memory[StorageKeys.PLUGINS_STATE] = { 'local.me.narrow': { enabled: true, installedAt: 1 } };
+    (chrome.storage.local.set as unknown as Mock).mockClear();
+
+    await act(async () => button(container, 'localPluginDescribeImport').click());
+    await flush();
+
+    expect(chrome.storage.local.set).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('localPluginChangedSinceReview');
+    // The refreshed preview now names the version an import would replace.
+    expect(container.querySelector('[data-testid="local-plugin-warnings"]')?.textContent).toContain(
+      'localPluginWarnReplaces',
+    );
+    expect(container.querySelector('[role="status"]')).toBeNull();
+  });
+
   it('warns when the reply does not run on the site the prompt was written for', async () => {
     await openComposer('https://chatgpt.com/');
     await act(async () =>
