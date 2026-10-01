@@ -13,7 +13,10 @@ vi.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({
     language: 'en',
     setLanguage: vi.fn(),
-    t: (key: string) => key,
+    // Keys pass through, except the partial-restore template, so a test can
+    // read which parts it names.
+    t: (key: string) =>
+      key === 'syncRestorePartial' ? 'Restored: {restored}. Not restored: {failed} ({error})' : key,
   }),
 }));
 
@@ -150,5 +153,70 @@ describe('CloudSyncSettings restore failures', () => {
     expect(chromeMock.storage.local.set).not.toHaveBeenCalled();
     expect(chromeMock.storage.sync.set).not.toHaveBeenCalled();
     expect(container.textContent).toContain('syncError');
+  });
+
+  it('names the restored and the failed parts when a later write fails', async () => {
+    const sendMessageMock = vi.fn().mockImplementation((message: { type?: string }) => {
+      if (message.type === 'gv.sync.getState') {
+        return Promise.resolve({ ok: true, state: baseState });
+      }
+      if (message.type === 'gv.sync.download') {
+        return Promise.resolve({
+          ok: true,
+          state: { ...baseState, isAuthenticated: true },
+          // The background already pulled highlights before the popup writes anything.
+          highlights: { synced: true, count: 2 },
+          data: {
+            folders: { data: { folders: [], folderContents: {} } },
+            prompts: { items: [] },
+            settings: {
+              format: 'gemini-voyager.settings.v1',
+              exportedAt: new Date().toISOString(),
+              version: '1.0.0',
+              data: { [StorageKeys.MERMAID_ENABLED]: false },
+            },
+            plugins: {
+              format: 'gemini-voyager.plugins.v1',
+              exportedAt: new Date().toISOString(),
+              version: '1.0.0',
+              data: { cloud: { enabled: false, installedAt: 4 } },
+            },
+            starred: { data: { messages: {} } },
+          },
+        });
+      }
+      return Promise.resolve({ ok: true });
+    });
+
+    const chromeMock = createChromeMock(sendMessageMock);
+    (chromeMock.storage.local.set as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async (items: Record<string, unknown>) => {
+        if ('gvFolderData' in items) throw new Error('folders write failed');
+      },
+    );
+    (globalThis as { chrome: MockedChrome }).chrome = chromeMock;
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<CloudSyncSettings />);
+    });
+    await flushMicrotasks();
+
+    const downloadButton = Array.from(container.querySelectorAll('button')).find((btn) =>
+      (btn.textContent || '').includes('syncMerge'),
+    );
+    await act(async () => {
+      downloadButton?.click();
+    });
+    await flushMicrotasks();
+
+    expect(chromeMock.storage.local.set).toHaveBeenCalledWith(
+      expect.objectContaining({ [StorageKeys.PLUGINS_STATE]: expect.anything() }),
+    );
+    expect(chromeMock.storage.sync.set).toHaveBeenCalled();
+    expect(container.textContent).toContain(
+      'Restored: storageQuotaHighlights, pluginsTitle, storageQuotaSync. ' +
+        'Not restored: folder_title, promptDataMigration (folders write failed)',
+    );
   });
 });

@@ -1362,6 +1362,10 @@
     "message": "✗ فشلت المزامنة: {error}",
     "description": "Sync error message"
   },
+  "syncRestorePartial": {
+    "message": "✗ لم تكتمل الاستعادة. تمت استعادة: {restored}. لم تتم استعادة: {failed} ({error})",
+    "description": "Drive restore stopped partway: which parts were restored and which were not"
+  },
   "syncInProgress": {
     "message": "جارٍ المزامنة...",
     "description": "Sync in progress message"

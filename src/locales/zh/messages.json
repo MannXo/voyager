@@ -1362,6 +1362,10 @@
     "message": "✗ 同步失败：{error}",
     "description": "同步错误消息"
   },
+  "syncRestorePartial": {
+    "message": "✗ 恢复未完成。已恢复：{restored}。未恢复：{failed}（{error}）",
+    "description": "Drive restore stopped partway: which parts were restored and which were not"
+  },
   "syncInProgress": {
     "message": "同步中...",
     "description": "同步进行中消息"

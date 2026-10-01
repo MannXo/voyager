@@ -6,7 +6,6 @@ import {
   detectAccountPlatformFromUrl,
   extractRouteUserIdFromUrl,
 } from '@/core/services/AccountIsolationService';
-import { restoreBackupableSyncSettings } from '@/core/services/SettingsBackupService';
 import { StorageKeys } from '@/core/types/common';
 import type { FolderData } from '@/core/types/folder';
 import type {
@@ -24,7 +23,6 @@ import { getVoyagerBuildTarget, isSafari } from '@/core/utils/browser';
 import { getPromptNameConflictIds } from '@/core/utils/promptName';
 import { deleteSafariICloudBackup } from '@/core/utils/safariICloudSync';
 import { FOLDER_PLATFORMS } from '@/features/folder/platforms';
-import { restorePluginState } from '@/features/plugins/storage/pluginState';
 import {
   getTimelineHierarchyStorageKey,
   getTimelineHierarchyStorageKeysToRead,
@@ -44,6 +42,7 @@ import {
   mergeStarredMessages,
   mergeTimelineHierarchy,
 } from '../../../utils/merge';
+import { applyCloudRestore, cloudRestoreFailureText } from './cloudRestore';
 
 function isFolderData(value: unknown): value is FolderData {
   if (typeof value !== 'object' || value === null) return false;
@@ -765,18 +764,6 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
         const nextTimelineHierarchy = shouldOverwrite
           ? cloudTimelineHierarchyData
           : mergeTimelineHierarchy(localTimelineHierarchy, cloudTimelineHierarchyData);
-        if (cloudPluginsPayload?.format === 'gemini-voyager.plugins.v1') {
-          await restorePluginState(
-            cloudPluginsPayload.data,
-            shouldOverwrite ? 'overwrite' : 'merge',
-          );
-        }
-        await restoreBackupableSyncSettings(
-          cloudSettingsPayload?.data,
-          undefined,
-          shouldOverwrite ? 'overwrite' : 'merge',
-        );
-
         console.log(
           '[CloudSyncSettings] Resolved folders count:',
           nextFolders.folders?.length || 0,
@@ -807,7 +794,17 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
           storageUpdate[timelineHierarchyStorageKey] = nextTimelineHierarchy;
         }
 
-        await chrome.storage.local.set(storageUpdate);
+        await applyCloudRestore({
+          mode: shouldOverwrite ? 'overwrite' : 'merge',
+          highlightsRestored: response.highlights?.synced === true,
+          plugins:
+            cloudPluginsPayload?.format === 'gemini-voyager.plugins.v1'
+              ? cloudPluginsPayload.data
+              : undefined,
+          settings: cloudSettingsPayload?.data,
+          storageUpdate,
+          includesPrompts: platform === 'gemini',
+        });
 
         // Notify content script to reload folders
         try {
@@ -841,9 +838,8 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
               : 'ok',
         });
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Download failed';
         console.error('[CloudSyncSettings] Download failed:', error);
-        setStatusMessage({ text: t('syncError').replace('{error}', errorMessage), kind: 'err' });
+        setStatusMessage({ text: cloudRestoreFailureText(t, error), kind: 'err' });
       } finally {
         setIsDownloading(false);
         setDownloadMode(null);

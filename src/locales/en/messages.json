@@ -1362,6 +1362,10 @@
     "message": "✗ Sync failed: {error}",
     "description": "Sync error message"
   },
+  "syncRestorePartial": {
+    "message": "✗ Restore incomplete. Restored: {restored}. Not restored: {failed} ({error})",
+    "description": "Drive restore stopped partway: which parts were restored and which were not"
+  },
   "syncInProgress": {
     "message": "Syncing...",
     "description": "Sync in progress message"

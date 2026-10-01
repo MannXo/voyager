@@ -1322,6 +1322,10 @@
     "message": "✗ 同步失敗：{error}",
     "description": "同步錯誤訊息"
   },
+  "syncRestorePartial": {
+    "message": "✗ 還原未完成。已還原：{restored}。未還原：{failed}（{error}）",
+    "description": "Drive restore stopped partway: which parts were restored and which were not"
+  },
   "syncInProgress": {
     "message": "同步中...",
     "description": "同步進行中訊息"

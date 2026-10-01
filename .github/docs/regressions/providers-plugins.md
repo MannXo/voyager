@@ -507,3 +507,15 @@ while an active plugin has domOps`).
   (`keeps a host wildcard inside the hostname`), `src/features/plugins/runtime/PluginHost.test.ts`
   (`never mounts a plugin with a native op or a theme on a native surface, whatever its matches
 say`), `src/pages/content/platformTheme/__tests__/platformTheme.test.ts`.
+
+## A Drive restore that fails partway says what it restored
+
+- **Trap:** The background restores highlights, then the popup writes plugin state, synced
+  settings and folder data one after another with no transaction. A failure in a later write
+  showed a bare "sync failed" although highlights, plugins and settings had already changed.
+- **Rule:** `applyCloudRestore` (`src/pages/popup/components/cloudRestore.ts`) runs the popup's
+  writes in order and throws `CloudRestoreError` with the restored and the not-restored parts;
+  `cloudRestoreFailureText` names both (`syncRestorePartial`) and keeps `syncError` when nothing
+  was restored.
+- **Guard:** `src/pages/popup/components/__tests__/CloudSyncSettingsRestore.test.tsx`
+  (`names the restored and the failed parts when a later write fails`).

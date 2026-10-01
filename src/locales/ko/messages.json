@@ -1362,6 +1362,10 @@
     "message": "✗ 동기화 실패: {error}",
     "description": "Sync error message"
   },
+  "syncRestorePartial": {
+    "message": "✗ 복원이 완료되지 않았습니다. 복원됨: {restored}. 복원되지 않음: {failed} ({error})",
+    "description": "Drive restore stopped partway: which parts were restored and which were not"
+  },
   "syncInProgress": {
     "message": "동기화 중...",
     "description": "Sync in progress message"
