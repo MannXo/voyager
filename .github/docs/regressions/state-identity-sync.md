@@ -425,8 +425,9 @@ Gemini tab while the popup import is writing`).
 - **Trap:** `mergeImportedPrompts` ended by sorting the whole library newest-first by
   `createdAt`. It backs the owner's `import` op, so every popup file import and both prompts-only
   Drive merges (pull, and push, which merges before it uploads) silently threw away the manual
-  order the Prompt Manager stores as array position. Tests passed because their prompts were
-  already newest-first or shared one `createdAt`, and a stable sort left them alone.
+  order the Prompt Manager stores as array position. Existing tests either used prompts that were
+  already newest-first or shared one `createdAt`, which a stable sort leaves alone, or asserted
+  the newest-first order outright.
 - **Rule:** Array position is the manual order; there is no order field or library-level reorder
   time, and the stored and Drive formats stay that way. Stored prompts keep their positions
   whatever order the incoming list uses. An added prompt goes right after the nearest earlier
