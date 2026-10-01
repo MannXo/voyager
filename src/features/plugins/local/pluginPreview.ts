@@ -1,11 +1,14 @@
 /**
  * The plain-language preview of a gated plugin before it is imported: where it
  * runs, each change it makes, and what to check first. Structured and
- * untranslated; the popup turns it into sentences. Pure.
+ * untranslated; the popup turns it into sentences. Built on the inspect view's
+ * `inspectPlugin` (sites, CSS size, primitives, settings, theme); only the DOM
+ * ops are re-read here, because the preview names their targets in words. Pure.
  */
 import { patternWithinAny } from '../sites/matchPattern';
 import { DEFAULT_ADAPTERS } from '../sites/registry';
 import type { PluginManifest, SelectorRef, SiteAdapter } from '../types';
+import { inspectPlugin } from './inspectPlugin';
 
 export type PluginPreviewTarget = SelectorRef;
 
@@ -66,19 +69,15 @@ export function previewPlugin(
   manifest: PluginManifest,
   options: PluginPreviewOptions = {},
 ): PluginPreview {
-  const sites = options.sites ?? DEFAULT_ADAPTERS;
+  const inspection = inspectPlugin(manifest, options.sites ?? DEFAULT_ADAPTERS);
   const changes: PluginPreviewChange[] = [];
   const warnings: PluginPreviewWarning[] = [];
-  const { styles = [], domOps = [], settings = {} } = manifest.contributes;
+  const domOps = manifest.contributes.domOps ?? [];
 
-  const cssChars = styles.reduce((sum, style) => sum + style.css.length, 0);
-  if (styles.length > 0) changes.push({ kind: 'css', chars: cssChars });
+  if (inspection.styleSheets > 0) changes.push({ kind: 'css', chars: inspection.cssChars });
   let rawSelector = false;
   for (const op of domOps) {
-    if (op.op === 'native') {
-      changes.push({ kind: 'native', handler: op.handler });
-      continue;
-    }
+    if (op.op === 'native') continue;
     if (op.target.kind === 'css') rawSelector = true;
     const target = clipTarget(op.target);
     switch (op.op) {
@@ -104,10 +103,13 @@ export function previewPlugin(
         break;
     }
   }
-  for (const field of Object.values(settings)) {
-    changes.push({ kind: 'setting', label: clip(field.label) });
+  for (const primitive of inspection.primitives) {
+    changes.push({ kind: 'native', handler: primitive.handler });
   }
-  if (manifest.theme) changes.push({ kind: 'theme', brand: manifest.theme.brand });
+  for (const setting of inspection.settings) {
+    changes.push({ kind: 'setting', label: clip(setting.label) });
+  }
+  if (inspection.themeBrand) changes.push({ kind: 'theme', brand: inspection.themeBrand });
 
   if (options.previousVersion) {
     warnings.push({ kind: 'replaces', version: options.previousVersion });
@@ -118,20 +120,13 @@ export function previewPlugin(
   }
   if (domOps.some((op) => op.op === 'hide')) warnings.push({ kind: 'hides' });
   if (rawSelector) warnings.push({ kind: 'raw-selector' });
-  if (manifest.theme) warnings.push({ kind: 'theme' });
-  if (domOps.some((op) => op.op === 'native')) warnings.push({ kind: 'native' });
+  if (inspection.themeBrand) warnings.push({ kind: 'theme' });
+  if (inspection.primitives.length > 0) warnings.push({ kind: 'native' });
 
   return {
     name: manifest.name,
     description: manifest.description,
-    sites: [
-      ...new Set(
-        manifest.matches.map(
-          (pattern) =>
-            sites.find((site) => patternWithinAny(pattern, site.matches))?.label ?? pattern,
-        ),
-      ),
-    ],
+    sites: [...new Set(inspection.sites.map((entry) => entry.site ?? entry.pattern))],
     changes,
     warnings,
   };

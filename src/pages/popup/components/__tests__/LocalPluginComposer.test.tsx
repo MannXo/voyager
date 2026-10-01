@@ -200,6 +200,11 @@ describe('describe a change → prompt → pasted reply → preview → import',
     expect(preview?.textContent).toContain('localPluginChangeAddClass');
     expect(preview?.textContent).toContain('localPluginPreviewLandsOff');
     expect(container.querySelector('[data-testid="local-plugin-warnings"]')).toBeNull();
+    // The technical inspect view is the same one shown after import.
+    await act(async () => button(preview as HTMLElement, 'localPluginsInspect').click());
+    expect(
+      container.querySelector('[data-testid="local-plugin-inspection"]')?.textContent,
+    ).toContain('addClass gv-plugin-narrow → semantic:userTurn');
     expect(chrome.storage.local.set).not.toHaveBeenCalled();
 
     await act(async () => button(container, 'localPluginDescribeImport').click());

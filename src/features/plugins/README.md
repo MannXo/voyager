@@ -203,7 +203,8 @@ with any AI the user already uses, while Voyager itself stays offline:
 - `local/pluginPreview.ts` describes the result in plain terms (sites, each
   change, warnings for hidden content, raw selectors, a replaced version, a
   site other than the one the prompt was written for, and a `theme` or `native`
-  op the prompt asked the AI to leave out). **Import** hands the exact previewed
+  op the prompt asked the AI to leave out). It builds on `inspectPlugin`, and
+  the same inspect view opens under it on demand. **Import** hands the exact previewed
   object to `importLocalPlugin`, so it lands disabled and follows the re-import
   rules above.
 

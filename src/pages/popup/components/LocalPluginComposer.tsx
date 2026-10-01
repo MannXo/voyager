@@ -15,6 +15,7 @@ import type { TranslationKey } from '@/utils/translations';
 
 import { Button } from '../../../components/ui/button';
 import type { LocalPluginsController } from '../hooks/useLocalPlugins';
+import { LocalPluginInspection } from './LocalPluginInspection';
 import { LocalPluginIssueList } from './LocalPluginIssueList';
 import { REPLY_PROBLEM_KEYS, changeText, warningText } from './localPluginPreviewText';
 
@@ -49,6 +50,7 @@ export function LocalPluginComposer({
   const [reply, setReply] = useState('');
   const [checked, setChecked] = useState<CheckedPluginReply | null>(null);
   const [checking, setChecking] = useState(false);
+  const [details, setDetails] = useState(false);
   const checkRun = useRef(0);
 
   const site = sites.find((candidate) => candidate.id === siteId) ?? null;
@@ -84,6 +86,7 @@ export function LocalPluginComposer({
     setReply(value);
     setChecked(null);
     setChecking(false);
+    setDetails(false);
   };
 
   const checkReply = async (): Promise<void> => {
@@ -269,6 +272,15 @@ export function LocalPluginComposer({
               </ul>
             </div>
           )}
+          <button
+            type="button"
+            onClick={() => setDetails((value) => !value)}
+            aria-expanded={details}
+            className="text-muted-foreground hover:text-foreground text-[11px] font-medium transition-colors"
+          >
+            {details ? t('localPluginsHideDetails') : t('localPluginsInspect')}
+          </button>
+          {details && <LocalPluginInspection manifest={checked.manifest} t={t} />}
           <p className="text-muted-foreground text-[11px]">{t('localPluginPreviewLandsOff')}</p>
           <div className="flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => setChecked(null)}>
