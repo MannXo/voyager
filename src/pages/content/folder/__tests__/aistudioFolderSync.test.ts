@@ -276,6 +276,43 @@ describe('AI Studio folder sync across contexts', () => {
     });
   });
 
+  it('restores a bucket another tab removed once, then settles', async () => {
+    local[GLOBAL_KEY] = folderData('Mine');
+    const manager = await mount();
+    const readsBefore = bucketReads(GLOBAL_KEY);
+
+    writeFromElsewhere({ [GLOBAL_KEY]: undefined });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(local[GLOBAL_KEY]).toEqual(folderData('Mine'));
+    const reads = bucketReads(GLOBAL_KEY);
+    expect(reads).toBe(readsBefore + 1); // the recovery write answers the removal; no reread
+
+    manager.data.folders[0].isExpanded = false;
+    await expect(manager.save()).resolves.toBe(true);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(bucketReads(GLOBAL_KEY)).toBe(reads);
+  });
+
+  it('does not keep rewriting a removed bucket while the write fails', async () => {
+    local[GLOBAL_KEY] = folderData('Mine');
+    await mount();
+    const read = mockBrowser.storage.local.get.getMockImplementation()!;
+    mockBrowser.storage.local.get.mockImplementation(async (keys: unknown) => {
+      await new Promise((tick) => setTimeout(tick, 10)); // a reload loop shows up as a count
+      return read(keys);
+    });
+    const writes = () =>
+      mockBrowser.storage.local.set.mock.calls.filter(([values]) => GLOBAL_KEY in values).length;
+    mockBrowser.storage.local.set.mockRejectedValue(new Error('quota'));
+
+    writeFromElsewhere({ [GLOBAL_KEY]: undefined });
+    await vi.advanceTimersByTimeAsync(1000);
+    const attempts = writes();
+    expect(attempts).toBe(1);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(writes()).toBe(attempts);
+  });
+
   it('does not reload for an unchanged save that the browser still reports', async () => {
     local[GLOBAL_KEY] = folderData('Mine');
     const manager = await mount();

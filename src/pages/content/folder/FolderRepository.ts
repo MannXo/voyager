@@ -239,7 +239,8 @@ export class FolderRepository {
       this.dataSession === session && session.loadVersion === version && !this.destroyed;
     session.loadsInFlight += 1;
     const externalWrites = session.externalWrites;
-    let applied = false; // memory now holds what storage held when read
+    let applied = false; // memory now holds what storage holds
+    let recovering = false; // recovery's own write supersedes this read; it is not discarded
     try {
       // On Safari, restore recovery backups from the durable mirror before any
       // recoverFromBackup() can run (localStorage may have been ITP-evicted).
@@ -286,10 +287,15 @@ export class FolderRepository {
         console.warn(
           `${this.tag} Storage returned invalid data structure, attempting recovery from backup`,
         );
-        await this.attemptDataRecovery({ reason: 'corrupted', originalData: loadedData }, session);
+        recovering = true;
+        applied = await this.attemptDataRecovery(
+          { reason: 'corrupted', originalData: loadedData },
+          session,
+        );
       } else if (this.config.recoverMissingData) {
         console.warn(`${this.tag} Storage returned no data, attempting recovery from backup`);
-        await this.attemptDataRecovery(null, session);
+        recovering = true;
+        applied = await this.attemptDataRecovery(null, session);
       } else {
         // No data found - likely a first-time user
         console.log(
@@ -306,7 +312,8 @@ export class FolderRepository {
 
       // CRITICAL: Do NOT clear data on error - this causes data loss!
       // Instead, try to recover from backup or keep existing data
-      await this.attemptDataRecovery(error, session);
+      recovering = true;
+      applied = await this.attemptDataRecovery(error, session);
     } finally {
       session.loadsInFlight -= 1;
       // Only a read that started after every observed external write settles them.
@@ -315,7 +322,11 @@ export class FolderRepository {
         this.hooks.onChange('loaded');
       }
       // A discarded read, or a write observed during this one, still needs a reload.
-      if (this.dataSession === session && (applied || !isCurrent())) this.tryReconcile();
+      // A failed recovery keeps its flag but waits for the next storage event or
+      // settled local write: retrying now would rewrite the same failing snapshot.
+      if (this.dataSession === session && (applied || (!isCurrent() && !recovering))) {
+        this.tryReconcile();
+      }
     }
   }
 
@@ -356,8 +367,9 @@ export class FolderRepository {
     }
   }
 
-  private async attemptDataRecovery(error: unknown, session: FolderDataSession): Promise<void> {
-    if (this.dataSession !== session) return;
+  /** Returns whether storage now holds the recovered data. */
+  private async attemptDataRecovery(error: unknown, session: FolderDataSession): Promise<boolean> {
+    if (this.dataSession !== session) return false;
     console.warn(`${this.tag} Attempting data recovery after load failure`);
 
     // Step 1: Try to restore from localStorage backups (primary, emergency, beforeUnload)
@@ -368,8 +380,7 @@ export class FolderRepository {
       console.warn(`${this.tag} Data recovered from localStorage backup`);
       this.hooks.onRecovery('recovered');
       // Save recovered data to persistent storage
-      await this.saveData();
-      return; // Successfully recovered, no need to continue
+      return this.saveData();
     }
 
     // Step 2: If current this.data already has valid structure, keep it
@@ -378,7 +389,7 @@ export class FolderRepository {
       this.data = this.config.normalize(this.data);
       session.markReady();
       this.hooks.onRecovery('kept');
-      return;
+      return false;
     }
 
     // Step 3: Last resort - initialize empty data and log critical error
@@ -389,6 +400,7 @@ export class FolderRepository {
 
     // Show user notification about data loss
     this.hooks.onRecovery('lost');
+    return false;
   }
 
   /**

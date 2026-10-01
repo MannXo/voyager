@@ -97,7 +97,10 @@ off a ChatGPT tab`).
   observed external write (`externalWrites`), never when a reload is merely requested, so a read
   discarded by a scope refresh, a save or a newer load leaves it set. `tryReconcile()` calls the
   owner's reload hook for the active session once no write, replacement or read is in flight;
-  persist, `replaceData`, `loadData` and rebinding call it again. Every load merges edits still
+  persist, `replaceData`, `loadData` and rebinding call it again. A load that ran backup recovery
+  is not a discarded read: if the recovery write landed, memory equals storage and the flag clears;
+  if it failed, the flag stays but waits for the next storage event or settled local write, since
+  rereading would rewrite the same failing snapshot in an unbounded loop. Every load merges edits still
   waiting on the debounce onto the fresh data with `mergeDebouncedEdits`, against
   `session.baseline` (what this tab last read or wrote), so debounced edits may only touch
   expand/collapse and conversation timestamps. Timestamps raised here are matched by conversation identity (normalized id or URL route id, as `FolderStore.isSameConversation` does) across folders, because another tab may have moved or copied the conversation; fresh

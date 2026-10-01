@@ -352,6 +352,61 @@ describe('FolderStore reconciles external writes after local work settles', () =
     expect(names(store.data)).toEqual(['Alpha', 'From another tab', 'Then a third']);
   });
 
+  describe('when another tab writes a corrupt snapshot', () => {
+    const corrupt = { folders: 'broken' } as unknown as FolderData;
+
+    /** Reads take a timer tick, so a reload loop shows up as a growing count. */
+    function slowReads(): void {
+      vi.mocked(adapter.loadData).mockImplementation(async () => {
+        await new Promise((tick) => setTimeout(tick, 10));
+        return structuredClone(stored ?? null);
+      });
+    }
+
+    it('stops after a failing recovery write until something new happens', async () => {
+      slowReads();
+      vi.mocked(adapter.saveData).mockResolvedValue(false);
+      writeFromElsewhere(corrupt);
+      await vi.advanceTimersByTimeAsync(1000);
+      const writes = vi.mocked(adapter.saveData).mock.calls.length;
+      expect(writes).toBeGreaterThan(0);
+      expect(writes).toBeLessThanOrEqual(2); // one recovery write and its single retry
+
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(adapter.saveData).toHaveBeenCalledTimes(writes);
+      expect(names(store.data)).toEqual(['Alpha']); // recovered from backup in memory
+
+      vi.mocked(adapter.saveData).mockImplementation(async (_key, data) => {
+        stored = structuredClone(data);
+        return true;
+      });
+      writeFromElsewhere(folders('Alpha', 'From another tab'));
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(names(store.data)).toEqual(['Alpha', 'From another tab']);
+    });
+
+    it('settles once a recovery write succeeds', async () => {
+      slowReads();
+      writeFromElsewhere(corrupt);
+      await vi.advanceTimersByTimeAsync(1000);
+      const writes = vi.mocked(adapter.saveData).mock.calls.length;
+      const reads = vi.mocked(adapter.loadData).mock.calls.length;
+
+      await vi.advanceTimersByTimeAsync(5000);
+
+      expect(writes).toBe(1);
+      expect(adapter.saveData).toHaveBeenCalledTimes(writes);
+      expect(adapter.loadData).toHaveBeenCalledTimes(reads);
+      expect(names(stored)).toEqual(['Alpha']);
+      expect(names(store.data)).toEqual(['Alpha']);
+
+      // Settled: the corrupt write is answered, so a later save does not reload again.
+      await store.saveData();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(adapter.loadData).toHaveBeenCalledTimes(reads);
+    });
+  });
+
   it('merges a debounced edit made while the reload read was in flight', async () => {
     const read = deferred<FolderData | null>();
     vi.mocked(adapter.loadData).mockImplementationOnce(() => read.promise);
