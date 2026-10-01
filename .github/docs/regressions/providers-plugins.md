@@ -178,6 +178,29 @@ while an active plugin has domOps`).
 - **Guard:** `src/pages/content/export/__tests__/persistentExportToolbar.test.ts`
   (`moves left to avoid ChatGPT header share actions`).
 
+## Export toolbar avoidance must not re-measure on unrelated page mutations
+
+- **Trap:** The persistent export toolbar (on by default on lr26 Gemini and ChatGPT) observes all
+  of `body` for child and `class`/`style`/`hidden`/`aria-hidden` changes. Each frame with any
+  mutation re-ran a document-wide query with substring selectors such as `[aria-label*="pro" i]`,
+  which can match any label containing "prompt" or "project", and read every match's rect, so
+  sidebar loading and response streaming forced layout per frame (#1040). It also rewrote its own
+  offset each time; same-value `style.setProperty` queues no mutation record in Chromium 151,
+  Firefox or jsdom, so this was one extra pass after each change, not an endless loop. Filtering
+  records only by the avoided controls missed lr26's full-width `top-bar-actions`: a non-matching
+  button inserted there pushes the controls left without touching them.
+- **Rule:** Skip records inside the toolbar. Re-measure only when an added node is or contains an
+  avoided control, a removed node or attribute target is a watched element or its ancestor, a
+  change lands inside a watched element, or an attribute target itself matches the selectors.
+  Watched elements are the measured controls plus visible top-band matches that span past the
+  right-side cluster; the latter never enter the offset. Read each rect once and write the offset
+  only when it changes.
+- **Guard:** `src/pages/content/export/__tests__/persistentExportToolbar.test.ts`
+  (`does not query or measure while unrelated content streams into the page`,
+  `settles after one measurement instead of re-triggering itself`,
+  `follows controls pushed left inside a full-width top-bar host`,
+  `follows a top-right control that grows or hides`).
+
 ## ChatGPT export UI must belong to the active plugin lifecycle
 
 - **Trap:** Rapidly disabling and re-enabling the ChatGPT exporter could let a stale startup remove

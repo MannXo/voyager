@@ -39,36 +39,111 @@ type ToolbarButton = HTMLButtonElement & { _gvOnClick?: () => void };
 let activeAvoidanceRoot: HTMLDivElement | null = null;
 let activeAvoidanceCleanup: (() => void) | null = null;
 
-function isVisibleTopRightElement(
+const RIGHT_OFFSET_PROPERTY = '--gv-persistent-export-right';
+
+/**
+ * Left edge of a visible top-right control; `'host'` for a visible top-band
+ * match spanning past the right-side cluster; null when it should be ignored.
+ */
+function classifyTopRightElement(
   element: Element,
   toolbarRoot: HTMLElement,
-): element is HTMLElement {
-  if (!(element instanceof HTMLElement)) return false;
-  if (element === toolbarRoot || toolbarRoot.contains(element)) return false;
+): number | 'host' | null {
+  if (!(element instanceof HTMLElement)) return null;
+  if (element === toolbarRoot || toolbarRoot.contains(element)) return null;
   const rect = element.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) return false;
-  if (rect.bottom <= 0 || rect.top >= TOP_RIGHT_MAX_Y_PX) return false;
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  if (rect.bottom <= 0 || rect.top >= TOP_RIGHT_MAX_Y_PX) return null;
   // Some Gemini top-bar hosts span the full viewport. Treating those as
   // right-side controls makes the computed offset enormous and pushes the
   // toolbar into the left rail, so only avoid elements whose own left edge is
   // already in the right-side control cluster.
-  return rect.left >= window.innerWidth * TOP_RIGHT_MIN_LEFT_RATIO;
+  return rect.left >= window.innerWidth * TOP_RIGHT_MIN_LEFT_RATIO ? rect.left : 'host';
 }
 
-function calculateRightOffset(toolbarRoot: HTMLElement): number {
-  const candidates = Array.from(document.querySelectorAll(TOP_RIGHT_AVOIDANCE_SELECTORS)).filter(
-    (element): element is HTMLElement => isVisibleTopRightElement(element, toolbarRoot),
-  );
-  if (candidates.length === 0) return DEFAULT_RIGHT_OFFSET_PX;
+function measureTopRightControls(toolbarRoot: HTMLElement): {
+  offset: number;
+  /** Avoided controls plus full-width hosts whose children can push them left. */
+  watched: HTMLElement[];
+} {
+  const watched: HTMLElement[] = [];
+  let leftMost: number | null = null;
+  for (const element of Array.from(document.querySelectorAll(TOP_RIGHT_AVOIDANCE_SELECTORS))) {
+    const left = classifyTopRightElement(element, toolbarRoot);
+    if (left === null) continue;
+    watched.push(element as HTMLElement);
+    if (left !== 'host') leftMost = Math.min(leftMost ?? window.innerWidth, left);
+  }
+  if (leftMost === null) return { offset: DEFAULT_RIGHT_OFFSET_PX, watched };
+  const offset = Math.ceil(window.innerWidth - leftMost + TOP_RIGHT_GAP_PX);
+  return { offset: Math.max(DEFAULT_RIGHT_OFFSET_PX, offset), watched };
+}
 
-  const leftMost = candidates.reduce(
-    (minLeft, element) => Math.min(minLeft, element.getBoundingClientRect().left),
-    window.innerWidth,
+/** The top-right elements found by the last measurement, for filtering mutations. */
+type MeasuredControls = {
+  watched: ReadonlySet<Element>;
+  /** Every watched element plus its ancestors: attribute changes there can hide or move it. */
+  watchedAndAncestors: ReadonlySet<Node>;
+};
+
+function indexMeasuredControls(watched: readonly HTMLElement[]): MeasuredControls {
+  const watchedAndAncestors = new Set<Node>();
+  for (const element of watched) {
+    for (let node: Node | null = element; node; node = node.parentNode) {
+      if (watchedAndAncestors.has(node)) break;
+      watchedAndAncestors.add(node);
+    }
+  }
+  return { watched: new Set(watched), watchedAndAncestors };
+}
+
+function isInsideWatchedElement(node: Node, measured: MeasuredControls): boolean {
+  for (let el = node instanceof Element ? node : node.parentElement; el; el = el.parentElement) {
+    if (measured.watched.has(el)) return true;
+  }
+  return false;
+}
+
+function containsAvoidedControl(node: Node): boolean {
+  return (
+    node instanceof Element &&
+    (node.matches(TOP_RIGHT_AVOIDANCE_SELECTORS) ||
+      node.querySelector(TOP_RIGHT_AVOIDANCE_SELECTORS) !== null)
   );
-  return Math.max(
-    DEFAULT_RIGHT_OFFSET_PX,
-    Math.ceil(window.innerWidth - leftMost + TOP_RIGHT_GAP_PX),
-  );
+}
+
+/**
+ * Whether a mutation batch can change the top-right controls the toolbar
+ * avoids. Gemini streams sidebar rows and responses under `body`; re-querying
+ * the whole document and reading every match's rect for those forced layout on
+ * each frame (#1040). Selector and identity checks only — never geometry.
+ */
+function mutationsMayMoveTopRightControls(
+  mutations: readonly MutationRecord[],
+  toolbarRoot: HTMLElement,
+  measured: MeasuredControls,
+): boolean {
+  // Let the next update notice the detached toolbar and tear itself down.
+  if (!toolbarRoot.isConnected) return true;
+  for (const mutation of mutations) {
+    const target = mutation.target;
+    // The toolbar's own offset writes and label updates.
+    if (toolbarRoot.contains(target)) continue;
+    if (mutation.type === 'attributes') {
+      if (measured.watchedAndAncestors.has(target)) return true;
+      if (isInsideWatchedElement(target, measured)) return true;
+      if (target instanceof Element && target.matches(TOP_RIGHT_AVOIDANCE_SELECTORS)) return true;
+      continue;
+    }
+    if (isInsideWatchedElement(target, measured)) return true;
+    for (const node of Array.from(mutation.addedNodes)) {
+      if (containsAvoidedControl(node)) return true;
+    }
+    for (const node of Array.from(mutation.removedNodes)) {
+      if (measured.watchedAndAncestors.has(node)) return true;
+    }
+  }
+  return false;
 }
 
 function installToolbarAvoidance(root: HTMLDivElement): void {
@@ -77,20 +152,30 @@ function installToolbarAvoidance(root: HTMLDivElement): void {
   activeAvoidanceRoot = root;
 
   let frameId: number | null = null;
+  let measured = indexMeasuredControls([]);
+  let appliedOffset = root.style.getPropertyValue(RIGHT_OFFSET_PROPERTY);
   const update = () => {
     frameId = null;
     if (!root.isConnected) {
       activeAvoidanceCleanup?.();
       return;
     }
-    root.style.setProperty('--gv-persistent-export-right', `${calculateRightOffset(root)}px`);
+    const { offset, watched } = measureTopRightControls(root);
+    measured = indexMeasuredControls(watched);
+    const next = `${offset}px`;
+    if (next === appliedOffset) return;
+    appliedOffset = next;
+    root.style.setProperty(RIGHT_OFFSET_PROPERTY, next);
   };
   const scheduleUpdate = () => {
     if (frameId !== null) return;
     frameId = window.requestAnimationFrame(update);
   };
 
-  const observer = new MutationObserver(scheduleUpdate);
+  const observer = new MutationObserver((mutations) => {
+    if (frameId !== null) return;
+    if (mutationsMayMoveTopRightControls(mutations, root, measured)) scheduleUpdate();
+  });
   observer.observe(document.body, {
     childList: true,
     subtree: true,
