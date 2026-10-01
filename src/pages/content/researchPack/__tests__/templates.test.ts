@@ -303,6 +303,46 @@ describe('research pack templates in the panel', () => {
     expect(lib.writes()).toBe(0);
   });
 
+  it('aborts a file still being read on stop, and touches the library no more', async () => {
+    const lib = await start();
+    const load = vi.spyOn(lib.library, 'load');
+    const abort = vi.spyOn(FileReader.prototype, 'abort');
+    try {
+      chooseFile(templateFile([{ name: 'A', text: 'B', tags: [TAG] }]));
+      stop?.();
+      stop = null;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(abort).toHaveBeenCalled();
+      expect(load).not.toHaveBeenCalled();
+      expect(lib.writes()).toBe(0);
+    } finally {
+      abort.mockRestore();
+      load.mockRestore();
+    }
+  });
+
+  it('writes no template when stopped while a save is checking the library', async () => {
+    const lib = await start();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const load = lib.library.load.bind(lib.library);
+    vi.spyOn(lib.library, 'load').mockImplementation(async () => {
+      await gate;
+      return load();
+    });
+    typeInstruction('Find counter-evidence.');
+    $<HTMLInputElement>('.gv-rp-template-name').value = 'Skeptic';
+    $<HTMLButtonElement>('.gv-rp-template-save').click();
+
+    stop?.();
+    stop = null;
+    release();
+    await flush();
+
+    expect(lib.writes()).toBe(0);
+  });
+
   it('keeps every template control off until the pack has loaded', async () => {
     const lib = promptLibrary([{ id: 'a', name: 'Review', text: 'Compare.', tags: [TAG] }]);
     const shared = sharedStorage({ [KEY]: packOf('Stored answer') });

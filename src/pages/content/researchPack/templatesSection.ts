@@ -72,15 +72,6 @@ function button(className: string): HTMLButtonElement {
   return element;
 }
 
-function readFileText(file: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ''));
-    reader.onerror = () => reject(reader.error ?? new Error('read failed'));
-    reader.readAsText(file);
-  });
-}
-
 export function createTemplatesSection(deps: TemplatesSectionDeps): TemplatesSection {
   const { t } = deps;
   const now = deps.now ?? Date.now;
@@ -130,6 +121,37 @@ export function createTemplatesSection(deps: TemplatesSectionDeps): TemplatesSec
   // Each refresh and each import gets a number; an older one never paints over a newer one.
   let refreshSeq = 0;
   let importSeq = 0;
+  /** The file being read for an import, kept so a cancel or teardown can abort it. */
+  let reader: FileReader | null = null;
+
+  const abortRead = (): void => {
+    const current = reader;
+    reader = null;
+    current?.abort();
+  };
+
+  const readFileText = (file: Blob): Promise<string> =>
+    new Promise((resolve, reject) => {
+      abortRead();
+      const current = new FileReader();
+      reader = current;
+      const settle = (): void => {
+        if (reader === current) reader = null;
+      };
+      current.onload = () => {
+        settle();
+        resolve(String(current.result ?? ''));
+      };
+      current.onerror = () => {
+        settle();
+        reject(current.error ?? new Error('read failed'));
+      };
+      current.onabort = () => {
+        settle();
+        reject(new Error('read aborted'));
+      };
+      current.readAsText(file);
+    });
 
   const selected = (): ResearchPackTemplate | null =>
     templates.find((template) => template.id === select.value) ?? null;
@@ -210,6 +232,7 @@ export function createTemplatesSection(deps: TemplatesSectionDeps): TemplatesSec
   const closePreview = (): void => {
     pending = null;
     importSeq += 1;
+    abortRead();
     preview.hidden = true;
     previewList.replaceChildren();
     syncControls();
@@ -245,13 +268,15 @@ export function createTemplatesSection(deps: TemplatesSectionDeps): TemplatesSec
       invalid();
       return;
     }
-    let parsed;
+    let content;
     try {
-      parsed = parseTemplateFile(await readFileText(file));
+      content = await readFileText(file);
     } catch {
       invalid();
       return;
     }
+    if (stopped || seq !== importSeq) return;
+    const parsed = parseTemplateFile(content);
     if (!parsed.ok) {
       invalid();
       return;
@@ -301,7 +326,9 @@ export function createTemplatesSection(deps: TemplatesSectionDeps): TemplatesSec
         deps.notify(t('researchPackTemplateInvalid'), 'error');
         return;
       }
-      const [planned] = planTemplateSave(await deps.library.load(), [draft]);
+      const library = await deps.library.load();
+      if (stopped) return;
+      const [planned] = planTemplateSave(library, [draft]);
       if (planned.status !== 'new') {
         deps.notify(
           t(
@@ -327,7 +354,7 @@ export function createTemplatesSection(deps: TemplatesSectionDeps): TemplatesSec
   const saveImport = (): Promise<void> =>
     withBusy(async () => {
       const drafts = pending;
-      if (!drafts?.length) return;
+      if (stopped || !drafts?.length) return;
       const added = await deps.library.save(drafts);
       if (stopped) return;
       closePreview();
@@ -357,8 +384,10 @@ export function createTemplatesSection(deps: TemplatesSectionDeps): TemplatesSec
     const file = fileInput.files?.[0];
     // Cleared so choosing the same file again still fires a change.
     fileInput.value = '';
-    if (file)
-      void importFile(file).catch(() => deps.notify(t('researchPackTemplateFailed'), 'error'));
+    if (!file) return;
+    void importFile(file).catch(() => {
+      if (!stopped) deps.notify(t('researchPackTemplateFailed'), 'error');
+    });
   });
   previewSave.addEventListener('click', () => void saveImport());
   previewCancel.addEventListener('click', closePreview);
@@ -399,6 +428,7 @@ export function createTemplatesSection(deps: TemplatesSectionDeps): TemplatesSec
       stopped = true;
       refreshSeq += 1;
       importSeq += 1;
+      abortRead();
       root.remove();
     },
   };
