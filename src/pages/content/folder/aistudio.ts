@@ -1606,7 +1606,7 @@ export class AIStudioFolderManager {
       target,
       this.t('folder_remove_conversation_confirm').replace(
         '{title}',
-        title || this.t('conversation_untitled'),
+        () => title || this.t('conversation_untitled'),
       ),
       this.t('folder_remove_conversation_action'),
       () => this.removeConversationFromFolder(folderId, conversationId),

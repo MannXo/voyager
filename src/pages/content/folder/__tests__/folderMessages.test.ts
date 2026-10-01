@@ -100,6 +100,18 @@ type Internals = {
   showNotification: (message: string, level?: string) => void;
   injectLibraryDropZone: () => void;
   handleImport: () => void;
+  showFolderConfirm: (
+    anchor: HTMLElement,
+    message: string,
+    action: string,
+    run: () => void,
+  ) => void;
+  confirmRemoveConversation: (
+    folderId: string,
+    conversationId: string,
+    title: string,
+    event: MouseEvent,
+  ) => void;
   destroy: () => void;
 };
 
@@ -194,6 +206,19 @@ describe('AI Studio folder messages', () => {
     for (const [message] of vi.mocked(manager.showNotification).mock.calls.slice(0, 2)) {
       expectRendered(message);
     }
+  });
+
+  it('quotes a conversation title verbatim when confirming its removal', () => {
+    const manager = createManager({
+      folders: [folder('a')],
+      folderContents: { a: [prompt('p1')] },
+    });
+    manager.showFolderConfirm = vi.fn();
+    const event = { currentTarget: document.body } as unknown as MouseEvent;
+    manager.confirmRemoveConversation('a', 'p1', "Cost $& Benefit $'", event);
+    const [, message] = vi.mocked(manager.showFolderConfirm).mock.lastCall!;
+    expect(message).toContain("Cost $& Benefit $'");
+    expectRendered(message);
   });
 
   it('names the folder it creates for an empty library', async () => {

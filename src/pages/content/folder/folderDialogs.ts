@@ -498,7 +498,7 @@ export function createFolderDialogs(): FolderDialogs {
 
     confirmConversationRemoval: (title, anchor, onConfirm) => {
       const dialog = confirmRemoval(
-        t('folder_remove_conversation_confirm').replace('{title}', title),
+        t('folder_remove_conversation_confirm').replace('{title}', () => title),
         t('pm_delete'),
         onConfirm,
       );
