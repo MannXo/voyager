@@ -124,6 +124,21 @@ describe('chat width', () => {
     expect(featuresAfterGrace()).toEqual(['chat-width:broken']);
   });
 
+  it('clears its warning once user turns render on the same route', async () => {
+    document.body.innerHTML = RENAMED_CONVERSATION;
+    startChatWidthAdjuster();
+    expect(featuresAfterGrace()).toEqual(['chat-width:broken']);
+
+    document
+      .querySelector('main')!
+      .insertAdjacentHTML(
+        'beforeend',
+        '<user-query><div class="user-query-bubble-with-background">Late turn</div></user-query>',
+      );
+    await vi.advanceTimersByTimeAsync(250);
+    expect(nativeHealthReporter.getEntries()).toEqual([]);
+  });
+
   it('stays healthy when the width rules have turns to widen', () => {
     document.body.innerHTML = KNOWN_CONVERSATION;
     startChatWidthAdjuster();

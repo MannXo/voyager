@@ -1,6 +1,7 @@
 /**
  * Adjusts the chat area width based on user settings (stored as viewport %)
  */
+import { classifyGeminiRoute } from '@/core/gemini/nativeHealth';
 import { getGeminiTurnSelectors } from '@/core/gemini/turnSelectors';
 
 import { nativeHealthReporter } from '../nativeHealth';
@@ -288,16 +289,23 @@ function hasWidenedUserTurn(): boolean {
 }
 
 /**
- * Probe once per route while the width rules are applied: the verdict re-runs the query if the
- * first look came before Gemini rendered the turns.
+ * Probe while the width rules are applied. A route settles once a user turn is found, or at once
+ * when it is not a conversation, so a healthy page stops querying after its first match. Until
+ * then each debounced check looks again, which lets a miss recover when turns render later on the
+ * same route.
  */
 function createUserTurnProbe(): { check: () => void; reset: () => void } {
-  let probedPath: string | null = null;
+  let settledPath: string | null = null;
   return {
     check() {
-      if (probedPath === location.pathname) return;
-      probedPath = location.pathname;
+      const path = location.pathname;
+      if (settledPath === path) return;
+      if (classifyGeminiRoute(path) !== 'conversation') {
+        settledPath = path;
+        return;
+      }
       if (hasWidenedUserTurn()) {
+        settledPath = path;
         nativeHealthReporter.reportFound('chat-width');
         return;
       }
@@ -308,7 +316,7 @@ function createUserTurnProbe(): { check: () => void; reset: () => void } {
       });
     },
     reset() {
-      probedPath = null;
+      settledPath = null;
       nativeHealthReporter.withdraw('chat-width');
     },
   };
