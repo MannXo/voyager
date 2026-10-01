@@ -2902,8 +2902,8 @@
     "description": "Warning: the plugin targets raw CSS selectors"
   },
   "localPluginWarnHides": {
-    "message": "Скрывает часть страницы. Выключите плагин, чтобы вернуть её.",
-    "description": "Warning: the plugin hides part of the page"
+    "message": "Может скрыть часть страницы. Выключите плагин, чтобы вернуть её.",
+    "description": "Warning: the plugin may hide part of the page (also shown when a hiding style cannot be read with confidence)"
   },
   "localPluginWarnNotOnSite": {
     "message": "Он не работает на выбранном сайте {site}.",

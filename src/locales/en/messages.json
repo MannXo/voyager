@@ -2902,8 +2902,8 @@
     "description": "Warning: the plugin targets raw CSS selectors"
   },
   "localPluginWarnHides": {
-    "message": "Hides part of the page. Turn the plugin off to bring it back.",
-    "description": "Warning: the plugin hides part of the page"
+    "message": "May hide part of the page. Turn the plugin off to bring it back.",
+    "description": "Warning: the plugin may hide part of the page (also shown when a hiding style cannot be read with confidence)"
   },
   "localPluginWarnNotOnSite": {
     "message": "It does not run on {site}, the site you picked.",

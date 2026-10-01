@@ -5,6 +5,7 @@
  * `inspectPlugin` (sites, CSS size, primitives, settings, theme); only the DOM
  * ops are re-read here, because the preview names their targets in words. Pure.
  */
+import { decodeCssEscapes, stripCssComments } from '../manifest/sinkGuards';
 import { patternWithinAny } from '../sites/matchPattern';
 import { DEFAULT_ADAPTERS } from '../sites/registry';
 import type { DomOperation, PluginManifest, SelectorRef, SiteAdapter } from '../types';
@@ -65,31 +66,96 @@ function clip(text: string): string {
   return text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT - 1)}…` : text;
 }
 
-/** Values a hiding property could take that the preview cannot read statically. */
-const DYNAMIC_VALUE = /\{\{|\b(?:var|calc|attr|env|min|max|clamp)\(/i;
-
-/** Whether one inline style declaration can hide its element. */
-function declarationHides(property: string, rawValue: string): boolean {
-  const prop = property.trim().toLowerCase();
-  const value = rawValue
+/**
+ * A property name or value as CSS reads it: comments separate tokens and
+ * escapes stand for their characters (`display:/**\/none`, `n\6f ne`).
+ */
+function normalizeCss(text: string): string {
+  return decodeCssEscapes(stripCssComments(text, ' '))
     .toLowerCase()
-    .replace(/!\s*important/g, '')
+    .replace(/!\s*important/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
-  if (!['display', 'visibility', 'opacity', 'content-visibility'].includes(prop)) return false;
-  if (DYNAMIC_VALUE.test(value)) return true;
-  switch (prop) {
+}
+
+/** Values that resolve to what the element would show anyway. */
+const GLOBAL_KEYWORDS = new Set(['inherit', 'initial', 'unset', 'revert']);
+const SHOWN_DISPLAY_KEYWORDS = new Set([
+  'block',
+  'inline',
+  'run-in',
+  'flow',
+  'flow-root',
+  'table',
+  'flex',
+  'grid',
+  'ruby',
+  'math',
+  'list-item',
+  'contents',
+  'inline-block',
+  'inline-table',
+  'inline-flex',
+  'inline-grid',
+  'table-row-group',
+  'table-header-group',
+  'table-footer-group',
+  'table-row',
+  'table-cell',
+  'table-column-group',
+  'table-column',
+  'table-caption',
+  'ruby-base',
+  'ruby-text',
+  '-webkit-box',
+  '-webkit-inline-box',
+]);
+const OPACITY_NUMBER = /^\+?(?:\d+(?:\.\d*)?|\.\d+)%?$/;
+
+/** Whether a value on a hiding property is one that certainly shows the element. */
+function valueShows(property: string, value: string): boolean {
+  if (GLOBAL_KEYWORDS.has(value)) return true;
+  switch (property) {
     case 'display':
-      return value === 'none';
+      return value !== '' && value.split(' ').every((word) => SHOWN_DISPLAY_KEYWORDS.has(word));
     case 'visibility':
-      return value === 'hidden' || value === 'collapse';
+      return value === 'visible';
     case 'content-visibility':
-      return value === 'hidden';
+      return value === 'visible' || value === 'auto';
     default: {
+      if (!OPACITY_NUMBER.test(value)) return false;
       const amount = Number.parseFloat(value);
-      if (Number.isNaN(amount)) return true;
-      return (value.endsWith('%') ? amount / 100 : amount) < 0.1;
+      return (value.endsWith('%') ? amount / 100 : amount) >= 0.1;
     }
   }
+}
+
+const HIDING_PROPERTIES = new Set(['display', 'visibility', 'opacity', 'content-visibility']);
+
+/**
+ * Whether one inline style declaration can hide its element. Leans toward a
+ * warning: on a hiding property, any value not known to show the element
+ * (`none`, `var()`, `{{setting}}`, anything unreadable) counts as hiding.
+ */
+function declarationHides(property: string, value: string): boolean {
+  const prop = normalizeCss(property);
+  return HIDING_PROPERTIES.has(prop) && !valueShows(prop, normalizeCss(value));
+}
+
+/**
+ * Whether a `style` attribute can hide its element. A comment or a string can
+ * hide a `;` or `:` from a plain split, so it is read both with comments
+ * removed and as written, and either reading that hides counts.
+ */
+function styleAttributeHides(value: string): boolean {
+  return [stripCssComments(value, ' '), value].some((reading) =>
+    reading.split(';').some((declaration) => {
+      const colon = declaration.indexOf(':');
+      return (
+        colon > 0 && declarationHides(declaration.slice(0, colon), declaration.slice(colon + 1))
+      );
+    }),
+  );
 }
 
 /** Whether a DOM op can hide what it targets (the `hide` op, `hidden`, or a hiding style). */
@@ -101,13 +167,7 @@ function opHides(op: Exclude<DomOperation, { op: 'native' }>): boolean {
       return Object.entries(op.styles).some(([prop, value]) => declarationHides(prop, value));
     case 'setAttribute':
       if (op.name === 'hidden') return true;
-      if (op.name !== 'style') return false;
-      return op.value.split(';').some((declaration) => {
-        const colon = declaration.indexOf(':');
-        return (
-          colon > 0 && declarationHides(declaration.slice(0, colon), declaration.slice(colon + 1))
-        );
-      });
+      return op.name === 'style' && styleAttributeHides(op.value);
     case 'addClass':
       return false;
   }
@@ -141,19 +201,24 @@ export function previewPlugin(
       case 'hide':
         changes.push({ kind: 'hide', target });
         break;
+      // Inline styles are shown in full: a long declaration must not push a
+      // hiding one out of view.
       case 'setStyle':
         changes.push({
           kind: 'setStyle',
           target,
-          styles: clip(
-            Object.entries(op.styles)
-              .map(([prop, value]) => `${prop}: ${value}`)
-              .join('; '),
-          ),
+          styles: Object.entries(op.styles)
+            .map(([prop, value]) => `${prop}: ${value}`)
+            .join('; '),
         });
         break;
       case 'setAttribute':
-        changes.push({ kind: 'setAttribute', target, name: op.name, value: clip(op.value) });
+        changes.push({
+          kind: 'setAttribute',
+          target,
+          name: op.name,
+          value: op.name === 'style' ? op.value : clip(op.value),
+        });
         break;
     }
   }

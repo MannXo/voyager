@@ -116,6 +116,111 @@ describe('plain-language plugin preview', () => {
     ).toEqual([]);
   });
 
+  it('reads hiding values through CSS comments and escapes', () => {
+    const hiding = (domOp: Record<string, unknown>) =>
+      previewPlugin(gated({ ...base, contributes: { domOps: [domOp] } })).warnings;
+    const composer = { kind: 'semantic', key: 'composer' };
+    for (const styles of [
+      { display: '/**/none' },
+      { display: 'n\\6f ne' },
+      { display: 'n\\6F\tne' },
+      { display: '\\6e one' },
+      { display: 'none/* still none */' },
+      { visibility: 'hid\\64 en' },
+      { opacity: '/**/0' },
+      { opacity: '\\30' },
+      { display: 'no/**/ne' },
+    ]) {
+      expect(hiding({ op: 'setStyle', target: composer, styles }), JSON.stringify(styles)).toEqual([
+        { kind: 'hides' },
+      ]);
+    }
+    for (const value of [
+      'display:/**/none',
+      'display:n\\6f ne',
+      'displ\\61y: none',
+      'display/**/:none',
+      '/* ; */display:none',
+      '--x:"/*";display:none;--y:"*/"',
+      'color:red;/*;*/display:none',
+      'visibility:/*x*/hidden',
+    ]) {
+      expect(hiding({ op: 'setAttribute', target: composer, name: 'style', value }), value).toEqual(
+        [{ kind: 'hides' }],
+      );
+    }
+  });
+
+  it('warns when a value on a hiding property cannot be read with confidence', () => {
+    const hiding = (styles: Record<string, unknown>) =>
+      previewPlugin(
+        gated({
+          ...base,
+          contributes: {
+            domOps: [{ op: 'setStyle', target: { kind: 'semantic', key: 'composer' }, styles }],
+          },
+        }),
+      ).warnings;
+    for (const styles of [
+      { display: 'revert-layer' },
+      { display: 'nothing-known' },
+      { opacity: '1e-3' },
+      { opacity: '.05' },
+      { visibility: 'whatever' },
+      { 'content-visibility': 'hidden-matchable' },
+    ]) {
+      expect(hiding(styles), JSON.stringify(styles)).toEqual([{ kind: 'hides' }]);
+    }
+    for (const styles of [
+      { display: 'inline-block' },
+      { display: 'block flow' },
+      { display: 'inherit' },
+      { opacity: '50%' },
+      { opacity: '1 !important' },
+      { 'content-visibility': 'auto' },
+      { '--gv-plugin-x': 'none' },
+    ]) {
+      expect(hiding(styles), JSON.stringify(styles)).toEqual([]);
+    }
+  });
+
+  it('shows inline style values in full, so a long one cannot push a hiding declaration out of view', () => {
+    const padding = `--gv-plugin-pad:${'0 '.repeat(150)}`;
+    const value = `${padding};display:none`;
+    const preview = previewPlugin(
+      gated({
+        ...base,
+        contributes: {
+          domOps: [
+            {
+              op: 'setAttribute',
+              target: { kind: 'semantic', key: 'composer' },
+              name: 'style',
+              value,
+            },
+            {
+              op: 'setStyle',
+              target: { kind: 'semantic', key: 'userTurn' },
+              styles: { '--gv-plugin-pad': '0 '.repeat(150).trim(), display: 'none' },
+            },
+          ],
+        },
+      }),
+    );
+    expect(preview.changes).toContainEqual({
+      kind: 'setAttribute',
+      target: { kind: 'semantic', key: 'composer' },
+      name: 'style',
+      value,
+    });
+    expect(preview.changes).toContainEqual({
+      kind: 'setStyle',
+      target: { kind: 'semantic', key: 'userTurn' },
+      styles: `--gv-plugin-pad: ${'0 '.repeat(150).trim()}; display: none`,
+    });
+    expect(preview.warnings).toContainEqual({ kind: 'hides' });
+  });
+
   it('warns about hiding, raw selectors, the wrong site and a replaced version', () => {
     const preview = previewPlugin(
       gated({

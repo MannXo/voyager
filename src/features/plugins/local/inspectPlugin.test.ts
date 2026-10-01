@@ -41,4 +41,42 @@ describe('inspectPlugin', () => {
       { key: 'wide', type: 'boolean', label: 'Wide', defaultValue: 'true' },
     ]);
   });
+
+  it('shows inline style values in full and clips only the target', () => {
+    const pad = '0 '.repeat(150).trim();
+    const selector = `.x${'-y'.repeat(120)}`;
+    const result = validateLocalManifest({
+      id: 'me.pad',
+      name: 'Pad',
+      version: '1.0.0',
+      description: 'd',
+      author: 'Me',
+      category: 'layout',
+      license: 'MIT',
+      engine: '>=1.0.0',
+      tier: 'declarative',
+      matches: ['https://claude.ai/*'],
+      contributes: {
+        domOps: [
+          {
+            op: 'setAttribute',
+            target: 'main',
+            name: 'style',
+            value: `--gv-plugin-pad:${pad};display:none`,
+          },
+          { op: 'setStyle', target: 'main', styles: { '--gv-plugin-pad': pad, display: 'none' } },
+          { op: 'setStyle', target: selector, styles: { color: 'red' } },
+        ],
+      },
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    const [attribute, style, longTarget] = inspectPlugin(result.data.manifest).domOps;
+    expect(attribute).toBe(`setAttribute style="--gv-plugin-pad:${pad};display:none" → main`);
+    expect(style).toBe(`setStyle --gv-plugin-pad: ${pad}; display: none → main`);
+    expect(longTarget.startsWith('setStyle color: red → .x-y')).toBe(true);
+    expect(longTarget.endsWith('…')).toBe(true);
+    expect(longTarget.length).toBeLessThan(selector.length);
+  });
 });

@@ -55,19 +55,20 @@ function describeTarget(target: SelectorRef): string {
   return target.kind === 'semantic' ? `semantic:${target.key}` : target.selector;
 }
 
+/** Inline style values stay whole: a long declaration must not push a hiding one out of view. */
 function describeOp(op: Exclude<DomOperation, { op: 'native' }>): string {
   const target = describeTarget(op.target);
   switch (op.op) {
     case 'addClass':
       return clip(`addClass ${op.className} → ${target}`);
     case 'setAttribute':
-      return clip(`setAttribute ${op.name}="${op.value}" → ${target}`);
+      return op.name === 'style'
+        ? `setAttribute style="${op.value}" → ${clip(target)}`
+        : clip(`setAttribute ${op.name}="${op.value}" → ${target}`);
     case 'setStyle':
-      return clip(
-        `setStyle ${Object.entries(op.styles)
-          .map(([prop, value]) => `${prop}: ${value}`)
-          .join('; ')} → ${target}`,
-      );
+      return `setStyle ${Object.entries(op.styles)
+        .map(([prop, value]) => `${prop}: ${value}`)
+        .join('; ')} → ${clip(target)}`;
     case 'hide':
       return clip(`hide → ${target}`);
   }

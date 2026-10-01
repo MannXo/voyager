@@ -558,6 +558,22 @@ say`), `src/pages/content/platformTheme/__tests__/platformTheme.test.ts`.
   `src/pages/popup/components/__tests__/LocalPluginComposer.test.tsx`
   (`does not overwrite a plugin installed after the preview; it asks for a new review`).
 
+## The plugin preview reads inline styles as CSS does and shows them whole
+
+- **Trap:** The AI-reply preview matched `display:none` and similar on the raw text, so a comment
+  (`display:/**/none`) or an escape (`display:n\6f ne`) hid content with no warning. The preview
+  and the inspect view also clipped `setStyle` values and the `style` attribute, so a long
+  custom-property declaration pushed a hiding one out of view.
+- **Rule:** Normalize the property and value first (comments to spaces with `stripCssComments`,
+  escapes with `decodeCssEscapes`, lowercase, no `!important`), read a `style` attribute both with
+  comments removed and as written, and warn on a hiding property unless the value is known to show
+  the element. Show every inline style value in full; clip only targets and other attributes.
+- **Guard:** `src/features/plugins/local/pluginPreview.test.ts`
+  (`reads hiding values through CSS comments and escapes`,
+  `shows inline style values in full, so a long one cannot push a hiding declaration out of view`),
+  `src/features/plugins/local/inspectPlugin.test.ts`
+  (`shows inline style values in full and clips only the target`).
+
 ## A content-script setting write must be ours, declared and reported
 
 - **Trap:** `gv.plugins.setSetting` stored any id/key/value from any sender, and the shared state

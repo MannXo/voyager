@@ -2902,8 +2902,8 @@
     "description": "Warning: the plugin targets raw CSS selectors"
   },
   "localPluginWarnHides": {
-    "message": "페이지 일부를 숨깁니다. 플러그인을 끄면 다시 보입니다.",
-    "description": "Warning: the plugin hides part of the page"
+    "message": "페이지 일부를 숨길 수 있습니다. 플러그인을 끄면 다시 보입니다.",
+    "description": "Warning: the plugin may hide part of the page (also shown when a hiding style cannot be read with confidence)"
   },
   "localPluginWarnNotOnSite": {
     "message": "선택한 사이트 {site}에서는 동작하지 않습니다.",

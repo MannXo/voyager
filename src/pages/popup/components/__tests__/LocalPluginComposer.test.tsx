@@ -314,4 +314,36 @@ describe('describe a change → prompt → pasted reply → preview → import',
       'localPluginWarnNotOnSite',
     );
   });
+
+  it('shows a long inline style in full, with its hiding warning, in the preview and inspect view', async () => {
+    const value = `--gv-plugin-pad:${'0 '.repeat(150)};display:none`;
+    const fill = (key: string) =>
+      key === 'localPluginChangeSetAttribute' ? `${key} {name}="{value}"` : key;
+    await act(async () => root.render(<LocalPluginsPanel t={fill} />));
+    await flush();
+    await act(async () => button(container, 'localPluginDescribeOpen').click());
+    await checkReply(
+      fenced({
+        ...AUTHORED,
+        contributes: {
+          domOps: [
+            {
+              op: 'setAttribute',
+              target: { kind: 'semantic', key: 'composer' },
+              name: 'style',
+              value,
+            },
+          ],
+        },
+      }),
+    );
+
+    const preview = container.querySelector('[data-testid="local-plugin-preview"]');
+    expect(preview?.textContent).toContain(`style="${value}"`);
+    expect(container.querySelector('[data-testid="local-plugin-warnings"]')?.textContent).toContain(
+      'localPluginWarnHides',
+    );
+    await act(async () => button(container, 'localPluginsInspect').click());
+    expect(preview?.textContent).toContain(`setAttribute style="${value}"`);
+  });
 });

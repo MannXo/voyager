@@ -49,7 +49,7 @@ export function renderSettingTemplate(
 const CSS_ESCAPE = /\\(?:([0-9a-f]{1,6})(?:\r\n|[ \t\n\r\f])?|(\r\n|[\n\r\f])|([\s\S]))/gi;
 
 /** Resolve CSS escapes (`\75 rl(`, `@\69mport`, `\` + newline) as the tokenizer does. */
-function decodeCssEscapes(css: string): string {
+export function decodeCssEscapes(css: string): string {
   return css.replace(CSS_ESCAPE, (_, hex?: string, newline?: string, char?: string) => {
     if (hex) {
       const code = Number.parseInt(hex, 16);
@@ -60,8 +60,11 @@ function decodeCssEscapes(css: string): string {
   });
 }
 
-/** Drop `/* *\/` comments; an unclosed comment runs to the end, as in CSS. */
-function stripCssComments(css: string): string {
+/**
+ * Drop `/* *\/` comments; an unclosed comment runs to the end, as in CSS. Each
+ * comment becomes `replacement`, so `' '` keeps the tokens it separated apart.
+ */
+export function stripCssComments(css: string, replacement = ''): string {
   let out = '';
   let from = 0;
   for (;;) {
@@ -69,7 +72,8 @@ function stripCssComments(css: string): string {
     if (open < 0) return out + css.slice(from);
     out += css.slice(from, open);
     const close = css.indexOf('*/', open + 2);
-    if (close < 0) return out;
+    if (close < 0) return out + replacement;
+    out += replacement;
     from = close + 2;
   }
 }
