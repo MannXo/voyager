@@ -441,6 +441,27 @@ Gemini tab while the popup import is writing`).
   `src/pages/background/__tests__/promptDriveMergeOrder.test.ts` (`round-trips between two
 devices: the pusher sets Drive, a puller keeps its own order`).
 
+## A prompt merge must not stamp the time it ran
+
+- **Trap:** The prompts import set `updatedAt = now` on every matched prompt and `createdAt = now`
+  on every added one. A copy that was only synced then looked freshly edited, so a real but
+  earlier edit from another device lost to it: after a no-op merge at 100, an edit made at 20
+  elsewhere was rejected, and when two devices edited one prompt, whichever pushed last won rather
+  than the later edit. The import also copied only text and name from a newer same-id copy, so
+  pins and unpins never travelled through the popup import or the prompts-only Drive merges.
+- **Rule:** A prompt's edit time is its own `updatedAt`, else `createdAt`; no merge reads the
+  clock, and `applyPromptLibraryOp` takes no time argument. `isNewerPromptCopy`
+  (`src/core/utils/promptRevision.ts`) decides the winner for the import and for the full restore
+  (`mergePromptsWithStats`): the later edit wins, and a tie goes to the greater
+  `[text, name, pinnedAt]` so every device keeps the same copy, with a missing name sorting low.
+  The winning copy brings its text, name (when it has one), `pinnedAt` (absent unpins) and edit
+  time; tags still union. Pinning must keep bumping `updatedAt`, or a pin loses to the older
+  copy. An added prompt keeps the times it came with.
+- **Guard:** `src/pages/background/__tests__/promptDriveMergeEdits.test.ts` (`keeps an edit made
+elsewhere after this device merged an unchanged copy`, `changes nothing when the same Drive file
+is merged again`, the pin and unpin round trips), `src/utils/mergePrompts.test.ts` and
+  `src/features/prompt/library/__tests__/promptImportBoundaries.test.ts`.
+
 ## Bind account-scoped writes to the scope at action time
 
 - **Trap:** Research Pack resolved its storage key when a queued op finally ran, so an answer added
