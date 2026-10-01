@@ -353,58 +353,29 @@ export class FolderStore {
     dragData: DragData & { sourceFolderId?: string },
   ): void {
     if (!this.canEdit) return;
-    folderDebug('Adding conversation to folder:', {
-      folderId,
-      dragData,
-    });
-
-    if (!this.data.folderContents[folderId]) {
-      this.data.folderContents[folderId] = [];
-    }
-
-    // Check if conversation is already in this folder
-    const exists = this.data.folderContents[folderId].some(
-      (c) => c.conversationId === dragData.conversationId,
+    const conversationId = dragData.conversationId;
+    if (!conversationId) return;
+    const sourceFolderId =
+      dragData.sourceFolderId !== folderId ? dragData.sourceFolderId : undefined;
+    const { data, added } = placeConversations(
+      this.data,
+      [this.buildDroppedConversation({ ...dragData, conversationId })],
+      {
+        target: folderId,
+        placement: 'append',
+        removeFrom: sourceFolderId ? { bucket: sourceFolderId } : undefined,
+      },
     );
-
-    if (exists) {
-      folderDebug('Conversation already in folder:', dragData.conversationId);
-      folderDebug('Existing conversations:', this.data.folderContents[folderId]);
+    if (added.length === 0) {
+      folderDebug('Conversation already in folder:', conversationId);
       return;
     }
 
-    const maxSortIndex = this.data.folderContents[folderId].reduce(
-      (max, c) => Math.max(max, c.sortIndex ?? -1),
-      -1,
-    );
-    const conversationId = dragData.conversationId!;
-    const conv: ConversationReference = {
-      conversationId,
-      title: this.resolveDraggedConversationTitleForStorage(conversationId, dragData.title),
-      url: dragData.url!,
-      addedAt: Date.now(),
-      lastTurnAt: this.getKnownConversationLastTurnAt(conversationId, dragData.url),
-      isGem: dragData.isGem,
-      gemId: dragData.gemId,
-      sortIndex: maxSortIndex + 1,
-    };
-
-    this.data.folderContents[folderId].push(conv);
-    folderDebug('Conversation added. Total in folder:', this.data.folderContents[folderId].length);
-
-    // If this was dragged from another folder, remove it from the source
-    if (dragData.sourceFolderId && dragData.sourceFolderId !== folderId) {
-      folderDebug('Moving from folder:', dragData.sourceFolderId);
-      this.removeConversationFromFolder(dragData.sourceFolderId, dragData.conversationId!);
-      // Note: removeConversationFromFolder calls saveData() and refresh(), so we don't need to call them again
-      // Folder→folder move is not a "first archive"; skip the nudge.
-      return;
-    }
-
-    // Save immediately before refresh to persist data
+    this.data = data;
     this.saveData();
     this.options.onChange('data');
-    this.options.onArchive();
+    // Folder→folder move is not a "first archive"; skip the nudge.
+    if (!sourceFolderId) this.options.onArchive();
   }
 
   addConversationsToFolder(

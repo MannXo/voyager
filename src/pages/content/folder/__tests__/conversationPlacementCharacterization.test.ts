@@ -193,7 +193,7 @@ describe('Gemini conversation placement entry points', () => {
       expect(find('f', 'n')).toEqual({
         conversationId: 'n',
         title: 'Untitled',
-        url: undefined,
+        url: '',
         addedAt: NOW,
         lastTurnAt: undefined,
         isGem: false,
@@ -203,6 +203,14 @@ describe('Gemini conversation placement entry points', () => {
       expect(await saves()).toBe(1);
       expect(onChange).toHaveBeenCalledWith('data');
       expect(onArchive).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores a payload without a conversation id', async () => {
+      await mount(data(['f'], { f: [] }));
+      store.addConversationToFolder('f', { type: 'conversation', title: 'No id' });
+      expect(store.data.folderContents.f).toEqual([]);
+      expect(await saves()).toBe(0);
+      expect(onChange).not.toHaveBeenCalled();
     });
 
     it('does nothing when the target already holds the exact id', async () => {
