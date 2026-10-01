@@ -9,6 +9,7 @@ import { PluginScope } from '@/features/plugins/runtime/pluginScope';
 import { initI18n } from '@/utils/i18n';
 
 import { activateChatGptFolders } from '../index';
+import { exportChatGptFolders } from '../transfer';
 import { type SidebarFixture, makeRows, mountSidebarFixture } from './chatgptSidebarFixture';
 import { type MemoryStorage, createMemoryStorage, settle } from './memoryStorage';
 
@@ -86,7 +87,24 @@ afterEach(async () => {
   sidebar.destroy();
   document.body.replaceChildren();
   globalThis.chrome.storage = originalStorage;
+  vi.restoreAllMocks();
 });
+
+/** Imports `data` the way a user does: the panel's Import button and a chosen file. */
+async function importFromPanel(data: FolderData): Promise<void> {
+  // The file picker is never attached to the page; keep its click from opening anything.
+  const pick = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+  const panel = document.querySelector<HTMLElement>('.gv-floating-folder-panel')!.shadowRoot!;
+  panel.querySelector<HTMLButtonElement>('button[aria-label="Import folders"]')!.click();
+  const json = JSON.stringify(exportChatGptFolders(data));
+  const file = new File([json], 'folders.json', { type: 'application/json' });
+  // jsdom's File has no text().
+  Object.defineProperty(file, 'text', { value: () => Promise.resolve(json) });
+  const picker = pick.mock.contexts[0] as HTMLInputElement;
+  Object.defineProperty(picker, 'files', { value: [file] });
+  picker.dispatchEvent(new Event('change'));
+  await settle(20);
+}
 
 async function activate(): Promise<void> {
   await activateChatGptFolders(scope);
@@ -198,6 +216,30 @@ describe('ChatGPT sidebar title sync', () => {
     await nextPass();
     expect(stored()[0].title).toBe('Renamed here');
     expect(folderWrites()).toBe(before + 1);
+  });
+
+  it('gives an imported copy with an older title the title the sidebar shows', async () => {
+    store([reference(FILED)]);
+    memory.values.local.set(StorageKeys.CHATGPT_FOLDER_PANEL, { open: true });
+    await activate();
+    const before = folderWrites();
+
+    await importFromPanel({
+      folders: [
+        { id: 'f2', name: 'Old', parentId: null, isExpanded: true, createdAt: 1, updatedAt: 1 },
+      ],
+      folderContents: { f2: [reference(FILED, { title: 'Title from an old export' })] },
+    });
+    await nextPass();
+    await nextPass();
+
+    const data = memory.values.local.get(StorageKeys.FOLDER_DATA_CHATGPT) as FolderData;
+    expect(data.folderContents.f2).toEqual([expect.objectContaining({ title: FILED.title })]);
+    expect(data.folderContents.f1[0].title).toBe(FILED.title);
+    // The import, then one title write; nothing more after it.
+    expect(folderWrites()).toBe(before + 2);
+    await nextPass();
+    expect(folderWrites()).toBe(before + 2);
   });
 
   it('stops following the sidebar when turned off', async () => {

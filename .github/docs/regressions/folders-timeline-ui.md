@@ -889,11 +889,18 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
 - **Trap:** Every save from another tab reloads the ChatGPT folder store, and the reload schedules a
   sidebar pass. Two tabs whose sidebars cached different titles for one filed conversation each
   wrote their own title back on that pass. Each write reloaded the other tab, so they overwrote
-  each other with no sidebar change in between.
+  each other with no sidebar change in between. Skipping every unchanged row went too far the
+  other way: an import that filed an already-cached conversation into another folder under an
+  older title kept that title, because the row's text never changed.
 - **Rule:** `ChatGptTitleSync` remembers the title it last read from each filed row and writes a
-  title only when the row shows something new to this tab. A reload alone never writes.
+  title only when the row shows something new to this tab, or when the conversation gained a
+  reference this tab had not seen (a new bucket + conversation id from `store.filings()`). Such
+  a conversation is reconciled once, when its row is next read. A reload of unchanged data adds
+  no reference, so it never writes. A reference another tab added is new here too; that costs at
+  most one write per tab and settles.
 - **Guard:** `src/features/plugins/builtin/chatgptFolders/__tests__/sidebarTitleSync.test.ts`
-  (`settles when another tab saves a title this sidebar still shows differently`).
+  (`settles when another tab saves a title this sidebar still shows differently`,
+  `gives an imported copy with an older title the title the sidebar shows`).
 
 ## The ChatGPT folder picker can offer a folder another tab deleted
 

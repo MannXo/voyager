@@ -148,6 +148,24 @@ export class ChatGptFolderStore {
     return ids;
   }
   /**
+   * One entry per filed reference, keyed by bucket and stored conversation id,
+   * with the conversation's bare id. A key that was not here before is a new
+   * reference (an add, a move or an import); a reload of the same data keeps
+   * every key.
+   */
+  filings(): Map<string, string> {
+    const filings = new Map<string, string>();
+    const contents = this.data.folderContents;
+    for (const bucketId of Object.keys(contents)) {
+      for (const conversation of ownBucket(contents, bucketId) ?? []) {
+        const key = `${bucketId}\u0000${conversation.conversationId}`;
+        filings.set(key, bareId(conversation.conversationId));
+      }
+    }
+    return filings;
+  }
+
+  /**
    * Gives filed references ChatGPT's current titles, keyed by bare id. A user's
    * own title is kept. Saves only when a title actually changes.
    */
