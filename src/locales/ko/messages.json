@@ -2597,6 +2597,14 @@
     "message": "이미 이 폴더에 있습니다.",
     "description": "ChatGPT folder panel status when the open conversation is already in that folder"
   },
+  "chatgptFoldersCoachmarkTitle": {
+    "message": "폴더가 사이드바에 있습니다",
+    "description": "Title of the one-time guide pointing at the folder section in the ChatGPT sidebar"
+  },
+  "chatgptFoldersCoachmarkBody": {
+    "message": "이제 폴더는 ChatGPT 사이드바의 이곳에 있습니다. +로 폴더를 만들거나, 채팅 메뉴에서 ‘폴더로 이동’을 선택해 정리하세요.",
+    "description": "Body of the one-time guide pointing at the folder section in the ChatGPT sidebar; quotes the Move to folder menu label"
+  },
   "folder_import_wrong_site": {
     "message": "이 파일에는 다른 사이트의 폴더가 들어 있어 아무것도 가져오지 않았습니다.",
     "description": "ChatGPT folder import error when the file holds conversations from another site"

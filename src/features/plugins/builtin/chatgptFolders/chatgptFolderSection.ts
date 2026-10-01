@@ -34,6 +34,8 @@ const STATUS_MS = 4000;
 
 export class ChatGptFolderSection {
   readonly element: HTMLElement;
+  /** The header row with the section's title: what the one-time guide points at. */
+  readonly header: HTMLElement;
   private readonly surface: ShadowSurface;
   private readonly body: HTMLElement;
   private readonly createButton: HTMLButtonElement;
@@ -53,6 +55,7 @@ export class ChatGptFolderSection {
     this.element.setAttribute('aria-label', t('floatingPanelTitle'));
 
     const header = document.createElement('div');
+    this.header = header;
     header.className = `${FOLDER_SECTION_CLASS}__header`;
     const title = document.createElement('div');
     title.className = `${FOLDER_SECTION_CLASS}__title`;
@@ -125,6 +128,11 @@ export class ChatGptFolderSection {
     this.body.inert = !ready;
     this.body.setAttribute('aria-busy', String(!ready));
     this.createButton.disabled = !ready;
+  }
+
+  /** True while the section's own folder menu or name field is open. */
+  get busy(): boolean {
+    return this.contextMenu !== null || this.inlineEditor !== null;
   }
 
   /** Shows `message` under the header until the next one or a few seconds pass. */

@@ -1033,3 +1033,17 @@ template file`, `exports only the chosen template, never the pack or other promp
 - **Guard:** `src/features/plugins/storage/pluginDefaults.test.ts` (`is registered by the
 background unless the user turned it off`, `stays on when a setting changes before the user ever
 flipped it`, `counts for the popup but never makes Voyager contact the catalog host by itself`).
+
+## A plugin-site coachmark has no `body.gv-rtl` and must not open over a host menu
+
+- **Trap:** The shared coachmark mirrors itself under `body.gv-rtl`, which only Gemini's content
+  features set, so a guide on chatgpt.com stayed left-to-right on an RTL page. Its outside-click
+  guard also swallows every page click while it is open, so showing it over an open Radix menu
+  or dialog traps the user.
+- **Rule:** A plugin-site guide passes `rtl: detectRTL()` (the bubble gets `gv-coach--rtl`). It
+  starts from a sidebar change, never on a timer, only when its anchor is connected, data has
+  loaded and no `[role=menu]`, `[role=dialog]`, picker or section form is open. Dropping the
+  anchor or disposing the plugin closes it without marking it seen.
+- **Guard:** `src/features/plugins/builtin/chatgptFolders/__tests__/folderGuide.test.ts`
+  (`never opens over an open menu, and shows after it closes`, `waits while the section is naming
+a new folder`, `lays itself out right to left on an RTL page`).

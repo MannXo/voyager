@@ -2601,6 +2601,14 @@
     "message": "Already in this folder.",
     "description": "ChatGPT folder panel status when the open conversation is already in that folder"
   },
+  "chatgptFoldersCoachmarkTitle": {
+    "message": "Your folders are in the sidebar",
+    "description": "Title of the one-time guide pointing at the folder section in the ChatGPT sidebar"
+  },
+  "chatgptFoldersCoachmarkBody": {
+    "message": "Folders now sit right here in ChatGPT’s sidebar. Use + to create one, or choose “Move to folder” in a chat’s menu to file it.",
+    "description": "Body of the one-time guide pointing at the folder section in the ChatGPT sidebar; quotes the Move to folder menu label"
+  },
   "folder_import_wrong_site": {
     "message": "This file holds folders from another site, so nothing was imported.",
     "description": "ChatGPT folder import error when the file holds conversations from another site"

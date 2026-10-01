@@ -2597,6 +2597,14 @@
     "message": "موجودة بالفعل في هذا المجلد.",
     "description": "ChatGPT folder panel status when the open conversation is already in that folder"
   },
+  "chatgptFoldersCoachmarkTitle": {
+    "message": "مجلداتك في الشريط الجانبي",
+    "description": "Title of the one-time guide pointing at the folder section in the ChatGPT sidebar"
+  },
+  "chatgptFoldersCoachmarkBody": {
+    "message": "أصبحت المجلدات هنا في الشريط الجانبي لـ ChatGPT. استخدم + لإنشاء مجلد، أو اختر «نقل إلى مجلد» من قائمة المحادثة لحفظها فيه.",
+    "description": "Body of the one-time guide pointing at the folder section in the ChatGPT sidebar; quotes the Move to folder menu label"
+  },
   "folder_import_wrong_site": {
     "message": "يحتوي هذا الملف على مجلدات من موقع آخر، لذلك لم يتم استيراد أي شيء.",
     "description": "ChatGPT folder import error when the file holds conversations from another site"

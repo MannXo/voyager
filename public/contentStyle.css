@@ -12544,7 +12544,9 @@ html[data-gv-scheme='dark'] .gv-coach {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 28px 6px 0;
+  /* Clear the close button, which sits on the inline end in either direction. */
+  margin: 0 0 6px;
+  margin-inline-end: 28px;
 }
 .gv-coach-icon {
   display: inline-flex;
@@ -12672,14 +12674,17 @@ html[data-gv-scheme='dark'] .gv-coach-switch {
   border-color: var(--gv-coach-accent);
 }
 
-body.gv-rtl .gv-coach {
+body.gv-rtl .gv-coach,
+.gv-coach.gv-coach--rtl {
   direction: rtl;
 }
-body.gv-rtl .gv-coach-close {
+body.gv-rtl .gv-coach-close,
+.gv-coach--rtl .gv-coach-close {
   right: auto;
   left: 8px;
 }
-body.gv-rtl .gv-coach-dismiss {
+body.gv-rtl .gv-coach-dismiss,
+.gv-coach--rtl .gv-coach-dismiss {
   margin: 0 auto 0 0;
 }
 

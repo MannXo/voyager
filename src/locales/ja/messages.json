@@ -2597,6 +2597,14 @@
     "message": "すでにこのフォルダにあります。",
     "description": "ChatGPT folder panel status when the open conversation is already in that folder"
   },
+  "chatgptFoldersCoachmarkTitle": {
+    "message": "フォルダはサイドバーにあります",
+    "description": "Title of the one-time guide pointing at the folder section in the ChatGPT sidebar"
+  },
+  "chatgptFoldersCoachmarkBody": {
+    "message": "フォルダは ChatGPT のサイドバーのここに表示されます。+ で作成でき、チャットのメニューの「フォルダへ移動」で整理できます。",
+    "description": "Body of the one-time guide pointing at the folder section in the ChatGPT sidebar; quotes the Move to folder menu label"
+  },
   "folder_import_wrong_site": {
     "message": "このファイルには別のサイトのフォルダが含まれているため、何もインポートされませんでした。",
     "description": "ChatGPT folder import error when the file holds conversations from another site"

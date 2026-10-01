@@ -2597,6 +2597,14 @@
     "message": "已在此資料夾中。",
     "description": "ChatGPT folder panel status when the open conversation is already in that folder"
   },
+  "chatgptFoldersCoachmarkTitle": {
+    "message": "資料夾在側邊欄裡",
+    "description": "Title of the one-time guide pointing at the folder section in the ChatGPT sidebar"
+  },
+  "chatgptFoldersCoachmarkBody": {
+    "message": "資料夾現在就在 ChatGPT 側邊欄的這裡。點 + 建立資料夾，或在對話選單中選擇「移動到資料夾」進行歸檔。",
+    "description": "Body of the one-time guide pointing at the folder section in the ChatGPT sidebar; quotes the Move to folder menu label"
+  },
   "folder_import_wrong_site": {
     "message": "此檔案包含其他網站的資料夾，因此未匯入任何內容。",
     "description": "ChatGPT folder import error when the file holds conversations from another site"

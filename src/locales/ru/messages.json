@@ -2597,6 +2597,14 @@
     "message": "Уже в этой папке.",
     "description": "ChatGPT folder panel status when the open conversation is already in that folder"
   },
+  "chatgptFoldersCoachmarkTitle": {
+    "message": "Папки теперь в боковой панели",
+    "description": "Title of the one-time guide pointing at the folder section in the ChatGPT sidebar"
+  },
+  "chatgptFoldersCoachmarkBody": {
+    "message": "Папки теперь здесь, в боковой панели ChatGPT. Нажмите +, чтобы создать папку, или выберите «Переместить в папку» в меню чата.",
+    "description": "Body of the one-time guide pointing at the folder section in the ChatGPT sidebar; quotes the Move to folder menu label"
+  },
   "folder_import_wrong_site": {
     "message": "В этом файле папки с другого сайта, поэтому ничего не импортировано.",
     "description": "ChatGPT folder import error when the file holds conversations from another site"

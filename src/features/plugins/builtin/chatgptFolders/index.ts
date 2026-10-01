@@ -1,9 +1,9 @@
 /**
  * ChatGPT folders on the shared folder core: a folder section in ChatGPT's
- * sidebar, the shared floating panel, and "Move to folder" in a row's menu. The
- * store is the shared FolderRepository with ChatGPT's own bucket. Everything this
- * plugin creates is registered on its PluginScope, so turning it off leaves
- * nothing behind.
+ * sidebar (introduced once by a guide), the shared floating panel, and "Move to
+ * folder" in a row's menu. The store is the shared FolderRepository with
+ * ChatGPT's own bucket. Everything this plugin creates is registered on its
+ * PluginScope, so turning it off leaves nothing behind.
  */
 import type { ConversationReference } from '@/core/types/folder';
 import { cloneFolderData } from '@/features/folder/model/folderData';
@@ -18,6 +18,7 @@ import { getTranslationSyncUnsafe as t, initI18n } from '@/utils/i18n';
 
 import { isTemporaryChat } from '../chatgptTemporaryHandoff/handoff';
 import { type AddOutcome, ChatGptFolderStore } from './ChatGptFolderStore';
+import { ChatGptFolderGuide } from './chatgptFolderGuide';
 import { type FolderPickerHandle, openFolderPicker } from './chatgptFolderPicker';
 import { ChatGptFolderSection } from './chatgptFolderSection';
 import { ChatGptHideFiled, HIDE_FILED_SETTING } from './chatgptHideFiled';
@@ -108,6 +109,16 @@ class ChatGptFoldersView {
   /** Keeps the sidebar section in ChatGPT's sidebar; called after every sidebar change. */
   placeSection(sidebar: HTMLElement | null): void {
     this.section?.place(sidebar);
+  }
+
+  /** The section's header while the section is in the page, for the one-time guide. */
+  guideAnchor(): HTMLElement | null {
+    return this.section?.element.isConnected ? this.section.header : null;
+  }
+
+  /** True while the section's own folder menu or name field is open. */
+  sectionBusy(): boolean {
+    return this.section?.busy ?? false;
   }
 
   /** "Move to folder" from a sidebar row's menu: files `conversation` where the user picks. */
@@ -290,10 +301,16 @@ export async function activateChatGptFolders(
     onMove: (conversation) => view.pickFolderFor(conversation),
   });
   const titles = new ChatGptTitleSync(store);
+  const guide = new ChatGptFolderGuide(scope, {
+    anchor: () => view.guideAnchor(),
+    ready: () => store.ready,
+    busy: () => view.sectionBusy(),
+  });
   scope.effect(() => () => moveMenu.cancel(), 'chatgpt-folders:move-menu');
   sidebar.onChange((nav) => {
     view.placeSection(nav);
     titles.sync(nav);
+    guide.check();
     if (moveMenu.check(nav)) sidebar.schedule();
   });
   scope.effect(() => store.subscribe(() => sidebar.schedule()), 'chatgpt-folders:sidebar-sync');

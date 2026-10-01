@@ -2597,6 +2597,14 @@
     "message": "Já está nesta pasta.",
     "description": "ChatGPT folder panel status when the open conversation is already in that folder"
   },
+  "chatgptFoldersCoachmarkTitle": {
+    "message": "Suas pastas estão na barra lateral",
+    "description": "Title of the one-time guide pointing at the folder section in the ChatGPT sidebar"
+  },
+  "chatgptFoldersCoachmarkBody": {
+    "message": "As pastas agora ficam aqui, na barra lateral do ChatGPT. Use + para criar uma ou escolha “Mover para pasta” no menu de uma conversa para arquivá-la.",
+    "description": "Body of the one-time guide pointing at the folder section in the ChatGPT sidebar; quotes the Move to folder menu label"
+  },
   "folder_import_wrong_site": {
     "message": "Este arquivo contém pastas de outro site, então nada foi importado.",
     "description": "ChatGPT folder import error when the file holds conversations from another site"

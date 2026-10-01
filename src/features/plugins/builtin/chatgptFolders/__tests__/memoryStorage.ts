@@ -3,7 +3,14 @@
  * every write. Install it as `globalThis.chrome.storage`; the
  * `webextension-polyfill` mock in each test reads `chrome.storage` at call time,
  * so both APIs share one store and one listener list.
+ *
+ * The one-time sidebar guide starts out seen, so it stays out of tests about
+ * other behaviour; a guide test deletes `StorageKeys.COACHMARKS_SEEN` first.
  */
+import { StorageKeys } from '@/core/types/common';
+
+import { CHATGPT_FOLDERS_GUIDE_ID } from '../chatgptFolderGuide';
+
 type Area = 'local' | 'sync';
 type Change = { oldValue?: unknown; newValue?: unknown };
 type Listener = (changes: Record<string, Change>, area: string) => void;
@@ -21,7 +28,10 @@ export interface MemoryStorage {
 const clone = <T>(value: T): T => (value === undefined ? value : structuredClone(value));
 
 export function createMemoryStorage(): MemoryStorage {
-  const values: Record<Area, Map<string, unknown>> = { local: new Map(), sync: new Map() };
+  const values: Record<Area, Map<string, unknown>> = {
+    local: new Map(),
+    sync: new Map([[StorageKeys.COACHMARKS_SEEN, [CHATGPT_FOLDERS_GUIDE_ID]]]),
+  };
   const writes: Array<{ area: Area; key: string }> = [];
   const listeners = new Set<Listener>();
 
