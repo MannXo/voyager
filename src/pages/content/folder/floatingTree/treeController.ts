@@ -12,8 +12,17 @@ import {
   type TreeChange,
   type TreeProps,
   type TreeSiteOptions,
+  MENU_SELECTOR,
   cls,
 } from './shared';
+
+const VIEWPORT_MARGIN = 8;
+
+/** How far a box from `start` of `size` moves to sit inside `viewport`, margin kept. */
+function shiftIntoView(start: number, size: number, viewport: number): number {
+  const overflow = start + size - (viewport - VIEWPORT_MARGIN);
+  return Math.max(overflow > 0 ? -overflow : 0, VIEWPORT_MARGIN - start);
+}
 
 export type FolderTreeOptions = {
   /** The element the tree renders into. */
@@ -129,6 +138,21 @@ export function mountFolderTree({
       ?.focus();
   const focusIsLost = () => !document.activeElement || document.activeElement === document.body;
 
+  // A menu opened near the viewport's edge moves inside it. The shift is a
+  // delta, so it holds in a container that offsets fixed boxes. A box without
+  // layout (0×0) stays.
+  const fitMenuIntoView = () => {
+    const menu = (layer?.container ?? body).querySelector<HTMLElement>(MENU_SELECTOR);
+    if (!contextMenu || !menu) return;
+    const rect = menu.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const dx = shiftIntoView(rect.left, rect.width, window.innerWidth);
+    const dy = shiftIntoView(rect.top, rect.height, window.innerHeight);
+    if (!dx && !dy) return;
+    contextMenu = { ...contextMenu, x: contextMenu.x + dx, y: contextMenu.y + dy };
+    render();
+  };
+
   function apply(change: TreeChange, effect?: () => void): void {
     const closing = contextMenu && change.contextMenu === null ? contextMenu : null;
     if (change.inlineEditor !== undefined) inlineEditor = change.inlineEditor;
@@ -136,6 +160,7 @@ export function mountFolderTree({
     if (change.expand) setExpanded(change.expand.folderId, change.expand.expanded);
     effect?.();
     render();
+    if (change.contextMenu) fitMenuIntoView();
     if (change.contextMenu?.fromKeyboard) {
       (layer?.container ?? body).querySelector<HTMLElement>(`.${cls('menu-item')}`)?.focus();
     } else if (closing?.fromKeyboard && focusIsLost()) {

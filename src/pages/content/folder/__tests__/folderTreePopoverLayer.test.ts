@@ -23,6 +23,7 @@ afterEach(() => {
   }
   document.documentElement.removeAttribute('data-gv-scheme');
   document.body.classList.remove('gv-rtl');
+  vi.restoreAllMocks();
 });
 
 const data: FolderData = {
@@ -167,6 +168,50 @@ describe('folder menu in a popover layer', () => {
     }
 
     expect(layers()).toHaveLength(0);
+  });
+});
+
+describe('folder menu near the edge of the viewport', () => {
+  const MENU = { width: 188, height: 161 };
+
+  /** Layout for jsdom: the ⋮ button sits at `button`, the menu where its style puts it. */
+  function layOut(button: { left: number; bottom: number }) {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+      function (this: HTMLElement) {
+        if (this.classList.contains(cls('context-menu'))) {
+          const left = parseFloat(this.style.left);
+          const top = parseFloat(this.style.top);
+          return DOMRect.fromRect({ x: left, y: top, ...MENU });
+        }
+        if (this.classList.contains(cls('icon-button--menu'))) {
+          return DOMRect.fromRect({ x: button.left, y: button.bottom - 24, width: 24, height: 24 });
+        }
+        return DOMRect.fromRect();
+      },
+    );
+  }
+  const menuBox = () => {
+    const menu = menuIn(layerRoot())!;
+    return { left: parseFloat(menu.style.left), top: parseFloat(menu.style.top) };
+  };
+
+  it('moves a menu that would run past the bottom-right corner inside it', () => {
+    layOut({ left: window.innerWidth - 40, bottom: window.innerHeight - 20 });
+    const { root } = mount();
+    openMenu(root, 'a');
+
+    expect(menuBox()).toEqual({
+      left: window.innerWidth - 8 - MENU.width,
+      top: window.innerHeight - 8 - MENU.height,
+    });
+  });
+
+  it('leaves a menu that fits where it opened', () => {
+    layOut({ left: 100, bottom: 120 });
+    const { root } = mount();
+    openMenu(root, 'a');
+
+    expect(menuBox()).toEqual({ left: 100, top: 120 });
   });
 });
 
