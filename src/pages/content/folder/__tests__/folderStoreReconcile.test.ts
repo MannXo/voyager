@@ -10,6 +10,8 @@ import {
   accountIsolationService,
   buildScopedFolderStorageKey,
 } from '@/core/services/AccountIsolationService';
+import { DataBackupService } from '@/core/services/DataBackupService';
+import { validateFolderData } from '@/features/folder/model/folderData';
 
 import { FolderStore } from '../FolderStore';
 import type { IFolderStorageAdapter } from '../storage/FolderStorageAdapter';
@@ -81,6 +83,7 @@ describe('FolderStore reconciles external writes after local work settles', () =
   let stored: FolderData | undefined;
   let adapter: IFolderStorageAdapter;
   let store: FolderStore;
+  let onRecovery: ReturnType<typeof vi.fn<(result: 'recovered' | 'lost') => void>>;
 
   /** Delivers a storage.onChanged event for the bucket, as chrome.storage would. */
   function emit(value: FolderData | undefined): void {
@@ -104,6 +107,7 @@ describe('FolderStore reconciles external writes after local work settles', () =
     vi.spyOn(accountIsolationService, 'isIsolationEnabled').mockResolvedValue(false);
     vi.spyOn(console, 'log').mockImplementation(() => {});
     stored = folders('Alpha');
+    onRecovery = vi.fn<(result: 'recovered' | 'lost') => void>();
     adapter = {
       init: vi.fn(async () => {}),
       loadData: vi.fn(async () => structuredClone(stored ?? null)),
@@ -119,7 +123,7 @@ describe('FolderStore reconciles external writes after local work settles', () =
         getContext: () => ({ sidebar: null, sortMode: 'manual', enabled: true }),
         onChange: vi.fn(),
         onArchive: vi.fn(),
-        onRecovery: vi.fn(),
+        onRecovery,
       },
       adapter,
     );
@@ -418,6 +422,77 @@ describe('FolderStore reconciles external writes after local work settles', () =
       writeFromElsewhere(folders('Alpha', 'From another tab'));
       await vi.advanceTimersByTimeAsync(1000);
       expect(names(store.data)).toEqual(['Alpha', 'From another tab']);
+    });
+
+    /** Tab B saves `value`: storage and the account's shared primary backup now hold it. */
+    function savedByAnotherTab(value: FolderData): void {
+      stored = structuredClone(value);
+      new DataBackupService<FolderData>('gemini-folders', validateFolderData).createPrimaryBackup(
+        value,
+      );
+    }
+
+    /** Both attempts of one Gemini save (it retries once) fail. */
+    function failNextSave(): void {
+      vi.mocked(adapter.saveData).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+    }
+
+    it('restores a newer shared backup once an external load replaced a failed save', async () => {
+      failNextSave();
+      store.data.folders[0].name = 'Mine';
+      await expect(store.saveData()).resolves.toBe(false);
+      writeFromElsewhere(folders('From X'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(names(store.data)).toEqual(['From X']);
+
+      savedByAnotherTab(folders('From Y'));
+      writeFromElsewhere(corrupt); // the corruption lands before this tab rereads Y
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(names(store.data)).toEqual(['From Y']);
+      expect(names(stored)).toEqual(['From Y']);
+    });
+
+    it('recovers from backup normally once a failed save is followed by a successful one', async () => {
+      failNextSave();
+      store.data.folders[0].name = 'Mine';
+      await expect(store.saveData()).resolves.toBe(false);
+      await expect(store.saveData()).resolves.toBe(true);
+
+      writeFromElsewhere(corrupt);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(onRecovery).toHaveBeenCalledWith('recovered');
+      expect(names(store.data)).toEqual(['Mine']);
+    });
+
+    it('does not treat a failed draft replacement as an unsaved edit', async () => {
+      failNextSave();
+      await expect(store.replaceData(folders('Imported'))).resolves.toBe(false);
+      expect(names(store.data)).toEqual(['Alpha']); // the draft never reached memory
+
+      savedByAnotherTab(folders('From Y'));
+      writeFromElsewhere(corrupt);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(names(store.data)).toEqual(['From Y']);
+    });
+
+    it('does not treat its own failed recovery write as an unsaved edit', async () => {
+      vi.mocked(adapter.saveData).mockResolvedValue(false);
+      writeFromElsewhere(corrupt);
+      await vi.advanceTimersByTimeAsync(1000);
+      vi.mocked(adapter.saveData).mockImplementation(async (_key, data) => {
+        stored = structuredClone(data);
+        return true;
+      });
+
+      savedByAnotherTab(folders('From Y'));
+      writeFromElsewhere(structuredClone(corrupt));
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(names(store.data)).toEqual(['From Y']);
+      expect(names(stored)).toEqual(['From Y']);
     });
 
     it('settles once a recovery write succeeds', async () => {

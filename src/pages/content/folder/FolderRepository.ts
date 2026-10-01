@@ -318,6 +318,8 @@ export class FolderRepository {
       session.loadsInFlight -= 1;
       // Only a read that started after every observed external write settles them.
       if (applied && session.externalWrites === externalWrites) session.reconcilePending = false;
+      // Authoritative data replaced any failed edit; merged debounced edits are pending, not failed.
+      if (applied) session.unsavedChanges = false;
       if (isCurrent() && session.ready) {
         this.hooks.onChange('loaded');
       }
@@ -388,7 +390,11 @@ export class FolderRepository {
       console.warn(`${this.tag} Data recovered from localStorage backup`);
       this.hooks.onRecovery('recovered');
       // Save recovered data to persistent storage
-      return this.saveData();
+      const saved = await this.saveData();
+      // Memory now holds the backup, not a local edit: a failed write of it must
+      // not outrank a newer backup that another tab may write before the next try.
+      if (!saved) session.unsavedChanges = false;
+      return saved;
     }
 
     // Step 2: If current this.data already has valid structure, keep it
@@ -506,7 +512,7 @@ export class FolderRepository {
       if (this.destroyed || this.dataSession !== session || this.accountScopeRequest !== activation)
         return false;
 
-      session.activeSave = this.persistDataSession(session, snapshot, companions);
+      session.activeSave = this.persistDataSession(session, snapshot, companions, false);
       saved = await session.activeSave;
       // An issued write still belongs to this session if the user has since left it.
       if (saved) session.data = snapshot;
@@ -571,6 +577,8 @@ export class FolderRepository {
     session: FolderDataSession,
     snapshot: FolderData,
     companions?: Record<string, unknown>,
+    /** False for a draft: its failure leaves memory as it was, not holding a failed edit. */
+    fromMemory = true,
   ): Promise<boolean> {
     this.dataSessions.set(session.storageKey, session);
     session.saveInProgress = true;
@@ -635,7 +643,7 @@ export class FolderRepository {
       this.storageEchoes.disarm(echo);
       success = false;
     } finally {
-      if (!session.pendingSave) session.unsavedChanges = !success;
+      if (!session.pendingSave && (success || fromMemory)) session.unsavedChanges = !success;
       // A newer queued snapshot can still persist this edit; report only a final failure.
       if (!success && this.dataSession === session && !session.pendingSave) {
         this.hooks.onSaveFailed?.();

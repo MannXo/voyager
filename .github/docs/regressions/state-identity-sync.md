@@ -104,7 +104,13 @@ off a ChatGPT tab`).
   proves nothing about storage, so it reconciles only for an external write observed since the
   last reload request (`reconcileAttemptedAt`). While the session's last write failed
   (`unsavedChanges`), recovery repairs storage from live memory instead of the older primary
-  backup, which would roll back the edit and then overwrite the emergency backup holding it. Every load merges edits still
+  backup, which would roll back the edit and then overwrite the emergency backup holding it. The
+  flag means memory still holds that failed edit: a successful write and every applied load
+  clear it, and neither a failed draft replacement nor a failed recovery write sets it. A stale
+  flag would keep old memory over a newer primary backup that another tab of the same account
+  wrote, and then overwrite storage and that backup. No load applies while one of the session's
+  writes is in flight (`loadData` returns early for a ready session that is saving, and a
+  save bumps `loadVersion`), so a write that fails cannot set the flag over a load. Every load merges edits still
   waiting on the debounce onto the fresh data with `mergeDebouncedEdits`, against
   `session.baseline` (what this tab last read or wrote), so debounced edits may only touch
   expand/collapse and conversation timestamps. Timestamps raised here are matched by conversation identity (normalized id or URL route id, as `FolderStore.isSameConversation` does) across folders, because another tab may have moved or copied the conversation; fresh
