@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  PromptImportExportService,
-  mergeImportedPrompts,
-} from '@/features/backup/services/PromptImportExportService';
+import { PromptImportExportService } from '@/features/backup/services/PromptImportExportService';
 import type { PromptItem } from '@/features/backup/types/backup';
 
+import { mergeImportedPrompts } from '../mergeImportedPrompts';
 import {
   createPromptLibraryClient,
   handlePromptLibraryApplyMessage,

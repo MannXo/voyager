@@ -5,7 +5,6 @@
  */
 import { AppError, ErrorCode } from '@/core/errors/AppError';
 import { type Result, StorageKeys } from '@/core/types/common';
-import { getPromptNameConflictIds } from '@/core/utils/promptName';
 import { EXTENSION_VERSION } from '@/core/utils/version';
 
 import type { PromptExportPayload, PromptItem } from '../types/backup';
@@ -60,93 +59,6 @@ function normalizePromptItem(value: unknown): PromptItem | null {
   }
 
   return prompt;
-}
-
-export interface PromptImportStats {
-  imported: number;
-  duplicates: number;
-  nameConflicts: number;
-  total: number;
-}
-
-/**
- * Merge imported prompts into a library, as the prompts import always has:
- * a prompt matching a stored one by id (or else by text) merges tags into it,
- * and a same-id copy that is newer replaces its text and name; anything else
- * is added. `stored` is the freshly read library; its prompts are updated in place.
- */
-export function mergeImportedPrompts(
-  stored: PromptItem[],
-  incoming: PromptItem[],
-  now: number,
-): PromptImportStats & { items: PromptItem[] } {
-  const mergedItems = [...stored];
-  const importItems = incoming;
-
-  // Index one merge target per body without using the map as the final
-  // collection. Historical stores may themselves contain duplicates and
-  // must never be collapsed by a later import.
-  const existingByText = new Map<string, PromptItem>();
-  const existingById = new Map<string, PromptItem>();
-  for (const item of mergedItems) {
-    const key = item.text.toLowerCase();
-    if (!existingByText.has(key)) existingByText.set(key, item);
-    if (!existingById.has(item.id)) existingById.set(item.id, item);
-  }
-
-  let imported = 0;
-  let duplicates = 0;
-
-  for (const item of importItems) {
-    const key = item.text.toLowerCase();
-    const existingWithId = existingById.get(item.id);
-    const existing = existingWithId ?? existingByText.get(key);
-    if (existing) {
-      // Merge tags if duplicate
-      const mergedTags = Array.from(new Set([...(existing.tags || []), ...(item.tags || [])]));
-      existing.tags = mergedTags;
-      const incomingTime = item.updatedAt || item.createdAt || 0;
-      const existingTime = existing.updatedAt || existing.createdAt || 0;
-      const shouldApplySameIdUpdate = existingWithId === existing && incomingTime > existingTime;
-
-      if (item.name && (shouldApplySameIdUpdate || !existing.name)) {
-        existing.name = item.name;
-      }
-
-      if (shouldApplySameIdUpdate) {
-        existing.text = item.text;
-        existingByText.clear();
-        for (const mergedItem of mergedItems) {
-          const mergedKey = mergedItem.text.toLowerCase();
-          if (!existingByText.has(mergedKey)) {
-            existingByText.set(mergedKey, mergedItem);
-          }
-        }
-      }
-      existing.updatedAt = now;
-      duplicates++;
-    } else {
-      const importedItem = {
-        ...item,
-        createdAt: now,
-      };
-      existingByText.set(key, importedItem);
-      existingById.set(importedItem.id, importedItem);
-      mergedItems.push(importedItem);
-      imported++;
-    }
-  }
-
-  // Save merged results
-  mergedItems.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-  const nameConflicts = getPromptNameConflictIds(mergedItems).size;
-  return {
-    items: mergedItems,
-    imported,
-    duplicates,
-    nameConflicts,
-    total: mergedItems.length,
-  };
 }
 
 function hasChromePromptStorage(): boolean {
@@ -279,46 +191,6 @@ export class PromptImportExportService {
   }
 
   /**
-   * Save prompts to localStorage
-   */
-  static async savePrompts(items: PromptItem[]): Promise<Result<void>> {
-    try {
-      if (!hasChromePromptStorage()) {
-        localStorage.setItem(StorageKeys.PROMPT_ITEMS, JSON.stringify(items));
-        return {
-          success: true,
-          data: undefined,
-        };
-      }
-
-      await new Promise<void>((resolve, reject) => {
-        chrome.storage.local.set({ [StorageKeys.PROMPT_ITEMS]: items }, () => {
-          if (chrome.runtime?.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-            return;
-          }
-          resolve();
-        });
-      });
-
-      return {
-        success: true,
-        data: undefined,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: new AppError(
-          ErrorCode.STORAGE_WRITE_FAILED,
-          'Failed to save prompts to extension storage',
-          { key: StorageKeys.PROMPT_ITEMS, itemCount: items.length },
-          error instanceof Error ? error : undefined,
-        ),
-      };
-    }
-  }
-
-  /**
    * Generate filename for export with timestamp
    */
   static generateExportFilename(): string {
@@ -347,52 +219,6 @@ export class PromptImportExportService {
       success: true,
       data: JSON.stringify(payload, null, 2),
     };
-  }
-
-  /**
-   * Import prompts from payload
-   * Merges with existing prompts (deduplicates by text)
-   * @param payload - The import payload
-   * @returns Result with import statistics
-   */
-  static async importFromPayload(payload: PromptExportPayload): Promise<
-    Result<{
-      imported: number;
-      duplicates: number;
-      nameConflicts: number;
-      total: number;
-    }>
-  > {
-    try {
-      // Load existing prompts
-      const loadResult = await this.loadPrompts();
-      if (!loadResult.success) {
-        return loadResult;
-      }
-
-      const { items: mergedItems, ...stats } = mergeImportedPrompts(
-        loadResult.data,
-        payload.items,
-        Date.now(),
-      );
-
-      const saveResult = await this.savePrompts(mergedItems);
-      if (!saveResult.success) {
-        return saveResult;
-      }
-
-      return { success: true, data: stats };
-    } catch (error) {
-      return {
-        success: false,
-        error: new AppError(
-          ErrorCode.UNKNOWN_ERROR,
-          'Failed to import prompts',
-          { payload },
-          error instanceof Error ? error : undefined,
-        ),
-      };
-    }
   }
 
   /**

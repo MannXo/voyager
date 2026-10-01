@@ -14,11 +14,9 @@
  */
 import { StorageKeys } from '@/core/types/common';
 import { getPromptNameComparisonKey, getPromptNameConflictIds } from '@/core/utils/promptName';
-import {
-  type PromptImportStats,
-  mergeImportedPrompts,
-} from '@/features/backup/services/PromptImportExportService';
 import type { PromptItem } from '@/features/backup/types/backup';
+
+import { type PromptImportStats, mergeImportedPrompts } from './mergeImportedPrompts';
 
 export const PROMPT_LIBRARY_KEY = StorageKeys.PROMPT_ITEMS;
 
