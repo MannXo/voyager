@@ -651,6 +651,27 @@ describe('Prompt Manager library state', () => {
     for (const callback of Object.values(callbacks)) expect(callback).not.toHaveBeenCalled();
   });
 
+  it('still sends an op queued before teardown without arming its watchdog', async () => {
+    vi.useFakeTimers();
+    const replies: Array<(result: PromptLibraryResult) => void> = [];
+    const apply = vi.fn(() => new Promise<PromptLibraryResult>((resolve) => replies.push(resolve)));
+    const state = createPromptLibraryState({
+      read: async () => [prompt('a', 'A'), prompt('b', 'B')],
+      apply,
+    });
+    await state.load();
+
+    void state.remove('a');
+    void state.remove('b');
+    await vi.advanceTimersByTimeAsync(0);
+    state.dispose();
+    replies[0]({ added: 0, skipped: 0, total: 1, nameConflicts: 0, items: [prompt('b', 'B')] });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(apply).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('keeps a library received while it was loading', async () => {
     let finishRead!: () => void;
     const state = createPromptLibraryState({

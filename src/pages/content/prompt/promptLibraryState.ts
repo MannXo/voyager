@@ -257,10 +257,13 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
    */
   const request = (op: PromptLibraryOp, onOverdue?: () => void): Promise<PromptLibraryResult> => {
     const reply = lastReply.then(() => {
-      timer = setTimeout(() => {
-        setUnavailable(true);
-        onOverdue?.();
-      }, watchdogMs);
+      // An op queued before teardown is still sent, but nobody waits on it.
+      if (!stopped) {
+        timer = setTimeout(() => {
+          setUnavailable(true);
+          onOverdue?.();
+        }, watchdogMs);
+      }
       return deps.apply(op).finally(() => {
         clearTimeout(timer);
         setUnavailable(false);
