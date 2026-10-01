@@ -266,4 +266,108 @@ describe('research pack account scope', () => {
     expect(store.apply).not.toHaveBeenCalled();
     expect(document.querySelector('.gv-rp-toast')!.getAttribute('data-tone')).toBe('error');
   });
+
+  describe('when the account email shows up after the scope was bound', () => {
+    const ACCOUNT_B_EMAIL = buildScopedStorageKey(StorageKeys.RESEARCH_PACK, 'email:b');
+    // A reused /u/0 route still aliases the previous account A until B's email is seen.
+    const staleRouteAlias = async (context: ResearchPackScopeContext) =>
+      context.email === 'b@example.com' ? ACCOUNT_B_EMAIL : ACCOUNT_A;
+    const showEmail = (email: string): void => {
+      const account = document.createElement('div');
+      account.setAttribute('aria-label', `Google Account: B (${email})`);
+      document.body.appendChild(account);
+    };
+    const copyButton = () =>
+      document.querySelectorAll<HTMLButtonElement>('.gv-rp-actions button')[1];
+
+    it('moves to the pack of the account the email names', async () => {
+      const shared = sharedStorage({
+        [ACCOUNT_A]: packOf('A item'),
+        [ACCOUNT_B_EMAIL]: packOf('B item'),
+      });
+      const writeText = vi.fn(async (_text: string) => undefined);
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+      stop = startResearchPack({
+        pageUrl: geminiPageUrl,
+        store: shared.store,
+        resolveKey: staleRouteAlias,
+      });
+      await flush();
+      expect(shownItems()).toEqual(['A item']);
+
+      showEmail('b@example.com');
+      await wait(350);
+      await flush();
+      expect(shownItems()).toEqual(['B item']);
+
+      const host = turn('<p>Answer for B.</p>');
+      await wait(350);
+      clickAdd(host);
+      await flush();
+      expect(shared.at(ACCOUNT_B_EMAIL).map((item) => item.text)).toEqual([
+        'B item',
+        'Answer for B.',
+      ]);
+      expect(shared.at(ACCOUNT_A).map((item) => item.text)).toEqual(['A item']);
+
+      copyButton().click();
+      expect(writeText.mock.calls[0][0]).toContain('B item');
+      expect(writeText.mock.calls[0][0]).not.toContain('A item');
+    });
+
+    it('adds to the account the email names even before the page rescans', async () => {
+      const shared = sharedStorage({ [ACCOUNT_A]: packOf('A item') });
+      const host = turn('<p>Clicked as soon as the email appeared.</p>');
+      stop = startResearchPack({
+        pageUrl: geminiPageUrl,
+        store: shared.store,
+        resolveKey: staleRouteAlias,
+      });
+      await flush();
+
+      showEmail('b@example.com');
+      clickAdd(host);
+      await flush();
+
+      expect(shared.at(ACCOUNT_B_EMAIL).map((item) => item.text)).toEqual([
+        'Clicked as soon as the email appeared.',
+      ]);
+      expect(shared.at(ACCOUNT_A).map((item) => item.text)).toEqual(['A item']);
+    });
+
+    it('keeps the panel and the typing untouched when the email resolves to the same pack', async () => {
+      const shared = sharedStorage({ [GLOBAL]: packOf('global item') });
+      const resolveKey = vi.fn(async (_context: ResearchPackScopeContext) => GLOBAL);
+      stop = startResearchPack({ pageUrl: geminiPageUrl, store: shared.store, resolveKey });
+      await flush();
+      const textarea = document.querySelector<HTMLTextAreaElement>('#gv-rp-instruction')!;
+      textarea.focus();
+      textarea.value = 'Still typing';
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+
+      showEmail('b@example.com');
+      await wait(350);
+      await flush();
+
+      expect(resolveKey).toHaveBeenCalledWith(expect.objectContaining({ email: 'b@example.com' }));
+      expect(shownItems()).toEqual(['global item']);
+      expect(textarea.value).toBe('Still typing');
+      expect(document.querySelector<HTMLElement>('.gv-rp-toast')!.hidden).toBe(true);
+    });
+
+    it('still shows the first load when the email appears while it is in flight', async () => {
+      const shared = sharedStorage({ [GLOBAL]: packOf('global item') });
+      stop = startResearchPack({
+        pageUrl: geminiPageUrl,
+        store: gated(shared.store, { load: GLOBAL, ms: 400 }),
+        resolveKey: async () => GLOBAL,
+      });
+
+      showEmail('b@example.com');
+      await wait(450);
+      await flush();
+
+      expect(shownItems()).toEqual(['global item']);
+    });
+  });
 });

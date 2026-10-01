@@ -43,6 +43,19 @@ export function isDifferentAccount(
 }
 
 /**
+ * The page now shows an email for the route the scope was bound to without
+ * one. At startup a reused `/u/<index>/` route can still alias the account
+ * that last used it, so the email may name a different pack; only resolving
+ * both tells.
+ */
+export function gainsAccountEmail(
+  bound: ResearchPackScopeContext,
+  current: ResearchPackScopeContext,
+): boolean {
+  return bound.routeUserId === current.routeUserId && !bound.email && Boolean(current.email);
+}
+
+/**
  * The platform flag and the legacy flag that decide isolation for this page,
  * or null when the page belongs to no account platform (any non-Gemini,
  * non-AI Studio site). There is deliberately no Gemini fallback: such a page

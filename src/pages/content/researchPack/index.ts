@@ -30,6 +30,7 @@ import { createResearchPackPanel } from './panel';
 import {
   type ResearchPackScopeContext,
   createResearchPackKeyResolver,
+  gainsAccountEmail,
   isDifferentAccount,
   isIsolationSettingChange,
   readScopeContext,
@@ -85,10 +86,11 @@ export interface StartResearchPackOptions {
 
 /**
  * The pack scope an action is bound to. The key is resolved from the context
- * captured at bind time, so later account switches cannot redirect it.
+ * captured at bind time, so later account switches cannot redirect it. The
+ * context only changes to record an email that turned out to name the same key.
  */
 interface BoundScope {
-  readonly context: ResearchPackScopeContext;
+  context: ResearchPackScopeContext;
   readonly key: Promise<string>;
 }
 
@@ -181,13 +183,40 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
    * goes to the scope it was typed in, the old content is hidden at once, and
    * the new scope's pack loads in its place.
    */
-  const switchScope = (): void => {
+  const switchScope = (next: BoundScope = bind(readContext())): void => {
     const previous = scope;
     const pending = panel.takePendingInstruction();
     if (pending !== null) void applyIn(previous, { kind: 'setInstruction', instruction: pending });
-    scope = bind(readContext());
+    scope = next;
     show(createEmptyPack(), true);
     void loadScope(scope, true);
+  };
+
+  /**
+   * An email that appears after binding (common at startup) may name another
+   * account than the route alias did. Resolve it once: a different key moves
+   * the panel to that pack, the same key only records the email on the scope,
+   * so the panel, its typing and in-flight loads are left alone.
+   */
+  let emailCheck: { from: BoundScope; candidate: BoundScope } | null = null;
+  const checkLateEmail = (): BoundScope | null => {
+    const current = readContext();
+    if (!gainsAccountEmail(scope.context, current)) return null;
+    if (emailCheck?.from === scope) return emailCheck.candidate;
+    const check = { from: scope, candidate: bind(current) };
+    emailCheck = check;
+    const settle = (sameKey: boolean): void => {
+      if (emailCheck === check) emailCheck = null;
+      if (!isCurrent(check.from)) return;
+      if (sameKey) check.from.context = check.candidate.context;
+      else switchScope(check.candidate);
+    };
+    // A key that cannot be resolved fails closed on the candidate's scope.
+    void Promise.all([check.from.key, check.candidate.key]).then(
+      ([fromKey, candidateKey]) => settle(fromKey === candidateKey),
+      () => settle(false),
+    );
+    return check.candidate;
   };
 
   /** The scope for something the user does now; rebinds first if the page changed accounts. */
@@ -269,8 +298,11 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
       panel.notify(t('researchPackCaptureFailed'), 'error');
       return;
     }
-    // The answer belongs to the page as it is now, so a switched scope is the right one.
-    const outcome = (await applyIn(scopeForAction().bound, { kind: 'add', draft }))?.outcome;
+    // The answer belongs to the page as it is now, so a switched scope is the
+    // right one, and so is the account an email that just appeared names.
+    const { bound } = scopeForAction();
+    const target = checkLateEmail() ?? bound;
+    const outcome = (await applyIn(target, { kind: 'add', draft }))?.outcome;
     if (!outcome || stopped) return;
     panel.notify(t(ADD_OUTCOME_MESSAGES[outcome]), outcome === 'added' ? 'ok' : 'error');
     if (outcome === 'added') {
@@ -293,6 +325,7 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     if (stopped) return;
     // In-app navigation can move the page to another /u/<index>/ account.
     if (isDifferentAccount(scope.context, readContext())) switchScope();
+    else checkLateEmail();
     ensureAddButtons(document, addButtonOptions);
   };
 
