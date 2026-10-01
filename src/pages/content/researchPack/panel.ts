@@ -13,6 +13,7 @@ import type { TemplateLibrary } from '@/features/researchPack/services/templates
 import type { ResearchPack, ResearchPackItem } from '@/features/researchPack/services/types';
 import type { TranslationKey } from '@/utils/translations';
 
+import { announceSurfaceOpened } from '../floatingSurfaces';
 import { createPromptRowSurfaces } from '../prompt/promptRowConfirm';
 import { formatTarget } from './continueIn';
 import { createTemplatesSection } from './templatesSection';
@@ -250,6 +251,7 @@ export function createResearchPackPanel(
     syncLauncher();
     templates.refresh();
     closeButton.focus({ preventScroll: true });
+    announceSurfaceOpened('research-pack');
     actions.onOpen?.();
   };
 

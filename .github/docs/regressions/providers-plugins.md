@@ -966,6 +966,19 @@ say`), `src/pages/content/platformTheme/__tests__/platformTheme.test.ts`.
   `src/features/researchPack/services/__tests__/handoff.test.ts` and
   `src/pages/background/__tests__/researchPackHandoff.test.ts`.
 
+## Opening the Research Pack from the keyboard must close the Prompt Manager
+
+- **Trap:** With the Prompt Manager open, activating the Research Pack launcher with Enter or Space
+  opened the pack under it: the Prompt Manager panel (z-index 2147483200) outranks the pack
+  (2147483100), so "Continue in Claude" landed on the prompt list and did nothing. The Prompt
+  Manager closes only on an outside `pointerdown`, and a keyboard or scripted `click` sends none.
+- **Rule:** A floating panel that opens over a light-dismiss panel announces it
+  (`announceSurfaceOpened` in `src/pages/content/floatingSurfaces.ts`), and the Prompt Manager
+  closes on that as it does on an outside click. A Prompt Manager opened over the pack is already
+  on top, and the pack keeps not closing on outside clicks.
+- **Guard:** `src/pages/content/__tests__/floatingSurfaceStacking.test.ts` and the Research Pack
+  case in `src/pages/content/prompt/__tests__/stackingOrder.test.ts`.
+
 ## A handed-off research pack goes only into an empty main composer on the new chat
 
 - **Trap:** The first receiver accepted any page on the target host and the adapter's composer

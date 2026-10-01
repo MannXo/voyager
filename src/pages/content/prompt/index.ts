@@ -61,6 +61,7 @@ import type { TranslationKey } from '@/utils/translations';
 
 import { hasUnreadChangelog, openChangelog, showChangelogModalDirect } from '../changelog/index';
 import { insertTextIntoChatInput } from '../chatInput/index';
+import { onOtherSurfaceOpened } from '../floatingSurfaces';
 import { expandInputCollapseIfNeeded } from '../inputCollapse/index';
 import { StarredMessagesService } from '../timeline/StarredMessagesService';
 import type { StarredMessage } from '../timeline/starredTypes';
@@ -2203,6 +2204,10 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
       closePanel();
     };
     window.addEventListener('pointerdown', onWindowPointerDown, { capture: true });
+    // A Research Pack opened from the keyboard sends no pointerdown, so it says so itself.
+    const stopSurfaceWatch = onOtherSurfaceOpened('prompt-manager', () => {
+      if (open) closePanel();
+    });
 
     // Close on Escape
     const onWindowKeyDown = (ev: KeyboardEvent) => {
@@ -2541,6 +2546,7 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
           window.removeEventListener('resize', onWindowResize);
           window.removeEventListener('scroll', onReposition);
           window.removeEventListener('pointerdown', onWindowPointerDown, { capture: true });
+          stopSurfaceWatch();
           window.removeEventListener('keydown', onWindowKeyDown);
           window.removeEventListener('pointermove', onDragMove);
           window.removeEventListener('pointerup', endDrag);
