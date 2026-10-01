@@ -5,7 +5,12 @@ import { resolve } from 'path';
 import { BuildOptions, defineConfig } from 'vite';
 import tsconfigPaths from 'vite-tsconfig-paths';
 
-import { crxI18n, stripDevIcons, stripI18nDescriptions } from './custom-vite-plugins';
+import {
+  crxI18n,
+  selfContainedContentScripts,
+  stripDevIcons,
+  stripI18nDescriptions,
+} from './custom-vite-plugins';
 import devManifest from './manifest.dev.json';
 import manifest from './manifest.json';
 import pkg from './package.json';
@@ -73,6 +78,8 @@ export default defineConfig({
     stripDevIcons(isDev),
     stripI18nDescriptions(isDev),
     crxI18n({ localize, src: './src/locales', stripDescriptions: !isDev }),
+    // Must install its window listener synchronously at document_start.
+    selfContainedContentScripts(['src/pages/content/shadowKeyGuardEntry.ts']),
   ],
   publicDir: resolve(__dirname, 'public'),
   esbuild: {

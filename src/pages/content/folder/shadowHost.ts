@@ -1,10 +1,14 @@
 import { SCHEME_ATTR, getScheme } from '@/pages/content/platformTheme/scheme';
-import { SHADOW_SURFACE_ATTR } from '@/pages/content/shadowKeyGuard';
 
 /** Host attribute that carries `body.gv-rtl` into a shadow tree. */
 export const SHADOW_RTL_ATTR = 'data-gv-rtl';
 
 const RTL_CLASS = 'gv-rtl';
+
+// The key guard's `SHADOW_SURFACE_ATTR`. Spelled out rather than imported: the
+// guard is its own document_start script and must not share a chunk with this
+// entry. shadowHost.test.ts checks the two agree.
+const SURFACE_MARKER = 'data-gv-shadow-surface';
 
 const TYPING_EVENTS = ['keydown', 'keypress', 'keyup'] as const;
 
@@ -32,7 +36,7 @@ export type ShadowSurface = {
 export function attachShadowSurface(host: HTMLElement, css: string): ShadowSurface {
   const root = host.attachShadow({ mode: 'open' });
   // Lets the document_start key guard recognise fields in this surface.
-  host.setAttribute(SHADOW_SURFACE_ATTR, '');
+  host.setAttribute(SURFACE_MARKER, '');
   const style = document.createElement('style');
   style.textContent = css;
   root.appendChild(style);

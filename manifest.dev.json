@@ -48,7 +48,7 @@
         "https://aistudio.google.com/*",
         "https://aistudio.google.cn/*"
       ],
-      "js": ["src/pages/content/shadowKeyGuardLoader.ts"],
+      "js": ["src/pages/content/shadowKeyGuardEntry.ts"],
       "run_at": "document_start"
     },
     {

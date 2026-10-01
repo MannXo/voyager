@@ -639,19 +639,24 @@ locale for every literal key the folder UI translates`, `confirms library drops 
   `folder/shadowHost.ts`), and focus checks read the shadow root's `activeElement`. Read
   `composedPath()` during dispatch; it is empty afterwards. Page code cannot be changed, so
   `attachShadowSurface` marks its host (`data-gv-shadow-surface`), and the `document_start`
-  entry `shadowKeyGuardLoader.ts` listens on `window` in the capture phase, ahead of the page.
+  entry `shadowKeyGuardEntry.ts` listens on `window` in the capture phase, ahead of the page.
   For a key from a text field in a marked surface it calls `stopImmediatePropagation` and
   replays a non-composed copy on the field, so the panel's own Enter and Escape handlers run and
   the copy stops at the shadow root. It never cancels the original, so the browser still types
   the character and IME composition is untouched. The shadow-root bubble stopper stays as the
-  fallback where no guard is installed. The loader is a dynamic import, so a page window-capture
-  key listener registered before it resolves would still run first; any other page listener
-  runs after the guard.
+  fallback where no guard is installed. The entry must register synchronously when evaluated:
+  CRXJS wraps any content chunk with imports or exports in a loader that awaits a dynamic
+  import, and a page listener registered during that wait runs first. So the entry imports only
+  the guard, the guard imports nothing, nothing else imports the guard (`shadowHost.ts` spells
+  the marker out), and the `selfContainedContentScripts` build plugin fails the build if the
+  emitted entry has imports, exports or a loader.
 - **Guard:** `src/core/services/__tests__/KeyboardShortcutService.test.ts` (`ignores shortcuts
 typed into an input inside an open shadow root`),
   `src/pages/content/chatInput/__tests__/vimModeShadowTarget.test.ts`,
   `src/core/utils/__tests__/composedTarget.test.ts`,
-  `src/pages/content/shadowKeyGuard/__tests__/shadowKeyGuard.test.ts` and
+  `src/pages/content/shadowKeyGuard/__tests__/shadowKeyGuard.test.ts`,
+  `src/pages/content/shadowKeyGuard/__tests__/shadowKeyGuardEntry.test.ts`,
+  `scripts/__tests__/selfContainedContentScripts.test.ts` and
   `src/pages/content/folder/__tests__/shadowHost.test.ts`.
 
 ## Page rules beat a normal `:host` declaration whatever their specificity
