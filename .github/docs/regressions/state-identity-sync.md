@@ -122,13 +122,16 @@ off a ChatGPT tab`).
   echo) destroyed an unfinished new-folder or rename editor. The rename editor also captured the
   folder object and header when opened, so after a reload its save mutated a detached object and
   the rename was silently lost.
-- **Rule:** `render()` detaches every open editor with `detachInlineDrafts` and puts the same
-  nodes back beside their folders with text, focus and selection. A rename whose folder, or a
-  new-subfolder draft whose parent, is gone is dropped (the save re-checks the parent too), and
-  `releaseAccountUi` discards drafts. Drafts record their folder id when opened: a collapsed
-  parent has no content box, so the DOM position does not identify it. Editors resolve their folder and header when
-  saving or cancelling, and remove themselves before re-rendering. Gemini's
-  `FolderTreeView.render()` still closes inline editors on every rebuild.
+- **Rule:** `render()` takes every open editor out with `InlineDraftHolder` and puts the same
+  nodes back beside their folders with text, focus and selection. The model decides whether a
+  draft survives, never the rendered DOM: a rename whose folder, or a new-subfolder draft whose
+  parent, no longer exists in the data is dropped (the save re-checks the parent too). A draft
+  whose folder exists but is hidden under a collapsed ancestor is held, not dropped, and returns
+  when the folder is visible again; reloads never expand folders to show it. `releaseAccountUi`
+  discards held and open drafts. Drafts record their folder id when opened, because a collapsed
+  parent has no content box. Editors resolve their folder and header when saving or cancelling,
+  and remove themselves before re-rendering. Gemini's `FolderTreeView.render()` still closes
+  inline editors on every rebuild.
 - **Guard:** `src/pages/content/folder/__tests__/aistudioFolderSync.test.ts` ("AI Studio inline folder drafts across reloads")
 
 ## Folder recovery and pending writes belong to an account session

@@ -434,6 +434,86 @@ describe('AI Studio inline folder drafts across reloads', () => {
     expect(document.activeElement).toBe(create);
   });
 
+  /** Parent P holds child S; `expanded` is P's state. */
+  function nested(expanded: boolean, withChild = true): FolderData {
+    const folders = [
+      { id: 'P', name: 'Parent', parentId: null, isExpanded: expanded, createdAt: 1, updatedAt: 1 },
+      { id: 'S', name: 'Child', parentId: 'P', isExpanded: true, createdAt: 2, updatedAt: 1 },
+    ];
+    return {
+      folders: withChild ? folders : folders.slice(0, 1),
+      folderContents: withChild ? { P: [], S: [] } : { P: [] },
+    };
+  }
+
+  function expandButton(folderId: string): HTMLButtonElement {
+    return document.querySelector<HTMLButtonElement>(
+      `[data-folder-id="${folderId}"] > .gv-folder-item-header .gv-folder-expand-btn`,
+    )!;
+  }
+
+  it('keeps a rename whose parent another tab collapsed and shows it again when expanded', async () => {
+    local[GLOBAL_KEY] = nested(true);
+    const manager = await mount();
+    manager.renameFolder('S');
+    const input = document.querySelector<HTMLInputElement>('.gv-folder-rename-inline input')!;
+    input.value = 'Renamed';
+
+    writeFromElsewhere({ [GLOBAL_KEY]: nested(false) });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(input.isConnected).toBe(false);
+
+    writeFromElsewhere({ [GLOBAL_KEY]: nested(true) });
+    await vi.advanceTimersByTimeAsync(0);
+    const header = document.querySelector('[data-folder-id="S"] .gv-folder-item-header');
+    expect(header?.contains(input)).toBe(true);
+    expect(input.value).toBe('Renamed');
+
+    press(input, 'Enter');
+    await vi.advanceTimersByTimeAsync(0);
+    expect((local[GLOBAL_KEY] as FolderData).folders.map((folder) => folder.name)).toEqual([
+      'Parent',
+      'Renamed',
+    ]);
+  });
+
+  it('keeps a new-subfolder draft across a local collapse of its ancestor', async () => {
+    local[GLOBAL_KEY] = nested(true);
+    const manager = await mount();
+    manager.createFolder('S');
+    const input = document.querySelector<HTMLInputElement>('.gv-folder-inline-input input')!;
+    input.value = 'Kid';
+
+    expandButton('P').click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(input.isConnected).toBe(false);
+    expandButton('P').click();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(document.querySelector('[data-folder-id="S"]')?.contains(input)).toBe(true);
+    expect(input.value).toBe('Kid');
+  });
+
+  it('drops a hidden rename once another tab deletes its folder', async () => {
+    local[GLOBAL_KEY] = nested(true);
+    const manager = await mount();
+    manager.renameFolder('S');
+
+    writeFromElsewhere({ [GLOBAL_KEY]: nested(false) });
+    await vi.advanceTimersByTimeAsync(0);
+    writeFromElsewhere({ [GLOBAL_KEY]: nested(false, false) });
+    await vi.advanceTimersByTimeAsync(0);
+    writeFromElsewhere({ [GLOBAL_KEY]: nested(true, false) });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector('.gv-folder-rename-inline')).toBeNull();
+
+    // An import or restore elsewhere brings the same folder id back: the old draft stays gone.
+    writeFromElsewhere({ [GLOBAL_KEY]: nested(true) });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector('.gv-folder-rename-inline')).toBeNull();
+    expect(panelText()).toContain('Child');
+  });
+
   it('does not carry a new-folder draft into another account', async () => {
     sync[StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED] = true;
     local[await scopedKey('a')] = folderData('Private a');

@@ -63,41 +63,70 @@ export function createInlineFolderEditor(
   return { wrapper, input, saveBtn, cancelBtn };
 }
 
-/** Discard unfinished editors, e.g. when the account they were opened for is released. */
-export function removeInlineDrafts(root: ParentNode | null | undefined): void {
-  root?.querySelectorAll(DRAFT_SELECTOR).forEach((draft) => draft.remove());
-}
+type HeldDraft = {
+  wrapper: HTMLElement;
+  input: HTMLInputElement | null;
+  folderId: string | null;
+  focused: boolean;
+  start: number | null;
+  end: number | null;
+};
 
 /**
- * Take unfinished editors out of `list` before it is rebuilt. The returned
- * callback puts the same nodes, with their text, listeners, focus and
- * selection, back beside their folder; one whose folder is gone is dropped.
+ * Keeps unfinished editors alive while the folder list is rebuilt. Whether a
+ * draft survives is decided by the model: one whose folder (the renamed one, or
+ * a new subfolder's parent) is gone is dropped. One whose folder still exists
+ * but is not rendered, because an ancestor is collapsed, is held and put back,
+ * with its text, once the folder is visible again.
  */
-export function detachInlineDrafts(list: HTMLElement): () => void {
-  const drafts = Array.from(list.querySelectorAll<HTMLElement>(DRAFT_SELECTOR), (wrapper) => {
-    const input = wrapper.querySelector('input');
-    return {
-      wrapper,
-      input,
-      folderId: wrapper.dataset.draftFolderId ?? null,
-      focused: input !== null && document.activeElement === input,
-      start: input?.selectionStart ?? null,
-      end: input?.selectionEnd ?? null,
-    };
-  });
-  drafts.forEach(({ wrapper }) => wrapper.remove());
+export class InlineDraftHolder {
+  private held: HeldDraft[] = [];
 
-  return () => {
-    for (const { wrapper, input, folderId, focused, start, end } of drafts) {
-      if (!placeDraft(list, wrapper, folderId) || !focused || !input) continue;
-      input.focus();
-      if (start !== null && end !== null) input.setSelectionRange(start, end);
+  /** Take the open editors out of `list` before it is rebuilt. */
+  detach(list: HTMLElement): void {
+    for (const wrapper of list.querySelectorAll<HTMLElement>(DRAFT_SELECTOR)) {
+      const input = wrapper.querySelector('input');
+      this.held.push({
+        wrapper,
+        input,
+        folderId: wrapper.dataset.draftFolderId ?? null,
+        focused: input !== null && document.activeElement === input,
+        start: input?.selectionStart ?? null,
+        end: input?.selectionEnd ?? null,
+      });
+      wrapper.remove();
     }
-  };
+  }
+
+  /** Put held editors back beside their rendered folder, restoring focus and selection. */
+  restore(list: HTMLElement, folderExists: (folderId: string) => boolean): void {
+    const hidden: HeldDraft[] = [];
+    for (const draft of this.held) {
+      if (draft.folderId && !folderExists(draft.folderId)) continue;
+      if (!placeDraft(list, draft.wrapper, draft.folderId)) {
+        hidden.push({ ...draft, focused: false });
+        continue;
+      }
+      if (!draft.focused || !draft.input) continue;
+      draft.input.focus();
+      if (draft.start !== null && draft.end !== null) {
+        draft.input.setSelectionRange(draft.start, draft.end);
+      }
+    }
+    this.held = hidden;
+  }
+
+  /** Discard every editor, e.g. when the account they were opened for is released. */
+  discard(root: ParentNode | null | undefined): void {
+    this.held = [];
+    root?.querySelectorAll(DRAFT_SELECTOR).forEach((draft) => draft.remove());
+  }
 }
 
+/** Place a draft beside its folder; false when that folder is not rendered. */
 function placeDraft(list: HTMLElement, wrapper: HTMLElement, folderId: string | null): boolean {
   const folder = folderId ? list.querySelector(`[data-folder-id="${folderId}"]`) : null;
+  if (folderId && !folder) return false;
   if (wrapper.classList.contains(RENAME_DRAFT_CLASS)) {
     const header = folder?.querySelector('.gv-folder-item-header');
     const name = folder?.querySelector('.gv-folder-name');
@@ -107,7 +136,6 @@ function placeDraft(list: HTMLElement, wrapper: HTMLElement, folderId: string | 
     header.insertBefore(wrapper, name.nextSibling);
     return true;
   }
-  if (folderId && !folder) return false; // its parent folder is gone
   const content = folder?.querySelector('.gv-folder-content');
   if (content) content.insertBefore(wrapper, content.firstChild);
   else if (folder) folder.insertAdjacentElement('afterend', wrapper);

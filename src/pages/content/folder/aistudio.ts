@@ -23,8 +23,7 @@ import { FolderRepository, type FolderStoreChange } from './FolderRepository';
 import {
   createInlineFolderEditor,
   createInlineMaterialIcon,
-  detachInlineDrafts,
-  removeInlineDrafts,
+  InlineDraftHolder,
 } from './aistudioInlineEditor';
 import { parseDragPayload } from './dragPayload';
 import {
@@ -293,6 +292,7 @@ export class AIStudioFolderManager {
   private readonly SIDEBAR_WIDTH_KEY = 'gvAIStudioSidebarWidth';
   private readonly MIN_SIDEBAR_WIDTH = 240;
   private readonly MAX_SIDEBAR_WIDTH = 600;
+  private readonly inlineDrafts = new InlineDraftHolder();
   private readonly UNCATEGORIZED_KEY = AISTUDIO_ROOT_BUCKET_ID; // Special key for root-level conversations
   private readonly LIBRARY_LONG_PRESS_MS = 500;
   private readonly MAX_LIBRARY_BATCH_DELETE_COUNT = 50;
@@ -587,7 +587,7 @@ export class AIStudioFolderManager {
     document.querySelector('.gv-folder-confirm-dialog.gv-aistudio-confirm')?.remove();
     document.querySelector('.gv-folder-menu.gv-aistudio-folder-menu')?.remove();
     document.querySelector('.gv-library-folder-list')?.replaceChildren();
-    removeInlineDrafts(this.container);
+    this.inlineDrafts.discard(this.container);
     this.render();
     this.applyHideArchivedToLibraryTable();
   }
@@ -1051,7 +1051,7 @@ export class AIStudioFolderManager {
       });
     const list = this.container.querySelector('.gv-folder-list') as HTMLElement | null;
     if (!list) return;
-    const restoreDraft = detachInlineDrafts(list);
+    this.inlineDrafts.detach(list);
     list.innerHTML = '';
 
     // Render only root-level folders here; children are rendered recursively
@@ -1093,7 +1093,7 @@ export class AIStudioFolderManager {
       uncatSection.appendChild(uncatContent);
       list.appendChild(uncatSection);
     }
-    restoreDraft();
+    this.inlineDrafts.restore(list, (id) => this.data.folders.some((f) => f.id === id));
 
     // After rendering, update active highlight
     this.highlightActiveConversation();
