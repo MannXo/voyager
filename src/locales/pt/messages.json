@@ -2573,6 +2573,10 @@
     "message": "Duplo clique para renomear · Clique direito: fixar/cor/excluir.",
     "description": "Floating folder panel hint explaining folder gestures and context menu actions"
   },
+  "floatingPanelAddCurrentHere": {
+    "message": "Adicionar a conversa atual aqui",
+    "description": "Floating folder panel folder menu item that files the open conversation into that folder"
+  },
   "folder_new_chat_in_folder": {
     "message": "Novo chat nesta pasta",
     "description": "Folder context menu item to create a new chat and auto-assign it to this folder"

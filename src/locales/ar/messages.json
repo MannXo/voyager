@@ -2573,6 +2573,10 @@
     "message": "نقر مزدوج لإعادة التسمية · زر الفأرة الأيمن للتثبيت واللون والحذف.",
     "description": "Floating folder panel hint explaining folder gestures and context menu actions"
   },
+  "floatingPanelAddCurrentHere": {
+    "message": "أضف المحادثة الحالية هنا",
+    "description": "Floating folder panel folder menu item that files the open conversation into that folder"
+  },
   "folder_new_chat_in_folder": {
     "message": "محادثة جديدة في هذا المجلد",
     "description": "Folder context menu item to create a new chat and auto-assign it to this folder"

@@ -2573,6 +2573,10 @@
     "message": "더블 클릭으로 이름 변경 · 우클릭으로 고정/색상/삭제.",
     "description": "Floating folder panel hint explaining folder gestures and context menu actions"
   },
+  "floatingPanelAddCurrentHere": {
+    "message": "현재 대화를 여기에 추가",
+    "description": "Floating folder panel folder menu item that files the open conversation into that folder"
+  },
   "folder_new_chat_in_folder": {
     "message": "이 폴더에서 새 채팅",
     "description": "Folder context menu item to create a new chat and auto-assign it to this folder"

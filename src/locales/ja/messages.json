@@ -2573,6 +2573,10 @@
     "message": "ダブルクリックで名前変更 · 右クリックで固定/色/削除。",
     "description": "Floating folder panel hint explaining folder gestures and context menu actions"
   },
+  "floatingPanelAddCurrentHere": {
+    "message": "現在の会話をここに追加",
+    "description": "Floating folder panel folder menu item that files the open conversation into that folder"
+  },
   "folder_new_chat_in_folder": {
     "message": "このフォルダで新規チャット",
     "description": "Folder context menu item to create a new chat and auto-assign it to this folder"

@@ -21,8 +21,23 @@ export { FLOATING_PANEL_CLASS };
 export type FloatingPanelPos = { x: number; y: number };
 export type FloatingPanelSize = { w: number; h: number };
 
+/** A header button a site adds before the create (+) button. */
+export type FloatingPanelHeaderAction = {
+  /** BEM modifier: `gv-floating-folder-panel__icon-button--<modifier>`. */
+  modifier: string;
+  labelKey: string;
+  /** Material Symbols path data, viewBox `0 -960 960 960`. */
+  iconPath: string;
+  onClick: () => void;
+};
+
 export type MountArgs = TreeActions & {
   data: FolderData;
+  /** Gemini's Drive buttons; a site without Drive sync passes `false`. Defaults to on, off in Safari. */
+  cloudActions?: boolean;
+  headerActions?: readonly FloatingPanelHeaderAction[];
+  /** Hint rows under the header; defaults to Gemini's move and gesture hints. */
+  hintKeys?: readonly string[];
   /** Defaults to Gemini's root bucket. */
   rootBucketId?: string;
   dataReady?: boolean;
@@ -42,6 +57,8 @@ export type FloatingPanelMountArgs = MountArgs;
 
 export type FloatingPanelHandle = {
   element: HTMLElement;
+  /** Shows `message` in the panel's status line until the next one or a few seconds pass. */
+  flash: (message: string) => void;
   setDataReady: (ready: boolean) => void;
   update: (data: FolderData, conversationSortMode?: ConversationSortMode) => void;
   /** Replaces account data and discards transient edits without changing panel geometry. */
@@ -57,6 +74,9 @@ const MIN_PANEL_HEIGHT = 320;
 const MAX_PANEL_WIDTH = 640;
 const VIEWPORT_SIZE_MARGIN = 32;
 const SIZE_CHANGE_DEBOUNCE_MS = 300;
+const STATUS_MS = 4000;
+const DEFAULT_HINT_KEYS = ['floatingPanelMoveHint', 'floatingPanelGestureHint'];
+const HINT_ICONS = ['i', '?'];
 
 function clampPos(pos: FloatingPanelPos, width: number, height: number): FloatingPanelPos {
   const vw = window.innerWidth;
@@ -169,16 +189,18 @@ function createHintRow(key: string, iconText: string): HTMLElement {
   return row;
 }
 
-function createHintStack(): HTMLElement {
+function createHintStack(keys: readonly string[]): HTMLElement {
   const stack = document.createElement('div');
   stack.className = `${FLOATING_PANEL_CLASS}__hint-stack`;
-  stack.appendChild(createHintRow('floatingPanelMoveHint', 'i'));
-  stack.appendChild(createHintRow('floatingPanelGestureHint', '?'));
+  keys.forEach((key, index) => stack.appendChild(createHintRow(key, HINT_ICONS[index] ?? 'i')));
   return stack;
 }
 
 export function mountFloatingPanel({
   data,
+  cloudActions = true,
+  headerActions: siteActions = [],
+  hintKeys = DEFAULT_HINT_KEYS,
   dataReady = true,
   conversationSortMode = 'manual',
   rootBucketId = ROOT_CONVERSATIONS_ID,
@@ -198,6 +220,7 @@ export function mountFloatingPanel({
   confirmConversationRemoval,
   onMoveConversation,
   onSetFolderColor,
+  onAddCurrentConversation,
   onCloudUpload,
   onCloudSync,
   getCloudUploadTooltip,
@@ -224,7 +247,7 @@ export function mountFloatingPanel({
   const headerActions = document.createElement('div');
   headerActions.className = `${FLOATING_PANEL_CLASS}__header-actions`;
 
-  if (!isSafari()) {
+  if (cloudActions && !isSafari()) {
     const cloudUploadBtn = createSvgIconButton(
       'cloud-upload',
       'floatingPanelCloudUpload',
@@ -249,6 +272,15 @@ export function mountFloatingPanel({
 
     headerActions.appendChild(cloudUploadBtn);
     headerActions.appendChild(cloudSyncBtn);
+  }
+
+  for (const action of siteActions) {
+    headerActions.appendChild(
+      createSvgIconButton(action.modifier, action.labelKey, action.iconPath, (e) => {
+        e.stopPropagation();
+        action.onClick();
+      }),
+    );
   }
 
   const createBtn = createIconButton('create', 'floatingPanelCreateFolder', '+', (e) => {
@@ -281,8 +313,24 @@ export function mountFloatingPanel({
   };
   setDataReady(dataReady);
 
+  const status = document.createElement('div');
+  status.className = `${FLOATING_PANEL_CLASS}__status`;
+  status.setAttribute('role', 'status');
+  status.hidden = true;
+  let statusTimer: ReturnType<typeof setTimeout> | null = null;
+  const flash = (message: string): void => {
+    if (statusTimer) clearTimeout(statusTimer);
+    status.textContent = message;
+    status.hidden = false;
+    statusTimer = setTimeout(() => {
+      statusTimer = null;
+      status.hidden = true;
+      status.textContent = '';
+    }, STATUS_MS);
+  };
+
   const surface = attachShadowSurface(panel, panelCss);
-  surface.root.append(header, createHintStack(), body);
+  surface.root.append(header, createHintStack(hintKeys), status, body);
 
   const initialSize = clampSize(storedSize ?? { w: DEFAULT_WIDTH, h: DEFAULT_HEIGHT });
   const initialPos = clampPos(storedPos ?? defaultPos(initialSize), initialSize.w, initialSize.h);
@@ -386,6 +434,7 @@ export function mountFloatingPanel({
     onToggleFolderExpanded,
     onMoveConversation,
     onSetFolderColor,
+    onAddCurrentConversation,
   };
 
   // With a store callback, expansion is the folder's persisted `isExpanded`,
@@ -461,6 +510,10 @@ export function mountFloatingPanel({
       clearTimeout(sizeDebounceTimer);
       sizeDebounceTimer = null;
     }
+    if (statusTimer) {
+      clearTimeout(statusTimer);
+      statusTimer = null;
+    }
     // Unmount first so the inline form drops its document listener.
     renderFolderTree(body, null);
     surface.disconnect();
@@ -476,6 +529,7 @@ export function mountFloatingPanel({
 
   return {
     element: panel,
+    flash,
     setDataReady,
     reset: (next, nextConversationSortMode) => {
       currentData = next;

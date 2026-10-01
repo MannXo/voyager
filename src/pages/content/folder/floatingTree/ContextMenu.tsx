@@ -66,6 +66,15 @@ export function ContextMenu({ data, contextMenu, actions, apply }: TreeProps) {
 
   return (
     <div class={cls('context-menu')} style={position} role="menu">
+      {actions.onAddCurrentConversation && (
+        <MenuButton
+          labelKey="floatingPanelAddCurrentHere"
+          onClick={(e) => {
+            e.stopPropagation();
+            apply({ contextMenu: null }, () => actions.onAddCurrentConversation?.(folder.id));
+          }}
+        />
+      )}
       <MenuButton
         labelKey={folder.pinned ? 'floatingPanelUnpinFolder' : 'floatingPanelPinFolder'}
         onClick={(e) => {

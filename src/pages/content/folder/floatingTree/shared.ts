@@ -45,6 +45,8 @@ export type TreeActions = {
   onToggleFolderExpanded?: (folderId: string) => void;
   onMoveConversation?: (conversationId: string, fromFolderId: string, toFolderId: string) => void;
   onSetFolderColor?: (folderId: string, color: string) => void;
+  /** Files the open conversation into a folder; the folder menu offers it only when set. */
+  onAddCurrentConversation?: (folderId: string) => void;
 };
 
 /** A transient view change; `null` clears the editor or menu, omitted keeps it. */

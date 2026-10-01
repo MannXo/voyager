@@ -2577,6 +2577,10 @@
     "message": "Double-click to rename • Right-click for pin, color, delete.",
     "description": "Floating folder panel hint explaining folder gestures and context menu actions"
   },
+  "floatingPanelAddCurrentHere": {
+    "message": "Add current conversation here",
+    "description": "Floating folder panel folder menu item that files the open conversation into that folder"
+  },
   "responseCompleteNotification": {
     "message": "Response completion notifications",
     "description": "Toggle label for response completion system notifications"

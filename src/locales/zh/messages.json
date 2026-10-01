@@ -2577,6 +2577,10 @@
     "message": "双击重命名 · 右键可置顶/改色/删除。",
     "description": "Floating folder panel hint explaining folder gestures and context menu actions"
   },
+  "floatingPanelAddCurrentHere": {
+    "message": "将当前对话添加到此处",
+    "description": "Floating folder panel folder menu item that files the open conversation into that folder"
+  },
   "responseCompleteNotification": {
     "message": "Gemini 思考完成通知",
     "description": "Gemini 回答完成系统通知开关"
