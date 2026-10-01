@@ -1366,6 +1366,10 @@
     "message": "✗ 복원이 완료되지 않았습니다. 복원됨: {restored}. 복원되지 않음: {failed} ({error})",
     "description": "Drive restore stopped partway: which parts were restored and which were not"
   },
+  "syncRestoreListSeparator": {
+    "message": ", ",
+    "description": "Separator between restored or failed part names in the partial-restore message"
+  },
   "syncInProgress": {
     "message": "동기화 중...",
     "description": "Sync in progress message"

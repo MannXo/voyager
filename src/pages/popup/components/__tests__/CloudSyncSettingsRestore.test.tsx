@@ -13,10 +13,14 @@ vi.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({
     language: 'en',
     setLanguage: vi.fn(),
-    // Keys pass through, except the partial-restore template, so a test can
-    // read which parts it names.
+    // Keys pass through, except the partial-restore template and its list
+    // separator, so a test can read which parts it names and how they join.
     t: (key: string) =>
-      key === 'syncRestorePartial' ? 'Restored: {restored}. Not restored: {failed} ({error})' : key,
+      key === 'syncRestorePartial'
+        ? 'Restored: {restored}. Not restored: {failed} ({error})'
+        : key === 'syncRestoreListSeparator'
+          ? '、'
+          : key,
   }),
 }));
 
@@ -244,8 +248,8 @@ describe('CloudSyncSettings restore failures', () => {
     );
     expect(chromeMock.storage.sync.set).toHaveBeenCalled();
     expect(container.textContent).toContain(
-      'Restored: storageQuotaHighlights, pluginsTitle, storageQuotaSync. ' +
-        'Not restored: folder_title, promptDataMigration (folders write failed)',
+      'Restored: storageQuotaHighlights、pluginsTitle、storageQuotaSync. ' +
+        'Not restored: folder_title、promptDataMigration (folders write failed)',
     );
   });
 
@@ -277,7 +281,7 @@ describe('CloudSyncSettings restore failures', () => {
     expect(chromeMock.storage.sync.set).not.toHaveBeenCalled();
     expect(container.textContent).toContain(
       'Restored: storageQuotaHighlights. ' +
-        'Not restored: folder_title, promptDataMigration (folders write failed)',
+        'Not restored: folder_title、promptDataMigration (folders write failed)',
     );
   });
 
@@ -310,7 +314,7 @@ describe('CloudSyncSettings restore failures', () => {
     expect(chromeMock.storage.sync.set).not.toHaveBeenCalled();
     expect(container.textContent).toContain(
       'Restored: storageQuotaHighlights. ' +
-        'Not restored: storageQuotaSync, folder_title, promptDataMigration ' +
+        'Not restored: storageQuotaSync、folder_title、promptDataMigration ' +
         '(syncOverwriteMissingFolders)',
     );
   });

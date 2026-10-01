@@ -1366,6 +1366,10 @@
     "message": "✗ Restauration incomplète. Restauré : {restored}. Non restauré : {failed} ({error})",
     "description": "Drive restore stopped partway: which parts were restored and which were not"
   },
+  "syncRestoreListSeparator": {
+    "message": ", ",
+    "description": "Separator between restored or failed part names in the partial-restore message"
+  },
   "syncInProgress": {
     "message": "Synchro...",
     "description": "Sync in progress message"

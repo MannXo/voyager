@@ -123,7 +123,7 @@ export function cloudRestoreFailureText(
     return reason ? message : t('syncError').replace('{error}', message);
   }
   const list = (parts: readonly CloudRestorePart[]) =>
-    parts.map((part) => t(PART_LABELS[part])).join(', ');
+    parts.map((part) => t(PART_LABELS[part])).join(t('syncRestoreListSeparator'));
   return t('syncRestorePartial')
     .replace('{restored}', list(error.restored))
     .replace('{failed}', list(error.failed))
