@@ -627,13 +627,19 @@ drop, or hover layout.
   `querySelectorAll` lookups and two `getBoundingClientRect()` reads to pick the visible entry, so
   loading older chats forced layout for each row (#1040). With no gems to show it did the same work
   only to remove nothing.
+  Gemini also keeps two Gems entries mounted and swaps which one is visible (sidebar mode,
+  breakpoint) without adding nodes, so a connected, in-place anchor can still be the hidden one.
 - **Rule:** Keep the anchored entry. Re-run the layout-reading lookup only when the anchor may have
-  moved: the entry, list or chevron is detached or out of place, or an added node is or contains a
-  Gems entry. Skip enforcement entirely when there is no list and nothing to show. Pass the entry
-  found by one lookup to the chevron instead of looking it up again.
+  moved or swapped: the entry, list or chevron is detached or out of place, an added node is or
+  contains a Gems entry, a `class`/`style`/`hidden`/`aria-hidden` change lands on a Gems entry or an
+  element containing one (including ancestors of the overflow container), or the window resizes.
+  Skip enforcement entirely when there is no list and nothing to show. Pass the entry found by one
+  lookup to the chevron instead of looking it up again.
 - **Guard:** `src/pages/content/gemsSidebar/__tests__/positionEnforcer.test.ts`
   (`does not read layout while conversation rows stream into the sidebar`,
-  `follows Gemini when it re-renders the Gems entry`).
+  `settles after mounting and ignores class churn on conversation rows`,
+  `follows Gemini when it re-renders the Gems entry`, the
+  `when Gemini swaps which mounted Gems entry is visible` cases).
 
 ## A connected chat input is not necessarily the active composer
 

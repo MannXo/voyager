@@ -32,7 +32,7 @@ vi.mock('webextension-polyfill', () => ({
 
 let rectReads = 0;
 
-function createGemsEntry(): HTMLElement {
+function createGemsEntry(isVisible: (entry: HTMLElement) => boolean = () => true): HTMLElement {
   const entry = document.createElement('gem-nav-list-item');
   entry.setAttribute('data-test-id', 'gems-side-nav-entry-button');
   entry.textContent = 'Gems';
@@ -40,7 +40,8 @@ function createGemsEntry(): HTMLElement {
     configurable: true,
     value: () => {
       rectReads += 1;
-      return { top: 0, left: 0, right: 200, bottom: 40, width: 200, height: 40 } as DOMRect;
+      const height = isVisible(entry) ? 40 : 0;
+      return { top: 0, left: 0, right: 200, bottom: height, width: 200, height } as DOMRect;
     },
   });
   return entry;
@@ -117,6 +118,23 @@ describe('gems sidebar position enforcer', () => {
     expect(entry.querySelector('.gv-gems-expand-toggle')).not.toBeNull();
   });
 
+  it('settles after mounting and ignores class churn on conversation rows', async () => {
+    const { conversations } = mountSidebar();
+    await streamRows(conversations, 5);
+    await start();
+    await settle();
+
+    rectReads = 0;
+    for (const row of Array.from(conversations.children)) {
+      row.classList.add('selected');
+      row.setAttribute('style', 'opacity: 0.9');
+      await settle();
+    }
+    await settle();
+
+    expect(rectReads).toBe(0);
+  });
+
   it('does not read layout while rows stream in and there are no gems to show', async () => {
     storageState.catalog = [];
     const { conversations } = mountSidebar();
@@ -165,5 +183,86 @@ describe('gems sidebar position enforcer', () => {
 
     expect(entry.nextElementSibling?.classList.contains('gv-gems-inline-list')).toBe(true);
     expect(entry.nextElementSibling?.textContent).toContain('Writer');
+  });
+
+  describe('when Gemini swaps which mounted Gems entry is visible', () => {
+    let narrow = false;
+
+    /** Two layouts stay mounted; `hidden`, a body class or the breakpoint picks one. */
+    function mountTwoLayouts(): {
+      wide: HTMLElement;
+      compact: HTMLElement;
+      conversations: HTMLElement;
+    } {
+      document.body.innerHTML = `
+        <div data-test-id="overflow-container">
+          <div class="wide-layout"><mat-nav-list></mat-nav-list></div>
+          <div class="compact-layout" hidden><mat-nav-list></mat-nav-list></div>
+          <div class="conversations"></div>
+        </div>`;
+      const isHidden = (layout: string) =>
+        document.querySelector(`.${layout}`)?.hasAttribute('hidden') ?? true;
+      const showsCompact = () => narrow || document.body.classList.contains('sidebar-compact');
+      const wide = createGemsEntry(() => !isHidden('wide-layout') && !showsCompact());
+      const compact = createGemsEntry(
+        () => !isHidden('compact-layout') && (showsCompact() || isHidden('wide-layout')),
+      );
+      document.querySelector('.wide-layout mat-nav-list')!.appendChild(wide);
+      document.querySelector('.compact-layout mat-nav-list')!.appendChild(compact);
+      return {
+        wide,
+        compact,
+        conversations: document.querySelector<HTMLElement>('.conversations')!,
+      };
+    }
+
+    function expectAnchoredTo(entry: HTMLElement): void {
+      expect(entry.nextElementSibling?.classList.contains('gv-gems-inline-list')).toBe(true);
+      expect(entry.querySelector('.gv-gems-expand-toggle')).not.toBeNull();
+      expect(document.querySelectorAll('.gv-gems-inline-list')).toHaveLength(1);
+      expect(document.querySelectorAll('.gv-gems-expand-toggle')).toHaveLength(1);
+    }
+
+    beforeEach(() => {
+      narrow = false;
+      document.body.className = '';
+    });
+
+    it('follows a hidden-attribute swap even when only rows are added afterwards', async () => {
+      const { wide, compact, conversations } = mountTwoLayouts();
+      await start();
+      expectAnchoredTo(wide);
+
+      document.querySelector('.wide-layout')!.setAttribute('hidden', '');
+      document.querySelector('.compact-layout')!.removeAttribute('hidden');
+      await streamRows(conversations, 3);
+
+      expectAnchoredTo(compact);
+    });
+
+    it('follows a sidebar mode class set above the overflow container', async () => {
+      const { wide, compact, conversations } = mountTwoLayouts();
+      document.querySelector('.compact-layout')!.removeAttribute('hidden');
+      await start();
+      expectAnchoredTo(wide);
+
+      document.body.classList.add('sidebar-compact');
+      await streamRows(conversations, 2);
+
+      expectAnchoredTo(compact);
+    });
+
+    it('follows a breakpoint swap on resize', async () => {
+      const { wide, compact } = mountTwoLayouts();
+      document.querySelector('.compact-layout')!.removeAttribute('hidden');
+      await start();
+      expectAnchoredTo(wide);
+
+      narrow = true;
+      window.dispatchEvent(new Event('resize'));
+      await settle();
+
+      expectAnchoredTo(compact);
+    });
   });
 });

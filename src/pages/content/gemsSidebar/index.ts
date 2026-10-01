@@ -43,7 +43,7 @@ import browser from 'webextension-polyfill';
 import { StorageKeys } from '@/core/types/common';
 
 import { watchRouteChanges } from '../utils/routeWatcher';
-import { GEMS_NAV_ENTRY_SELECTOR, gemsAnchorMayBeDisturbed } from './anchorGuard';
+import { GEMS_NAV_ENTRY_SELECTOR, watchGemsAnchor } from './anchorGuard';
 import { injectPinButtons, listenPinnedChanges } from './pinToggle';
 
 /** Single gem as we cache and render it. Keep this small — chrome.storage. */
@@ -98,7 +98,7 @@ const EXPANDED_STORAGE_KEY = 'gvGemsSidebarExpanded';
 let scrapeObserver: MutationObserver | null = null;
 let scrapeTimer: number | null = null;
 let scrapeRetryTimer: number | null = null;
-let positionObserver: MutationObserver | null = null;
+let stopAnchorWatch: (() => void) | null = null;
 let enforceRafId: number | null = null;
 let positionRetryTimer: number | null = null;
 let storageListener:
@@ -823,24 +823,23 @@ function setupPositionEnforcer(): void {
     clearTimeout(positionRetryTimer);
     positionRetryTimer = null;
   }
-  positionObserver?.disconnect();
-  positionObserver = new MutationObserver((mutations) => {
-    // Gemini streams conversation rows into this subtree; only re-run the
-    // layout-reading lookup when the anchor itself may have moved (#1040).
-    const anchor = { entry: anchoredEntry, list: injectedList, toggle: injectedToggle };
-    if (!gemsAnchorMayBeDisturbed(mutations, anchor)) return;
-    if (!injectedList && visibleGems().length === 0) return;
-    scheduleEnforce();
-  });
-  positionObserver.observe(overflow, { childList: true, subtree: true });
+  stopAnchorWatch?.();
+  // Gemini streams conversation rows into this subtree; only re-run the
+  // layout-reading lookup when the anchor may have moved or swapped (#1040).
+  stopAnchorWatch = watchGemsAnchor(
+    overflow,
+    () => ({ entry: anchoredEntry, list: injectedList, toggle: injectedToggle }),
+    () => {
+      if (!injectedList && visibleGems().length === 0) return;
+      scheduleEnforce();
+    },
+  );
   scheduleEnforce();
 }
 
 function teardownPositionEnforcer(): void {
-  if (positionObserver) {
-    positionObserver.disconnect();
-    positionObserver = null;
-  }
+  stopAnchorWatch?.();
+  stopAnchorWatch = null;
   if (enforceRafId !== null) {
     cancelAnimationFrame(enforceRafId);
     enforceRafId = null;
