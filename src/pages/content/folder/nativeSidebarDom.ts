@@ -1,4 +1,11 @@
+import {
+  extractConversationIdFromHref,
+  normalizeConversationId,
+  resolveConversationRouteId,
+} from './folderConversationIdentity';
 import { GEM_CONFIG } from './gemConfig';
+
+export { normalizeConversationId, resolveConversationRouteId };
 
 /** Current native sidebar state, read again after asynchronous collection waits. */
 export interface NativeSidebarReadContext {
@@ -649,41 +656,6 @@ function hashString(str: string): string {
     hash = hash & hash;
   }
   return Math.abs(hash).toString(36);
-}
-
-export function normalizeConversationId(value: string | null | undefined): string | null {
-  const normalized = String(value || '')
-    .trim()
-    .replace(/^c_/i, '');
-  return normalized || null;
-}
-
-export function resolveConversationRouteId(
-  href: string | null | undefined,
-  fallbackId: string | null | undefined,
-): string | null {
-  return extractConversationIdFromHref(href) ?? normalizeConversationId(fallbackId);
-}
-
-function extractConversationIdFromHref(href: string | null | undefined): string | null {
-  if (!href) return null;
-
-  try {
-    const parsed = new URL(href, window.location.origin);
-    const appMatch = parsed.pathname.match(/\/app\/([^/?#]+)/);
-    if (appMatch?.[1]) {
-      return normalizeConversationId(appMatch[1]);
-    }
-
-    const gemMatch = parsed.pathname.match(/\/gem\/[^/]+\/([^/?#]+)/);
-    if (gemMatch?.[1]) {
-      return normalizeConversationId(gemMatch[1]);
-    }
-  } catch (error) {
-    debug('log', 'Failed to extract conversation id from href:', error);
-  }
-
-  return null;
 }
 
 /**

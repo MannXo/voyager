@@ -26,6 +26,7 @@ import {
 } from './FolderRepository';
 import { createConversationMembershipLookup } from './conversationMembership';
 import { applyNativeTitle, indexConversationsByRouteId } from './conversationTitleSync';
+import { isSameConversation } from './folderConversationIdentity';
 import {
   extractConversationIdFromElement,
   extractNativeConversationId,
@@ -33,7 +34,6 @@ import {
   getCurrentConversationId,
   getNativeConversationElements,
   normalizeConversationId,
-  resolveConversationRouteId,
   syncConversationTitleFromNative,
 } from './nativeSidebarDom';
 import { GEMINI_FOLDER_CONFIG } from './platformFolderConfig';
@@ -572,7 +572,7 @@ export class FolderStore {
     let changed = false;
     Object.values(this.data.folderContents).forEach((conversations) => {
       conversations.forEach((conversation) => {
-        if (!this.isSameConversation(conversationId, conversation)) return;
+        if (!isSameConversation(conversationId, conversation)) return;
         if (conversation.starred === starred) return;
         conversation.starred = starred;
         changed = true;
@@ -715,7 +715,7 @@ export class FolderStore {
     if (!this.canEdit) return false;
     const matches = Object.values(this.data.folderContents)
       .flat()
-      .filter((conv) => this.isSameConversation(conversationId, conv));
+      .filter((conv) => isSameConversation(conversationId, conv));
     return applyNativeTitle(matches, newTitle, Date.now());
   }
 
@@ -767,7 +767,7 @@ export class FolderStore {
 
     for (const folderId in this.data.folderContents) {
       for (const conversation of this.data.folderContents[folderId]) {
-        if (!this.isSameConversation(conversationId, conversation)) continue;
+        if (!isSameConversation(conversationId, conversation)) continue;
 
         if (conversation.customTitle) {
           delete conversation.customTitle;
@@ -799,7 +799,7 @@ export class FolderStore {
 
       // Filter out the deleted conversation
       this.data.folderContents[folderId] = conversations.filter(
-        (conv) => !this.isSameConversation(conversationId, conv),
+        (conv) => !isSameConversation(conversationId, conv),
       );
 
       if (this.data.folderContents[folderId].length < initialLength) {
@@ -968,7 +968,7 @@ export class FolderStore {
     let changed = false;
     Object.values(this.data.folderContents).forEach((conversations) => {
       conversations.forEach((conversation) => {
-        if (!this.isSameConversation(conversationId, conversation)) return;
+        if (!isSameConversation(conversationId, conversation)) return;
         if (timestamp <= (conversation.lastTurnAt ?? 0)) return;
         conversation.lastTurnAt = timestamp;
         changed = true;
@@ -999,18 +999,6 @@ export class FolderStore {
     return `folder_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  // indexConversationsByRouteId mirrors these keys for whole-sidebar passes; change both together.
-  private isSameConversation(targetId: string, conversation: ConversationReference): boolean {
-    const normalizedTarget = normalizeConversationId(targetId);
-    if (!normalizedTarget) return false;
-
-    if (normalizeConversationId(conversation.conversationId) === normalizedTarget) return true;
-
-    return (
-      resolveConversationRouteId(conversation.url, conversation.conversationId) === normalizedTarget
-    );
-  }
-
   markConversationAsRecentlyOpened(conversationId: string): void {
     if (!this.canEdit) return;
     const now = Date.now();
@@ -1019,7 +1007,7 @@ export class FolderStore {
     for (const folderId in this.data.folderContents) {
       const conversations = this.data.folderContents[folderId];
       conversations.forEach((conversation) => {
-        if (!this.isSameConversation(conversationId, conversation)) return;
+        if (!isSameConversation(conversationId, conversation)) return;
 
         // De-duplicate near-simultaneous route/listener updates.
         if (conversation.lastOpenedAt && now - conversation.lastOpenedAt < 1000) return;

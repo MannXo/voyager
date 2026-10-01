@@ -1,4 +1,4 @@
-import { normalizeConversationId, resolveConversationRouteId } from './nativeSidebarDom';
+import { conversationKeys } from './folderConversationIdentity';
 import type { ConversationReference, FolderData } from './types';
 
 type ConversationTimestamp = 'lastTurnAt' | 'lastOpenedAt' | 'updatedAt';
@@ -41,20 +41,6 @@ export function mergeDebouncedEdits(fresh: FolderData, local: FolderData, base: 
       }
     }
   }
-}
-
-/**
- * Every key a stored reference answers to. The same conversation may be stored
- * with or without the native `c_` prefix, or be known by its URL; this matches
- * `FolderStore.isSameConversation`.
- */
-function conversationKeys(conversation: ConversationReference): Set<string> {
-  const keys = new Set<string>();
-  const id = normalizeConversationId(conversation.conversationId);
-  const routeId = resolveConversationRouteId(conversation.url, conversation.conversationId);
-  if (id) keys.add(id);
-  if (routeId) keys.add(routeId);
-  return keys;
 }
 
 /** Timestamps this context raised since `base`, per conversation key, across every folder. */

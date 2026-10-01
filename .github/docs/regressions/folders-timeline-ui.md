@@ -600,8 +600,10 @@ drop, or hover layout.
   parses the stored URL with `new URL()`. With 3,000 rows and 500 stored conversations, one pass
   parsed 1.5 million URLs and took about 0.9 s in jsdom, repeated after every page.
 - **Rule:** A pass over native rows looks up stored references through an index built once per
-  pass (`indexConversationsByRouteId`). Keep that index's keys identical to `isSameConversation`.
-  Read a row's title only when the row matches a stored reference.
+  pass (`indexConversationsByRouteId`). The index, `isSameConversation` and the debounced-edit
+  merge all key references through `conversationKeys` in `folderConversationIdentity.ts`; change
+  identity there, not in one caller. Read a row's title only when the row matches a stored
+  reference.
 - **Guard:** `src/pages/content/folder/__tests__/nativeTitleSyncScale.test.ts` checks the id shapes
   that must still match and bounds URL parses on a 1,500-row sidebar.
 
