@@ -3173,5 +3173,137 @@
   "nativeHealthDismiss": {
     "message": "閉じる",
     "description": "Popup: dismiss the Gemini health notice"
+  },
+  "researchPackEnable": {
+    "message": "リサーチパック",
+    "description": "Popup: research pack toggle label"
+  },
+  "researchPackEnableHint": {
+    "message": "Gemini の回答にパックボタンを追加します。回答と出典を 1 つの Markdown にまとめ、コピー・ダウンロード・別のチャットへの挿入ができます。",
+    "description": "Popup: research pack toggle hint"
+  },
+  "researchPackAdd": {
+    "message": "リサーチパックに追加（先に回答の一部を選択することもできます）",
+    "description": "Research pack: per-answer add button tooltip"
+  },
+  "researchPackAdded": {
+    "message": "パックに追加しました",
+    "description": "Research pack: item added"
+  },
+  "researchPackDuplicate": {
+    "message": "すでにパックにあります",
+    "description": "Research pack: item already present"
+  },
+  "researchPackFull": {
+    "message": "パックがいっぱいです。先に項目を削除してください。",
+    "description": "Research pack: item limit reached"
+  },
+  "researchPackCaptureFailed": {
+    "message": "この回答を読み取れませんでした",
+    "description": "Research pack: answer could not be read"
+  },
+  "researchPackSaveFailed": {
+    "message": "パックを保存できませんでした",
+    "description": "Research pack: storage write failed"
+  },
+  "researchPackTitle": {
+    "message": "リサーチパック",
+    "description": "Research pack: panel title"
+  },
+  "researchPackShortTitle": {
+    "message": "パック",
+    "description": "Research pack: short launcher label"
+  },
+  "researchPackOpen": {
+    "message": "リサーチパックを開く",
+    "description": "Research pack: launcher tooltip"
+  },
+  "researchPackClose": {
+    "message": "閉じる",
+    "description": "Research pack: close panel"
+  },
+  "researchPackEmpty": {
+    "message": "パックは空です。回答の下にあるパックボタンを押すか、先に回答の一部を選択してください。",
+    "description": "Research pack: empty state"
+  },
+  "researchPackItemCount": {
+    "message": "{count} 件",
+    "description": "Research pack: item count, {count} is a number"
+  },
+  "researchPackSourceCount": {
+    "message": "出典 {count} 件",
+    "description": "Research pack: cited link count, {count} is a number"
+  },
+  "researchPackUntitledSource": {
+    "message": "無題の会話",
+    "description": "Research pack: fallback conversation title"
+  },
+  "researchPackExcerptBadge": {
+    "message": "抜粋",
+    "description": "Research pack: badge for a selected part of an answer"
+  },
+  "researchPackMoveUp": {
+    "message": "上へ移動",
+    "description": "Research pack: move item up"
+  },
+  "researchPackMoveDown": {
+    "message": "下へ移動",
+    "description": "Research pack: move item down"
+  },
+  "researchPackRemove": {
+    "message": "パックから削除",
+    "description": "Research pack: remove item"
+  },
+  "researchPackInstructionLabel": {
+    "message": "次のモデルへの指示",
+    "description": "Research pack: instruction field label"
+  },
+  "researchPackInstructionPlaceholder": {
+    "message": "例：これらの回答を比較し、食い違いを指摘し、各主張を出典と照合してください。",
+    "description": "Research pack: instruction placeholder"
+  },
+  "researchPackPreview": {
+    "message": "Markdown プレビュー",
+    "description": "Research pack: markdown preview toggle"
+  },
+  "researchPackInsert": {
+    "message": "入力欄に挿入",
+    "description": "Research pack: insert into composer button"
+  },
+  "researchPackInsertHint": {
+    "message": "パックを入力欄に入れます。送信するまで何も送られません。",
+    "description": "Research pack: insert button tooltip"
+  },
+  "researchPackCopy": {
+    "message": "Markdown をコピー",
+    "description": "Research pack: copy markdown button"
+  },
+  "researchPackDownload": {
+    "message": ".md をダウンロード",
+    "description": "Research pack: download button"
+  },
+  "researchPackClear": {
+    "message": "クリア",
+    "description": "Research pack: clear all items"
+  },
+  "researchPackClearConfirm": {
+    "message": "パックの項目をすべて削除しますか？指示は残ります。",
+    "description": "Research pack: clear confirmation"
+  },
+  "researchPackCopied": {
+    "message": "Markdown をコピーしました",
+    "description": "Research pack: copy succeeded"
+  },
+  "researchPackCopyFailed": {
+    "message": "コピーできませんでした。ダウンロードをお使いください。",
+    "description": "Research pack: copy failed"
+  },
+  "researchPackInserted": {
+    "message": "パックを挿入しました。確認してからご自身で送信してください。",
+    "description": "Research pack: inserted into composer"
+  },
+  "researchPackNoComposer": {
+    "message": "このページに入力欄が見つかりません",
+    "description": "Research pack: no composer found"
   }
 }

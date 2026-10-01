@@ -15,6 +15,7 @@ import { startNativeHealth } from './nativeHealth/index';
 import { startBrandTheme } from './platformTheme';
 import { startPromptHistory } from './promptHistory/index';
 import { startRemoteAnnouncements } from './remoteAnnouncements/index';
+import { isResearchPackEnabledValue, startResearchPack } from './researchPack/index';
 import { startResponseCompleteNotification } from './responseNotification/index';
 import { startSendBehavior } from './sendBehavior/index';
 import { startStorageQuotaWarningToast } from './storageQuotaWarning';
@@ -119,6 +120,12 @@ export const NATIVE_FEATURES = {
     position: CleanupPositions.CleanupFork,
     start: startFork,
     toggle: { key: StorageKeys.FORK_ENABLED, isEnabled: isForkFeatureEnabledValue },
+  },
+  researchPack: {
+    id: 'research-pack',
+    position: CleanupPositions.CleanupResearchPack,
+    start: () => startResearchPack(),
+    toggle: { key: StorageKeys.RESEARCH_PACK_ENABLED, isEnabled: isResearchPackEnabledValue },
   },
 } as const satisfies Record<string, NativeFeature>;
 

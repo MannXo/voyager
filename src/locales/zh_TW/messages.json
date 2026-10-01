@@ -3173,5 +3173,137 @@
   "nativeHealthDismiss": {
     "message": "關閉",
     "description": "Popup: dismiss the Gemini health notice"
+  },
+  "researchPackEnable": {
+    "message": "研究資料包",
+    "description": "Popup: research pack toggle label"
+  },
+  "researchPackEnableHint": {
+    "message": "在 Gemini 回答下新增資料包按鈕。把多則回答及其來源彙整成一份 Markdown，再複製、下載或插入到另一個對話。",
+    "description": "Popup: research pack toggle hint"
+  },
+  "researchPackAdd": {
+    "message": "加入資料包（可先選取回答中的一段）",
+    "description": "Research pack: per-answer add button tooltip"
+  },
+  "researchPackAdded": {
+    "message": "已加入資料包",
+    "description": "Research pack: item added"
+  },
+  "researchPackDuplicate": {
+    "message": "資料包裡已有這則內容",
+    "description": "Research pack: item already present"
+  },
+  "researchPackFull": {
+    "message": "資料包已滿，請先移除一則。",
+    "description": "Research pack: item limit reached"
+  },
+  "researchPackCaptureFailed": {
+    "message": "無法讀取這則回答",
+    "description": "Research pack: answer could not be read"
+  },
+  "researchPackSaveFailed": {
+    "message": "無法儲存資料包",
+    "description": "Research pack: storage write failed"
+  },
+  "researchPackTitle": {
+    "message": "研究資料包",
+    "description": "Research pack: panel title"
+  },
+  "researchPackShortTitle": {
+    "message": "資料包",
+    "description": "Research pack: short launcher label"
+  },
+  "researchPackOpen": {
+    "message": "開啟研究資料包",
+    "description": "Research pack: launcher tooltip"
+  },
+  "researchPackClose": {
+    "message": "關閉",
+    "description": "Research pack: close panel"
+  },
+  "researchPackEmpty": {
+    "message": "資料包是空的。點擊回答下方的資料包按鈕，或先選取回答中的一段。",
+    "description": "Research pack: empty state"
+  },
+  "researchPackItemCount": {
+    "message": "{count} 則",
+    "description": "Research pack: item count, {count} is a number"
+  },
+  "researchPackSourceCount": {
+    "message": "{count} 個來源",
+    "description": "Research pack: cited link count, {count} is a number"
+  },
+  "researchPackUntitledSource": {
+    "message": "未命名對話",
+    "description": "Research pack: fallback conversation title"
+  },
+  "researchPackExcerptBadge": {
+    "message": "節錄",
+    "description": "Research pack: badge for a selected part of an answer"
+  },
+  "researchPackMoveUp": {
+    "message": "上移",
+    "description": "Research pack: move item up"
+  },
+  "researchPackMoveDown": {
+    "message": "下移",
+    "description": "Research pack: move item down"
+  },
+  "researchPackRemove": {
+    "message": "從資料包移除",
+    "description": "Research pack: remove item"
+  },
+  "researchPackInstructionLabel": {
+    "message": "給下一個模型的指令",
+    "description": "Research pack: instruction field label"
+  },
+  "researchPackInstructionPlaceholder": {
+    "message": "例如：比較這些回答，指出分歧，並逐條對照來源核實。",
+    "description": "Research pack: instruction placeholder"
+  },
+  "researchPackPreview": {
+    "message": "Markdown 預覽",
+    "description": "Research pack: markdown preview toggle"
+  },
+  "researchPackInsert": {
+    "message": "插入輸入框",
+    "description": "Research pack: insert into composer button"
+  },
+  "researchPackInsertHint": {
+    "message": "把資料包填入輸入框，是否送出由你決定。",
+    "description": "Research pack: insert button tooltip"
+  },
+  "researchPackCopy": {
+    "message": "複製 Markdown",
+    "description": "Research pack: copy markdown button"
+  },
+  "researchPackDownload": {
+    "message": "下載 .md",
+    "description": "Research pack: download button"
+  },
+  "researchPackClear": {
+    "message": "清空",
+    "description": "Research pack: clear all items"
+  },
+  "researchPackClearConfirm": {
+    "message": "移除資料包中的全部內容？指令會保留。",
+    "description": "Research pack: clear confirmation"
+  },
+  "researchPackCopied": {
+    "message": "已複製 Markdown",
+    "description": "Research pack: copy succeeded"
+  },
+  "researchPackCopyFailed": {
+    "message": "複製失敗，請改用下載。",
+    "description": "Research pack: copy failed"
+  },
+  "researchPackInserted": {
+    "message": "已插入資料包。確認後再自行送出。",
+    "description": "Research pack: inserted into composer"
+  },
+  "researchPackNoComposer": {
+    "message": "此頁面找不到輸入框",
+    "description": "Research pack: no composer found"
   }
 }

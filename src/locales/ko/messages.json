@@ -3173,5 +3173,137 @@
   "nativeHealthDismiss": {
     "message": "닫기",
     "description": "Popup: dismiss the Gemini health notice"
+  },
+  "researchPackEnable": {
+    "message": "리서치 팩",
+    "description": "Popup: research pack toggle label"
+  },
+  "researchPackEnableHint": {
+    "message": "Gemini 답변에 팩 버튼을 추가합니다. 답변과 출처를 하나의 Markdown 팩으로 모아 복사, 다운로드하거나 다른 채팅에 삽입하세요.",
+    "description": "Popup: research pack toggle hint"
+  },
+  "researchPackAdd": {
+    "message": "리서치 팩에 추가 (먼저 답변 일부를 선택할 수도 있음)",
+    "description": "Research pack: per-answer add button tooltip"
+  },
+  "researchPackAdded": {
+    "message": "팩에 추가됨",
+    "description": "Research pack: item added"
+  },
+  "researchPackDuplicate": {
+    "message": "이미 팩에 있습니다",
+    "description": "Research pack: item already present"
+  },
+  "researchPackFull": {
+    "message": "팩이 가득 찼습니다. 먼저 항목을 삭제하세요.",
+    "description": "Research pack: item limit reached"
+  },
+  "researchPackCaptureFailed": {
+    "message": "이 답변을 읽을 수 없습니다",
+    "description": "Research pack: answer could not be read"
+  },
+  "researchPackSaveFailed": {
+    "message": "팩을 저장할 수 없습니다",
+    "description": "Research pack: storage write failed"
+  },
+  "researchPackTitle": {
+    "message": "리서치 팩",
+    "description": "Research pack: panel title"
+  },
+  "researchPackShortTitle": {
+    "message": "팩",
+    "description": "Research pack: short launcher label"
+  },
+  "researchPackOpen": {
+    "message": "리서치 팩 열기",
+    "description": "Research pack: launcher tooltip"
+  },
+  "researchPackClose": {
+    "message": "닫기",
+    "description": "Research pack: close panel"
+  },
+  "researchPackEmpty": {
+    "message": "팩이 비어 있습니다. 답변 아래의 팩 버튼을 누르거나 먼저 답변 일부를 선택하세요.",
+    "description": "Research pack: empty state"
+  },
+  "researchPackItemCount": {
+    "message": "{count}개",
+    "description": "Research pack: item count, {count} is a number"
+  },
+  "researchPackSourceCount": {
+    "message": "출처 {count}개",
+    "description": "Research pack: cited link count, {count} is a number"
+  },
+  "researchPackUntitledSource": {
+    "message": "제목 없는 대화",
+    "description": "Research pack: fallback conversation title"
+  },
+  "researchPackExcerptBadge": {
+    "message": "발췌",
+    "description": "Research pack: badge for a selected part of an answer"
+  },
+  "researchPackMoveUp": {
+    "message": "위로 이동",
+    "description": "Research pack: move item up"
+  },
+  "researchPackMoveDown": {
+    "message": "아래로 이동",
+    "description": "Research pack: move item down"
+  },
+  "researchPackRemove": {
+    "message": "팩에서 삭제",
+    "description": "Research pack: remove item"
+  },
+  "researchPackInstructionLabel": {
+    "message": "다음 모델에 줄 지시",
+    "description": "Research pack: instruction field label"
+  },
+  "researchPackInstructionPlaceholder": {
+    "message": "예: 이 답변들을 비교해 불일치를 짚고, 각 주장을 출처와 대조해 주세요.",
+    "description": "Research pack: instruction placeholder"
+  },
+  "researchPackPreview": {
+    "message": "Markdown 미리보기",
+    "description": "Research pack: markdown preview toggle"
+  },
+  "researchPackInsert": {
+    "message": "입력창에 삽입",
+    "description": "Research pack: insert into composer button"
+  },
+  "researchPackInsertHint": {
+    "message": "팩을 입력창에 넣습니다. 직접 보내기 전까지 전송되지 않습니다.",
+    "description": "Research pack: insert button tooltip"
+  },
+  "researchPackCopy": {
+    "message": "Markdown 복사",
+    "description": "Research pack: copy markdown button"
+  },
+  "researchPackDownload": {
+    "message": ".md 다운로드",
+    "description": "Research pack: download button"
+  },
+  "researchPackClear": {
+    "message": "비우기",
+    "description": "Research pack: clear all items"
+  },
+  "researchPackClearConfirm": {
+    "message": "팩의 모든 항목을 삭제할까요? 지시는 유지됩니다.",
+    "description": "Research pack: clear confirmation"
+  },
+  "researchPackCopied": {
+    "message": "Markdown을 복사했습니다",
+    "description": "Research pack: copy succeeded"
+  },
+  "researchPackCopyFailed": {
+    "message": "복사하지 못했습니다. 대신 다운로드하세요.",
+    "description": "Research pack: copy failed"
+  },
+  "researchPackInserted": {
+    "message": "팩을 삽입했습니다. 확인한 뒤 직접 보내세요.",
+    "description": "Research pack: inserted into composer"
+  },
+  "researchPackNoComposer": {
+    "message": "이 페이지에서 입력창을 찾을 수 없습니다",
+    "description": "Research pack: no composer found"
   }
 }

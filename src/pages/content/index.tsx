@@ -105,12 +105,24 @@ const cleanupManager = new CleanupManager();
 let initialized = false;
 let initializationTimer: number | null = null;
 let forkToggle: NativeFeatureToggleController | null = null;
+let researchPackToggle: NativeFeatureToggleController | null = null;
 let watermarkRemoverStarted = false;
 
 async function isForkFeatureEnabled(): Promise<boolean> {
   try {
     const result = await chrome.storage?.sync?.get({ [StorageKeys.FORK_ENABLED]: false });
     return NATIVE_FEATURES.fork.toggle.isEnabled(result?.[StorageKeys.FORK_ENABLED]);
+  } catch {
+    return false;
+  }
+}
+
+async function isResearchPackEnabled(): Promise<boolean> {
+  try {
+    const result = await chrome.storage?.sync?.get({ [StorageKeys.RESEARCH_PACK_ENABLED]: false });
+    return NATIVE_FEATURES.researchPack.toggle.isEnabled(
+      result?.[StorageKeys.RESEARCH_PACK_ENABLED],
+    );
   } catch {
     return false;
   }
@@ -394,6 +406,8 @@ async function initializeFeatures(): Promise<void> {
       // the startup read: a toggle that lands while the read is in flight wins.
       forkToggle = createNativeFeatureToggle(cleanupManager, NATIVE_FEATURES.fork);
       await forkToggle.applyInitial(await isForkFeatureEnabled());
+      researchPackToggle = createNativeFeatureToggle(cleanupManager, NATIVE_FEATURES.researchPack);
+      await researchPackToggle.applyInitial(await isResearchPackEnabled());
 
       // Release-time interruptions are intentionally sequential: changelog,
       // native-watermark notice, then any eligible feature coachmarks.
@@ -612,6 +626,7 @@ function handleVisibilityChange(): void {
       }
 
       forkToggle?.handleChange(changes, areaName);
+      researchPackToggle?.handleChange(changes, areaName);
     };
 
     // Quick check: only run on supported websites

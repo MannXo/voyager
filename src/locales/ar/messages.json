@@ -3173,5 +3173,137 @@
   "nativeHealthDismiss": {
     "message": "إغلاق",
     "description": "Popup: dismiss the Gemini health notice"
+  },
+  "researchPackEnable": {
+    "message": "حزمة البحث",
+    "description": "Popup: research pack toggle label"
+  },
+  "researchPackEnableHint": {
+    "message": "يضيف زرًا إلى إجابات Gemini. اجمع الإجابات ومصادرها في ملف Markdown واحد لنسخه أو تنزيله أو إدراجه في محادثة أخرى.",
+    "description": "Popup: research pack toggle hint"
+  },
+  "researchPackAdd": {
+    "message": "إضافة إلى حزمة البحث (أو حدّد جزءًا من الإجابة أولًا)",
+    "description": "Research pack: per-answer add button tooltip"
+  },
+  "researchPackAdded": {
+    "message": "تمت الإضافة إلى الحزمة",
+    "description": "Research pack: item added"
+  },
+  "researchPackDuplicate": {
+    "message": "موجود بالفعل في الحزمة",
+    "description": "Research pack: item already present"
+  },
+  "researchPackFull": {
+    "message": "الحزمة ممتلئة. أزل عنصرًا أولًا.",
+    "description": "Research pack: item limit reached"
+  },
+  "researchPackCaptureFailed": {
+    "message": "تعذّرت قراءة هذه الإجابة",
+    "description": "Research pack: answer could not be read"
+  },
+  "researchPackSaveFailed": {
+    "message": "تعذّر حفظ الحزمة",
+    "description": "Research pack: storage write failed"
+  },
+  "researchPackTitle": {
+    "message": "حزمة البحث",
+    "description": "Research pack: panel title"
+  },
+  "researchPackShortTitle": {
+    "message": "الحزمة",
+    "description": "Research pack: short launcher label"
+  },
+  "researchPackOpen": {
+    "message": "فتح حزمة البحث",
+    "description": "Research pack: launcher tooltip"
+  },
+  "researchPackClose": {
+    "message": "إغلاق",
+    "description": "Research pack: close panel"
+  },
+  "researchPackEmpty": {
+    "message": "الحزمة فارغة. استخدم زر الحزمة أسفل إجابة، أو حدّد جزءًا من إجابة أولًا.",
+    "description": "Research pack: empty state"
+  },
+  "researchPackItemCount": {
+    "message": "العناصر: {count}",
+    "description": "Research pack: item count, {count} is a number"
+  },
+  "researchPackSourceCount": {
+    "message": "المصادر: {count}",
+    "description": "Research pack: cited link count, {count} is a number"
+  },
+  "researchPackUntitledSource": {
+    "message": "محادثة بلا عنوان",
+    "description": "Research pack: fallback conversation title"
+  },
+  "researchPackExcerptBadge": {
+    "message": "مقتطف",
+    "description": "Research pack: badge for a selected part of an answer"
+  },
+  "researchPackMoveUp": {
+    "message": "نقل لأعلى",
+    "description": "Research pack: move item up"
+  },
+  "researchPackMoveDown": {
+    "message": "نقل لأسفل",
+    "description": "Research pack: move item down"
+  },
+  "researchPackRemove": {
+    "message": "إزالة من الحزمة",
+    "description": "Research pack: remove item"
+  },
+  "researchPackInstructionLabel": {
+    "message": "تعليمات للنموذج التالي",
+    "description": "Research pack: instruction field label"
+  },
+  "researchPackInstructionPlaceholder": {
+    "message": "مثال: قارن هذه الإجابات، وبيّن مواضع الاختلاف، وتحقق من كل ادعاء في المصادر.",
+    "description": "Research pack: instruction placeholder"
+  },
+  "researchPackPreview": {
+    "message": "معاينة Markdown",
+    "description": "Research pack: markdown preview toggle"
+  },
+  "researchPackInsert": {
+    "message": "إدراج في المحادثة",
+    "description": "Research pack: insert into composer button"
+  },
+  "researchPackInsertHint": {
+    "message": "يضع الحزمة في مربع الرسالة. لا يُرسل شيء حتى ترسله بنفسك.",
+    "description": "Research pack: insert button tooltip"
+  },
+  "researchPackCopy": {
+    "message": "نسخ Markdown",
+    "description": "Research pack: copy markdown button"
+  },
+  "researchPackDownload": {
+    "message": "تنزيل ‎.md",
+    "description": "Research pack: download button"
+  },
+  "researchPackClear": {
+    "message": "مسح",
+    "description": "Research pack: clear all items"
+  },
+  "researchPackClearConfirm": {
+    "message": "إزالة كل العناصر من الحزمة؟ تبقى التعليمات كما هي.",
+    "description": "Research pack: clear confirmation"
+  },
+  "researchPackCopied": {
+    "message": "تم نسخ Markdown",
+    "description": "Research pack: copy succeeded"
+  },
+  "researchPackCopyFailed": {
+    "message": "تعذّر النسخ. استخدم التنزيل بدلًا من ذلك.",
+    "description": "Research pack: copy failed"
+  },
+  "researchPackInserted": {
+    "message": "تم إدراج الحزمة. راجعها ثم أرسلها بنفسك.",
+    "description": "Research pack: inserted into composer"
+  },
+  "researchPackNoComposer": {
+    "message": "لا يوجد مربع رسالة في هذه الصفحة",
+    "description": "Research pack: no composer found"
   }
 }

@@ -3173,5 +3173,137 @@
   "nativeHealthDismiss": {
     "message": "Fermer",
     "description": "Popup: dismiss the Gemini health notice"
+  },
+  "researchPackEnable": {
+    "message": "Dossier de recherche",
+    "description": "Popup: research pack toggle label"
+  },
+  "researchPackEnableHint": {
+    "message": "Ajoute un bouton aux réponses de Gemini. Rassemblez réponses et sources dans un seul Markdown à copier, télécharger ou insérer dans une autre conversation.",
+    "description": "Popup: research pack toggle hint"
+  },
+  "researchPackAdd": {
+    "message": "Ajouter au dossier (ou sélectionnez d’abord une partie de la réponse)",
+    "description": "Research pack: per-answer add button tooltip"
+  },
+  "researchPackAdded": {
+    "message": "Ajouté au dossier",
+    "description": "Research pack: item added"
+  },
+  "researchPackDuplicate": {
+    "message": "Déjà dans le dossier",
+    "description": "Research pack: item already present"
+  },
+  "researchPackFull": {
+    "message": "Le dossier est plein. Retirez d’abord un élément.",
+    "description": "Research pack: item limit reached"
+  },
+  "researchPackCaptureFailed": {
+    "message": "Impossible de lire cette réponse",
+    "description": "Research pack: answer could not be read"
+  },
+  "researchPackSaveFailed": {
+    "message": "Impossible d’enregistrer le dossier",
+    "description": "Research pack: storage write failed"
+  },
+  "researchPackTitle": {
+    "message": "Dossier de recherche",
+    "description": "Research pack: panel title"
+  },
+  "researchPackShortTitle": {
+    "message": "Dossier",
+    "description": "Research pack: short launcher label"
+  },
+  "researchPackOpen": {
+    "message": "Ouvrir le dossier de recherche",
+    "description": "Research pack: launcher tooltip"
+  },
+  "researchPackClose": {
+    "message": "Fermer",
+    "description": "Research pack: close panel"
+  },
+  "researchPackEmpty": {
+    "message": "Le dossier est vide. Utilisez le bouton sous une réponse, ou sélectionnez-en d’abord une partie.",
+    "description": "Research pack: empty state"
+  },
+  "researchPackItemCount": {
+    "message": "{count} éléments",
+    "description": "Research pack: item count, {count} is a number"
+  },
+  "researchPackSourceCount": {
+    "message": "{count} sources",
+    "description": "Research pack: cited link count, {count} is a number"
+  },
+  "researchPackUntitledSource": {
+    "message": "Conversation sans titre",
+    "description": "Research pack: fallback conversation title"
+  },
+  "researchPackExcerptBadge": {
+    "message": "Extrait",
+    "description": "Research pack: badge for a selected part of an answer"
+  },
+  "researchPackMoveUp": {
+    "message": "Monter",
+    "description": "Research pack: move item up"
+  },
+  "researchPackMoveDown": {
+    "message": "Descendre",
+    "description": "Research pack: move item down"
+  },
+  "researchPackRemove": {
+    "message": "Retirer du dossier",
+    "description": "Research pack: remove item"
+  },
+  "researchPackInstructionLabel": {
+    "message": "Consigne pour le modèle suivant",
+    "description": "Research pack: instruction field label"
+  },
+  "researchPackInstructionPlaceholder": {
+    "message": "Ex. : comparez ces réponses, relevez les désaccords et vérifiez chaque affirmation dans les sources.",
+    "description": "Research pack: instruction placeholder"
+  },
+  "researchPackPreview": {
+    "message": "Aperçu Markdown",
+    "description": "Research pack: markdown preview toggle"
+  },
+  "researchPackInsert": {
+    "message": "Insérer dans la saisie",
+    "description": "Research pack: insert into composer button"
+  },
+  "researchPackInsertHint": {
+    "message": "Place le dossier dans la zone de saisie. Rien n’est envoyé tant que vous ne l’envoyez pas.",
+    "description": "Research pack: insert button tooltip"
+  },
+  "researchPackCopy": {
+    "message": "Copier le Markdown",
+    "description": "Research pack: copy markdown button"
+  },
+  "researchPackDownload": {
+    "message": "Télécharger .md",
+    "description": "Research pack: download button"
+  },
+  "researchPackClear": {
+    "message": "Vider",
+    "description": "Research pack: clear all items"
+  },
+  "researchPackClearConfirm": {
+    "message": "Retirer tous les éléments du dossier ? La consigne est conservée.",
+    "description": "Research pack: clear confirmation"
+  },
+  "researchPackCopied": {
+    "message": "Markdown copié",
+    "description": "Research pack: copy succeeded"
+  },
+  "researchPackCopyFailed": {
+    "message": "Copie impossible. Utilisez plutôt le téléchargement.",
+    "description": "Research pack: copy failed"
+  },
+  "researchPackInserted": {
+    "message": "Dossier inséré. Relisez-le, puis envoyez-le vous-même.",
+    "description": "Research pack: inserted into composer"
+  },
+  "researchPackNoComposer": {
+    "message": "Aucune zone de saisie sur cette page",
+    "description": "Research pack: no composer found"
   }
 }

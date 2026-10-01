@@ -127,6 +127,7 @@ export const BACKUPABLE_SYNC_SETTINGS_DEFAULTS = {
   [StorageKeys.GV_SNOW_EFFECT]: false,
   [StorageKeys.GV_VISUAL_EFFECT]: 'off',
   [StorageKeys.FORK_ENABLED]: false,
+  [StorageKeys.RESEARCH_PACK_ENABLED]: false,
   [StorageKeys.EXPORT_IMAGE_WIDTH]: 620,
   [StorageKeys.EXPORT_SPEAKER_LABELS]: {},
   [StorageKeys.PERSISTENT_EXPORT_TOOLBAR_ENABLED]: true,
@@ -385,6 +386,12 @@ export const NON_SETTINGS_BACKUP_POLICIES = {
     disposition: 'cache',
     reason:
       'Gemini response-id aliases are bounded, device-local, and rebuilt from conversation history.',
+  },
+  [StorageKeys.RESEARCH_PACK]: {
+    storage: 'local',
+    disposition: 'device-local',
+    reason:
+      'The research pack is a short-lived working set the user carries between chats; it is not backed up.',
   },
   [StorageKeys.PROMPT_HISTORY_ITEMS]: {
     storage: 'local',

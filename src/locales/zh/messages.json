@@ -3173,5 +3173,137 @@
   "nativeHealthDismiss": {
     "message": "关闭",
     "description": "Popup: dismiss the Gemini health notice"
+  },
+  "researchPackEnable": {
+    "message": "研究资料包",
+    "description": "Popup: research pack toggle label"
+  },
+  "researchPackEnableHint": {
+    "message": "在 Gemini 回答下添加资料包按钮。把多条回答及其来源汇总成一份 Markdown，再复制、下载或插入到另一个对话。",
+    "description": "Popup: research pack toggle hint"
+  },
+  "researchPackAdd": {
+    "message": "加入资料包（可先选中回答中的一段）",
+    "description": "Research pack: per-answer add button tooltip"
+  },
+  "researchPackAdded": {
+    "message": "已加入资料包",
+    "description": "Research pack: item added"
+  },
+  "researchPackDuplicate": {
+    "message": "资料包里已有这条内容",
+    "description": "Research pack: item already present"
+  },
+  "researchPackFull": {
+    "message": "资料包已满，请先移除一条。",
+    "description": "Research pack: item limit reached"
+  },
+  "researchPackCaptureFailed": {
+    "message": "无法读取这条回答",
+    "description": "Research pack: answer could not be read"
+  },
+  "researchPackSaveFailed": {
+    "message": "无法保存资料包",
+    "description": "Research pack: storage write failed"
+  },
+  "researchPackTitle": {
+    "message": "研究资料包",
+    "description": "Research pack: panel title"
+  },
+  "researchPackShortTitle": {
+    "message": "资料包",
+    "description": "Research pack: short launcher label"
+  },
+  "researchPackOpen": {
+    "message": "打开研究资料包",
+    "description": "Research pack: launcher tooltip"
+  },
+  "researchPackClose": {
+    "message": "关闭",
+    "description": "Research pack: close panel"
+  },
+  "researchPackEmpty": {
+    "message": "资料包是空的。点击回答下方的资料包按钮，或先选中回答中的一段。",
+    "description": "Research pack: empty state"
+  },
+  "researchPackItemCount": {
+    "message": "{count} 条",
+    "description": "Research pack: item count, {count} is a number"
+  },
+  "researchPackSourceCount": {
+    "message": "{count} 个来源",
+    "description": "Research pack: cited link count, {count} is a number"
+  },
+  "researchPackUntitledSource": {
+    "message": "未命名对话",
+    "description": "Research pack: fallback conversation title"
+  },
+  "researchPackExcerptBadge": {
+    "message": "节选",
+    "description": "Research pack: badge for a selected part of an answer"
+  },
+  "researchPackMoveUp": {
+    "message": "上移",
+    "description": "Research pack: move item up"
+  },
+  "researchPackMoveDown": {
+    "message": "下移",
+    "description": "Research pack: move item down"
+  },
+  "researchPackRemove": {
+    "message": "从资料包移除",
+    "description": "Research pack: remove item"
+  },
+  "researchPackInstructionLabel": {
+    "message": "给下一个模型的指令",
+    "description": "Research pack: instruction field label"
+  },
+  "researchPackInstructionPlaceholder": {
+    "message": "例如：比较这些回答，指出分歧，并逐条对照来源核实。",
+    "description": "Research pack: instruction placeholder"
+  },
+  "researchPackPreview": {
+    "message": "Markdown 预览",
+    "description": "Research pack: markdown preview toggle"
+  },
+  "researchPackInsert": {
+    "message": "插入输入框",
+    "description": "Research pack: insert into composer button"
+  },
+  "researchPackInsertHint": {
+    "message": "把资料包填入输入框，发送与否由你决定。",
+    "description": "Research pack: insert button tooltip"
+  },
+  "researchPackCopy": {
+    "message": "复制 Markdown",
+    "description": "Research pack: copy markdown button"
+  },
+  "researchPackDownload": {
+    "message": "下载 .md",
+    "description": "Research pack: download button"
+  },
+  "researchPackClear": {
+    "message": "清空",
+    "description": "Research pack: clear all items"
+  },
+  "researchPackClearConfirm": {
+    "message": "移除资料包中的全部内容？指令会保留。",
+    "description": "Research pack: clear confirmation"
+  },
+  "researchPackCopied": {
+    "message": "已复制 Markdown",
+    "description": "Research pack: copy succeeded"
+  },
+  "researchPackCopyFailed": {
+    "message": "复制失败，请改用下载。",
+    "description": "Research pack: copy failed"
+  },
+  "researchPackInserted": {
+    "message": "已插入资料包。检查后再自行发送。",
+    "description": "Research pack: inserted into composer"
+  },
+  "researchPackNoComposer": {
+    "message": "此页面没有找到输入框",
+    "description": "Research pack: no composer found"
   }
 }

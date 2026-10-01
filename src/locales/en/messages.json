@@ -3173,5 +3173,137 @@
   "nativeHealthDismiss": {
     "message": "Dismiss",
     "description": "Popup: dismiss the Gemini health notice"
+  },
+  "researchPackEnable": {
+    "message": "Research Pack",
+    "description": "Popup: research pack toggle label"
+  },
+  "researchPackEnableHint": {
+    "message": "Adds a pack button to Gemini answers. Collect answers and their sources into one Markdown pack, then copy, download or insert it into another chat.",
+    "description": "Popup: research pack toggle hint"
+  },
+  "researchPackAdd": {
+    "message": "Add to research pack (or select part of the answer first)",
+    "description": "Research pack: per-answer add button tooltip"
+  },
+  "researchPackAdded": {
+    "message": "Added to pack",
+    "description": "Research pack: item added"
+  },
+  "researchPackDuplicate": {
+    "message": "Already in the pack",
+    "description": "Research pack: item already present"
+  },
+  "researchPackFull": {
+    "message": "The pack is full. Remove an item first.",
+    "description": "Research pack: item limit reached"
+  },
+  "researchPackCaptureFailed": {
+    "message": "Couldn’t read this answer",
+    "description": "Research pack: answer could not be read"
+  },
+  "researchPackSaveFailed": {
+    "message": "Couldn’t save the pack",
+    "description": "Research pack: storage write failed"
+  },
+  "researchPackTitle": {
+    "message": "Research pack",
+    "description": "Research pack: panel title"
+  },
+  "researchPackShortTitle": {
+    "message": "Pack",
+    "description": "Research pack: short launcher label"
+  },
+  "researchPackOpen": {
+    "message": "Open research pack",
+    "description": "Research pack: launcher tooltip"
+  },
+  "researchPackClose": {
+    "message": "Close",
+    "description": "Research pack: close panel"
+  },
+  "researchPackEmpty": {
+    "message": "The pack is empty. Use the pack button under an answer, or select part of an answer first.",
+    "description": "Research pack: empty state"
+  },
+  "researchPackItemCount": {
+    "message": "{count} items",
+    "description": "Research pack: item count, {count} is a number"
+  },
+  "researchPackSourceCount": {
+    "message": "{count} sources",
+    "description": "Research pack: cited link count, {count} is a number"
+  },
+  "researchPackUntitledSource": {
+    "message": "Untitled conversation",
+    "description": "Research pack: fallback conversation title"
+  },
+  "researchPackExcerptBadge": {
+    "message": "Excerpt",
+    "description": "Research pack: badge for a selected part of an answer"
+  },
+  "researchPackMoveUp": {
+    "message": "Move up",
+    "description": "Research pack: move item up"
+  },
+  "researchPackMoveDown": {
+    "message": "Move down",
+    "description": "Research pack: move item down"
+  },
+  "researchPackRemove": {
+    "message": "Remove from pack",
+    "description": "Research pack: remove item"
+  },
+  "researchPackInstructionLabel": {
+    "message": "Instruction for the next model",
+    "description": "Research pack: instruction field label"
+  },
+  "researchPackInstructionPlaceholder": {
+    "message": "e.g. Compare these answers, point out disagreements, and check each claim against the sources.",
+    "description": "Research pack: instruction placeholder"
+  },
+  "researchPackPreview": {
+    "message": "Markdown preview",
+    "description": "Research pack: markdown preview toggle"
+  },
+  "researchPackInsert": {
+    "message": "Insert into chat",
+    "description": "Research pack: insert into composer button"
+  },
+  "researchPackInsertHint": {
+    "message": "Puts the pack in the message box. Nothing is sent until you send it.",
+    "description": "Research pack: insert button tooltip"
+  },
+  "researchPackCopy": {
+    "message": "Copy Markdown",
+    "description": "Research pack: copy markdown button"
+  },
+  "researchPackDownload": {
+    "message": "Download .md",
+    "description": "Research pack: download button"
+  },
+  "researchPackClear": {
+    "message": "Clear",
+    "description": "Research pack: clear all items"
+  },
+  "researchPackClearConfirm": {
+    "message": "Remove every item from the pack? The instruction stays.",
+    "description": "Research pack: clear confirmation"
+  },
+  "researchPackCopied": {
+    "message": "Markdown copied",
+    "description": "Research pack: copy succeeded"
+  },
+  "researchPackCopyFailed": {
+    "message": "Couldn’t copy. Use Download instead.",
+    "description": "Research pack: copy failed"
+  },
+  "researchPackInserted": {
+    "message": "Pack inserted. Review it, then send it yourself.",
+    "description": "Research pack: inserted into composer"
+  },
+  "researchPackNoComposer": {
+    "message": "No message box found on this page",
+    "description": "Research pack: no composer found"
   }
 }

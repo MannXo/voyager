@@ -3173,5 +3173,137 @@
   "nativeHealthDismiss": {
     "message": "Закрыть",
     "description": "Popup: dismiss the Gemini health notice"
+  },
+  "researchPackEnable": {
+    "message": "Исследовательский пакет",
+    "description": "Popup: research pack toggle label"
+  },
+  "researchPackEnableHint": {
+    "message": "Добавляет кнопку к ответам Gemini. Соберите ответы и их источники в один Markdown, чтобы скопировать, скачать или вставить его в другой чат.",
+    "description": "Popup: research pack toggle hint"
+  },
+  "researchPackAdd": {
+    "message": "Добавить в пакет (или сначала выделите часть ответа)",
+    "description": "Research pack: per-answer add button tooltip"
+  },
+  "researchPackAdded": {
+    "message": "Добавлено в пакет",
+    "description": "Research pack: item added"
+  },
+  "researchPackDuplicate": {
+    "message": "Уже в пакете",
+    "description": "Research pack: item already present"
+  },
+  "researchPackFull": {
+    "message": "Пакет заполнен. Сначала удалите элемент.",
+    "description": "Research pack: item limit reached"
+  },
+  "researchPackCaptureFailed": {
+    "message": "Не удалось прочитать этот ответ",
+    "description": "Research pack: answer could not be read"
+  },
+  "researchPackSaveFailed": {
+    "message": "Не удалось сохранить пакет",
+    "description": "Research pack: storage write failed"
+  },
+  "researchPackTitle": {
+    "message": "Исследовательский пакет",
+    "description": "Research pack: panel title"
+  },
+  "researchPackShortTitle": {
+    "message": "Пакет",
+    "description": "Research pack: short launcher label"
+  },
+  "researchPackOpen": {
+    "message": "Открыть исследовательский пакет",
+    "description": "Research pack: launcher tooltip"
+  },
+  "researchPackClose": {
+    "message": "Закрыть",
+    "description": "Research pack: close panel"
+  },
+  "researchPackEmpty": {
+    "message": "Пакет пуст. Нажмите кнопку под ответом или сначала выделите его часть.",
+    "description": "Research pack: empty state"
+  },
+  "researchPackItemCount": {
+    "message": "Элементов: {count}",
+    "description": "Research pack: item count, {count} is a number"
+  },
+  "researchPackSourceCount": {
+    "message": "Источников: {count}",
+    "description": "Research pack: cited link count, {count} is a number"
+  },
+  "researchPackUntitledSource": {
+    "message": "Разговор без названия",
+    "description": "Research pack: fallback conversation title"
+  },
+  "researchPackExcerptBadge": {
+    "message": "Фрагмент",
+    "description": "Research pack: badge for a selected part of an answer"
+  },
+  "researchPackMoveUp": {
+    "message": "Переместить выше",
+    "description": "Research pack: move item up"
+  },
+  "researchPackMoveDown": {
+    "message": "Переместить ниже",
+    "description": "Research pack: move item down"
+  },
+  "researchPackRemove": {
+    "message": "Удалить из пакета",
+    "description": "Research pack: remove item"
+  },
+  "researchPackInstructionLabel": {
+    "message": "Инструкция для следующей модели",
+    "description": "Research pack: instruction field label"
+  },
+  "researchPackInstructionPlaceholder": {
+    "message": "Например: сравни эти ответы, укажи расхождения и проверь каждое утверждение по источникам.",
+    "description": "Research pack: instruction placeholder"
+  },
+  "researchPackPreview": {
+    "message": "Предпросмотр Markdown",
+    "description": "Research pack: markdown preview toggle"
+  },
+  "researchPackInsert": {
+    "message": "Вставить в поле ввода",
+    "description": "Research pack: insert into composer button"
+  },
+  "researchPackInsertHint": {
+    "message": "Помещает пакет в поле ввода. Ничего не отправляется, пока вы не отправите сами.",
+    "description": "Research pack: insert button tooltip"
+  },
+  "researchPackCopy": {
+    "message": "Копировать Markdown",
+    "description": "Research pack: copy markdown button"
+  },
+  "researchPackDownload": {
+    "message": "Скачать .md",
+    "description": "Research pack: download button"
+  },
+  "researchPackClear": {
+    "message": "Очистить",
+    "description": "Research pack: clear all items"
+  },
+  "researchPackClearConfirm": {
+    "message": "Удалить все элементы из пакета? Инструкция сохранится.",
+    "description": "Research pack: clear confirmation"
+  },
+  "researchPackCopied": {
+    "message": "Markdown скопирован",
+    "description": "Research pack: copy succeeded"
+  },
+  "researchPackCopyFailed": {
+    "message": "Не удалось скопировать. Используйте скачивание.",
+    "description": "Research pack: copy failed"
+  },
+  "researchPackInserted": {
+    "message": "Пакет вставлен. Проверьте его и отправьте сами.",
+    "description": "Research pack: inserted into composer"
+  },
+  "researchPackNoComposer": {
+    "message": "На этой странице нет поля ввода",
+    "description": "Research pack: no composer found"
   }
 }

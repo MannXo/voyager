@@ -283,6 +283,11 @@ export const StorageKeys = {
   FORK_NODES: 'gvForkNodes',
   FORK_ENABLED: 'gvForkEnabled',
 
+  // Research Pack: the toggle syncs; the pack itself is device-local
+  // (chrome.storage.local), scoped per account only under account isolation.
+  RESEARCH_PACK_ENABLED: 'gvResearchPackEnabled',
+  RESEARCH_PACK: 'gvResearchPack',
+
   // Export
   EXPORT_IMAGE_WIDTH: 'gvExportImageWidth',
   EXPORT_SPEAKER_LABELS: 'gvExportSpeakerLabels',
