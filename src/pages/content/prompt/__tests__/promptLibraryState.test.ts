@@ -231,7 +231,7 @@ describe('Prompt Manager library state', () => {
     state.togglePin('b');
     await flush();
     expect(JSON.stringify(stored())).toBe(
-      JSON.stringify([prompt('c', 'C'), { ...prompt('b', 'B'), updatedAt: 101 }]),
+      JSON.stringify([prompt('c', 'C'), { ...prompt('b', 'B'), pinnedAt: null, updatedAt: 101 }]),
     );
     expect(state.items).toEqual(stored());
   });

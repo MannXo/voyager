@@ -247,7 +247,8 @@ export interface PromptMergeResult {
 /**
  * Preserves every prompt even when names conflict. Newer same-ID content wins
  * (`isNewerPromptCopy`: the later edit, then a content tie-break every device
- * agrees on), while a local name survives a legacy cloud record that omits the field.
+ * agrees on), while a local name and pin survive a legacy cloud record that omits the field;
+ * an explicit `pinnedAt: null` unpins.
  * Duplicate-name groups are reported so callers can show a non-blocking
  * warning and slash completion can disable the ambiguous names.
  */
@@ -263,10 +264,11 @@ export function mergePromptsWithStats(local: PromptItem[], cloud: PromptItem[]):
 
     if (!isNewerPromptCopy(cloudItem, localItem)) continue;
 
-    itemMap.set(
-      cloudItem.id,
-      cloudItem.name === undefined ? { ...cloudItem, name: localItem.name } : cloudItem,
-    );
+    let winner = cloudItem.name === undefined ? { ...cloudItem, name: localItem.name } : cloudItem;
+    if (cloudItem.pinnedAt === undefined && localItem.pinnedAt !== undefined) {
+      winner = { ...winner, pinnedAt: localItem.pinnedAt };
+    }
+    itemMap.set(cloudItem.id, winner);
   }
 
   const items = Array.from(itemMap.values());

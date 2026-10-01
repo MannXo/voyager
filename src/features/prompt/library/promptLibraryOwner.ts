@@ -25,7 +25,7 @@ export interface PromptLibraryArea {
   set(items: Record<string, unknown>): Promise<void>;
 }
 
-/** Fields an update may change. `pinnedAt: null` unpins. */
+/** Fields an update may change. `pinnedAt: null` unpins and is stored as `null`. */
 export interface PromptChanges {
   name?: string;
   text?: string;
@@ -134,9 +134,7 @@ function updatePrompt(stored: unknown[], id: string, changes: PromptChanges) {
   if (index < 0) return { items: null, result: summarize(stored, 0, 0) };
   const next: Record<string, unknown> = { ...(stored[index] as Record<string, unknown>) };
   for (const [field, value] of Object.entries(changes)) {
-    if (value === undefined) continue;
-    if (field === 'pinnedAt' && value === null) delete next.pinnedAt;
-    else next[field] = value;
+    if (value !== undefined) next[field] = value;
   }
   const items = stored.slice();
   items[index] = next;

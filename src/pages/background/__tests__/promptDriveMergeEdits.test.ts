@@ -183,6 +183,7 @@ describe('prompt pins through the prompts-only Drive merges', () => {
       text: 'B',
       tags: [],
       createdAt: 2,
+      pinnedAt: null,
       updatedAt: 30,
     });
   });
@@ -197,8 +198,8 @@ describe('prompt pins through the prompts-only Drive merges', () => {
     await laptop.pin('a', false, 20);
     drive = await laptop.push(drive);
     drive = await desktop.push(drive);
-    expect(pinOf(desktop.stored(), 'a')).toBeUndefined();
-    expect(pinOf(drive.items, 'a')).toBeUndefined();
+    expect(pinOf(desktop.stored(), 'a')).toBeNull();
+    expect(pinOf(drive.items, 'a')).toBeNull();
 
     await desktop.pin('b', true, 40);
     drive = await desktop.push(drive);
@@ -222,8 +223,48 @@ describe('prompt pins through the prompts-only Drive merges', () => {
       text: 'A',
       tags: [],
       createdAt: 1,
+      pinnedAt: null,
       updatedAt: 60,
     });
+  });
+
+  it('keeps the local pin when a newer copy from an older version has no pinnedAt', async () => {
+    // Versions before null unpins omit the field on every unpinned prompt, and stamp the
+    // merge time as `updatedAt`, so their copies win while saying nothing about the pin.
+    const oldVersionCopy = {
+      format: 'gemini-voyager.prompts.v1',
+      exportedAt: '2026-01-01T00:00:00.000Z',
+      items: [{ id: 'a', text: 'A, edited', tags: [], createdAt: 1, updatedAt: 60 }],
+    };
+    const puller = device(library());
+    await puller.pin('a', true, 50);
+    const pusher = device(library());
+    await pusher.pin('a', true, 50);
+
+    await puller.pull(oldVersionCopy);
+    const uploaded = await pusher.push(oldVersionCopy);
+
+    for (const items of [puller.stored(), uploaded.items]) {
+      expect(items.find((item) => item.id === 'a')).toMatchObject({
+        text: 'A, edited',
+        pinnedAt: 50,
+        updatedAt: 60,
+      });
+    }
+  });
+
+  it('carries an explicit unpin through a Drive file', () => {
+    const file = JSON.parse(
+      JSON.stringify(
+        PromptImportExportService.exportToPayload([
+          { id: 'a', text: 'A', tags: [], createdAt: 1, pinnedAt: null, updatedAt: 2 },
+        ]),
+      ),
+    );
+
+    const parsed = PromptImportExportService.validatePayload(file);
+
+    expect(parsed.success && parsed.data.items[0].pinnedAt).toBeNull();
   });
 
   it('keeps a newer local pin over an older unpinned copy', async () => {

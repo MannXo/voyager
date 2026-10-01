@@ -19,7 +19,8 @@ export interface PromptImportStats {
  * Merge imported prompts into a library, as the prompts import always has:
  * a prompt matching a stored one by id (or else by text) merges tags into it,
  * and a same-id copy that wins (`isNewerPromptCopy`) replaces its text, name and
- * pin (an unpinned winner unpins) and brings its edit time; anything else is added as it came. A merge never
+ * pin and brings its edit time. A winner's `pinnedAt: null` unpins; a winner
+ * without the field (an older version's copy) leaves the pin alone. Anything else is added as it came. A merge never
  * stamps the time it ran. `stored` is the freshly read library; its prompts are
  * updated in place.
  *
@@ -69,11 +70,7 @@ export function mergeImportedPrompts(
         existing.updatedAt = promptEditTime(item);
         existingByText.setText(existing, item.text);
         // Pinning bumps `updatedAt`, so the winner's pin is the newer choice.
-        if (typeof item.pinnedAt === 'number' && Number.isFinite(item.pinnedAt)) {
-          existing.pinnedAt = item.pinnedAt;
-        } else {
-          delete existing.pinnedAt;
-        }
+        if (item.pinnedAt !== undefined) existing.pinnedAt = item.pinnedAt;
       }
       duplicates++;
       // A prompt this import added is placed already; only a stored one is an anchor.

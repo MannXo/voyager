@@ -118,7 +118,8 @@ describe('prompt library owner', () => {
     expect(stored()).toEqual([
       prompt('c', 'C'),
       prompt('new', 'Added meanwhile'),
-      prompt('a', 'A2'),
+      // An unpin is written as `null`, so a merge can tell it from a copy that never had a pin.
+      prompt('a', 'A2', { pinnedAt: null }),
     ]);
   });
 
@@ -284,8 +285,10 @@ describe('prompt library messages', () => {
         { text: '  No id, tags or date  ' },
         { id: 'b', text: 'Named', tags: ['A', 'a', 3], name: ' Name ', pinnedAt: 2 },
         { id: 'c', text: 'Dated', tags: [], createdAt: 5, updatedAt: 6 },
+        { id: 'd', text: 'Unpinned', tags: [], createdAt: 5, updatedAt: 7, pinnedAt: null },
       ],
     });
+    expect(validated.success && validated.data.items[3].pinnedAt).toBeNull();
     if (!validated.success) throw new Error('expected a valid payload');
 
     expect(parsePromptLibraryOp({ kind: 'import', items: validated.data.items })).toEqual({

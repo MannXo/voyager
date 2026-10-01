@@ -67,10 +67,12 @@ export interface PromptItem {
   /** Optional only for prompts created before names became required. */
   name?: string;
   /**
-   * When the prompt was pinned. Absent means unpinned — see promptPinning.ts.
-   * Pinning bumps `updatedAt` so the cloud merge carries it.
+   * When the prompt was pinned; `null` means it was unpinned. Absent also shows
+   * as unpinned, but a merge reads it as "no pin information", because 1.9.0 and
+   * earlier drop the field on every unpinned prompt — see promptPinning.ts.
+   * Pinning and unpinning bump `updatedAt` so the cloud merge carries them.
    */
-  pinnedAt?: number;
+  pinnedAt?: number | null;
 }
 
 /**

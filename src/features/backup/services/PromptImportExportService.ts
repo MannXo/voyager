@@ -54,7 +54,11 @@ function normalizePromptItem(value: unknown): PromptItem | null {
   const name = typeof item.name === 'string' ? item.name.trim() : '';
   if (name) prompt.name = name;
 
-  if (typeof item.pinnedAt === 'number' && Number.isFinite(item.pinnedAt)) {
+  // `null` is an explicit unpin and must survive; an absent field stays absent.
+  if (
+    item.pinnedAt === null ||
+    (typeof item.pinnedAt === 'number' && Number.isFinite(item.pinnedAt))
+  ) {
     prompt.pinnedAt = item.pinnedAt;
   }
 

@@ -10,7 +10,7 @@
 export interface PromptCopy {
   text: string;
   name?: string;
-  pinnedAt?: number;
+  pinnedAt?: number | null;
   createdAt?: number;
   updatedAt?: number;
 }

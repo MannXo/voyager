@@ -88,7 +88,7 @@ function parsePromptItem(value: unknown): PromptItem | null {
   if (!isId(id) || !isPromptText(text)) return null;
   if (!isTagList(tags) || !isFiniteNumber(createdAt)) return null;
   if (updatedAt !== undefined && !isFiniteNumber(updatedAt)) return null;
-  if (pinnedAt !== undefined && !isFiniteNumber(pinnedAt)) return null;
+  if (pinnedAt !== undefined && pinnedAt !== null && !isFiniteNumber(pinnedAt)) return null;
   if (name !== undefined && !isPromptName(name)) return null;
   const item: PromptItem = { id, text, tags, createdAt };
   if (updatedAt !== undefined) item.updatedAt = updatedAt;
