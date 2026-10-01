@@ -225,6 +225,74 @@ describe('FolderStore reconciles external writes after local work settles', () =
     }
   });
 
+  it('carries a debounced open onto a conversation another tab moved', async () => {
+    vi.advanceTimersByTime(5000);
+    store.markConversationAsRecentlyOpened('c1');
+    const openedAt = store.data.folderContents.Alpha[0].lastOpenedAt;
+    const remote = folders('Alpha', 'Beta');
+    remote.folderContents.Beta = remote.folderContents.Alpha;
+    remote.folderContents.Alpha = [];
+    writeFromElsewhere(remote);
+
+    await vi.advanceTimersByTimeAsync(350);
+
+    for (const data of [store.data, stored]) {
+      expect(data?.folderContents.Alpha).toEqual([]);
+      expect(data?.folderContents.Beta.map((c) => c.lastOpenedAt)).toEqual([openedAt]);
+      expect(data?.folderContents.Beta[0].updatedAt).toBe(openedAt);
+    }
+  });
+
+  it('carries a debounced open to every folder that holds the conversation', async () => {
+    vi.advanceTimersByTime(5000);
+    store.markConversationAsRecentlyOpened('c1');
+    const openedAt = store.data.folderContents.Alpha[0].lastOpenedAt;
+    const remote = folders('Alpha', 'Beta');
+    remote.folderContents.Beta = structuredClone(remote.folderContents.Alpha);
+    writeFromElsewhere(remote);
+
+    await vi.advanceTimersByTimeAsync(350);
+
+    for (const data of [store.data, stored]) {
+      expect(data?.folderContents.Alpha.map((c) => c.lastOpenedAt)).toEqual([openedAt]);
+      expect(data?.folderContents.Beta.map((c) => c.lastOpenedAt)).toEqual([openedAt]);
+    }
+  });
+
+  it('does not bring back a conversation another tab removed', async () => {
+    vi.advanceTimersByTime(5000);
+    store.markConversationAsRecentlyOpened('c1');
+    const remote = folders('Alpha', 'Beta');
+    remote.folderContents.Alpha = [];
+    writeFromElsewhere(remote);
+
+    await vi.advanceTimersByTimeAsync(350);
+
+    for (const data of [store.data, stored]) {
+      expect(Object.values(data?.folderContents ?? {}).flat()).toEqual([]);
+    }
+  });
+
+  it('carries only the timestamps edited here, not another folder copy of them', async () => {
+    const both = folders('Alpha', 'Beta');
+    both.folderContents.Beta = [{ ...both.folderContents.Alpha[0], updatedAt: 900 }];
+    writeFromElsewhere(both);
+    await vi.advanceTimersByTimeAsync(0);
+    store.markConversationLastTurnAt('c1', 5000);
+    writeFromElsewhere({ ...both, folders: [...both.folders, ...folders('Gamma').folders] });
+
+    await vi.advanceTimersByTimeAsync(350);
+
+    for (const data of [store.data, stored]) {
+      expect(data?.folderContents.Alpha.map((c) => [c.lastTurnAt, c.updatedAt])).toEqual([
+        [5000, undefined],
+      ]);
+      expect(data?.folderContents.Beta.map((c) => [c.lastTurnAt, c.updatedAt])).toEqual([
+        [5000, 900],
+      ]);
+    }
+  });
+
   it('holds a debounced save that falls due while the reload read is in flight', async () => {
     store.toggleFolder('Alpha');
     await vi.advanceTimersByTimeAsync(290);
