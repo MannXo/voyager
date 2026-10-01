@@ -118,16 +118,62 @@ export function sortFoldersByCreation(folders: readonly Folder[]): Folder[] {
   );
 }
 
-export function getFolderChildren(
+/** Where each folder renders: every stored id exactly once, under one parent. */
+export type FolderLayout = {
+  roots: Folder[];
+  children: ReadonlyMap<string, Folder[]>;
+};
+
+/**
+ * Lays out folders for display without rewriting them. A repeated id keeps its
+ * first record. Folders a parent walk from the roots never reaches sit on a
+ * parent cycle: the first of each such group in stored order stands in as a
+ * root after the real ones, and the rest hang under it as stored.
+ */
+export function layoutFolders(
   data: FolderData,
-  parentId: string | null,
   order?: TreeSiteOptions['folderOrder'],
-): Folder[] {
-  const ids = parentId === null ? new Set(data.folders.map((folder) => folder.id)) : null;
-  const children = data.folders.filter((folder) =>
-    ids ? isRootFolder(folder, ids) : folder.parentId === parentId,
-  );
-  return order === 'created' ? sortFoldersByCreation(children) : sortFolders(children);
+): FolderLayout {
+  const sort = (folders: Folder[]) =>
+    order === 'created' ? sortFoldersByCreation(folders) : sortFolders(folders);
+  const unique = new Map<string, Folder>();
+  for (const folder of data.folders) if (!unique.has(folder.id)) unique.set(folder.id, folder);
+  const ids = new Set(unique.keys());
+
+  const byParent = new Map<string, Folder[]>();
+  const realRoots: Folder[] = [];
+  for (const folder of unique.values()) {
+    if (isRootFolder(folder, ids)) {
+      realRoots.push(folder);
+      continue;
+    }
+    const siblings = byParent.get(folder.parentId as string) ?? [];
+    siblings.push(folder);
+    byParent.set(folder.parentId as string, siblings);
+  }
+
+  const children = new Map<string, Folder[]>();
+  const placed = new Set<string>();
+  const place = (top: Folder) => {
+    placed.add(top.id);
+    const pending = [top];
+    while (pending.length > 0) {
+      const parent = pending.pop()!;
+      const kids = sort((byParent.get(parent.id) ?? []).filter((kid) => !placed.has(kid.id)));
+      for (const kid of kids) placed.add(kid.id);
+      children.set(parent.id, kids);
+      pending.push(...kids);
+    }
+  };
+
+  const roots = sort(realRoots);
+  roots.forEach(place);
+  for (const folder of unique.values()) {
+    if (placed.has(folder.id)) continue;
+    roots.push(folder);
+    place(folder);
+  }
+  return { roots, children };
 }
 
 /**

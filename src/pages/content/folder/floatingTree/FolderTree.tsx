@@ -13,11 +13,12 @@ import { ContextMenu } from './ContextMenu';
 import { IconButton, InlineForm } from './controls';
 import {
   type ConversationDragData,
+  type FolderLayout,
   type TreeProps,
   acceptsDrag,
   canCreateChildAtDepth,
   cls,
-  getFolderChildren,
+  layoutFolders,
   readConversationDragData,
   t,
 } from './shared';
@@ -188,13 +189,13 @@ function ConversationRow({ tree, conv, folderId, depth }: ConversationRowProps) 
   );
 }
 
-type FolderNodeProps = { tree: TreeProps; folder: Folder; depth: number };
+type FolderNodeProps = { tree: TreeProps; layout: FolderLayout; folder: Folder; depth: number };
 
-function FolderNode({ tree, folder, depth }: FolderNodeProps) {
+function FolderNode({ tree, layout, folder, depth }: FolderNodeProps) {
   const { data, inlineEditor, apply, actions } = tree;
   const expanded = tree.isExpanded(folder);
   const childConversations = ownBucket(data.folderContents, folder.id) ?? [];
-  const childFolders = getFolderChildren(data, folder.id, tree.site?.folderOrder);
+  const childFolders = layout.children.get(folder.id) ?? [];
   const renaming = inlineEditor?.mode === 'rename' && inlineEditor.folderId === folder.id;
   const creatingChild = inlineEditor?.mode === 'create' && inlineEditor.parentId === folder.id;
   const toggle = () => apply({ expand: { folderId: folder.id, expanded: !expanded } });
@@ -342,7 +343,7 @@ function FolderNode({ tree, folder, depth }: FolderNodeProps) {
           />
         )}
         {childFolders.map((child) => (
-          <FolderNode key={child.id} tree={tree} folder={child} depth={depth + 1} />
+          <FolderNode key={child.id} tree={tree} layout={layout} folder={child} depth={depth + 1} />
         ))}
         {orderConversations(tree, childConversations).map((conv) => (
           <ConversationRow
@@ -398,6 +399,7 @@ export function FolderTree(tree: TreeProps) {
   const creatingRoot = inlineEditor?.mode === 'create' && inlineEditor.parentId === null;
   const rootConversations = ownBucket(data.folderContents, rootBucketId) ?? [];
   const rootSection = site?.rootSection;
+  const layout = layoutFolders(data, site?.folderOrder);
 
   if (
     data.folders.length === 0 &&
@@ -433,8 +435,8 @@ export function FolderTree(tree: TreeProps) {
             depth={-1}
           />
         ))}
-      {getFolderChildren(data, null, site?.folderOrder).map((folder) => (
-        <FolderNode key={folder.id} tree={tree} folder={folder} depth={0} />
+      {layout.roots.map((folder) => (
+        <FolderNode key={folder.id} tree={tree} layout={layout} folder={folder} depth={0} />
       ))}
       {rootSection && <RootSection tree={tree} labelKey={rootSection.labelKey} />}
       <ContextMenu {...tree} />

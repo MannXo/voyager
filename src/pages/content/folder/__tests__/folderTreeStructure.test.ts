@@ -100,3 +100,52 @@ describe('folders without a usable parent', () => {
     expect(shownConversations(root)).toEqual(['in-child', 'in-orphan']);
   });
 });
+
+describe('folders on a parent cycle', () => {
+  it('renders a folder that is its own parent once, at the root', () => {
+    const root = mount({ folders: [folder('s', 's')], folderContents: bucketsOf('s') });
+    expect(rendered(root)).toEqual(['0:s']);
+    expect(shownConversations(root)).toEqual(['in-s']);
+  });
+
+  it('renders each folder of a cycle once, the first one standing in as a root', () => {
+    const root = mount({
+      folders: [folder('a', 'b'), folder('b', 'a'), folder('c', 'b')],
+      folderContents: bucketsOf('a', 'b', 'c'),
+    });
+    expect(rendered(root)).toEqual(['0:a', '1:b', '2:c']);
+    expect(shownConversations(root)).toEqual(['in-a', 'in-b', 'in-c']);
+  });
+
+  it('renders a duplicated id once, even when the duplicate names itself as parent', () => {
+    const root = mount({
+      folders: [folder('x', null), folder('x', 'x'), folder('y', 'x')],
+      folderContents: bucketsOf('x', 'y'),
+    });
+    expect(rendered(root)).toEqual(['0:x', '1:y']);
+  });
+
+  it('stops at a cycle under a real root, even with every folder collapsed', () => {
+    const root = mount({
+      folders: [
+        folder('r', null, { isExpanded: false }),
+        folder('a', 'r', { isExpanded: false }),
+        folder('b', 'a', { isExpanded: false }),
+        folder('a', 'b', { isExpanded: false }),
+      ],
+      folderContents: bucketsOf('r', 'a', 'b'),
+    });
+    expect(rendered(root)).toEqual(['0:r', '1:a', '2:b']);
+  });
+
+  it('counts only the subfolders it renders', () => {
+    const root = mount({
+      folders: [folder('x', null), folder('x', 'x'), folder('y', 'x')],
+      folderContents: { x: [], y: [] },
+    });
+    const count = (id: string) =>
+      root.querySelector(`.${cls('folder-header')}[data-folder-id="${id}"] .${cls('count')}`)
+        ?.textContent;
+    expect(count('x')).toBe('1');
+  });
+});
