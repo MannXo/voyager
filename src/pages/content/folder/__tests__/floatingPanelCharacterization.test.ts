@@ -306,6 +306,18 @@ describe('floating panel rows and drag', () => {
     expect(panelRoot(handle).textContent).toContain('floatingPanelUntitled');
   });
 
+  // A name in the other script direction than the page truncates at its own
+  // end only when it resolves its own direction; the row keeps the page's alignment.
+  it('lets folder names and chat titles take their own text direction', () => {
+    const handle = mountPanel();
+    const header = folderHeader(panelRoot(handle), 'folder-a');
+
+    expect(header.querySelector(`.${FLOATING_PANEL_CLASS}__folder-name`)!.getAttribute('dir')).toBe(
+      'auto',
+    );
+    expect(part(handle, 'conv-title').getAttribute('dir')).toBe('auto');
+  });
+
   it('flips the caret label when a folder collapses', () => {
     const handle = mountPanel();
     const caret = () =>

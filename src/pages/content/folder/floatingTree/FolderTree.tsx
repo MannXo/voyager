@@ -153,6 +153,8 @@ function ConversationRow({ tree, conv, folderId, depth }: ConversationRowProps) 
       <button
         type="button"
         class={cls('conv-title')}
+        // Its own direction, so a name in the other script truncates at its end.
+        dir="auto"
         title={conv.title || ''}
         aria-current={active ? 'page' : undefined}
         onClick={(e) => {
@@ -272,6 +274,7 @@ function FolderNode({ tree, layout, folder, depth }: FolderNodeProps) {
           ) : (
             <span
               class={cls('folder-name')}
+              dir="auto"
               title={folder.name}
               onDblClick={(e) => {
                 e.stopPropagation();
