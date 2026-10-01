@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
+import { StorageKeys } from '@/core/types/common';
 import { PromptImportExportService } from '@/features/backup/services/PromptImportExportService';
 
 import {
@@ -121,13 +122,14 @@ describe('research pack template files', () => {
     const content = buildTemplateFile(
       { id: 'p9', name: 'Review', text: 'Compare the sources.' },
       Date.UTC(2026, 9, 1),
+      () => 'fresh-id',
     );
     const payload = JSON.parse(content);
 
     expect(payload.format).toBe(PROMPT_EXPORT_FORMAT);
     expect(payload.items).toEqual([
       {
-        id: 'p9',
+        id: 'fresh-id',
         name: 'Review',
         text: 'Compare the sources.',
         tags: [TAG],
@@ -139,6 +141,50 @@ describe('research pack template files', () => {
       ok: true,
       templates: [{ name: 'Review', text: 'Compare the sources.' }],
     });
+  });
+
+  it('shares a file the popup import adds as a new prompt, leaving every stored prompt as it was', async () => {
+    // The recipient imported this template once and then rewrote it; the
+    // sender exports the same template again later.
+    const recipient = [
+      { id: 'p9', name: 'My review', text: 'My rewritten review', tags: [TAG], createdAt: 1 },
+      { id: 'other', name: 'Other', text: 'Unrelated', tags: [], createdAt: 2 },
+    ];
+    const store: Record<string, unknown> = {
+      [StorageKeys.PROMPT_ITEMS]: structuredClone(recipient),
+    };
+    vi.stubGlobal('chrome', {
+      runtime: { lastError: null },
+      storage: {
+        local: {
+          get: (keys: string[], callback: (items: Record<string, unknown>) => void) =>
+            callback(Object.fromEntries(keys.map((key) => [key, structuredClone(store[key])]))),
+          set: (items: Record<string, unknown>, callback?: () => void) => {
+            Object.assign(store, structuredClone(items));
+            callback?.();
+          },
+        },
+      },
+    });
+    try {
+      const file = buildTemplateFile(
+        { id: 'p9', name: 'Review', text: 'Compare the sources.' },
+        Date.UTC(2026, 9, 1),
+      );
+      const payload = PromptImportExportService.validatePayload(JSON.parse(file));
+      if (!payload.success) throw new Error('expected a valid payload');
+
+      const result = await PromptImportExportService.importFromPayload(payload.data);
+
+      expect(result.success).toBe(true);
+      const stored = store[StorageKeys.PROMPT_ITEMS] as Array<Record<string, unknown>>;
+      for (const prompt of recipient) {
+        expect(stored.find((item) => item.id === prompt.id)).toEqual(prompt);
+      }
+      expect(stored.filter((item) => item.text === 'Compare the sources.')).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

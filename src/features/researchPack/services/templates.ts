@@ -240,11 +240,20 @@ export function createTemplateLibrary(options: {
   };
 }
 
-/** A one-template file in the prompts format, carrying only the template's name and text. */
-export function buildTemplateFile(template: ResearchPackTemplate, now: number): string {
+/**
+ * A one-template file in the prompts format, carrying only the template's name
+ * and text. The id is new on every export: the popup's prompt import matches
+ * stored prompts by id and lets a newer copy replace their text, so a shared
+ * file must never carry an id a recipient may already hold.
+ */
+export function buildTemplateFile(
+  template: ResearchPackTemplate,
+  now: number,
+  makeId: () => string = newPromptId,
+): string {
   const payload = PromptImportExportService.exportToPayload([
     {
-      id: template.id,
+      id: makeId(),
       name: template.name,
       text: template.text,
       tags: [RESEARCH_PACK_TEMPLATE_TAG],
