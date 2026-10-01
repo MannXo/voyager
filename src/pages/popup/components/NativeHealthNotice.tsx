@@ -9,6 +9,7 @@ import {
   buildNativeHealthIssueUrl,
 } from '@/core/gemini/nativeHealth';
 import { buildVoyagerDiagnostics } from '@/core/services/DiagnosticsExportService';
+import { isRTLLanguage } from '@/core/utils/rtl';
 import type { TranslationKey } from '@/utils/translations';
 
 const FEATURE_MESSAGE_KEYS: Record<NativeHealthFeature, TranslationKey> = {
@@ -21,13 +22,21 @@ const FEATURE_MESSAGE_KEYS: Record<NativeHealthFeature, TranslationKey> = {
 
 export interface NativeHealthNoticeProps {
   entries: readonly NativeHealthEntry[];
+  /** The popup UI language; the popup document itself carries no direction. */
+  language: string;
   onDismiss: () => void;
   t: (key: TranslationKey) => string;
   style?: CSSProperties;
 }
 
 /** Tells the user that a Voyager feature lost its Gemini anchor on the active page. */
-export function NativeHealthNotice({ entries, onDismiss, t, style }: NativeHealthNoticeProps) {
+export function NativeHealthNotice({
+  entries,
+  language,
+  onDismiss,
+  t,
+  style,
+}: NativeHealthNoticeProps) {
   if (entries.length === 0) return null;
   const { extension, environment } = buildVoyagerDiagnostics();
   const issueUrl = buildNativeHealthIssueUrl(entries, {
@@ -38,6 +47,7 @@ export function NativeHealthNotice({ entries, onDismiss, t, style }: NativeHealt
   return (
     <Card
       style={style}
+      dir={isRTLLanguage(language) ? 'rtl' : 'ltr'}
       className="border-amber-200 bg-amber-50 p-3 text-amber-900 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100"
       role="status"
     >

@@ -204,6 +204,7 @@ export default function Popup({ sourceTabId }: PopupProps = {}) {
         <NativeHealthNotice
           style={{ order: -2 }}
           entries={nativeHealth.visibleEntries}
+          language={language}
           onDismiss={nativeHealth.dismiss}
           t={t}
         />

@@ -40,9 +40,16 @@ describe('NativeHealthNotice', () => {
     vi.unstubAllGlobals();
   });
 
-  function render(entries: NativeHealthEntry[], onDismiss = vi.fn()) {
+  function render(entries: NativeHealthEntry[], onDismiss = vi.fn(), language = 'en') {
     act(() => {
-      root.render(<NativeHealthNotice entries={entries} onDismiss={onDismiss} t={(key) => key} />);
+      root.render(
+        <NativeHealthNotice
+          entries={entries}
+          language={language}
+          onDismiss={onDismiss}
+          t={(key) => key}
+        />,
+      );
     });
     return onDismiss;
   }
@@ -80,6 +87,14 @@ describe('NativeHealthNotice', () => {
     expect(href).not.toContain(CONVERSATION_URL);
     expect(href).not.toContain('gemini.google.com');
     expect(href).not.toContain('/app/');
+  });
+
+  it('lays out right to left in an RTL popup language', () => {
+    render([timelineBroken], vi.fn(), 'ar');
+    expect(container.querySelector('[role="status"]')?.getAttribute('dir')).toBe('rtl');
+
+    render([timelineBroken], vi.fn(), 'zh_TW');
+    expect(container.querySelector('[role="status"]')?.getAttribute('dir')).toBe('ltr');
   });
 
   it('dismisses from its close button', () => {
