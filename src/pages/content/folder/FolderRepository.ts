@@ -372,6 +372,14 @@ export class FolderRepository {
     if (this.dataSession !== session) return false;
     console.warn(`${this.tag} Attempting data recovery after load failure`);
 
+    // Memory holding an edit whose save failed is newer than every backup (the
+    // primary predates it); repair storage from it instead of rolling it back.
+    if (session.ready && session.unsavedChanges && validateFolderData(this.data)) {
+      this.data = this.config.normalize(this.data);
+      this.hooks.onRecovery('kept');
+      return this.saveData();
+    }
+
     // Step 1: Try to restore from localStorage backups (primary, emergency, beforeUnload)
     const recovered = session.backup.recoverFromBackup();
     if (recovered && validateFolderData(recovered)) {
@@ -456,7 +464,17 @@ export class FolderRepository {
     // Only skips a reload that could not apply yet; the flag survives it, and
     // persist, `replaceData` and `loadData` call back once they settle.
     if (session.saveInProgress || session.replacingData || session.loadsInFlight > 0) return;
+    session.reconcileAttemptedAt = session.externalWrites;
     this.hooks.onExternalChange();
+  }
+
+  /**
+   * After a local write settles. A failed write proves nothing about storage, so
+   * it reconciles only for an external write observed since the last attempt:
+   * rereading unchanged corrupt storage would only run recovery again.
+   */
+  private reconcileAfterWrite(session: FolderDataSession, saved: boolean): void {
+    if (saved || session.externalWrites !== session.reconcileAttemptedAt) this.tryReconcile();
   }
 
   flushPendingSaveData(): void {
@@ -498,7 +516,7 @@ export class FolderRepository {
       session.replacingData = false;
       if (this.dataSession === session && !this.destroyed) {
         this.hooks.onChange(saved ? 'data' : 'availability');
-        this.tryReconcile();
+        this.reconcileAfterWrite(session, saved);
       } else if (!session.saveInProgress) {
         this.dataSessions.delete(session.storageKey);
       }
@@ -617,6 +635,7 @@ export class FolderRepository {
       this.storageEchoes.disarm(echo);
       success = false;
     } finally {
+      if (!session.pendingSave) session.unsavedChanges = !success;
       // A newer queued snapshot can still persist this edit; report only a final failure.
       if (!success && this.dataSession === session && !session.pendingSave) {
         this.hooks.onSaveFailed?.();
@@ -638,7 +657,7 @@ export class FolderRepository {
     }
     if (this.dataSession === session && !session.replacingData) {
       this.hooks.onPersistSettled?.();
-      if (!session.saveInProgress) this.tryReconcile();
+      if (!session.saveInProgress) this.reconcileAfterWrite(session, success);
     }
 
     return success;

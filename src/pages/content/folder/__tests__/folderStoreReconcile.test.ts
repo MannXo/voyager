@@ -385,6 +385,41 @@ describe('FolderStore reconciles external writes after local work settles', () =
       expect(names(store.data)).toEqual(['Alpha', 'From another tab']);
     });
 
+    it('keeps a rename whose save fails while storage is corrupt', async () => {
+      const emergencyNames = () => {
+        const backup = JSON.parse(localStorage.getItem('gvBackup_gemini-folders_emergency')!) as {
+          data: FolderData;
+        };
+        return names(backup.data);
+      };
+      slowReads();
+      vi.mocked(adapter.saveData).mockResolvedValue(false);
+      writeFromElsewhere(corrupt);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      const reads = vi.mocked(adapter.loadData).mock.calls.length;
+      store.data.folders[0].name = 'Mine';
+      await expect(store.saveData()).resolves.toBe(false);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(adapter.loadData).toHaveBeenCalledTimes(reads); // a failed write is no evidence
+      expect(names(store.data)).toEqual(['Mine']);
+      expect(emergencyNames()).toEqual(['Mine']);
+
+      // Another corrupt write is new evidence; recovery must still not roll the edit back.
+      writeFromElsewhere(structuredClone(corrupt));
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(names(store.data)).toEqual(['Mine']);
+      expect(emergencyNames()).toEqual(['Mine']);
+
+      vi.mocked(adapter.saveData).mockImplementation(async (_key, data) => {
+        stored = structuredClone(data);
+        return true;
+      });
+      writeFromElsewhere(folders('Alpha', 'From another tab'));
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(names(store.data)).toEqual(['Alpha', 'From another tab']);
+    });
+
     it('settles once a recovery write succeeds', async () => {
       slowReads();
       writeFromElsewhere(corrupt);

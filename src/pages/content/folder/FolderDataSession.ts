@@ -17,6 +17,10 @@ export class FolderDataSession {
   reconcilePending = false;
   /** Counts observed external writes, so a load knows whether one arrived during its read. */
   externalWrites = 0;
+  /** The last write of this session's data failed: memory holds an edit newer than every backup. */
+  unsavedChanges = false;
+  /** `externalWrites` when a reload was last requested for this session. */
+  reconcileAttemptedAt = 0;
   /** What this context last read from or wrote to storage: the base for merging debounced edits. */
   baseline: FolderData | null = null;
   pendingSaveCompletion: {
