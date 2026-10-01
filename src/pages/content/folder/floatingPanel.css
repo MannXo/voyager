@@ -1,20 +1,24 @@
 /* Floating folder panel, rendered inside its shadow root.
  * The host carries the panel geometry plus `data-gv-scheme` and `data-gv-rtl`,
- * mirrored from the page, because page selectors cannot reach this tree. */
+ * mirrored from the page, because page selectors cannot reach this tree.
+ * The host itself is in the page's tree, and any page rule that matches it
+ * (`* {}`, `div {}`, a reset) beats a normal `:host` declaration whatever its
+ * specificity. Host-only rules are therefore all `!important`, which reverses
+ * that order; custom properties stay normal because no page rule sets them. */
 /* ─── Floating folder panel ────────────────────────────────────────────── */
 :host {
-  position: fixed;
-  z-index: 2147483646;
-  display: flex;
-  flex-direction: column;
-  background: #1f2025;
-  color: #e8eaed;
-  border-radius: 14px;
-  border: 1px solid rgba(129, 140, 248, 0.35);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
-  overflow: hidden;
-  font-family: 'Google Sans', Roboto, Arial, sans-serif;
-  font-size: 13px;
+  position: fixed !important;
+  z-index: 2147483646 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  background: #1f2025 !important;
+  color: #e8eaed !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(129, 140, 248, 0.35) !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4) !important;
+  overflow: hidden !important;
+  font-family: 'Google Sans', Roboto, Arial, sans-serif !important;
+  font-size: 13px !important;
 }
 
 .gv-floating-folder-panel__header {
@@ -141,10 +145,10 @@
 }
 
 :host([data-gv-scheme='light']) {
-  background: #ffffff;
-  color: #1f2937;
-  border-color: rgba(99, 102, 241, 0.28);
-  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.22);
+  background: #ffffff !important;
+  color: #1f2937 !important;
+  border-color: rgba(99, 102, 241, 0.28) !important;
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.22) !important;
 }
 
 :host([data-gv-scheme='light']) .gv-floating-folder-panel__header {
@@ -481,7 +485,7 @@
 /* ─── Floating folder panel Material polish ────────────────────────────── */
 :host,
 * {
-  box-sizing: border-box;
+  box-sizing: border-box !important;
 }
 
 :host {
@@ -497,18 +501,18 @@
   --gv-floating-folder-panel__accent-soft: rgba(26, 115, 232, 0.14);
   --gv-floating-folder-panel__danger: #b3261e;
   --gv-floating-folder-panel__danger-soft: rgba(179, 38, 30, 0.1);
-  background: var(--gv-floating-folder-panel__surface);
-  color: var(--gv-floating-folder-panel__text);
-  border-color: var(--gv-floating-folder-panel__outline);
-  border-radius: 12px;
+  background: var(--gv-floating-folder-panel__surface) !important;
+  color: var(--gv-floating-folder-panel__text) !important;
+  border-color: var(--gv-floating-folder-panel__outline) !important;
+  border-radius: 12px !important;
   box-shadow:
     0 16px 48px rgba(60, 64, 67, 0.22),
-    0 4px 14px rgba(60, 64, 67, 0.12);
-  font-family: 'Google Sans', Roboto, Arial, sans-serif;
-  font-size: 13px;
-  overflow: hidden;
-  overflow-x: hidden;
-  overscroll-behavior: contain;
+    0 4px 14px rgba(60, 64, 67, 0.12) !important;
+  font-family: 'Google Sans', Roboto, Arial, sans-serif !important;
+  font-size: 13px !important;
+  overflow: hidden !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
 }
 
 .gv-floating-folder-panel__header {
@@ -1011,12 +1015,12 @@
   --gv-floating-folder-panel__accent-soft: rgba(138, 180, 248, 0.18);
   --gv-floating-folder-panel__danger: #f28b82;
   --gv-floating-folder-panel__danger-soft: rgba(242, 139, 130, 0.13);
-  background: var(--gv-floating-folder-panel__surface);
-  color: var(--gv-floating-folder-panel__text);
-  border-color: var(--gv-floating-folder-panel__outline);
+  background: var(--gv-floating-folder-panel__surface) !important;
+  color: var(--gv-floating-folder-panel__text) !important;
+  border-color: var(--gv-floating-folder-panel__outline) !important;
   box-shadow:
     0 18px 52px rgba(0, 0, 0, 0.46),
-    0 4px 18px rgba(0, 0, 0, 0.32);
+    0 4px 18px rgba(0, 0, 0, 0.32) !important;
 }
 
 :host([data-gv-scheme='dark']) .gv-floating-folder-panel__header {
@@ -1079,11 +1083,11 @@
 }
 
 :host {
-  min-width: 280px;
-  min-height: 320px;
-  max-width: min(640px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
-  resize: both;
+  min-width: 280px !important;
+  min-height: 320px !important;
+  max-width: min(640px, calc(100vw - 32px)) !important;
+  max-height: calc(100vh - 32px) !important;
+  resize: both !important;
 }
 
 .gv-floating-folder-panel__move-hint-icon {
@@ -1122,12 +1126,12 @@
 }
 
 :host([data-gv-scheme='light']) {
-  background: var(--gv-floating-folder-panel__surface);
-  color: var(--gv-floating-folder-panel__text);
-  border-color: var(--gv-floating-folder-panel__outline);
+  background: var(--gv-floating-folder-panel__surface) !important;
+  color: var(--gv-floating-folder-panel__text) !important;
+  border-color: var(--gv-floating-folder-panel__outline) !important;
   box-shadow:
     0 16px 48px rgba(60, 64, 67, 0.22),
-    0 4px 14px rgba(60, 64, 67, 0.12);
+    0 4px 14px rgba(60, 64, 67, 0.12) !important;
 }
 
 :host([data-gv-scheme='light']) .gv-floating-folder-panel__header {

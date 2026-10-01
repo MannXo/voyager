@@ -642,6 +642,20 @@ typed into an input inside an open shadow root`),
   `src/core/utils/__tests__/composedTarget.test.ts` and
   `src/pages/content/folder/__tests__/shadowHost.test.ts`.
 
+## Page rules beat a normal `:host` declaration whatever their specificity
+
+- **Trap:** The floating panel's host element lives in the page's tree. In headless Chrome, a page
+  rule as weak as `* { position: static !important; z-index: 0 }` or `div { background: red }`
+  overrode `:host { position: fixed; z-index: ...; background: ... }`: the panel dropped into the
+  page flow below the fold with a red, dashed, page-font frame. The old light-DOM panel won those
+  fights on class specificity. Across a shadow boundary, normal outer declarations win regardless
+  of specificity, so a CSS reset such as Tailwind's `*` border preflight can restyle the host.
+- **Rule:** Every declaration in a host-only rule (`:host`, `:host([...])`) is `!important`, which
+  reverses the order: an important inner declaration beats outer ones. Leave custom properties
+  normal, and never put `!important` on geometry that the panel writes inline (`left`, `top`,
+  `width`, `height`), or the inline drag and resize stop applying.
+- **Guard:** `src/pages/content/folder/__tests__/floatingPanelHostCss.test.ts`.
+
 ## Hide-archived membership checks must not scan every stored conversation per row
 
 - **Trap:** With hide-archived on, every sidebar row asked `FolderStore.isConversationInFolders`,
