@@ -133,7 +133,7 @@ describe('Prompt Manager writes alongside other writers', () => {
     expect(ids.filter((id) => id !== 'cloud')).toEqual(['c', 'a', 'b']);
     expect(pm.items).toEqual(browser.stored());
 
-    // The merge sorts newest first; a reorder made after it is what stays.
+    // A reorder made after the merge is what stays.
     const order = ['c', 'a', 'cloud', 'b'];
     pm.reorder(order.map((id) => pm.items.find((item) => item.id === id)!));
     await browser.settle();
