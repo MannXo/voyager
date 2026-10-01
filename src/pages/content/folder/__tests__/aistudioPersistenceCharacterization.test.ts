@@ -17,7 +17,9 @@ import { StorageKeys } from '@/core/types/common';
 import { validateFolderData } from '@/features/folder/model/folderData';
 
 import { AIStudioFolderManager } from '../aistudio';
+import { cls } from '../floatingTree/shared';
 import type { ConversationReference, FolderData } from '../types';
+import { ROOT, nameInput, tree, treeRoot, treeText } from './aistudioTreeDriver';
 
 const { mockBrowser } = vi.hoisted(() => ({
   mockBrowser: {
@@ -192,8 +194,8 @@ function folderWrites(key: string): unknown[] {
 
 function rootFolderOrder(): string[] {
   return Array.from(
-    document.querySelectorAll<HTMLElement>('.gv-folder-list > .gv-folder-item'),
-    (item) => item.dataset.folderId ?? '',
+    treeRoot().querySelectorAll<HTMLElement>(`.${cls('folder')}[data-depth="0"]`),
+    (item) => item.querySelector<HTMLElement>(`.${cls('folder-header')}`)?.dataset.folderId ?? '',
   );
 }
 
@@ -262,19 +264,8 @@ describe('AI Studio persistence characterization', () => {
       // Root folders render by createdAt, not by name or sortIndex.
       expect(rootFolderOrder()).toEqual(['f-early', 'f-late', 'f-nokey']);
       // The duplicate reference stays visible; root conversations live in __uncategorized__.
-      expect(
-        document.querySelectorAll(
-          '.gv-folder-item[data-folder-id="f-late"] .gv-folder-conversation',
-        ),
-      ).toHaveLength(3);
-      expect(
-        Array.from(
-          document.querySelectorAll<HTMLElement>(
-            '.gv-folder-uncategorized .gv-folder-conversation',
-          ),
-          (row) => row.dataset.conversationId,
-        ),
-      ).toEqual(['p4', 'p5']);
+      expect(tree.conversationIds('f-late')).toHaveLength(3);
+      expect(tree.conversationIds(ROOT)).toEqual(['p4', 'p5']);
       expect(bytes(backupSlot('aistudio-folders', 'primary'))).toBe(bytes(fixture()));
       // Folder data never lands in page localStorage.
       expect(localStorage.getItem(GLOBAL_KEY)).toBeNull();
@@ -397,22 +388,23 @@ describe('AI Studio persistence characterization', () => {
 
     it('rebinds only when the account fingerprint changes', async () => {
       useIsolation(true);
-      local[await scopedKey('a')] = folderData('Private a');
+      const privateA = folderData('Private a');
+      privateA.folderContents['Private a'] = [prompt('p1')];
+      local[await scopedKey('a')] = privateA;
       local[await scopedKey('b')] = folderData('Private b');
       const manager = await mount();
-      const dialog = document.createElement('div');
-      dialog.className = 'gv-folder-confirm-dialog gv-aistudio-confirm';
-      document.body.appendChild(dialog);
+      tree.requestRemoval('Private a', 'p1');
+      const dialog = document.querySelector('.gv-folder-confirm-dialog')!;
 
       await vi.advanceTimersByTimeAsync(2500);
       expect(dialog.isConnected).toBe(true);
-      expect(document.querySelector('.gv-folder-list')?.textContent).toContain('Private a');
+      expect(treeText()).toContain('Private a');
 
       selectAccount('b');
       await vi.advanceTimersByTimeAsync(1200);
       expect(dialog.isConnected).toBe(false);
       expect(manager.activeStorageKey).toBe(await scopedKey('b'));
-      expect(document.querySelector('.gv-folder-list')?.textContent).toContain('Private b');
+      expect(treeText()).toContain('Private b');
     });
 
     it('binds through the next poll after a failed scope resolution', async () => {
@@ -429,7 +421,7 @@ describe('AI Studio persistence characterization', () => {
 
       await vi.advanceTimersByTimeAsync(1200);
       expect(manager.activeStorageKey).toBe(await scopedKey('a'));
-      expect(document.querySelector('.gv-folder-list')?.textContent).toContain('Private a');
+      expect(treeText()).toContain('Private a');
       expect(folderWrites(GLOBAL_KEY)).toEqual([]);
     });
   });
@@ -441,14 +433,14 @@ describe('AI Studio persistence characterization', () => {
 
       emitStorageChange({ geminiFolderEnabled: { newValue: false } }, 'sync');
       await vi.advanceTimersByTimeAsync(0);
-      expect(document.querySelector('.gv-folder-list')).toBeNull();
+      expect(document.querySelector('.gv-aistudio-folder-tree')).toBeNull();
 
       emitStorageChange({ geminiFolderEnabled: { newValue: true } }, 'sync');
       await vi.advanceTimersByTimeAsync(0);
-      expect(document.querySelector('.gv-folder-list')?.textContent).toContain('Kept');
+      expect(treeText()).toContain('Kept');
 
       document.querySelector<HTMLButtonElement>('.gv-folder-add-btn')!.click();
-      const input = document.querySelector<HTMLInputElement>('.gv-folder-name-input')!;
+      const input = nameInput()!;
       input.value = 'After re-enable';
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       await vi.advanceTimersByTimeAsync(0);

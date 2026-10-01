@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AISTUDIO_ROOT_BUCKET_ID } from '@/features/folder/constants';
 
 import { AIStudioFolderManager } from '../aistudio';
+import type { TreeActions } from '../floatingTree/shared';
 import type { ConversationReference, FolderData } from '../types';
 
 vi.mock('webextension-polyfill', () => ({
@@ -37,7 +38,7 @@ type Internals = {
   render: () => void;
   replaceData: (data: FolderData) => Promise<boolean>;
   showNotification: (message: string, level?: string) => void;
-  bindDropZone: (el: HTMLElement, targetFolderId: string | null) => void;
+  treeActions: () => TreeActions;
   injectLibraryDropZone: () => void;
   handleImport: () => void;
   destroy: () => void;
@@ -105,12 +106,9 @@ const dropTargets: Array<{
   drop: (manager: Internals, target: string | null, payload: unknown) => Promise<void>;
 }> = [
   {
-    name: 'sidebar drop zone',
+    name: 'sidebar tree',
     drop: async (manager, target, payload) => {
-      const zone = document.createElement('div');
-      document.body.appendChild(zone);
-      manager.bindDropZone(zone, target);
-      zone.dispatchEvent(dropEvent(payload));
+      manager.treeActions().onDrop!(dropEvent(payload), target ?? ROOT);
       await vi.advanceTimersByTimeAsync(0);
     },
   },

@@ -10,7 +10,7 @@ import { StorageKeys } from '@/core/types/common';
 
 import { AIStudioFolderManager } from '../aistudio';
 import type { ConversationReference, Folder, FolderData } from '../types';
-import { ROOT, nameInput, nativeRowTransfer, tree } from './aistudioTreeDriver';
+import { ROOT, fakeTransfer, nameInput, nativeRowTransfer, tree } from './aistudioTreeDriver';
 
 const { mockBrowser } = vi.hoisted(() => ({
   mockBrowser: {
@@ -184,11 +184,12 @@ describe('AI Studio folder tree: what it shows', () => {
     expect(tree.canCreateSubfolder('b1')).toBe(false);
   });
 
-  it('does not render a third level that stored data holds', async () => {
+  // The old sidebar tree hid a third level that imported data could hold; the
+  // shared tree shows it, so those prompts stay reachable and deletable.
+  it('shows a third level that stored data holds', async () => {
     await mount();
-    expect(tree.isRendered('g')).toBe(false);
-    expect(tree.text()).not.toContain('Under grandchild');
-    expect(stored().folders.some((f) => f.id === 'g')).toBe(true);
+    expect(tree.folderOrder()).toContain('Early child › Grandchild');
+    expect(tree.conversationIds('g')).toEqual(['c5']);
   });
 
   it('shows Uncategorized only while the root bucket holds prompts, after the folders', async () => {
@@ -276,14 +277,21 @@ describe('AI Studio folder tree: what it changes', () => {
     expect(tree.conversationIds('b')).toEqual(['c1', 'c3']);
   });
 
-  it('deletes a folder with its subfolders and their contents after asking', async () => {
+  it('deletes a folder with every folder inside it and their contents after asking', async () => {
     await mount();
+    tree.requestFolderDeletion('b');
+    tree.answer(false);
+    await flush();
+    expect(stored().folders).toHaveLength(6);
+
     tree.requestFolderDeletion('b');
     tree.answer(true);
     await flush();
     const data = stored();
-    expect(data.folders.map((f) => f.id).sort()).toEqual(['a', 'g', 'p']);
-    for (const id of ['b', 'b1', 'b2']) expect(Object.hasOwn(data.folderContents, id)).toBe(false);
+    expect(data.folders.map((f) => f.id).sort()).toEqual(['a', 'p']);
+    for (const id of ['b', 'b1', 'b2', 'g']) {
+      expect(Object.hasOwn(data.folderContents, id)).toBe(false);
+    }
     expect(tree.isRendered('b')).toBe(false);
   });
 
@@ -341,6 +349,14 @@ describe('AI Studio folder tree: drag and drop', () => {
     expect(tree.rootSectionLabel()).toBe('Uncategorized');
   });
 
+  it('files a prompt link dragged from anywhere on the page, which carries only a URL', async () => {
+    await mount();
+    const link = fakeTransfer({ 'text/uri-list': 'https://aistudio.google.com/prompts/n2' });
+    expect(tree.drop(tree.dropTarget('a'), link)).toBe(true);
+    await flush();
+    expect(stored().folderContents.a.map((c) => c.conversationId)).toEqual(['c4', 'n2']);
+  });
+
   it('moves a filed prompt between folders by dragging its row, keeping its record', async () => {
     await mount();
     const transfer = tree.dragRow('b', 'c2');
@@ -359,6 +375,35 @@ describe('AI Studio folder tree: drag and drop', () => {
     await flush();
     expect(stored().folderContents.a).toEqual([]);
     expect(stored().folderContents[ROOT].map((c) => c.conversationId)).toEqual(['c4']);
+  });
+});
+
+describe('AI Studio folder tree: lifetime', () => {
+  /** Whether a leftover name form still swallows a mousedown outside it. */
+  function mousedownSwallowed(): boolean {
+    const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    document.body.dispatchEvent(event);
+    return event.defaultPrevented;
+  }
+
+  it('leaves one live tree after Angular rebuilds the nav twice, and none after teardown', async () => {
+    const manager = await mount();
+    for (let rebuild = 0; rebuild < 2; rebuild++) {
+      tree.startRootFolder();
+      expect(nameInput()).not.toBeNull();
+      document.querySelector('.gv-folder-container')!.remove();
+      // The re-inject is throttled to one per 250ms burst.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await flush();
+      expect(document.querySelectorAll('.gv-aistudio-folder-tree')).toHaveLength(1);
+      expect(mousedownSwallowed()).toBe(false);
+      expect(tree.folderOrder()).toContain('Alpha');
+    }
+
+    tree.startRootFolder();
+    (manager as unknown as { destroy(): void }).destroy();
+    expect(document.querySelector('.gv-aistudio-folder-tree')).toBeNull();
+    expect(mousedownSwallowed()).toBe(false);
   });
 });
 

@@ -10,7 +10,9 @@ import type { PromptItem } from '@/core/types/sync';
 import { getTranslationSync } from '@/utils/i18n';
 
 import { AIStudioFolderManager } from '../aistudio';
+import type { TreeActions } from '../floatingTree/shared';
 import type { FolderData } from '../types';
+import { ROOT, nameInput, tree, treeText } from './aistudioTreeDriver';
 
 const { mockBrowser } = vi.hoisted(() => ({
   mockBrowser: {
@@ -40,6 +42,7 @@ type Manager = {
   load(): Promise<void>;
   save(): Promise<boolean>;
   destroy(): void;
+  treeActions(): TreeActions;
 };
 
 const storageKey = StorageKeys.FOLDER_DATA_AISTUDIO;
@@ -99,13 +102,13 @@ async function mountManager(): Promise<Manager> {
   const manager = instance as unknown as Manager;
   managers.push(manager);
   await instance.init();
-  expect(document.querySelector('.gv-folder-list')?.textContent).toContain('Private a');
+  expect(treeText()).toContain('Private a');
   return manager;
 }
 
 function attemptCreateAndDrop(): void {
   document.querySelector<HTMLButtonElement>('.gv-folder-add-btn')!.click();
-  const input = document.querySelector<HTMLInputElement>('.gv-folder-name-input');
+  const input = nameInput();
   if (input) {
     input.value = 'Created during load';
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -122,7 +125,7 @@ function attemptCreateAndDrop(): void {
         }),
     },
   });
-  document.querySelector('.gv-folder-root-drop')!.dispatchEvent(drop);
+  tree.dropTarget(ROOT).dispatchEvent(drop);
 }
 
 function holdFolderWrites(key: string) {
@@ -161,7 +164,7 @@ function backupData(manager: Manager, slot: 'primary' | 'emergency' | 'beforeUnl
 
 function createFolder(name: string): void {
   document.querySelector<HTMLButtonElement>('.gv-folder-add-btn')!.click();
-  const input = document.querySelector<HTMLInputElement>('.gv-folder-name-input')!;
+  const input = nameInput()!;
   expect(input).not.toBeNull();
   input.value = name;
   input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -251,6 +254,9 @@ describe('AI Studio folder persistence', () => {
           'true',
         );
         attemptCreateAndDrop();
+        // A form or menu opened just before the switch can still call back.
+        const actions = manager.treeActions();
+        actions.onCreateFolder?.('Created by a stale form', null);
         await vi.advanceTimersByTimeAsync(0);
         expect(local[key]).toEqual(original);
         expect(manager.data).toEqual({ folders: [], folderContents: {} });
@@ -260,9 +266,7 @@ describe('AI Studio folder persistence', () => {
       }
       expect(manager.data).toEqual(original);
       expect(document.querySelector<HTMLButtonElement>('.gv-folder-add-btn')?.disabled).toBe(false);
-      expect(document.querySelector('.gv-folder-list')?.textContent).toContain(
-        kind === 'global' ? 'Global original' : 'Private b',
-      );
+      expect(treeText()).toContain(kind === 'global' ? 'Global original' : 'Private b');
     },
   );
 
@@ -404,7 +408,7 @@ describe('AI Studio folder persistence', () => {
         writes.first.resolve();
         await writes.tailStarted.promise;
         expect(manager.data).toEqual(folderData('Private a'));
-        expect(document.querySelector('.gv-folder-list')?.textContent).not.toContain('Cloud');
+        expect(treeText()).not.toContain('Cloud');
         expect(local.gvPromptItems).toEqual([]);
         writes.tail.resolve(saved);
         await syncing;
@@ -519,7 +523,7 @@ describe('AI Studio folder persistence', () => {
 
     await instance.init();
 
-    const list = document.querySelector('.gv-folder-list')?.textContent ?? '';
+    const list = treeText();
     expect(list).toContain('Proto');
     expect(list).toContain('Ctor');
     expect(console.error).not.toHaveBeenCalled();
@@ -569,7 +573,7 @@ describe('AI Studio folder persistence', () => {
 
     expect(manager.data).toEqual(folderData('Private a'));
     expect(local[key]).toEqual(folderData('Private a'));
-    expect(document.querySelector('.gv-folder-list')?.textContent).not.toContain('Trips');
+    expect(treeText()).not.toContain('Trips');
   });
 
   it('finishes accepted ordinary writes but abandons an unissued import after A → B → A', async () => {
@@ -600,9 +604,7 @@ describe('AI Studio folder persistence', () => {
     expect(manager.data.folders.map((folder) => folder.name)).toEqual(['Latest ordinary edit']);
     expect(local[key]).toEqual(manager.data);
     expect(window.alert).not.toHaveBeenCalled();
-    expect(document.querySelector('.gv-folder-list')?.textContent).not.toContain(
-      'Abandoned import',
-    );
+    expect(treeText()).not.toContain('Abandoned import');
     expect(document.querySelector<HTMLButtonElement>('.gv-folder-add-btn')?.disabled).toBe(false);
   });
 
@@ -634,14 +636,14 @@ describe('AI Studio folder persistence', () => {
       selectAccount('a');
       await manager.refreshScopedDataOnAccountContextChange();
       expect(manager.data).toEqual(original);
-      expect(document.querySelector('.gv-folder-list')?.textContent).not.toContain('Cloud');
+      expect(treeText()).not.toContain('Cloud');
       expect(document.querySelector<HTMLButtonElement>('.gv-folder-add-btn')?.disabled).toBe(true);
       writes.first.resolve();
       await syncing;
       expect(manager.data.folders.map((folder) => folder.name)).toEqual(['Private a', 'Cloud']);
       expect(local[key]).toEqual(manager.data);
       expect(local.gvPromptItems).toEqual([prompt]);
-      expect(document.querySelector('.gv-folder-list')?.textContent).toContain('Cloud');
+      expect(treeText()).toContain('Cloud');
       expect(document.querySelector<HTMLButtonElement>('.gv-folder-add-btn')?.disabled).toBe(false);
       expect(notificationText()).not.toContain(getTranslationSync('downloadMergeSuccess'));
     } finally {
@@ -664,7 +666,7 @@ describe('AI Studio folder persistence', () => {
     expect(window.alert).not.toHaveBeenCalled();
     expect(manager.data).toEqual(folderData('Private b'));
     expect(local[bKey]).toEqual(folderData('Private b'));
-    expect(document.querySelector('.gv-folder-list')?.textContent).toContain('Private b');
+    expect(treeText()).toContain('Private b');
     expect((local[aKey] as FolderData).folders.map((folder) => folder.name)).toEqual([
       'Private a',
       'Imported into a',
@@ -685,7 +687,7 @@ describe('AI Studio folder persistence', () => {
       await manager.refreshScopedDataOnAccountContextChange();
       selectAccount('a');
       await manager.refreshScopedDataOnAccountContextChange();
-      expect(document.querySelector('.gv-folder-list')?.textContent).toContain('Legacy');
+      expect(treeText()).toContain('Legacy');
 
       chooseImport(manager, folderData('Imported after migration'));
       // An incorrectly concurrent import can finish before the slow migration.
@@ -703,9 +705,7 @@ describe('AI Studio folder persistence', () => {
       ]);
       expect(local[key]).toEqual(manager.data);
       expect(backupData(manager, 'primary')).toEqual(manager.data);
-      expect(document.querySelector('.gv-folder-list')?.textContent).toContain(
-        'Imported after migration',
-      );
+      expect(treeText()).toContain('Imported after migration');
       expect(local[storageKey]).toEqual(legacy);
     } finally {
       writes.first.resolve();

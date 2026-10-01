@@ -7,6 +7,7 @@ import enMessages from '@/locales/en/messages.json';
 
 import { AIStudioFolderManager } from '../aistudio';
 import { mergeAIStudioImport } from '../aistudioImport';
+import type { TreeActions } from '../floatingTree/shared';
 import type { ConversationReference, FolderData } from '../types';
 
 vi.mock('webextension-polyfill', () => ({
@@ -100,18 +101,7 @@ type Internals = {
   showNotification: (message: string, level?: string) => void;
   injectLibraryDropZone: () => void;
   handleImport: () => void;
-  showFolderConfirm: (
-    anchor: HTMLElement,
-    message: string,
-    action: string,
-    run: () => void,
-  ) => void;
-  confirmRemoveConversation: (
-    folderId: string,
-    conversationId: string,
-    title: string,
-    event: MouseEvent,
-  ) => void;
+  treeActions: () => TreeActions;
   destroy: () => void;
 };
 
@@ -213,10 +203,8 @@ describe('AI Studio folder messages', () => {
       folders: [folder('a')],
       folderContents: { a: [prompt('p1')] },
     });
-    manager.showFolderConfirm = vi.fn();
-    const event = { currentTarget: document.body } as unknown as MouseEvent;
-    manager.confirmRemoveConversation('a', 'p1', "Cost $& Benefit $'", event);
-    const [, message] = vi.mocked(manager.showFolderConfirm).mock.lastCall!;
+    manager.treeActions().confirmConversationRemoval!("Cost $& Benefit $'", document.body, vi.fn());
+    const message = document.querySelector('.gv-folder-confirm-message')?.textContent ?? '';
     expect(message).toContain("Cost $& Benefit $'");
     expectRendered(message);
   });

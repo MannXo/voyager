@@ -14,6 +14,7 @@ import type { FolderStore } from '../FolderStore';
 import type { FolderTransferController } from '../FolderTransferController';
 import type { FolderTreeView } from '../FolderTreeView';
 import { AIStudioFolderManager } from '../aistudio';
+import { type AIStudioTree, mountAIStudioTree } from '../aistudioTree';
 import { type FloatingPanelHandle, mountFloatingPanel } from '../floatingPanel';
 import { FolderManager } from '../manager';
 import * as storageAdapters from '../storage/FolderStorageAdapter';
@@ -46,6 +47,7 @@ type Platform = 'gemini' | 'aistudio';
 type Internals = {
   data: FolderData;
   container: HTMLElement | null;
+  tree: AIStudioTree | null;
   floatingPanelHandle: FloatingPanelHandle | null;
   accountScope: AccountScope | null;
   activeStorageKey: string;
@@ -744,11 +746,20 @@ describe.each<Platform>(['gemini', 'aistudio'])('%s backup account ownership', (
     const container =
       platform === 'gemini' ? await mountGeminiPanel(harness) : document.createElement('div');
     if (platform === 'aistudio') {
-      container.innerHTML = '<div class="gv-folder-list"><div>Private a</div></div>';
+      const tree = mountAIStudioTree({
+        data: harness.manager.data,
+        actions: {},
+        activeConversationId: null,
+      });
+      container.appendChild(tree.host);
       document.body.appendChild(container);
       harness.manager.container = container;
+      harness.manager.tree = tree;
     }
-    expect(container.textContent).toContain('Private a');
+    // The AI Studio tree renders in a shadow root under the container.
+    const shown = () =>
+      `${container.textContent}${container.querySelector('*')?.shadowRoot?.textContent ?? ''}`;
+    expect(shown()).toContain('Private a');
     const pending = deferred<void>();
     vi.spyOn(accountIsolationService, 'resolveAccountScope').mockImplementationOnce(async () => {
       await pending.promise;
@@ -759,10 +770,10 @@ describe.each<Platform>(['gemini', 'aistudio'])('%s backup account ownership', (
       platform === 'gemini'
         ? harness.store!.reloadScopedDataOnAccountRouteChange()
         : harness.manager.refreshScopedDataOnAccountContextChange();
-    expect(container.textContent).not.toContain('Private a');
+    expect(shown()).not.toContain('Private a');
     pending.resolve();
     await switching;
-    expect(container.textContent).not.toContain('Private a');
+    expect(shown()).not.toContain('Private a');
   });
 });
 

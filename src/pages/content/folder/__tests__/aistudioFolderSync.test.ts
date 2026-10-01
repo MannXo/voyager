@@ -14,6 +14,7 @@ import type { PromptItem } from '@/core/types/sync';
 
 import { AIStudioFolderManager } from '../aistudio';
 import type { FolderData } from '../types';
+import { nameInput, tree, treeText } from './aistudioTreeDriver';
 
 const { mockBrowser } = vi.hoisted(() => ({
   mockBrowser: {
@@ -37,8 +38,6 @@ type Manager = {
   activeStorageKey: string;
   save(): Promise<boolean>;
   handleCloudSync(): Promise<void>;
-  createFolder(parentId?: string | null): void;
-  renameFolder(folderId: string): void;
   destroy(): void;
 };
 
@@ -102,7 +101,7 @@ function bucketReads(key: string): number {
 }
 
 function panelText(): string {
-  return document.querySelector('.gv-folder-list')?.textContent ?? '';
+  return treeText();
 }
 
 async function scopedKey(account: string): Promise<string> {
@@ -348,6 +347,9 @@ describe('AI Studio folder sync across contexts', () => {
   });
 });
 
+// The sidebar tree is the shared folder tree: it keeps one name form open at a
+// time, and while that form's input has focus it holds a reload back until the
+// form closes, so typing is never rebuilt away.
 describe('AI Studio inline folder drafts across reloads', () => {
   function twoFolders(first: string, second: string): FolderData {
     return {
@@ -360,115 +362,99 @@ describe('AI Studio inline folder drafts across reloads', () => {
     input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
   }
 
+  function folderNames(): string[] {
+    return (local[GLOBAL_KEY] as FolderData).folders.map((folder) => folder.name);
+  }
+
   it('keeps an unfinished new-folder name and creates it on top of the reloaded data', async () => {
     local[GLOBAL_KEY] = folderData('Mine');
-    const manager = await mount();
-    manager.createFolder();
-    const input = document.querySelector<HTMLInputElement>('.gv-folder-inline-input input')!;
+    await mount();
+    tree.startRootFolder();
+    const input = nameInput()!;
     input.value = 'Draft';
 
     writeFromElsewhere({ [GLOBAL_KEY]: folderData('From another tab') });
     await vi.advanceTimersByTimeAsync(0);
-    expect(panelText()).toContain('From another tab');
-    expect(document.querySelector('.gv-folder-inline-input input')).toBe(input);
+    expect(nameInput()).toBe(input);
     expect(input.value).toBe('Draft');
-    expect(document.activeElement).toBe(input);
 
     press(input, 'Enter');
     await vi.advanceTimersByTimeAsync(0);
-    expect((local[GLOBAL_KEY] as FolderData).folders.map((folder) => folder.name)).toEqual([
-      'From another tab',
-      'Draft',
-    ]);
-    expect(document.querySelector('.gv-folder-inline-input')).toBeNull();
+    expect(folderNames()).toEqual(['From another tab', 'Draft']);
+    expect(nameInput()).toBeNull();
+    expect(panelText()).toContain('From another tab');
+    expect(panelText()).not.toContain('Mine');
   });
 
   it('keeps an unfinished rename and applies it to the reloaded folder', async () => {
     local[GLOBAL_KEY] = folderData('Mine');
-    const manager = await mount();
-    manager.renameFolder('Mine');
-    const input = document.querySelector<HTMLInputElement>('.gv-folder-rename-inline input')!;
+    await mount();
+    tree.startRename('Mine');
+    const input = nameInput()!;
     input.value = 'Renamed';
-    input.setSelectionRange(2, 4);
 
     writeFromElsewhere({ [GLOBAL_KEY]: twoFolders('Mine', 'From another tab') });
     await vi.advanceTimersByTimeAsync(0);
-    const header = document.querySelector('[data-folder-id="Mine"] .gv-folder-item-header');
-    expect(header?.contains(input)).toBe(true);
-    expect(header?.classList.contains('gv-folder-editing')).toBe(true);
+    expect(tree.headerHolds('Mine', input)).toBe(true);
     expect(input.value).toBe('Renamed');
-    expect(document.activeElement).toBe(input);
-    expect([input.selectionStart, input.selectionEnd]).toEqual([2, 4]);
 
     press(input, 'Enter');
     await vi.advanceTimersByTimeAsync(0);
-    expect((local[GLOBAL_KEY] as FolderData).folders.map((folder) => folder.name)).toEqual([
-      'Renamed',
-      'From another tab',
-    ]);
-    expect(document.querySelector('.gv-folder-rename-inline')).toBeNull();
-    expect(document.querySelector('.gv-folder-editing, .gv-folder-name.gv-hidden')).toBeNull();
+    expect(folderNames()).toEqual(['Renamed', 'From another tab']);
+    expect(nameInput()).toBeNull();
   });
 
   it('drops a rename whose folder another tab deleted', async () => {
     local[GLOBAL_KEY] = folderData('Mine');
-    const manager = await mount();
-    manager.renameFolder('Mine');
+    await mount();
+    tree.startRename('Mine');
 
     writeFromElsewhere({ [GLOBAL_KEY]: folderData('From another tab') });
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(document.querySelector('.gv-folder-rename-inline')).toBeNull();
+    expect(nameInput()).toBeNull();
     expect(panelText()).toContain('From another tab');
   });
 
   it('drops a new-subfolder draft whose parent another tab deleted', async () => {
     local[GLOBAL_KEY] = folderData('Mine');
-    const manager = await mount();
-    manager.createFolder('Mine');
-    expect(
-      document.querySelector('[data-folder-id="Mine"] .gv-folder-inline-input'),
-    ).not.toBeNull();
+    await mount();
+    tree.startSubfolder('Mine');
+    expect(nameInput()).not.toBeNull();
 
     writeFromElsewhere({ [GLOBAL_KEY]: folderData('From another tab') });
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(document.querySelector('.gv-folder-inline-input')).toBeNull();
+    expect(nameInput()).toBeNull();
   });
 
-  it('keeps a new-subfolder draft beside its collapsed parent, and drops it with the parent', async () => {
-    const collapsed = twoFolders('Mine', 'Other');
-    collapsed.folders[0].isExpanded = false;
-    local[GLOBAL_KEY] = collapsed;
-    const manager = await mount();
-    manager.createFolder('Mine');
-    const draft = document.querySelector('.gv-folder-inline-input');
+  it('keeps a new-subfolder draft while its parent stays, and creates it there', async () => {
+    local[GLOBAL_KEY] = twoFolders('Mine', 'Other');
+    await mount();
+    tree.startSubfolder('Mine');
+    const input = nameInput()!;
+    input.value = 'Kid';
 
-    writeFromElsewhere({ [GLOBAL_KEY]: { ...collapsed, folders: [...collapsed.folders] } });
+    writeFromElsewhere({ [GLOBAL_KEY]: twoFolders('Mine', 'Other') });
     await vi.advanceTimersByTimeAsync(0);
-    expect(document.querySelector('[data-folder-id="Mine"]')?.nextElementSibling).toBe(draft);
+    expect(nameInput()).toBe(input);
 
-    writeFromElsewhere({ [GLOBAL_KEY]: folderData('Other') });
+    press(input, 'Enter');
     await vi.advanceTimersByTimeAsync(0);
-    expect(document.querySelector('.gv-folder-inline-input')).toBeNull();
+    const kid = (local[GLOBAL_KEY] as FolderData).folders.find((folder) => folder.name === 'Kid');
+    expect(kid?.parentId).toBe('Mine');
   });
 
-  it('keeps a new-folder draft and a rename open at the same time', async () => {
+  it('keeps one name form open: starting a new folder closes an open rename', async () => {
     local[GLOBAL_KEY] = folderData('Mine');
-    const manager = await mount();
-    manager.renameFolder('Mine');
-    const rename = document.querySelector<HTMLInputElement>('.gv-folder-rename-inline input')!;
-    manager.createFolder();
-    const create = document.querySelector<HTMLInputElement>('.gv-folder-inline-input input')!;
-    create.value = 'Draft';
+    await mount();
+    tree.startRename('Mine');
+    const rename = nameInput()!;
+    tree.startRootFolder();
 
-    writeFromElsewhere({ [GLOBAL_KEY]: twoFolders('Mine', 'From another tab') });
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(rename.isConnected).toBe(true);
-    expect(create.isConnected).toBe(true);
-    expect(create.value).toBe('Draft');
-    expect(document.activeElement).toBe(create);
+    expect(rename.isConnected).toBe(false);
+    expect(nameInput()).not.toBeNull();
+    expect(folderNames()).toEqual(['Mine']);
   });
 
   /** Parent P holds child S; `expanded` is P's state. */
@@ -483,58 +469,52 @@ describe('AI Studio inline folder drafts across reloads', () => {
     };
   }
 
-  function expandButton(folderId: string): HTMLButtonElement {
-    return document.querySelector<HTMLButtonElement>(
-      `[data-folder-id="${folderId}"] > .gv-folder-item-header .gv-folder-expand-btn`,
-    )!;
-  }
-
   it('keeps a rename whose parent another tab collapsed and shows it again when expanded', async () => {
     local[GLOBAL_KEY] = nested(true);
-    const manager = await mount();
-    manager.renameFolder('S');
-    const input = document.querySelector<HTMLInputElement>('.gv-folder-rename-inline input')!;
+    await mount();
+    tree.startRename('S');
+    const input = nameInput()!;
     input.value = 'Renamed';
+    input.blur();
 
     writeFromElsewhere({ [GLOBAL_KEY]: nested(false) });
     await vi.advanceTimersByTimeAsync(0);
-    expect(input.isConnected).toBe(false);
+    expect(input.isConnected).toBe(true);
+    expect(tree.isShown(input)).toBe(false);
 
     writeFromElsewhere({ [GLOBAL_KEY]: nested(true) });
     await vi.advanceTimersByTimeAsync(0);
-    const header = document.querySelector('[data-folder-id="S"] .gv-folder-item-header');
-    expect(header?.contains(input)).toBe(true);
+    expect(tree.isShown(input)).toBe(true);
+    expect(tree.headerHolds('S', input)).toBe(true);
     expect(input.value).toBe('Renamed');
 
     press(input, 'Enter');
     await vi.advanceTimersByTimeAsync(0);
-    expect((local[GLOBAL_KEY] as FolderData).folders.map((folder) => folder.name)).toEqual([
-      'Parent',
-      'Renamed',
-    ]);
+    expect(folderNames()).toEqual(['Parent', 'Renamed']);
   });
 
   it('keeps a new-subfolder draft across a local collapse of its ancestor', async () => {
     local[GLOBAL_KEY] = nested(true);
-    const manager = await mount();
-    manager.createFolder('S');
-    const input = document.querySelector<HTMLInputElement>('.gv-folder-inline-input input')!;
+    await mount();
+    tree.startSubfolder('P');
+    const input = nameInput()!;
     input.value = 'Kid';
 
-    expandButton('P').click();
+    tree.toggleExpanded('P');
     await vi.advanceTimersByTimeAsync(0);
-    expect(input.isConnected).toBe(false);
-    expandButton('P').click();
+    expect(tree.isShown(input)).toBe(false);
+    tree.toggleExpanded('P');
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(document.querySelector('[data-folder-id="S"]')?.contains(input)).toBe(true);
+    expect(tree.isShown(input)).toBe(true);
     expect(input.value).toBe('Kid');
   });
 
   it('drops a hidden rename once another tab deletes its folder', async () => {
     local[GLOBAL_KEY] = nested(true);
-    const manager = await mount();
-    manager.renameFolder('S');
+    await mount();
+    tree.startRename('S');
+    nameInput()!.blur();
 
     writeFromElsewhere({ [GLOBAL_KEY]: nested(false) });
     await vi.advanceTimersByTimeAsync(0);
@@ -542,12 +522,12 @@ describe('AI Studio inline folder drafts across reloads', () => {
     await vi.advanceTimersByTimeAsync(0);
     writeFromElsewhere({ [GLOBAL_KEY]: nested(true, false) });
     await vi.advanceTimersByTimeAsync(0);
-    expect(document.querySelector('.gv-folder-rename-inline')).toBeNull();
+    expect(nameInput()).toBeNull();
 
     // An import or restore elsewhere brings the same folder id back: the old draft stays gone.
     writeFromElsewhere({ [GLOBAL_KEY]: nested(true) });
     await vi.advanceTimersByTimeAsync(0);
-    expect(document.querySelector('.gv-folder-rename-inline')).toBeNull();
+    expect(nameInput()).toBeNull();
     expect(panelText()).toContain('Child');
   });
 
@@ -555,14 +535,15 @@ describe('AI Studio inline folder drafts across reloads', () => {
     sync[StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED] = true;
     local[await scopedKey('a')] = folderData('Private a');
     const manager = await mount();
-    manager.createFolder();
+    tree.startRootFolder();
+    expect(nameInput()).not.toBeNull();
 
     document.querySelector('.account-switcher-text')!.textContent = 'b@example.com';
     document.querySelector('.account-switcher-text')!.setAttribute('data-email', 'b@example.com');
     await vi.advanceTimersByTimeAsync(4000);
 
     expect(manager.activeStorageKey).toBe(await scopedKey('b'));
-    expect(document.querySelector('.gv-folder-inline-input')).toBeNull();
+    expect(nameInput()).toBeNull();
   });
 });
 

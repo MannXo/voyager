@@ -32,11 +32,20 @@ import {
   readAIStudioImportFile,
 } from './aistudioImport';
 import {
-  createInlineFolderEditor,
-  createInlineMaterialIcon,
-  InlineDraftHolder,
-} from './aistudioInlineEditor';
+  AISTUDIO_PROMPT_DRAG_TYPES,
+  type AIStudioTree,
+  addFolder,
+  deleteFolderTree,
+  mountAIStudioTree,
+  removeConversation,
+  renameFolder,
+  toggleConversationStar,
+  toggleFolderExpanded,
+  toggleFolderPinned,
+} from './aistudioTree';
 import { parseDragPayload } from './dragPayload';
+import type { TreeActions } from './floatingTree/shared';
+import { createFolderDialogs } from './folderDialogs';
 import {
   mountHideArchivedNudge,
   shouldShowHideArchivedNudge,
@@ -304,7 +313,8 @@ export class AIStudioFolderManager {
   private readonly SIDEBAR_WIDTH_KEY = 'gvAIStudioSidebarWidth';
   private readonly MIN_SIDEBAR_WIDTH = 240;
   private readonly MAX_SIDEBAR_WIDTH = 600;
-  private readonly inlineDrafts = new InlineDraftHolder();
+  private tree: AIStudioTree | null = null;
+  private readonly dialogs = createFolderDialogs();
   private readonly UNCATEGORIZED_KEY = AISTUDIO_ROOT_BUCKET_ID; // Special key for root-level conversations
   private readonly LIBRARY_LONG_PRESS_MS = 500;
   private readonly MAX_LIBRARY_BATCH_DELETE_COUNT = 50;
@@ -327,88 +337,6 @@ export class AIStudioFolderManager {
     } catch {}
     span.textContent = name;
     return span;
-  }
-
-  private createMenuItem(
-    label: string,
-    iconName: string,
-    action: () => void,
-    options: { danger?: boolean } = {},
-  ): HTMLButtonElement {
-    const item = document.createElement('button');
-    item.type = 'button';
-    item.className = `gv-folder-menu-item${options.danger ? ' gv-folder-menu-item-danger' : ''}`;
-    item.appendChild(createInlineMaterialIcon(iconName));
-    item.append(document.createTextNode(label));
-    item.addEventListener('click', action);
-    return item;
-  }
-
-  private showFolderConfirm(
-    anchor: HTMLElement | null | undefined,
-    message: string,
-    actionLabel: string,
-    onConfirm: () => void,
-    alignRight = false,
-  ): void {
-    document.querySelector('.gv-folder-confirm-dialog.gv-aistudio-confirm')?.remove();
-
-    const dialog = document.createElement('div');
-    dialog.className = 'gv-folder-confirm-dialog gv-aistudio-confirm';
-
-    if (anchor) {
-      const rect = anchor.getBoundingClientRect();
-      dialog.style.position = 'fixed';
-      dialog.style.top = `${rect.bottom + 4}px`;
-      dialog.style.left = `${Math.max(10, alignRight ? rect.right - 200 : rect.left + 24)}px`;
-      dialog.style.zIndex = '2147483647';
-    }
-
-    const msg = document.createElement('div');
-    msg.className = 'gv-confirm-message';
-    msg.textContent = message;
-    dialog.appendChild(msg);
-
-    const actions = document.createElement('div');
-    actions.className = 'gv-confirm-actions';
-
-    const confirmBtn = document.createElement('button');
-    confirmBtn.type = 'button';
-    confirmBtn.className = 'gv-confirm-btn gv-confirm-delete';
-    confirmBtn.textContent = actionLabel;
-
-    const cancelBtn = document.createElement('button');
-    cancelBtn.type = 'button';
-    cancelBtn.className = 'gv-confirm-btn gv-confirm-cancel';
-    cancelBtn.textContent = this.t('pm_cancel');
-
-    let closeOnOutside: ((e: MouseEvent) => void) | null = null;
-    const cleanup = () => {
-      if (closeOnOutside) {
-        document.removeEventListener('click', closeOnOutside);
-        closeOnOutside = null;
-      }
-      dialog.remove();
-    };
-
-    confirmBtn.addEventListener('click', () => {
-      onConfirm();
-      cleanup();
-    });
-    cancelBtn.addEventListener('click', cleanup);
-
-    actions.appendChild(confirmBtn);
-    actions.appendChild(cancelBtn);
-    dialog.appendChild(actions);
-    document.body.appendChild(dialog);
-
-    setTimeout(() => {
-      if (!dialog.isConnected) return;
-      closeOnOutside = (e: MouseEvent) => {
-        if (!dialog.contains(e.target as Node)) cleanup();
-      };
-      document.addEventListener('click', closeOnOutside);
-    }, 0);
   }
 
   async init(): Promise<void> {
@@ -562,10 +490,9 @@ export class AIStudioFolderManager {
   /** The previous account's data is gone from view; close everything that held it. */
   private releaseAccountUi(): void {
     if (this.isLibraryMultiSelectMode) this.exitLibraryMultiSelectMode();
-    document.querySelector('.gv-folder-confirm-dialog.gv-aistudio-confirm')?.remove();
-    document.querySelector('.gv-folder-menu.gv-aistudio-folder-menu')?.remove();
+    this.dialogs.closeAll();
     document.querySelector('.gv-library-folder-list')?.replaceChildren();
-    this.inlineDrafts.discard(this.container);
+    this.tree?.reset(this.data);
     this.render();
     this.applyHideArchivedToLibraryTable();
   }
@@ -864,7 +791,9 @@ export class AIStudioFolderManager {
     addBtn.className = 'gv-folder-add-btn';
     addBtn.title = this.t('folder_create');
     addBtn.appendChild(this.createIcon('add'));
-    addBtn.addEventListener('click', () => this.createFolder());
+    addBtn.addEventListener('click', () => {
+      if (this.canEdit) this.tree?.startCreateFolder();
+    });
     actions.appendChild(addBtn);
 
     // On the V2 nav (no inline prompt history), surface a shortcut to /library.
@@ -887,10 +816,16 @@ export class AIStudioFolderManager {
       this.libraryShortcutBtn = null;
     }
 
-    const list = document.createElement('div');
-    list.className = 'gv-folder-list';
+    // A re-inject builds a new container; the old tree goes with the old one.
+    this.unmountTree();
+    const tree = mountAIStudioTree({
+      data: this.data,
+      actions: this.treeActions(),
+      activeConversationId: this.getCurrentPromptIdFromLocation(),
+    });
+    this.tree = tree;
     container.appendChild(header);
-    container.appendChild(list);
+    container.appendChild(tree.host);
 
     // Insertion point: prefer the legacy prompt history anchor; otherwise drop the
     // panel inside the V2 left nav, right before the `.empty-space` spacer so the
@@ -919,103 +854,45 @@ export class AIStudioFolderManager {
     }
 
     this.container = container;
-    this.injectStyles();
     this.render();
 
     // Apply initial folder enabled setting
     this.applyFolderEnabledSetting();
   }
 
-  private injectStyles(): void {
-    const styleId = 'gv-aistudio-folder-styles';
-    if (document.getElementById(styleId)) return;
+  private unmountTree(): void {
+    this.tree?.destroy();
+    this.tree = null;
+  }
 
-    const style = document.createElement('style');
-    style.id = styleId;
-    style.textContent = `
-      /* AI Studio is a predominantly dark surface; tuned for low contrast so the
-         confirm dialog reads as a subtle elevated card, not a bright pop-out. */
-      .gv-folder-confirm-dialog.gv-aistudio-confirm {
-        background: var(--mat-sys-surface-container-high, #2d2e30);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 12px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-        padding: 16px;
-        min-width: 280px;
-        font-family: 'Google Sans', 'Segoe UI', sans-serif;
-        animation: gv-fade-in 0.2s ease-out;
-        color: var(--mat-sys-on-surface, #e3e3e3);
-      }
-
-      .gv-folder-confirm-dialog.gv-aistudio-confirm .gv-confirm-message {
-        margin-bottom: 16px;
-        color: var(--mat-sys-on-surface, #e3e3e3);
-        font-size: 14px;
-        line-height: 1.5;
-        font-weight: 400;
-        opacity: 0.92;
-      }
-
-      .gv-folder-confirm-dialog.gv-aistudio-confirm .gv-confirm-actions {
-        display: flex;
-        gap: 4px;
-        justify-content: flex-end;
-      }
-
-      .gv-folder-confirm-dialog.gv-aistudio-confirm .gv-confirm-btn {
-        padding: 6px 14px;
-        border-radius: 999px;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: background-color 0.15s ease;
-        border: none;
-        outline: none;
-        background: transparent;
-      }
-
-      /* Destructive action: filled but muted — use the token-scaled error tone when
-         available, otherwise a desaturated red that sits quietly on dark surfaces. */
-      .gv-folder-confirm-dialog.gv-aistudio-confirm .gv-confirm-delete {
-        background-color: var(--mat-sys-error-container, rgba(220, 90, 90, 0.22));
-        color: var(--mat-sys-on-error-container, #f5b8b3);
-        box-shadow: none;
-      }
-
-      .gv-folder-confirm-dialog.gv-aistudio-confirm .gv-confirm-delete:hover {
-        background-color: rgba(220, 90, 90, 0.32);
-        color: #ffd3cf;
-        box-shadow: none;
-      }
-
-      /* Cancel is a borderless text button — removes the framing that fought the Delete fill. */
-      .gv-folder-confirm-dialog.gv-aistudio-confirm .gv-confirm-cancel {
-        background-color: transparent;
-        color: var(--mat-sys-on-surface-variant, #c4c7c5);
-        border: none;
-      }
-
-      .gv-folder-confirm-dialog.gv-aistudio-confirm .gv-confirm-cancel:hover {
-        background-color: rgba(255, 255, 255, 0.06);
-        color: var(--mat-sys-on-surface, #e3e3e3);
-      }
-
-      /* Hover effect for remove button in list */
-      .gv-aistudio .gv-conversation-remove-btn:hover {
-        background-color: rgba(220, 90, 90, 0.14) !important;
-        color: #e69892 !important;
-      }
-
-      .gv-aistudio .gv-conversation-remove-btn:hover span {
-        font-variation-settings: 'FILL' 1, 'wght' 600 !important;
-      }
-
-      @keyframes gv-fade-in {
-        from { opacity: 0; transform: translateY(4px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-    `;
-    document.head.appendChild(style);
+  /** What the tree's controls do to folder data; every edit checks `canEdit` and saves. */
+  private treeActions(): TreeActions {
+    const edit = (change: (data: FolderData) => boolean) => {
+      if (!this.canEdit || !change(this.data)) return;
+      void this.save().then(() => this.render());
+    };
+    return {
+      onNavigate: (conversation) =>
+        this.navigateToPrompt(conversation.conversationId, conversation.url),
+      onCreateFolder: (name, parentId) =>
+        edit((data) => addFolder(data, { id: uid(), name, parentId, at: now() })),
+      onRenameFolder: (folderId, name) => edit((data) => renameFolder(data, folderId, name, now())),
+      onDeleteFolder: (folderId) => edit((data) => deleteFolderTree(data, folderId)),
+      onRemoveConversation: (folderId, conversationId) =>
+        edit((data) => removeConversation(data, folderId, conversationId)),
+      confirmConversationRemoval: (title, anchor, onConfirm) =>
+        this.dialogs.confirmConversationRemoval(title, anchor, onConfirm),
+      onToggleStar: (folderId, conversationId) =>
+        edit((data) => toggleConversationStar(data, folderId, conversationId)),
+      onToggleFolderPinned: (folderId) => edit((data) => toggleFolderPinned(data, folderId)),
+      onToggleFolderExpanded: (folderId) => edit((data) => toggleFolderExpanded(data, folderId)),
+      onDrop: (event, folderId) => {
+        if (!this.canEdit || !this.placeDroppedPrompt(event, folderId)) return false;
+        void this.save().then(() => this.render());
+        return true;
+      },
+      acceptsDrag: (types) => AISTUDIO_PROMPT_DRAG_TYPES.some((type) => types.includes(type)),
+    };
   }
 
   private render(): void {
@@ -1027,53 +904,7 @@ export class AIStudioFolderManager {
       .forEach((button) => {
         button.disabled = !this.canEdit;
       });
-    const list = this.container.querySelector('.gv-folder-list') as HTMLElement | null;
-    if (!list) return;
-    this.inlineDrafts.detach(list);
-    list.innerHTML = '';
-
-    // Render only root-level folders here; children are rendered recursively
-    const folders = this.data.folders.filter((f) => !f.parentId);
-    folders.sort((a, b) => {
-      const ap = a.pinned ? 1 : 0;
-      const bp = b.pinned ? 1 : 0;
-      if (ap !== bp) return bp - ap;
-      return a.createdAt - b.createdAt;
-    });
-
-    for (const f of folders) {
-      list.appendChild(this.renderFolder(f));
-    }
-
-    // Root drop zone
-    const rootDrop = document.createElement('div');
-    rootDrop.className = 'gv-folder-root-drop';
-    rootDrop.textContent = '';
-    this.bindDropZone(rootDrop, null);
-    list.appendChild(rootDrop);
-
-    // Render uncategorized conversations (dropped to root)
-    const uncategorized = this.data.folderContents[this.UNCATEGORIZED_KEY] || [];
-    if (uncategorized.length > 0) {
-      const uncatSection = document.createElement('div');
-      uncatSection.className = 'gv-folder-uncategorized';
-
-      const uncatHeader = document.createElement('div');
-      uncatHeader.className = 'gv-folder-uncategorized-header';
-      uncatHeader.innerHTML = `<span class="google-symbols" data-icon="inbox" style="margin-right: 6px;">inbox</span>${this.t('folder_uncategorized') || 'Uncategorized'}`;
-      uncatSection.appendChild(uncatHeader);
-
-      const uncatContent = document.createElement('div');
-      uncatContent.className = 'gv-folder-uncategorized-content';
-      for (const conv of uncategorized) {
-        uncatContent.appendChild(this.renderConversation(this.UNCATEGORIZED_KEY, conv));
-      }
-      uncatSection.appendChild(uncatContent);
-      list.appendChild(uncatSection);
-    }
-    this.inlineDrafts.restore(list, (id) => this.data.folders.some((f) => f.id === id));
-
-    // After rendering, update active highlight
+    this.tree?.update(this.data);
     this.highlightActiveConversation();
 
     // Keep the onboarding nudge in sync with the post-render folder state — e.g. the
@@ -1091,15 +922,7 @@ export class AIStudioFolderManager {
   }
 
   private highlightActiveConversation(): void {
-    if (!this.container) return;
-    const currentId = this.getCurrentPromptIdFromLocation();
-    const rows = this.container.querySelectorAll(
-      '.gv-folder-conversation',
-    ) as NodeListOf<HTMLElement>;
-    rows.forEach((row) => {
-      const isActive = currentId && row.dataset.conversationId === currentId;
-      row.classList.toggle('gv-folder-conversation-selected', !!isActive);
-    });
+    this.tree?.setActiveConversation(this.getCurrentPromptIdFromLocation());
   }
 
   /**
@@ -1165,478 +988,6 @@ export class AIStudioFolderManager {
         this.highlightActiveConversation();
       }, 0);
     this.stopRouteWatcher = watchRouteChanges(update);
-  }
-
-  private renderFolder(folder: Folder, level: number = 0): HTMLElement {
-    const item = document.createElement('div');
-    item.className = 'gv-folder-item';
-    item.dataset.folderId = folder.id;
-    item.dataset.pinned = folder.pinned ? 'true' : 'false';
-    item.dataset.level = String(level);
-
-    const header = document.createElement('div');
-    header.className = 'gv-folder-item-header';
-    // Add left padding for nested folders
-    header.style.paddingLeft = `${level * 16 + 8}px`;
-    item.appendChild(header);
-    // Allow dropping directly on folder header
-    this.bindDropZone(header, folder.id);
-
-    const expandBtn = document.createElement('button');
-    expandBtn.className = 'gv-folder-expand-btn';
-    expandBtn.appendChild(this.createIcon(folder.isExpanded ? 'expand_more' : 'chevron_right'));
-    expandBtn.addEventListener('click', () => {
-      if (!this.canEdit) return;
-      folder.isExpanded = !folder.isExpanded;
-      this.save().then(() => this.render());
-    });
-    header.appendChild(expandBtn);
-
-    const icon = document.createElement('span');
-    icon.className = 'gv-folder-icon google-symbols';
-    icon.dataset.icon = 'folder';
-    icon.textContent = 'folder';
-    header.appendChild(icon);
-
-    const name = document.createElement('span');
-    name.className = 'gv-folder-name gds-label-l';
-    name.textContent = folder.name;
-    name.addEventListener('dblclick', () => this.renameFolder(folder.id));
-    header.appendChild(name);
-
-    const pinBtn = document.createElement('button');
-    pinBtn.className = 'gv-folder-pin-btn';
-    pinBtn.title = folder.pinned ? this.t('folder_unpin') : this.t('folder_pin');
-    try {
-      pinBtn.dataset.state = folder.pinned ? 'pinned' : 'unpinned';
-    } catch {}
-    pinBtn.appendChild(this.createIcon('push_pin'));
-    pinBtn.addEventListener('click', () => {
-      if (!this.canEdit) return;
-      folder.pinned = !folder.pinned;
-      this.save().then(() => this.render());
-    });
-    header.appendChild(pinBtn);
-
-    const moreBtn = document.createElement('button');
-    moreBtn.className = 'gv-folder-actions-btn';
-    moreBtn.appendChild(this.createIcon('more_vert'));
-    moreBtn.addEventListener('click', (e) => this.openFolderMenu(e, folder.id));
-    header.appendChild(moreBtn);
-
-    // Content (conversations and subfolders)
-    if (folder.isExpanded) {
-      const content = document.createElement('div');
-      content.className = 'gv-folder-content';
-      this.bindDropZone(content, folder.id);
-
-      // Render conversations in this folder
-      const convs = ownBucket(this.data.folderContents, folder.id) ?? [];
-      for (const conv of convs) {
-        const convEl = this.renderConversation(folder.id, conv);
-        // Add indentation for nested conversations
-        convEl.style.paddingLeft = `${(level + 1) * 16 + 8}px`;
-        content.appendChild(convEl);
-      }
-
-      // Render subfolders (only for root-level folders, creating 2-level hierarchy)
-      if (level === 0) {
-        const subfolders = this.data.folders.filter((f) => f.parentId === folder.id);
-        // Sort subfolders: pinned first, then by creation time
-        subfolders.sort((a, b) => {
-          const ap = a.pinned ? 1 : 0;
-          const bp = b.pinned ? 1 : 0;
-          if (ap !== bp) return bp - ap;
-          return a.createdAt - b.createdAt;
-        });
-        for (const subfolder of subfolders) {
-          content.appendChild(this.renderFolder(subfolder, level + 1));
-        }
-      }
-
-      item.appendChild(content);
-    }
-
-    return item;
-  }
-
-  private renderConversation(folderId: string, conv: ConversationReference): HTMLElement {
-    const row = document.createElement('div');
-    row.className = conv.starred ? 'gv-folder-conversation gv-starred' : 'gv-folder-conversation';
-    row.dataset.folderId = folderId;
-    row.dataset.conversationId = conv.conversationId;
-
-    const icon = document.createElement('span');
-    icon.className = 'gv-conversation-icon google-symbols';
-    icon.dataset.icon = 'chat';
-    icon.textContent = 'chat';
-    row.appendChild(icon);
-
-    const title = document.createElement('span');
-    title.className = 'gv-conversation-title gds-label-l';
-    title.textContent = conv.title || this.t('conversation_untitled');
-    row.appendChild(title);
-
-    const starBtn = document.createElement('button');
-    starBtn.className = conv.starred
-      ? 'gv-conversation-star-btn starred'
-      : 'gv-conversation-star-btn';
-    starBtn.appendChild(this.createIcon(conv.starred ? 'star' : 'star_outline'));
-    starBtn.title = conv.starred ? this.t('conversation_unstar') : this.t('conversation_star');
-    starBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (!this.canEdit) return;
-      conv.starred = !conv.starred;
-      this.save().then(() => this.render());
-    });
-    row.appendChild(starBtn);
-
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'gv-conversation-remove-btn';
-    removeBtn.appendChild(this.createIcon('close'));
-    removeBtn.title = this.t('folder_remove_conversation');
-    removeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.confirmRemoveConversation(folderId, conv.conversationId, conv.title || '', e);
-    });
-    row.appendChild(removeBtn);
-
-    row.addEventListener('click', () => this.navigateToPrompt(conv.conversationId, conv.url));
-
-    row.draggable = true;
-    row.addEventListener('dragstart', (e) => {
-      const data: DragData = {
-        type: 'conversation',
-        conversationId: conv.conversationId,
-        title: conv.title,
-        url: conv.url,
-        sourceFolderId: folderId,
-      };
-      try {
-        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer?.setData('application/json', JSON.stringify(data));
-      } catch {}
-      try {
-        e.dataTransfer?.setDragImage(row, 10, 10);
-      } catch {}
-    });
-
-    return row;
-  }
-
-  private openFolderMenu(ev: MouseEvent, folderId: string): void {
-    ev.stopPropagation();
-    const folder = this.data.folders.find((f) => f.id === folderId);
-    if (!folder) return;
-
-    const menu = document.createElement('div');
-    menu.className = 'gv-folder-menu gv-aistudio-folder-menu';
-    menu.style.position = 'fixed';
-    menu.style.left = `${ev.clientX}px`;
-    menu.style.top = `${ev.clientY}px`;
-
-    const closeMenu = () => {
-      menu.remove();
-      document.removeEventListener('click', onClickAway);
-    };
-
-    // Only show "Create subfolder" for root-level folders (to maintain 2-level hierarchy)
-    if (!folder.parentId) {
-      menu.appendChild(
-        this.createMenuItem(this.t('folder_create_subfolder'), 'create_new_folder', () => {
-          this.createFolder(folderId);
-          closeMenu();
-        }),
-      );
-    }
-
-    const onClickAway = (e: MouseEvent) => {
-      if (e.target instanceof Node && !menu.contains(e.target)) {
-        closeMenu();
-      }
-    };
-
-    menu.appendChild(
-      this.createMenuItem(this.t('folder_rename'), 'edit', () => {
-        this.renameFolder(folderId);
-        closeMenu();
-      }),
-    );
-    menu.appendChild(
-      this.createMenuItem(
-        this.t('folder_delete'),
-        'delete',
-        () => {
-          this.deleteFolder(folderId);
-          closeMenu();
-        },
-        { danger: true },
-      ),
-    );
-
-    document.body.appendChild(menu);
-    setTimeout(() => document.addEventListener('click', onClickAway), 0);
-  }
-
-  private createFolder(parentId: string | null = null): void {
-    if (!this.canEdit) return;
-    const existingInput = this.container?.querySelector<HTMLInputElement>(
-      '.gv-folder-inline-input input',
-    );
-    if (existingInput) {
-      existingInput.focus();
-      return;
-    }
-
-    const {
-      wrapper: inputContainer,
-      input,
-      saveBtn,
-      cancelBtn,
-    } = createInlineFolderEditor(this.t, 'div', 'gv-folder-inline-input', 'gv-folder-name-input', {
-      placeholder: this.t('folder_name_prompt'),
-      folderId: parentId,
-    });
-
-    const cancel = () => {
-      inputContainer.remove();
-    };
-
-    const save = async () => {
-      if (!this.canEdit) return;
-      const name = input.value.trim();
-      if (!name || (parentId && !this.data.folders.some((f) => f.id === parentId))) {
-        cancel();
-        return;
-      }
-
-      const f: Folder = {
-        id: uid(),
-        name,
-        parentId: parentId || null,
-        isExpanded: true,
-        createdAt: now(),
-        updatedAt: now(),
-      };
-      this.data.folders.push(f);
-      setBucket(this.data.folderContents, f.id, []);
-      await this.save();
-      cancel();
-      this.render();
-    };
-
-    saveBtn.addEventListener('click', () => {
-      void save();
-    });
-    cancelBtn.addEventListener('click', cancel);
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') void save();
-      if (e.key === 'Escape') cancel();
-    });
-
-    const folderList = this.container?.querySelector('.gv-folder-list');
-    if (!folderList) return;
-
-    if (parentId) {
-      const parentFolder = folderList.querySelector(`[data-folder-id="${parentId}"]`);
-      if (parentFolder) {
-        const parentContent = parentFolder.querySelector('.gv-folder-content');
-        if (parentContent) {
-          parentContent.insertBefore(inputContainer, parentContent.firstChild);
-        } else {
-          parentFolder.insertAdjacentElement('afterend', inputContainer);
-        }
-      } else {
-        folderList.appendChild(inputContainer);
-      }
-    } else {
-      folderList.insertBefore(inputContainer, folderList.firstChild);
-    }
-
-    input.focus();
-  }
-
-  private renameFolder(folderId: string): void {
-    if (!this.canEdit) return;
-    const activeRenameInput = this.container?.querySelector<HTMLInputElement>(
-      '.gv-folder-rename-inline input',
-    );
-    if (activeRenameInput) {
-      activeRenameInput.focus();
-      activeRenameInput.select();
-      return;
-    }
-
-    const folder = this.data.folders.find((f) => f.id === folderId);
-    if (!folder) return;
-
-    const folderEl = this.container?.querySelector(`[data-folder-id="${folderId}"]`);
-    if (!folderEl) return;
-
-    const headerEl = folderEl.querySelector<HTMLElement>('.gv-folder-item-header');
-    if (!headerEl) return;
-
-    const folderNameEl = folderEl.querySelector('.gv-folder-name');
-    if (!folderNameEl) return;
-
-    const {
-      wrapper: inputContainer,
-      input,
-      saveBtn,
-      cancelBtn,
-    } = createInlineFolderEditor(
-      this.t,
-      'span',
-      'gv-folder-rename-inline',
-      'gv-folder-rename-input',
-      {
-        value: folder.name,
-        folderId,
-      },
-    );
-
-    // A reload may rebuild the header and replace the data while the editor is open.
-    const restore = () => {
-      const header = inputContainer.closest('.gv-folder-item-header');
-      header?.classList.remove('gv-folder-editing');
-      header?.querySelector('.gv-folder-name')?.classList.remove('gv-hidden');
-      inputContainer.remove();
-    };
-
-    const save = async () => {
-      if (!this.canEdit) return;
-      const name = input.value.trim();
-      const target = this.data.folders.find((f) => f.id === folderId);
-      if (!name || !target) {
-        restore();
-        return;
-      }
-
-      target.name = name;
-      target.updatedAt = now();
-      await this.save();
-      restore();
-      this.render();
-    };
-
-    saveBtn.addEventListener('click', () => {
-      void save();
-    });
-    cancelBtn.addEventListener('click', restore);
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') void save();
-      if (e.key === 'Escape') restore();
-    });
-
-    folderNameEl.classList.add('gv-hidden');
-    headerEl.classList.add('gv-folder-editing');
-    headerEl.insertBefore(inputContainer, folderNameEl.nextSibling);
-    input.focus();
-    input.select();
-  }
-
-  private deleteFolder(folderId: string): void {
-    const folderEl = this.container?.querySelector(`[data-folder-id="${folderId}"]`);
-    const headerEl = folderEl?.querySelector<HTMLElement>('.gv-folder-item-header');
-
-    this.showFolderConfirm(
-      headerEl,
-      this.t('folder_delete_confirm'),
-      this.t('folder_remove_conversation_action'),
-      () => {
-        if (!this.canEdit) return;
-        // Collect all folder IDs to delete (including subfolders)
-        const folderIdsToDelete: string[] = [folderId];
-        const subfolders = this.data.folders.filter((f) => f.parentId === folderId);
-        for (const subfolder of subfolders) {
-          folderIdsToDelete.push(subfolder.id);
-        }
-
-        // Delete all collected folders and their contents
-        this.data.folders = this.data.folders.filter((f) => !folderIdsToDelete.includes(f.id));
-        for (const id of folderIdsToDelete) {
-          delete this.data.folderContents[id];
-        }
-
-        void this.save().then(() => this.render());
-      },
-    );
-  }
-
-  private removeConversationFromFolder(folderId: string, conversationId: string): void {
-    if (!this.canEdit) return;
-    const arr = ownBucket(this.data.folderContents, folderId) ?? [];
-    setBucket(
-      this.data.folderContents,
-      folderId,
-      arr.filter((c) => c.conversationId !== conversationId),
-    );
-    this.save().then(() => this.render());
-  }
-
-  private confirmRemoveConversation(
-    folderId: string,
-    conversationId: string,
-    title: string,
-    event: MouseEvent,
-  ): void {
-    const target = event.currentTarget as HTMLElement;
-    this.showFolderConfirm(
-      target,
-      this.t('folder_remove_conversation_confirm').replace(
-        '{title}',
-        () => title || this.t('conversation_untitled'),
-      ),
-      this.t('folder_remove_conversation_action'),
-      () => this.removeConversationFromFolder(folderId, conversationId),
-      true,
-    );
-  }
-
-  private bindDropZone(el: HTMLElement, targetFolderId: string | null): void {
-    // Use a counter to properly track nested dragenter/dragleave events
-    // This fixes the issue where child elements trigger spurious leave events
-    let dragEnterCounter = 0;
-
-    el.addEventListener('dragenter', (e) => {
-      e.preventDefault();
-      e.stopPropagation(); // Prevent bubbling to parent drop zones
-      dragEnterCounter++;
-      // Only add class on first enter
-      if (dragEnterCounter === 1) {
-        el.classList.add('gv-folder-dragover');
-      }
-    });
-    el.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      e.stopPropagation(); // Prevent bubbling to parent drop zones
-      try {
-        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      } catch {}
-    });
-    el.addEventListener('dragleave', (e) => {
-      e.stopPropagation(); // Prevent bubbling to parent drop zones
-      dragEnterCounter--;
-      // Only remove class when truly leaving the container (counter reaches 0)
-      // Also check relatedTarget as a fallback
-      if (dragEnterCounter <= 0) {
-        dragEnterCounter = 0; // Prevent negative values
-        // Double-check: if relatedTarget is still inside, don't remove
-        const related = e.relatedTarget as Node | null;
-        if (!related || !el.contains(related)) {
-          el.classList.remove('gv-folder-dragover');
-        }
-      }
-    });
-    el.addEventListener('drop', (e) => {
-      e.preventDefault();
-      e.stopPropagation(); // Prevent bubbling to parent drop zones
-      dragEnterCounter = 0; // Reset counter on drop
-      el.classList.remove('gv-folder-dragover');
-      if (!this.canEdit) return;
-      if (!this.placeDroppedPrompt(e, targetFolderId)) return;
-      this.save().then(() => this.render());
-    });
   }
 
   /**
@@ -3242,12 +2593,7 @@ export class AIStudioFolderManager {
     this.hideLibraryBatchDeleteProgress();
 
     // Body-appended transient popovers we may have left open.
-    try {
-      document.querySelector('.gv-folder-confirm-dialog.gv-aistudio-confirm')?.remove();
-    } catch {}
-    try {
-      document.querySelector('.gv-folder-menu.gv-aistudio-folder-menu')?.remove();
-    } catch {}
+    this.dialogs.closeAll();
 
     // Un-hide any /library rows we hid; with the feature off nothing would restore them.
     try {
@@ -3257,6 +2603,7 @@ export class AIStudioFolderManager {
     } catch {}
 
     // Injected DOM. Resetting container/flags lets initializeFolderUI() re-init cleanly.
+    this.unmountTree();
     try {
       this.container?.remove();
     } catch {}
@@ -3264,9 +2611,6 @@ export class AIStudioFolderManager {
     this.libraryShortcutBtn = null;
     this.historyRoot = null;
     this.libraryDropZoneInjected = false;
-    try {
-      document.getElementById('gv-aistudio-folder-styles')?.remove();
-    } catch {}
     try {
       document.documentElement.classList.remove('gv-aistudio-root');
     } catch {}

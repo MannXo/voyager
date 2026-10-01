@@ -1,8 +1,12 @@
 /**
  * Drives AI Studio's folder tree the way a user does, so the characterization
- * suite states behaviour once and survives a change of tree DOM.
+ * suite states behaviour once and survives a change of tree DOM. The tree is
+ * the shared folder tree in the `.gv-aistudio-folder-tree` shadow root.
  */
 import { AISTUDIO_ROOT_BUCKET_ID } from '@/features/folder/constants';
+
+import { AISTUDIO_TREE_HOST_CLASS } from '../aistudioTree';
+import { cls, t } from '../floatingTree/shared';
 
 export const ROOT = AISTUDIO_ROOT_BUCKET_ID;
 
@@ -46,40 +50,54 @@ function dragEvent(type: string, transfer: FakeTransfer): Event {
   return event;
 }
 
-function list(): HTMLElement {
-  const element = document.querySelector<HTMLElement>('.gv-folder-list');
-  if (!element) throw new Error('folder list is not mounted');
-  return element;
+const part = (name: string) => `.${cls(name)}`;
+
+function mountedTreeRoot(): ShadowRoot | null {
+  return document.querySelector(`.${AISTUDIO_TREE_HOST_CLASS}`)?.shadowRoot ?? null;
 }
 
-function folderElement(folderId: string): HTMLElement {
-  const element = list().querySelector<HTMLElement>(
-    `.gv-folder-item[data-folder-id="${folderId}"]`,
-  );
-  if (!element) throw new Error(`folder ${folderId} is not rendered`);
-  return element;
+export function treeRoot(): ShadowRoot {
+  const root = mountedTreeRoot();
+  if (!root) throw new Error('folder tree is not mounted');
+  return root;
+}
+
+/** The tree's text, or '' while no tree is mounted. */
+export function treeText(): string {
+  return mountedTreeRoot()?.textContent ?? '';
 }
 
 function folderHeader(folderId: string): HTMLElement {
-  return folderElement(folderId).querySelector<HTMLElement>(':scope > .gv-folder-item-header')!;
+  const header = treeRoot().querySelector<HTMLElement>(
+    `${part('folder-header')}[data-folder-id="${folderId}"]`,
+  );
+  if (!header) throw new Error(`folder ${folderId} is not rendered`);
+  return header;
 }
 
 function conversationRow(bucketId: string, conversationId: string): HTMLElement {
-  const row = list().querySelector<HTMLElement>(
-    `.gv-folder-conversation[data-folder-id="${bucketId}"][data-conversation-id="${conversationId}"]`,
+  const row = treeRoot().querySelector<HTMLElement>(
+    `${part('conv')}[data-folder-id="${bucketId}"][data-conversation-id="${conversationId}"]`,
   );
   if (!row) throw new Error(`conversation ${bucketId}/${conversationId} is not rendered`);
   return row;
 }
 
-function menuItem(folderId: string, label: string): HTMLButtonElement | null {
-  folderHeader(folderId).querySelector<HTMLButtonElement>('.gv-folder-actions-btn')!.click();
-  const items = Array.from(document.querySelectorAll<HTMLButtonElement>('.gv-folder-menu-item'));
-  return items.find((item) => item.textContent?.includes(label)) ?? null;
+function openMenu(folderId: string): void {
+  folderHeader(folderId).querySelector<HTMLButtonElement>(part('icon-button--menu'))!.click();
 }
 
-function closeMenus(): void {
-  document.querySelectorAll('.gv-aistudio-folder-menu').forEach((menu) => menu.remove());
+function menuItem(labelKey: string): HTMLButtonElement | null {
+  const label = t(labelKey);
+  return (
+    Array.from(
+      treeRoot().querySelectorAll<HTMLButtonElement>(`${part('context-menu')} button`),
+    ).find((item) => item.textContent === label) ?? null
+  );
+}
+
+function closeMenu(): void {
+  document.body.click();
 }
 
 function submitName(name: string): void {
@@ -89,125 +107,173 @@ function submitName(name: string): void {
   input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 }
 
+function visible(element: Element): boolean {
+  for (let node: Element | null = element; node; node = node.parentElement) {
+    if (node instanceof HTMLElement && node.style.display === 'none') return false;
+  }
+  return true;
+}
+
+function addButton(): HTMLButtonElement {
+  return document.querySelector<HTMLButtonElement>('.gv-folder-add-btn')!;
+}
+
 export function nameInput(): HTMLInputElement | null {
-  return list().querySelector<HTMLInputElement>(
-    '.gv-folder-inline-input input, .gv-folder-rename-inline input',
-  );
+  return mountedTreeRoot()?.querySelector<HTMLInputElement>(part('inline-input')) ?? null;
 }
 
 export const tree = {
-  text: (): string => list().textContent ?? '',
+  text: (): string => treeRoot().textContent ?? '',
 
   /** Rendered folders in order; a subfolder reads `Parent › Child`. */
   folderOrder: (): string[] =>
-    Array.from(list().querySelectorAll<HTMLElement>('.gv-folder-item'), (item) => {
-      const name = item.querySelector(':scope > .gv-folder-item-header .gv-folder-name');
-      const parent = item.parentElement?.closest<HTMLElement>('.gv-folder-item');
-      const parentName = parent?.querySelector(':scope > .gv-folder-item-header .gv-folder-name');
-      return parentName
-        ? `${parentName.textContent} › ${name?.textContent}`
-        : (name?.textContent ?? '');
+    Array.from(treeRoot().querySelectorAll<HTMLElement>(part('folder')), (item) => {
+      // A folder's own header comes before its body, so it is the first match.
+      const name = (folder: Element | null | undefined) =>
+        folder?.querySelector(part('folder-header'))?.querySelector(part('folder-name'))
+          ?.textContent ?? '';
+      const parent = item.parentElement?.closest(part('folder'));
+      return parent ? `${name(parent)} › ${name(item)}` : name(item);
     }),
 
   isRendered: (folderId: string): boolean =>
-    !!list().querySelector(`.gv-folder-item[data-folder-id="${folderId}"]`),
+    !!treeRoot().querySelector(`${part('folder-header')}[data-folder-id="${folderId}"]`),
 
+  /** Conversations a user can see in a bucket; a collapsed folder shows none. */
   conversationIds: (bucketId: string): string[] =>
     Array.from(
-      list().querySelectorAll<HTMLElement>(`.gv-folder-conversation[data-folder-id="${bucketId}"]`),
-      (row) => row.dataset.conversationId ?? '',
-    ),
+      treeRoot().querySelectorAll<HTMLElement>(`${part('conv')}[data-folder-id="${bucketId}"]`),
+    )
+      .filter(visible)
+      .map((row) => row.dataset.conversationId ?? ''),
 
   /** The heading over root conversations, or null while that section is hidden. */
   rootSectionLabel: (): string | null =>
-    Array.from(list().querySelector('.gv-folder-uncategorized-header')?.childNodes ?? [], (node) =>
-      node instanceof Element && node.matches('.google-symbols') ? '' : node.textContent,
-    )
-      .join('')
-      .trim() || null,
+    treeRoot().querySelector(part('root-section-title'))?.textContent?.trim() || null,
 
   /** Whether the root section comes after every folder. */
   rootSectionIsLast: (): boolean => {
-    const section = list().querySelector('.gv-folder-uncategorized');
-    const folders = list().querySelectorAll('.gv-folder-item');
+    const section = treeRoot().querySelector(part('root-section'));
+    const folders = treeRoot().querySelectorAll(part('folder'));
     const last = folders[folders.length - 1];
     return !!section && (!last || !!(last.compareDocumentPosition(section) & 4));
   },
 
   activeConversationIds: (): string[] =>
     Array.from(
-      list().querySelectorAll<HTMLElement>('.gv-folder-conversation-selected'),
+      treeRoot().querySelectorAll<HTMLElement>(part('conv--active')),
       (row) => row.dataset.conversationId ?? '',
     ),
 
   isStarredInView: (bucketId: string, conversationId: string): boolean =>
-    conversationRow(bucketId, conversationId).classList.contains('gv-starred'),
+    !!conversationRow(bucketId, conversationId).querySelector(part('icon-button--active')),
 
   openConversation: (bucketId: string, conversationId: string): void =>
-    conversationRow(bucketId, conversationId).click(),
+    conversationRow(bucketId, conversationId)
+      .querySelector<HTMLButtonElement>(part('conv-title'))!
+      .click(),
 
   toggleExpanded: (folderId: string): void =>
-    folderHeader(folderId).querySelector<HTMLButtonElement>('.gv-folder-expand-btn')!.click(),
+    folderHeader(folderId).querySelector<HTMLButtonElement>(part('caret'))!.click(),
 
-  togglePinned: (folderId: string): void =>
-    folderHeader(folderId).querySelector<HTMLButtonElement>('.gv-folder-pin-btn')!.click(),
+  togglePinned: (folderId: string): void => {
+    openMenu(folderId);
+    (menuItem('floatingPanelPinFolder') ?? menuItem('floatingPanelUnpinFolder'))!.click();
+  },
 
   toggleStar: (bucketId: string, conversationId: string): void =>
     conversationRow(bucketId, conversationId)
-      .querySelector<HTMLButtonElement>('.gv-conversation-star-btn')!
+      .querySelector<HTMLButtonElement>(part('icon-button--star'))!
       .click(),
 
   /** Asks to remove a filed conversation; the question must still be answered. */
   requestRemoval: (bucketId: string, conversationId: string): void =>
     conversationRow(bucketId, conversationId)
-      .querySelector<HTMLButtonElement>('.gv-conversation-remove-btn')!
+      .querySelector<HTMLButtonElement>(part('icon-button--remove'))!
       .click(),
 
   /** Text of the open removal question, or null. */
   pendingQuestion: (): string | null =>
-    document.querySelector('.gv-aistudio-confirm .gv-confirm-message')?.textContent ?? null,
+    document.querySelector('.gv-folder-confirm-dialog .gv-folder-confirm-message')?.textContent ??
+    null,
 
-  answer: (confirm: boolean): void =>
-    document
+  /** Answers the open removal question or folder deletion confirm. */
+  answer: (confirm: boolean): void => {
+    const dialog = document.querySelector('.gv-folder-confirm-dialog');
+    if (dialog) {
+      dialog
+        .querySelector<HTMLButtonElement>(
+          confirm ? '.gv-folder-confirm-yes' : '.gv-folder-confirm-no',
+        )!
+        .click();
+      return;
+    }
+    const confirming = treeRoot().querySelector(part('context-menu--confirming'))!;
+    confirming
       .querySelector<HTMLButtonElement>(
         confirm
-          ? '.gv-aistudio-confirm .gv-confirm-delete'
-          : '.gv-aistudio-confirm .gv-confirm-cancel',
+          ? part('menu-item--danger')
+          : `${part('confirm-button')}:not(${part('menu-item--danger')})`,
       )!
-      .click(),
+      .click();
+  },
 
   canCreateSubfolder: (folderId: string): boolean => {
-    const item = menuItem(folderId, 'Create subfolder');
-    closeMenus();
+    openMenu(folderId);
+    const item = menuItem('floatingPanelCreateSubfolder');
+    closeMenu();
     return item !== null;
   },
 
   createSubfolder: (folderId: string, name: string): void => {
-    menuItem(folderId, 'Create subfolder')!.click();
+    openMenu(folderId);
+    menuItem('floatingPanelCreateSubfolder')!.click();
     submitName(name);
   },
 
   createRootFolder: (name: string): void => {
-    document.querySelector<HTMLButtonElement>('.gv-folder-add-btn')!.click();
+    addButton().click();
     submitName(name);
   },
 
-  startRootFolder: (): void =>
-    document.querySelector<HTMLButtonElement>('.gv-folder-add-btn')!.click(),
+  startRootFolder: (): void => addButton().click(),
+
+  /** Opens the name form for a subfolder of `folderId`, from its menu. */
+  startSubfolder: (folderId: string): void => {
+    openMenu(folderId);
+    menuItem('floatingPanelCreateSubfolder')!.click();
+  },
+
+  /** Opens the rename form on a folder's name. */
+  startRename: (folderId: string): void => {
+    folderHeader(folderId)
+      .querySelector(part('folder-name'))!
+      .dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+  },
+
+  /** Whether `element` sits inside the folder's own header. */
+  headerHolds: (folderId: string, element: Element): boolean =>
+    folderHeader(folderId).contains(element),
+
+  /** Whether `element` is shown, not inside a collapsed folder. */
+  isShown: (element: Element): boolean => element.isConnected && visible(element),
 
   rename: (folderId: string, name: string): void => {
     folderHeader(folderId)
-      .querySelector('.gv-folder-name')!
+      .querySelector(part('folder-name'))!
       .dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     submitName(name);
   },
 
   /** Asks to delete a folder; answer with `answer(true)`. */
-  requestFolderDeletion: (folderId: string): void => menuItem(folderId, 'Delete')!.click(),
+  requestFolderDeletion: (folderId: string): void => {
+    openMenu(folderId);
+    menuItem('floatingPanelDeleteFolder')!.click();
+  },
 
   dropTarget: (bucketId: string): HTMLElement =>
     bucketId === ROOT
-      ? list().querySelector<HTMLElement>('.gv-folder-root-drop')!
+      ? treeRoot().querySelector<HTMLElement>(part('root-drop'))!
       : folderHeader(bucketId),
 
   /** Starts a drag on a filed row and returns what the row put on the drag. */
