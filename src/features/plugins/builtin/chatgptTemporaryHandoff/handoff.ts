@@ -7,6 +7,13 @@ import type { AppLanguage } from '@/utils/language';
 
 import { getTemporaryHandoffCopy } from './i18n';
 import {
+  CHATGPT_COMPOSER_SELECTORS,
+  CHATGPT_GENERIC_COMPOSER_SELECTOR,
+  CHATGPT_NEW_CHAT_SELECTOR,
+  CHATGPT_SEND_CONTROL_SELECTOR,
+  CHATGPT_TEMP_TOGGLE_SELECTOR,
+} from './selectors';
+import {
   CHATGPT_HANDOFF_CANCEL_EXPIRY_MESSAGE,
   CHATGPT_HANDOFF_GET_TAB_ID_MESSAGE,
   CHATGPT_HANDOFF_SCHEDULE_EXPIRY_MESSAGE,
@@ -17,6 +24,12 @@ import {
 } from './storage';
 
 export { PENDING_HANDOFF_KEY, PENDING_HANDOFF_TAB_KEY } from './storage';
+export {
+  CHATGPT_COMPOSER_SELECTOR,
+  CHATGPT_NEW_CHAT_SELECTOR,
+  CHATGPT_SEND_CONTROL_SELECTOR,
+  CHATGPT_TEMP_TOGGLE_SELECTOR,
+} from './selectors';
 
 export type HandoffDelivery =
   | { readonly mode: 'inline'; readonly text: string }
@@ -52,28 +65,6 @@ export type HandoffResult =
 
 export type PendingHandoffResult = 'ready' | 'delivery-failed' | 'account-mismatch' | null;
 
-export const CHATGPT_TEMP_TOGGLE_SELECTOR = [
-  '[data-testid="temporary-chat-toggle"]',
-  'button[aria-label*="temporary chat" i]',
-  'button[aria-label*="临时聊天"]',
-  'button[aria-label*="暫時聊天"]',
-].join(',');
-const CHATGPT_COMPOSER_SELECTORS = [
-  '#prompt-textarea',
-  'form[data-type="unified-composer"] [contenteditable="true"][role="textbox"]',
-  'form[data-testid*="composer" i] [contenteditable="true"][role="textbox"]',
-] as const;
-const CHATGPT_GENERIC_COMPOSER_SELECTOR = 'main form [contenteditable="true"][role="textbox"]';
-export const CHATGPT_SEND_CONTROL_SELECTOR = [
-  'button[data-testid="send-button"]',
-  'button[data-testid="composer-submit-button"]',
-].join(',');
-export const CHATGPT_COMPOSER_SELECTOR = [
-  ...CHATGPT_COMPOSER_SELECTORS,
-  CHATGPT_GENERIC_COMPOSER_SELECTOR,
-].join(',');
-export const CHATGPT_NEW_CHAT_SELECTOR =
-  'a[data-testid="create-new-chat-button"], a[href="/"], a[href^="/u/"][href$="/"]';
 const INLINE_THRESHOLD = 5_000;
 let activeHandoffOperations = 0;
 let internalNavigationClicks = 0;

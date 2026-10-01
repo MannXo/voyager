@@ -537,6 +537,22 @@ turn on a route without a conversation id`),
 - **Guard:** `src/features/plugins/builtin/chatgptTemporaryHandoff/handoff.test.ts`
   (`gives separate handoffs unique filenames even at the same instant`).
 
+## Temporary-chat handoff reads the current thread and composer
+
+- **Trap:** The handoff collected turns through the earlier `[data-turn-id-container]` DOM, so on
+  ChatGPT's current virtualized thread it found nothing and reported an empty conversation. Its
+  composer lookup needed `#prompt-textarea` or a `data-testid` send button; the current composer is
+  a ProseMirror textbox in `form[data-chatgpt-composer]` whose submit button has only a localized
+  aria-label, so no composer was found to deliver into.
+- **Rule:** On the current DOM, read the whole thread with the export's crawl
+  (`readChatGptThreadTurns`), which refuses a reply still pending or a thread that changed while it
+  was read. Match the composer by `form[data-chatgpt-composer]` and its `button[type="submit"]`. The
+  earlier DOM keeps its own collection path.
+- **Guard:** `src/features/plugins/builtin/chatgptTemporaryHandoff/collectTurns.test.ts`
+  (`reads every turn of the virtualized temporary chat`);
+  `src/features/plugins/builtin/chatgptTemporaryHandoff/composer.test.ts`
+  (`reads the draft and hands off through a composer whose send button has no test id`).
+
 ## Claude usage settings hash may not open the modal by itself
 
 - **Trap:** Clicking the Claude usage link changed the URL hash to `#settings/usage`, but the usage

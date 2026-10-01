@@ -9,7 +9,7 @@
     "src/features/export/services/PDFPrintService.ts": 1188,
     "src/features/formulaCopy/FormulaCopyService.test.ts": 1210,
     "src/features/formulaCopy/FormulaCopyService.ts": 1037,
-    "src/features/plugins/builtin/chatgptTemporaryHandoff/handoff.ts": 1050,
+    "src/features/plugins/builtin/chatgptTemporaryHandoff/handoff.ts": 1041,
     "src/features/plugins/builtin/claudeUsage/index.ts": 1011,
     "src/pages/background/index.ts": 2808,
     "src/pages/content/chatInput/__tests__/vimMode.test.ts": 1969,
