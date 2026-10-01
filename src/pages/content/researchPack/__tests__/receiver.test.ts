@@ -355,6 +355,37 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     expect(toast()?.dataset.tone).toBe('error');
   });
 
+  it('stops polling for the composer the moment the tab leaves', async () => {
+    start();
+    await vi.advanceTimersByTimeAsync(RECEIVER_POLL_MS);
+    const lookups = vi.spyOn(document, 'querySelectorAll');
+    try {
+      navigate('https://chatgpt.com/c/A');
+
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(RECEIVER_COMPOSER_TIMEOUT_MS);
+      expect(lookups).not.toHaveBeenCalled();
+    } finally {
+      lookups.mockRestore();
+    }
+  });
+
+  it('stops polling for the composer on teardown', async () => {
+    start();
+    await vi.advanceTimersByTimeAsync(RECEIVER_POLL_MS);
+    const lookups = vi.spyOn(document, 'querySelectorAll');
+    try {
+      stop!();
+      stop = null;
+
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(RECEIVER_COMPOSER_TIMEOUT_MS);
+      expect(lookups).not.toHaveBeenCalled();
+    } finally {
+      lookups.mockRestore();
+    }
+  });
+
   it('never claims after a round trip while it waits for the composer', async () => {
     start();
     await vi.advanceTimersByTimeAsync(RECEIVER_POLL_MS);

@@ -191,12 +191,13 @@ export function startResearchPackReceiver(deps: ResearchPackReceiverDeps = {}): 
     stopRoute = null;
   }
 
-  const later = (run: () => void, ms: number): void => {
+  const later = (run: () => void, ms: number): ReturnType<typeof setTimeout> => {
     const timer = setTimeout(() => {
       timers.delete(timer);
       if (!stopped) run();
     }, ms);
     timers.add(timer);
+    return timer;
   };
 
   const toast = (key: TranslationKey, tone: 'ok' | 'error'): void => {
@@ -225,18 +226,30 @@ export function startResearchPackReceiver(deps: ResearchPackReceiverDeps = {}): 
       const deadline = Date.now() + RECEIVER_COMPOSER_TIMEOUT_MS;
       let previous: HTMLElement | null = null;
       let stable = 0;
+      // Settled once: a departure or teardown also cancels the next poll.
+      let settled = false;
+      let nextPoll: ReturnType<typeof setTimeout> | null = null;
       const finish = (composer: HTMLElement | null): void => {
+        if (settled) return;
+        settled = true;
         abandonWait = null;
+        if (nextPoll !== null) {
+          clearTimeout(nextPoll);
+          timers.delete(nextPoll);
+          nextPoll = null;
+        }
         resolve(composer);
       };
       abandonWait = () => finish(null);
       const poll = (): void => {
+        nextPoll = null;
+        if (settled) return;
         const composer = findHandoffComposer(target);
         stable = composer && composer === previous ? stable + 1 : composer ? 1 : 0;
         previous = composer;
         if (composer && stable >= RECEIVER_STABLE_POLLS) return finish(composer);
         if (Date.now() >= deadline) return finish(null);
-        later(poll, RECEIVER_POLL_MS);
+        nextPoll = later(poll, RECEIVER_POLL_MS);
       };
       poll();
     });
