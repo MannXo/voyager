@@ -1,4 +1,5 @@
 import { extractRouteUserIdFromPath } from '@/core/services/AccountIsolationService';
+import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import type { ConversationSortMode } from '@/features/folder/model/folderData';
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
@@ -7,6 +8,7 @@ import type { FolderNavigation } from './FolderNavigation';
 import type { FolderSidebarRuntime } from './FolderSidebarRuntime';
 import type { FolderStore } from './FolderStore';
 import type { NativeConversationMenus } from './NativeConversationMenus';
+import { readDragPayload } from './dragPayload';
 import {
   extractConversationData,
   extractConversationId,
@@ -15,7 +17,6 @@ import {
 } from './nativeSidebarDom';
 import type { ConversationReference, DragData, Folder } from './types';
 
-const ROOT_CONVERSATIONS_ID = '__root_conversations__';
 type ConversationReorderPlacement = 'above' | 'below';
 
 interface ConversationReorderTarget {
@@ -294,12 +295,10 @@ export class FolderSelection {
       e.stopPropagation(); // CRITICAL: Prevent event bubbling to root drop zone
       element.classList.remove('gv-folder-dragover');
 
-      const data = e.dataTransfer?.getData('application/json');
-      if (!data) return;
+      const dragData = readDragPayload(e.dataTransfer);
+      if (!dragData) return;
 
       try {
-        const dragData: DragData = JSON.parse(data);
-
         if (
           this.options.getContext().sortMode === 'recent' &&
           dragData.type !== 'folder' &&
@@ -374,12 +373,10 @@ export class FolderSelection {
       e.stopPropagation(); // Prevent parent handlers from firing
       element.classList.remove('gv-folder-list-dragover');
 
-      const data = e.dataTransfer?.getData('application/json');
-      if (!data) return;
+      const dragData = readDragPayload(e.dataTransfer);
+      if (!dragData) return;
 
       try {
-        const dragData: DragData = JSON.parse(data);
-
         if (
           this.options.getContext().sortMode === 'recent' &&
           dragData.type !== 'folder' &&
@@ -787,11 +784,10 @@ export class FolderSelection {
       );
       this.clearConversationReorderIndicator();
 
-      const rawData = event.dataTransfer?.getData('application/json');
-      if (!rawData) return;
+      const dragData = readDragPayload(event.dataTransfer);
+      if (!dragData) return;
 
       try {
-        const dragData: DragData = JSON.parse(rawData);
         if (dragData.type !== 'conversation') return;
 
         this.selectedConversations.forEach((id) => {
@@ -960,12 +956,10 @@ export class FolderSelection {
       e.stopPropagation();
       gap.classList.remove('gv-reorder-gap-active');
 
-      const rawData = e.dataTransfer?.getData('application/json');
-      if (!rawData) return;
+      const dragData = readDragPayload(e.dataTransfer);
+      if (!dragData) return;
 
       try {
-        const dragData: DragData = JSON.parse(rawData);
-
         // Restore opacity for selected conversations
         this.selectedConversations.forEach((id) => {
           const el = this.findConversationElement(id);

@@ -1,5 +1,6 @@
 import { CLOUD_SYNC_PATH, CLOUD_UPLOAD_PATH } from '@/core/icons/cloudSyncPaths';
 import { isSafari } from '@/core/utils/browser';
+import { MAX_FOLDER_DEPTH } from '@/features/folder/constants';
 import {
   type ConversationSortMode,
   getFolderDepth,
@@ -8,6 +9,7 @@ import {
 } from '@/features/folder/model/folderData';
 import { getTranslationSyncUnsafe } from '@/utils/i18n';
 
+import { readDragPayload } from './dragPayload';
 import { FOLDER_COLORS, getFolderColor, isDarkMode } from './folderColors';
 import type { ConversationReference, Folder, FolderData } from './types';
 
@@ -60,10 +62,6 @@ const MAX_PANEL_WIDTH = 640;
 const VIEWPORT_SIZE_MARGIN = 32;
 const SIZE_CHANGE_DEBOUNCE_MS = 300;
 const MAX_FOLDER_NAME_LENGTH = 50;
-// Cap nesting at 2 total layers: root (depth 0) plus one subfolder level
-// (depth 1). Deeper pre-existing data keeps rendering; only *new* creation
-// beyond this is blocked. Mirrors MAX_FOLDER_DEPTH in manager.ts.
-const MAX_FOLDER_DEPTH = 1;
 
 type InlineEditorState =
   | { mode: 'create'; parentId: string | null }
@@ -159,30 +157,15 @@ function canCreateChildAtDepth(depth: number): boolean {
 }
 
 function readConversationDragData(e: DragEvent): ConversationDragData | null {
-  const raw = e.dataTransfer?.getData('application/json');
-  if (!raw) return null;
-
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return null;
-
-    const candidate = parsed as Record<string, unknown>;
-    if (
-      candidate.type === 'conversation' &&
-      typeof candidate.conversationId === 'string' &&
-      typeof candidate.sourceFolderId === 'string'
-    ) {
-      return {
-        type: 'conversation',
-        conversationId: candidate.conversationId,
-        sourceFolderId: candidate.sourceFolderId,
-      };
-    }
-  } catch {
+  const payload = readDragPayload(e.dataTransfer);
+  if (payload?.type !== 'conversation' || !payload.conversationId || !payload.sourceFolderId) {
     return null;
   }
-
-  return null;
+  return {
+    type: 'conversation',
+    conversationId: payload.conversationId,
+    sourceFolderId: payload.sourceFolderId,
+  };
 }
 
 function createIconButton(

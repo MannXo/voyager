@@ -50,14 +50,3 @@ export class FolderDataSession {
     this.backup.destroy();
   }
 }
-
-export function cloneFolderData(data: FolderData): FolderData {
-  const folders = data.folders.map((folder) => ({ ...folder }));
-  const folderContents = Object.fromEntries(
-    Object.entries(data.folderContents || {}).map(([folderId, conversations]) => [
-      folderId,
-      conversations.map((conversation) => ({ ...conversation })),
-    ]),
-  );
-  return { folders, folderContents };
-}

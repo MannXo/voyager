@@ -14,6 +14,7 @@ import {
 } from '@/core/icons/folderIcons';
 import { StorageKeys } from '@/core/types/common';
 import { isSafari } from '@/core/utils/browser';
+import { MAX_FOLDER_DEPTH, ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import {
   type ConversationSortMode,
   getFolderDepth,
@@ -48,15 +49,11 @@ import {
 } from './nativeSidebarDom';
 import type { ConversationReference, Folder } from './types';
 
-const ROOT_CONVERSATIONS_ID = '__root_conversations__';
-
 const FOLDER_TREE_INDENT_MIN = -8;
 
 const FOLDER_TREE_INDENT_MAX = 32;
 
 const FOLDER_TREE_INDENT_DEFAULT = -8;
-
-const MAX_FOLDER_DEPTH = 1;
 
 const FOLDER_NAME_SINGLE_CLICK_DELAY_MS = 220;
 

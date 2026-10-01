@@ -297,3 +297,22 @@ export function normalizeFolderData(data: FolderData): FolderData {
   }
   return changed ? { ...data, folders, folderContents } : data;
 }
+
+/** Shallow structural check shared by load, migration and backup recovery. */
+export function validateFolderData(data: unknown): boolean {
+  if (typeof data !== 'object' || data === null) return false;
+  const d = data as Record<string, unknown>;
+  return Array.isArray(d.folders) && typeof d.folderContents === 'object';
+}
+
+/** Copy folders and conversation references so a snapshot cannot alias live data. */
+export function cloneFolderData(data: FolderData): FolderData {
+  const folders = data.folders.map((folder) => ({ ...folder }));
+  const folderContents = Object.fromEntries(
+    Object.entries(data.folderContents || {}).map(([folderId, conversations]) => [
+      folderId,
+      conversations.map((conversation) => ({ ...conversation })),
+    ]),
+  );
+  return { folders, folderContents };
+}

@@ -9,6 +9,7 @@ import {
 import { StorageKeys } from '@/core/types/common';
 import type { PromptItem, SyncAccountScope } from '@/core/types/sync';
 import { isSafari } from '@/core/utils/browser';
+import { cloneFolderData, validateFolderData } from '@/features/folder/model/folderData';
 import { createTranslator, initI18n } from '@/utils/i18n';
 import {
   mergeFolderData as mergeSyncedFolderData,
@@ -17,6 +18,7 @@ import {
 
 import { watchRouteChanges } from '../utils/routeWatcher';
 import { FolderDataSession } from './FolderDataSession';
+import { parseDragPayload } from './dragPayload';
 import {
   mountHideArchivedNudge,
   shouldShowHideArchivedNudge,
@@ -190,58 +192,16 @@ function extractPromptIdFromHref(rawHref: string): string | null {
   }
 }
 
-function normalizeDroppedUrl(raw: string): string | null {
-  const firstLine = String(raw || '')
-    .split(/\r?\n/, 1)[0]
-    ?.trim();
-  if (!firstLine) return null;
-  if (/^https?:\/\//i.test(firstLine)) return firstLine;
-  if (firstLine.startsWith('/')) return `${location.origin}${firstLine}`;
-  return null;
-}
-
+/** AI Studio drops accept Voyager JSON or a dropped prompt URL; only conversations apply. */
 export function parseDragDataPayload(raw: string): DragData | null {
-  const trimmed = String(raw || '').trim();
-  if (!trimmed) return null;
-
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      (parsed as { type?: unknown }).type === 'conversation' &&
-      typeof (parsed as { conversationId?: unknown }).conversationId === 'string'
-    ) {
-      const data = parsed as DragData;
-      return {
-        type: 'conversation',
-        conversationId: data.conversationId,
-        title: typeof data.title === 'string' ? data.title : '',
-        url: typeof data.url === 'string' ? data.url : '',
-      };
-    }
-  } catch {}
-
-  const normalizedUrl = normalizeDroppedUrl(trimmed);
-  if (!normalizedUrl) return null;
-  const conversationId = extractPromptIdFromHref(normalizedUrl);
-  if (!conversationId) return null;
-
+  const parsed = parseDragPayload(raw, { conversationIdFromUrl: extractPromptIdFromHref });
+  if (parsed?.type !== 'conversation' || !parsed.conversationId) return null;
   return {
     type: 'conversation',
-    conversationId,
-    title: '',
-    url: normalizedUrl,
+    conversationId: parsed.conversationId,
+    title: parsed.title,
+    url: parsed.url ?? '',
   };
-}
-
-/**
- * Validate folder data structure
- */
-function validateFolderData(data: unknown): boolean {
-  if (typeof data !== 'object' || data === null) return false;
-  const d = data as Record<string, unknown>;
-  return Array.isArray(d.folders) && typeof d.folderContents === 'object';
 }
 
 export class AIStudioFolderManager {
@@ -564,17 +524,6 @@ export class AIStudioFolderManager {
     return { folders: mergedFolders, folderContents: mergedContents };
   }
 
-  private cloneFolderData(data: FolderData): FolderData {
-    const folders = data.folders.map((folder) => ({ ...folder }));
-    const folderContents = Object.fromEntries(
-      Object.entries(data.folderContents || {}).map(([folderId, conversations]) => [
-        folderId,
-        conversations.map((conversation) => ({ ...conversation })),
-      ]),
-    );
-    return { folders, folderContents };
-  }
-
   private async migrateLegacyFolderDataToScopedStorage(
     session: FolderDataSession,
     version: number,
@@ -591,10 +540,10 @@ export class AIStudioFolderManager {
         return null;
       }
 
-      const migratedData = this.cloneFolderData(legacyData as FolderData);
+      const migratedData = cloneFolderData(legacyData as FolderData);
       session.data = migratedData;
       session.markReady();
-      session.activeSave = this.persistDataSession(session, this.cloneFolderData(migratedData));
+      session.activeSave = this.persistDataSession(session, cloneFolderData(migratedData));
       await session.activeSave;
       console.log(
         '[AIStudioFolderManager] Migrated legacy AI Studio folder data to scoped storage:',
@@ -954,7 +903,7 @@ export class AIStudioFolderManager {
     const session = this.dataSession;
     if (!session || !this.canEdit) return false;
     try {
-      const snapshot = this.cloneFolderData(session.data);
+      const snapshot = cloneFolderData(session.data);
       session.loadVersion += 1;
       session.markReady();
       session.backup.createEmergencyBackup(snapshot);
@@ -983,7 +932,7 @@ export class AIStudioFolderManager {
     const session = this.dataSession;
     const activation = this.accountScopeRequest;
     if (!session || !this.canEdit) return false;
-    const snapshot = this.cloneFolderData(data);
+    const snapshot = cloneFolderData(data);
     session.replacingData = true;
     session.loadVersion += 1;
     this.render();
@@ -3237,7 +3186,7 @@ export class AIStudioFolderManager {
             return;
           }
           // Merge mode by default: simple union without duplicates
-          const draft = this.cloneFolderData(this.data);
+          const draft = cloneFolderData(this.data);
           const existingIds = new Set(draft.folders.map((x) => x.id));
           for (const f of next.folders) {
             if (!existingIds.has(f.id)) {
@@ -3924,7 +3873,7 @@ export class AIStudioFolderManager {
       this.showNotification(this.t('uploadInProgress'), 'info');
 
       // Get current folder data
-      const folders = this.cloneFolderData(session.data);
+      const folders = cloneFolderData(session.data);
 
       // Get prompts from storage (shared with Gemini)
       let prompts: PromptItem[] = [];

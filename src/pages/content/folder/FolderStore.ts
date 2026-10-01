@@ -10,18 +10,21 @@ import {
 import { StorageKeys } from '@/core/types/common';
 import { buildConversationIdFromUrl } from '@/core/utils/conversationIdentity';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
+import { MAX_FOLDER_DEPTH, ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import {
   type ConversationSortMode,
+  cloneFolderData,
   getFolderDepth,
   moveFolder,
   normalizeFolderData,
   removeFolder,
   reorderConversations,
+  validateFolderData,
 } from '@/features/folder/model/folderData';
 
 import { TimestampService } from '../timestamp/TimestampService';
 import { historyTimestampStore } from '../timestamp/historyTimestamps';
-import { FolderDataSession, cloneFolderData } from './FolderDataSession';
+import { FolderDataSession } from './FolderDataSession';
 import { createConversationMembershipLookup } from './conversationMembership';
 import { applyNativeTitle, indexConversationsByRouteId } from './conversationTitleSync';
 import {
@@ -44,8 +47,6 @@ const STORAGE_KEY = 'gvFolderData';
 
 /** Growing gaps between account-scope retries, in ms. Length caps the attempts. */
 const ACCOUNT_SCOPE_RETRY_DELAYS = [400, 1200, 3000] as const;
-const ROOT_CONVERSATIONS_ID = '__root_conversations__';
-const MAX_FOLDER_DEPTH = 1;
 const IS_DEBUG = false;
 const SAVE_DEBOUNCE_MS = 300;
 const STORAGE_ECHO_SUPPRESS_WINDOW_MS = 2000;
@@ -63,12 +64,6 @@ const ACTIVITY_COMPOSER_INPUT_SELECTOR = [
   '.input-area textarea',
   'textarea[placeholder*="Ask"]',
 ].join(', ');
-
-function validateFolderData(data: unknown): boolean {
-  if (typeof data !== 'object' || data === null) return false;
-  const value = data as Record<string, unknown>;
-  return Array.isArray(value.folders) && typeof value.folderContents === 'object';
-}
 
 export type FolderStoreChange =
   | 'account'

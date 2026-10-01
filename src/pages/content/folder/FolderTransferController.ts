@@ -6,6 +6,7 @@ import {
   detectAccountContextFromDocument,
 } from '@/core/services/AccountIsolationService';
 import type { PromptItem, SyncAccountScope } from '@/core/types/sync';
+import { cloneFolderData } from '@/features/folder/model/folderData';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
 import type { ImportStrategy } from '@/features/folder/types/import-export';
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
@@ -17,7 +18,7 @@ import {
   resolveTimelineHierarchyDataForStorageScope,
 } from '../timeline/hierarchyStorage';
 import type { TimelineHierarchyData } from '../timeline/hierarchyTypes';
-import { type FolderDataSession, cloneFolderData } from './FolderDataSession';
+import type { FolderDataSession } from './FolderDataSession';
 import type { FolderData } from './types';
 
 type TransferContext = {
