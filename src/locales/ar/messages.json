@@ -3429,5 +3429,37 @@
   "researchPackRetry": {
     "message": "إعادة المحاولة",
     "description": "Research pack: button that reads the pack again after a failure"
+  },
+  "researchPackContinueIn": {
+    "message": "المتابعة في {target}",
+    "description": "Research pack: button that opens a new chat on another model ({target} is ChatGPT or Claude)"
+  },
+  "researchPackContinueHint": {
+    "message": "يفتح محادثة جديدة في {target} مع هذه الحزمة في مربع الرسالة. لا يُرسَل أي شيء.",
+    "description": "Research pack: tooltip of the continue-in button"
+  },
+  "researchPackContinueOpening": {
+    "message": "جارٍ فتح {target}. ستظهر الحزمة في مربع الرسالة دون إرسالها.",
+    "description": "Research pack: the new chat is opening and the pack will be filled in"
+  },
+  "researchPackContinueCopied": {
+    "message": "تم نسخ الحزمة. الصقها في محادثة {target} الجديدة.",
+    "description": "Research pack: Voyager cannot run on the target, so the pack was copied for pasting"
+  },
+  "researchPackContinueRetry": {
+    "message": "لا يستطيع Voyager تعبئة {target} الآن. انقر مرة أخرى لنسخ الحزمة وفتح {target}.",
+    "description": "Research pack: the target stopped being available since the panel opened"
+  },
+  "researchPackContinueFailed": {
+    "message": "تعذّر فتح {target}. استخدم نسخ Markdown بدلًا من ذلك.",
+    "description": "Research pack: the new chat could not be opened"
+  },
+  "researchPackHandoffReady": {
+    "message": "تمت إضافة حزمة البحث من Gemini. راجعها ثم أرسلها بنفسك.",
+    "description": "Research pack: toast on ChatGPT/Claude after the pack was put in the message box"
+  },
+  "researchPackHandoffFailed": {
+    "message": "تعذّرت إضافة حزمة البحث هنا. ارجع إلى Gemini وانسخها.",
+    "description": "Research pack: toast on ChatGPT/Claude when the pack could not be put in the message box"
   }
 }

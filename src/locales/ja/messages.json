@@ -3429,5 +3429,37 @@
   "researchPackRetry": {
     "message": "再試行",
     "description": "Research pack: button that reads the pack again after a failure"
+  },
+  "researchPackContinueIn": {
+    "message": "{target} で続ける",
+    "description": "Research pack: button that opens a new chat on another model ({target} is ChatGPT or Claude)"
+  },
+  "researchPackContinueHint": {
+    "message": "新しい {target} チャットを開き、このパックを入力欄に入れます。送信はしません。",
+    "description": "Research pack: tooltip of the continue-in button"
+  },
+  "researchPackContinueOpening": {
+    "message": "{target} を開いています。パックは送信されずに入力欄に入ります。",
+    "description": "Research pack: the new chat is opening and the pack will be filled in"
+  },
+  "researchPackContinueCopied": {
+    "message": "パックをコピーしました。新しい {target} チャットに貼り付けてください。",
+    "description": "Research pack: Voyager cannot run on the target, so the pack was copied for pasting"
+  },
+  "researchPackContinueRetry": {
+    "message": "今は {target} に自動入力できません。もう一度クリックすると、パックをコピーして {target} を開きます。",
+    "description": "Research pack: the target stopped being available since the panel opened"
+  },
+  "researchPackContinueFailed": {
+    "message": "{target} を開けませんでした。代わりに「Markdown をコピー」を使ってください。",
+    "description": "Research pack: the new chat could not be opened"
+  },
+  "researchPackHandoffReady": {
+    "message": "Gemini からリサーチパックを入力しました。確認してからご自身で送信してください。",
+    "description": "Research pack: toast on ChatGPT/Claude after the pack was put in the message box"
+  },
+  "researchPackHandoffFailed": {
+    "message": "ここにリサーチパックを入力できませんでした。Gemini に戻ってコピーしてください。",
+    "description": "Research pack: toast on ChatGPT/Claude when the pack could not be put in the message box"
   }
 }

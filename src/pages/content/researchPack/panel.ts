@@ -7,11 +7,13 @@
  * `public/contentStyle.css` under `gv-rp-`.
  */
 import { safeHttpUrl } from '@/features/researchPack/services/citations';
+import { HANDOFF_TARGET_IDS, type HandoffTarget } from '@/features/researchPack/services/handoff';
 import { platformLabel } from '@/features/researchPack/services/markdown';
 import type { ResearchPack, ResearchPackItem } from '@/features/researchPack/services/types';
 import type { TranslationKey } from '@/utils/translations';
 
 import { createPromptRowSurfaces } from '../prompt/promptRowConfirm';
+import { formatTarget } from './continueIn';
 
 export interface ResearchPackPanelActions {
   onMove: (id: string, delta: number) => void;
@@ -21,6 +23,10 @@ export interface ResearchPackPanelActions {
   onCopy: () => void;
   onDownload: () => void;
   onInsert: () => void;
+  /** Open a new chat on `target` with the pack. Runs inside the click. */
+  onContinue: (target: HandoffTarget) => void;
+  /** The panel was opened. */
+  onOpen?: () => void;
   onClear: () => void;
   /** Read the pack again after a failed load. */
   onRetry: () => void;
@@ -149,9 +155,18 @@ export function createResearchPackPanel(
   }
   footer.append(insertButton, copyButton, downloadButton, clearButton);
 
+  const continueRow = el('div', 'gv-rp-continue');
+  const continueButtons = HANDOFF_TARGET_IDS.map((target) => {
+    const button = el('button', 'gv-rp-btn gv-rp-continue-btn');
+    button.type = 'button';
+    button.dataset.target = target;
+    continueRow.append(button);
+    return { target, button };
+  });
+
   const body = el('div', 'gv-rp-body');
   body.append(loadError, empty, list, instructionLabel, instruction, preview);
-  panel.append(header, body, status, footer);
+  panel.append(header, body, status, continueRow, footer);
   const toast = el('div', 'gv-rp-toast');
   toast.hidden = true;
   toast.setAttribute('role', 'status');
@@ -203,6 +218,7 @@ export function createResearchPackPanel(
     toast.hidden = true;
     syncLauncher();
     closeButton.focus({ preventScroll: true });
+    actions.onOpen?.();
   };
 
   const close = (): void => {
@@ -283,6 +299,10 @@ export function createResearchPackPanel(
     copyButton.textContent = t('researchPackCopy');
     downloadButton.textContent = t('researchPackDownload');
     clearButton.textContent = t('researchPackClear');
+    for (const { target, button } of continueButtons) {
+      button.textContent = formatTarget(t('researchPackContinueIn'), target);
+      button.title = formatTarget(t('researchPackContinueHint'), target);
+    }
     if (currentPack) {
       count.textContent = format(t('researchPackItemCount'), { count: currentPack.items.length });
     }
@@ -316,7 +336,13 @@ export function createResearchPackPanel(
       instruction.value = pack.instruction;
     }
     markdownView.textContent = markdown;
-    for (const button of [insertButton, copyButton, downloadButton, clearButton]) {
+    for (const button of [
+      insertButton,
+      copyButton,
+      downloadButton,
+      clearButton,
+      ...continueButtons.map(({ button }) => button),
+    ]) {
       button.disabled = locked || !hasItems;
     }
     syncLauncher();
@@ -366,6 +392,12 @@ export function createResearchPackPanel(
     flushInstruction();
     actions.onDownload();
   });
+  for (const { target, button } of continueButtons) {
+    button.addEventListener('click', () => {
+      flushInstruction();
+      actions.onContinue(target);
+    });
+  }
   clearButton.addEventListener('click', () => {
     confirmSurfaces.openConfirm({
       anchor: clearButton,

@@ -3429,5 +3429,37 @@
   "researchPackRetry": {
     "message": "Réessayer",
     "description": "Research pack: button that reads the pack again after a failure"
+  },
+  "researchPackContinueIn": {
+    "message": "Continuer dans {target}",
+    "description": "Research pack: button that opens a new chat on another model ({target} is ChatGPT or Claude)"
+  },
+  "researchPackContinueHint": {
+    "message": "Ouvre une nouvelle discussion {target} avec ce dossier dans la zone de saisie. Rien n’est envoyé.",
+    "description": "Research pack: tooltip of the continue-in button"
+  },
+  "researchPackContinueOpening": {
+    "message": "Ouverture de {target}. Le dossier sera dans la zone de saisie, sans être envoyé.",
+    "description": "Research pack: the new chat is opening and the pack will be filled in"
+  },
+  "researchPackContinueCopied": {
+    "message": "Dossier copié. Collez-le dans la nouvelle discussion {target}.",
+    "description": "Research pack: Voyager cannot run on the target, so the pack was copied for pasting"
+  },
+  "researchPackContinueRetry": {
+    "message": "Voyager ne peut pas remplir {target} pour le moment. Cliquez à nouveau pour copier le dossier et ouvrir {target}.",
+    "description": "Research pack: the target stopped being available since the panel opened"
+  },
+  "researchPackContinueFailed": {
+    "message": "Impossible d’ouvrir {target}. Utilisez plutôt Copier le Markdown.",
+    "description": "Research pack: the new chat could not be opened"
+  },
+  "researchPackHandoffReady": {
+    "message": "Dossier de recherche ajouté depuis Gemini. Relisez-le, puis envoyez-le vous-même.",
+    "description": "Research pack: toast on ChatGPT/Claude after the pack was put in the message box"
+  },
+  "researchPackHandoffFailed": {
+    "message": "Impossible d’ajouter le dossier de recherche ici. Revenez sur Gemini et copiez-le.",
+    "description": "Research pack: toast on ChatGPT/Claude when the pack could not be put in the message box"
   }
 }

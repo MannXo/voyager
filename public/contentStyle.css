@@ -15191,6 +15191,18 @@ a.gv-rp-item-source:hover {
   font-size: 12px;
 }
 
+/* Continue in ChatGPT / Claude: carry the pack to a new chat on another model. */
+.gv-rp-continue {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px 10px;
+}
+
+.gv-rp-continue-btn {
+  flex: 1 1 auto;
+}
+
 .gv-rp-actions {
   display: flex;
   flex-wrap: wrap;

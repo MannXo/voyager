@@ -3429,5 +3429,37 @@
   "researchPackRetry": {
     "message": "重试",
     "description": "Research pack: button that reads the pack again after a failure"
+  },
+  "researchPackContinueIn": {
+    "message": "在 {target} 中继续",
+    "description": "Research pack: button that opens a new chat on another model ({target} is ChatGPT or Claude)"
+  },
+  "researchPackContinueHint": {
+    "message": "打开新的 {target} 对话，并把资料包放进输入框。不会自动发送。",
+    "description": "Research pack: tooltip of the continue-in button"
+  },
+  "researchPackContinueOpening": {
+    "message": "正在打开 {target}，资料包会出现在输入框里，不会发送。",
+    "description": "Research pack: the new chat is opening and the pack will be filled in"
+  },
+  "researchPackContinueCopied": {
+    "message": "已复制资料包，粘贴到新的 {target} 对话即可。",
+    "description": "Research pack: Voyager cannot run on the target, so the pack was copied for pasting"
+  },
+  "researchPackContinueRetry": {
+    "message": "暂时无法在 {target} 中自动填入。再点一次即可复制资料包并打开 {target}。",
+    "description": "Research pack: the target stopped being available since the panel opened"
+  },
+  "researchPackContinueFailed": {
+    "message": "无法打开 {target}，请改用“复制 Markdown”。",
+    "description": "Research pack: the new chat could not be opened"
+  },
+  "researchPackHandoffReady": {
+    "message": "已填入来自 Gemini 的研究资料包。检查后再自行发送。",
+    "description": "Research pack: toast on ChatGPT/Claude after the pack was put in the message box"
+  },
+  "researchPackHandoffFailed": {
+    "message": "无法在这里填入研究资料包。请回到 Gemini 复制。",
+    "description": "Research pack: toast on ChatGPT/Claude when the pack could not be put in the message box"
   }
 }

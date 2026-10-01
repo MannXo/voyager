@@ -30,6 +30,7 @@ import { getTranslationSync } from '@/utils/i18n';
 
 import { findChatInput, insertTextIntoChatInput } from '../chatInput';
 import type { StopNativeFeature } from '../featureLifecycle';
+import { type ContinueInDeps, createContinueInController } from './continueIn';
 import { createResearchPackPanel } from './panel';
 import {
   type ResearchPackScopeContext,
@@ -85,6 +86,8 @@ export interface StartResearchPackOptions {
   resolveKey?: (context: ResearchPackScopeContext) => Promise<string>;
   /** The page URL scopes are read from (defaults to `location.href`). */
   pageUrl?: () => string;
+  /** How "Continue in ChatGPT / Claude" reaches the background and the clipboard. */
+  continueIn?: ContinueInDeps;
 }
 
 /** A context whose pack key is being resolved, tagged with that context's identity. */
@@ -257,6 +260,15 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     return apply(view.key, op);
   };
 
+  const continueIn = createContinueInController(
+    options.continueIn ?? {
+      send: (message) => chrome.runtime.sendMessage(message),
+      writeClipboard: (text) => navigator.clipboard.writeText(text),
+    },
+    t,
+    (message, tone) => panel.notify(message, tone),
+  );
+
   const panel = createResearchPackPanel(t, {
     onMove: (id, delta) => void editShown({ kind: 'move', id, delta }),
     onRemove: (id) => void editShown({ kind: 'remove', id }),
@@ -299,6 +311,9 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
       panel.close();
       panel.notify(t('researchPackInserted'));
     },
+    // Hands over the same pack Copy does: the one on screen, with the typed instruction.
+    onContinue: (target) => continueIn.continueIn(target, exportMarkdown()),
+    onOpen: () => continueIn.refresh(),
   });
 
   const onAdd = async (
@@ -401,10 +416,12 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
   scan();
   observer.observe(document.body, { childList: true, subtree: true });
   chrome.storage.onChanged.addListener(onStorageChanged);
+  continueIn.refresh();
 
   return () => {
     if (stopped) return;
     stopped = true;
+    continueIn.destroy();
     observer.disconnect();
     if (observerTimer !== null) clearTimeout(observerTimer);
     observerTimer = null;

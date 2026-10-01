@@ -3429,5 +3429,37 @@
   "researchPackRetry": {
     "message": "다시 시도",
     "description": "Research pack: button that reads the pack again after a failure"
+  },
+  "researchPackContinueIn": {
+    "message": "{target}에서 계속",
+    "description": "Research pack: button that opens a new chat on another model ({target} is ChatGPT or Claude)"
+  },
+  "researchPackContinueHint": {
+    "message": "새 {target} 채팅을 열고 이 팩을 입력창에 넣습니다. 전송하지 않습니다.",
+    "description": "Research pack: tooltip of the continue-in button"
+  },
+  "researchPackContinueOpening": {
+    "message": "{target}를 여는 중입니다. 팩은 전송되지 않은 채 입력창에 들어갑니다.",
+    "description": "Research pack: the new chat is opening and the pack will be filled in"
+  },
+  "researchPackContinueCopied": {
+    "message": "팩을 복사했습니다. 새 {target} 채팅에 붙여넣으세요.",
+    "description": "Research pack: Voyager cannot run on the target, so the pack was copied for pasting"
+  },
+  "researchPackContinueRetry": {
+    "message": "지금은 {target}에 자동으로 넣을 수 없습니다. 다시 클릭하면 팩을 복사하고 {target}를 엽니다.",
+    "description": "Research pack: the target stopped being available since the panel opened"
+  },
+  "researchPackContinueFailed": {
+    "message": "{target}를 열 수 없습니다. 대신 Markdown 복사를 사용하세요.",
+    "description": "Research pack: the new chat could not be opened"
+  },
+  "researchPackHandoffReady": {
+    "message": "Gemini의 리서치 팩을 넣었습니다. 확인한 뒤 직접 보내세요.",
+    "description": "Research pack: toast on ChatGPT/Claude after the pack was put in the message box"
+  },
+  "researchPackHandoffFailed": {
+    "message": "여기에 리서치 팩을 넣지 못했습니다. Gemini로 돌아가 복사하세요.",
+    "description": "Research pack: toast on ChatGPT/Claude when the pack could not be put in the message box"
   }
 }
