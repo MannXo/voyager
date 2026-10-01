@@ -6,6 +6,22 @@ import { FOLDER_COLORS, getFolderColor, isDarkMode } from './folderColors';
 
 type FolderMenuAction = { label: string; action: () => void };
 
+const VIEWPORT_MARGIN = 8;
+
+/**
+ * Pins a confirm at `left`/`top`, moved in as far as its measured width needs
+ * to stay on screen. A fixed 280px allowance let a wider dialog spill past the
+ * right edge. It is measured at the left edge: a shrink-to-fit box measured
+ * at the anchor is narrower there than once it moves in.
+ */
+function placeConfirm(dialog: HTMLElement, left: number, top: number): void {
+  dialog.style.position = 'fixed';
+  dialog.style.top = `${top}px`;
+  dialog.style.left = '0px';
+  const maxLeft = window.innerWidth - dialog.getBoundingClientRect().width - VIEWPORT_MARGIN;
+  dialog.style.left = `${Math.max(VIEWPORT_MARGIN, Math.min(left, maxLeft))}px`;
+}
+
 export type FolderDialogs = {
   openCreate: (
     folderList: HTMLElement | null,
@@ -475,23 +491,15 @@ export function createFolderDialogs(): FolderDialogs {
     },
 
     confirmFolderRemoval: (folderElement, onConfirm) => {
-      const dialog = confirmRemoval(
-        t('folder_delete_confirm'),
-        t('folder_remove_conversation_action'),
-        onConfirm,
-      );
+      const dialog = confirmRemoval(t('folder_delete_confirm'), t('folder_delete'), onConfirm);
       const header = folderElement?.querySelector('.gv-folder-item-header');
       if (header) {
         const rect = header.getBoundingClientRect();
-        dialog.style.position = 'fixed';
-        dialog.style.top = `${rect.bottom + 4}px`;
-        dialog.style.left = `${rect.left + 24}px`;
+        placeConfirm(dialog, rect.left + 24, rect.bottom + 4);
         dialog.style.zIndex = '10002';
       } else if (folderElement) {
         const rect = folderElement.getBoundingClientRect();
-        dialog.style.position = 'fixed';
-        dialog.style.top = `${rect.top + 32}px`;
-        dialog.style.left = `${rect.left}px`;
+        placeConfirm(dialog, rect.left, rect.top + 32);
         dialog.style.zIndex = '10002';
       }
     },
@@ -499,13 +507,12 @@ export function createFolderDialogs(): FolderDialogs {
     confirmConversationRemoval: (title, anchor, onConfirm) => {
       const dialog = confirmRemoval(
         t('folder_remove_conversation_confirm').replace('{title}', () => title),
-        t('pm_delete'),
+        // Removing from a folder keeps the conversation, so it is not a delete.
+        t('folder_remove_conversation_action'),
         onConfirm,
       );
       const rect = anchor.getBoundingClientRect();
-      dialog.style.position = 'fixed';
-      dialog.style.top = `${rect.bottom + 4}px`;
-      dialog.style.left = `${Math.min(rect.left, window.innerWidth - 280)}px`;
+      placeConfirm(dialog, rect.left, rect.bottom + 4);
     },
 
     openMenu: (event, items, kind = 'folder') => {

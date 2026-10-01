@@ -372,7 +372,8 @@ describe('folder dialogs', () => {
       '10002',
     ]);
     const yes = query<HTMLButtonElement>('.gv-folder-confirm-yes');
-    expect(yes.textContent).toBe('folder_remove_conversation_action');
+    // Deleting a folder deletes it, so the button says so.
+    expect(yes.textContent).toBe('folder_delete');
     expect(onConfirm).not.toHaveBeenCalled();
     yes.click();
     yes.click();
@@ -380,24 +381,75 @@ describe('folder dialogs', () => {
     expect(document.querySelector('.gv-folder-confirm-dialog')).toBeNull();
   });
 
-  it('renders a conversation title as text and bounds its confirmation within the viewport', () => {
+  it('renders a conversation title as text and labels its confirmation as a removal', () => {
     const anchor = document.createElement('button');
     document.body.appendChild(anchor);
-    vi.spyOn(anchor, 'getBoundingClientRect').mockReturnValue(
-      new DOMRect(window.innerWidth - 10, 20, 5, 30),
-    );
+    vi.spyOn(anchor, 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 20, 5, 30));
     const onConfirm = vi.fn();
     const title = '<img src=x onerror="bad()">';
     dialogs.confirmConversationRemoval(title, anchor, onConfirm);
     const dialog = query('.gv-folder-confirm-dialog');
-    expect(dialog.style.left).toBe(`${window.innerWidth - 280}px`);
+    expect(dialog.style.left).toBe('40px');
     expect(dialog.style.top).toBe('54px');
     expect(query('.gv-folder-confirm-message').textContent).toBe(`Remove ${title}?`);
     expect(dialog.querySelector('img')).toBeNull();
-    expect(query('.gv-folder-confirm-yes').textContent).toBe('pm_delete');
+    // The conversation stays; only its folder entry goes, so this is not "Delete".
+    expect(query('.gv-folder-confirm-yes').textContent).toBe('folder_remove_conversation_action');
     query<HTMLButtonElement>('.gv-folder-confirm-no').click();
     expect(onConfirm).not.toHaveBeenCalled();
     expect(document.querySelector('.gv-folder-confirm-dialog')).toBeNull();
+  });
+
+  describe('keeps a removal confirm inside the window', () => {
+    const originalWidth = window.innerWidth;
+    // What the live test measured for the remove-from-folder confirm.
+    const DIALOG_WIDTH = 283.6;
+
+    beforeEach(() => {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 967 });
+      const measure = HTMLElement.prototype.getBoundingClientRect;
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+        function (this: HTMLElement) {
+          if (!this.classList.contains('gv-folder-confirm-dialog')) return measure.call(this);
+          // Shrink-to-fit, as a fixed box lays out: near the right edge it narrows.
+          const left = parseFloat(this.style.left) || 0;
+          const width = Math.max(250, Math.min(DIALOG_WIDTH, window.innerWidth - left));
+          return new DOMRect(left, 0, width, 96);
+        },
+      );
+    });
+
+    afterEach(() => {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth });
+    });
+
+    const dialogBox = () => {
+      const dialog = query('.gv-folder-confirm-dialog');
+      const left = parseFloat(dialog.style.left);
+      return { left, right: left + DIALOG_WIDTH };
+    };
+
+    it('for a conversation whose remove button is at the right edge', () => {
+      const anchor = document.createElement('button');
+      document.body.appendChild(anchor);
+      // An own property: spying here would replace the prototype stub above.
+      anchor.getBoundingClientRect = () => new DOMRect(940, 20, 20, 20);
+
+      dialogs.confirmConversationRemoval('Title', anchor, vi.fn());
+
+      const { left, right } = dialogBox();
+      expect(left).toBeGreaterThanOrEqual(8);
+      expect(right).toBeLessThanOrEqual(967 - 8);
+    });
+
+    it('for a folder whose header sits at the right edge, as in an RTL sidebar', () => {
+      mountList();
+      query('.gv-folder-item-header').getBoundingClientRect = () => new DOMRect(760, 20, 200, 30);
+
+      dialogs.confirmFolderRemoval(query('[data-folder-id="parent"]'), vi.fn());
+
+      expect(dialogBox().right).toBeLessThanOrEqual(967 - 8);
+    });
   });
 
   it('keeps conversation actions single and closes the menu before running a native command', () => {
