@@ -321,8 +321,12 @@ export function mergeMountedTurns(
       anchorDrift.set(knownIndex, mounted[i].center - survivor.center);
       survivor.element = mounted[i].element;
       survivor.summary = mounted[i].summary;
-      // A key match may carry edited text; the marker keeps its id.
-      survivor.hash = mounted[i].hash;
+      if (survivor.hash !== mounted[i].hash) {
+        // A key match carrying edited text: stars are filed by the id's hash,
+        // so the edited turn takes the id of its new text.
+        survivor.hash = mounted[i].hash;
+        survivor.id = claimTurnId(survivor.hash, usedIds);
+      }
       // The host may rename a turn (a client id becoming the server's).
       survivor.key = mounted[i].key ?? survivor.key;
       mounted[i].element.setAttribute(TURN_ID_ATTR, survivor.id);

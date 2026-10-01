@@ -83,7 +83,8 @@ export function isStableConversationId(id: string): boolean {
 }
 
 export class ConversationSwitch {
-  private readonly stale = new Map<HTMLElement, string>();
+  /** Weak, so a removed thread is not kept alive by its leftover turns. */
+  private readonly stale = new WeakMap<HTMLElement, string>();
   private pending: PendingRekey | null = null;
 
   /** The id stars are read and written under: the draft's while a re-key is unconfirmed. */

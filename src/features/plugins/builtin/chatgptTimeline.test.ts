@@ -8,13 +8,14 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { StorageKeys } from '@/core/types/common';
 import type { StarredMessage } from '@/pages/content/timeline/starredTypes';
 
 import { requireBundledSiteAdapter } from '../catalog/sites';
 import { PluginScope } from '../runtime/pluginScope';
 import type { NativeOperation } from '../types';
 import { turnNavigatorPrimitive } from '../verbs/turnNavigator';
-import { buildConversationId } from '../verbs/turnNavigator/TurnNavigator';
+import { buildConversationId, buildTurnId } from '../verbs/turnNavigator/TurnNavigator';
 import { BUILTIN_PLUGINS } from './index';
 
 /** In-memory stand-in for the background's starred-message store. */
@@ -345,13 +346,22 @@ describe('ChatGPT timeline', () => {
     const shell = addExchange(1, 'Hello');
     addExchange(2, 'After');
     await mount();
-    const id = dots()[0].dataset.targetTurnId;
 
     mountContent(shell, 'user', 'Hello edited');
     await settle();
-
     expect(labels()).toEqual(['Hello edited', 'After']);
-    expect(dots()[0].dataset.targetTurnId).toBe(id);
+
+    // The star belongs to the edited text, and survives the store's echo.
+    await longPress(dots()[0]);
+    const listeners = vi.mocked(chrome.storage.onChanged.addListener).mock.calls;
+    const notify = listeners[listeners.length - 1][0];
+    notify({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: {} } }, 'local');
+    await settle();
+
+    expect(starStore.get('chatgpt:conv:first')?.map((message) => message.turnId)).toEqual([
+      buildTurnId('Hello edited'),
+    ]);
+    expect(dots()[0].getAttribute('aria-pressed')).toBe('true');
   });
 
   it('does not treat a wrapper around several turns as one turn', async () => {

@@ -64,7 +64,8 @@ and turn ids`).
   one `data-turn-id-container`; the unstamped copy became a `~2` marker that grow-only
   accumulation never dropped, leaving a phantom dot.
 - **Rule:** `turnMerge.ts` first takes certain matches: the stamped id (same text), the host key
-  (text may be edited in place), a hash only one marker carries. Each run of uncertain turns
+  (text may be edited in place; the turn then takes its new text's id, since stars are filed by
+  the id's hash), a hash only one marker carries. Each run of uncertain turns
   between two certain matches is then aligned with the markers between them: most matches first,
   then the smallest distance after the nearer anchor's drift. Picking the nearest raw centre per
   turn regressed Claude/DeepSeek: a remount that shifted every centre turned a remembered repeat
