@@ -46,6 +46,14 @@ describe('research pack receiver on ChatGPT and Claude', () => {
   let send: ReturnType<typeof vi.fn<(message: HandoffMessage) => Promise<unknown>>>;
   let url: string;
   let insert: ReturnType<typeof vi.fn<(text: string, input: HTMLElement) => boolean>>;
+  /** The route listener the receiver subscribed, and whether it unsubscribed. */
+  let routeListeners: Set<() => void>;
+  let watchRoute: ReturnType<typeof vi.fn<(listener: () => void) => () => void>>;
+  /** An SPA navigation: the URL changes and the route watcher reports it. */
+  const navigate = (next: string) => {
+    url = next;
+    for (const listener of routeListeners) listener();
+  };
 
   const sent = () => send.mock.calls.map(([message]) => message.type);
   const toast = () => document.querySelector<HTMLElement>('.gv-rp-root .gv-rp-toast');
@@ -55,6 +63,7 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     stop = startResearchPackReceiver({
       send,
       insert,
+      watchRoute,
       pageUrl: () => url,
       isTopFrame: () => isTopFrame,
     });
@@ -77,6 +86,11 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     document.body.innerHTML = '';
     pending = true;
     insert = vi.fn((text: string, input: HTMLElement) => insertTextIntoChatInput(text, input));
+    routeListeners = new Set();
+    watchRoute = vi.fn((listener: () => void) => {
+      routeListeners.add(listener);
+      return () => routeListeners.delete(listener);
+    });
     claimReply = { ok: true, markdown: PACK };
     send = vi.fn(async (message: HandoffMessage) => {
       if (message.type === HANDOFF_MESSAGES.peek) return { ok: true, pending };
@@ -315,5 +329,71 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     expect(caret).toEqual({ collapsed: true, inside: true });
     expect(note.textContent).toBe('Selected page text');
     expect(composer.textContent).toContain('Rayleigh scattering.');
+  });
+
+  it('inserts nothing after a round trip / -> /c/A -> / while the claim is in flight', async () => {
+    const { composer } = chatgptComposer();
+    const release = holdClaim();
+    start();
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+    navigate('https://chatgpt.com/c/A');
+    navigate('https://chatgpt.com/');
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(sent()).toEqual([HANDOFF_MESSAGES.peek, HANDOFF_MESSAGES.claim]);
+    expect(insert).not.toHaveBeenCalled();
+    expect(composer.textContent).toBe('');
+    expect(toast()?.dataset.tone).toBe('error');
+  });
+
+  it('never claims after a round trip while it waits for the composer', async () => {
+    start();
+    await vi.advanceTimersByTimeAsync(RECEIVER_POLL_MS);
+    navigate('https://chatgpt.com/c/A');
+    navigate('https://chatgpt.com/');
+    chatgptComposer();
+    await vi.advanceTimersByTimeAsync(RECEIVER_COMPOSER_TIMEOUT_MS + SETTLE_MS);
+
+    expect(sent()).toEqual([HANDOFF_MESSAGES.peek]);
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it("hears the page's own pushState through the Navigation API by default", async () => {
+    const navigation = new EventTarget();
+    Object.defineProperty(window, 'navigation', { value: navigation, configurable: true });
+    try {
+      const { composer } = chatgptComposer();
+      const release = holdClaim();
+      url = 'https://chatgpt.com/';
+      stop = startResearchPackReceiver({ send, insert, pageUrl: () => url });
+      await vi.advanceTimersByTimeAsync(SETTLE_MS);
+      const away = Object.assign(new Event('navigate'), {
+        destination: { url: 'https://chatgpt.com/c/A' },
+      });
+      navigation.dispatchEvent(away);
+      release();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(insert).not.toHaveBeenCalled();
+      expect(composer.textContent).toBe('');
+    } finally {
+      Reflect.deleteProperty(window, 'navigation');
+    }
+  });
+
+  it('watches the route only while a pack may arrive', async () => {
+    pending = false;
+    start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(watchRoute).toHaveBeenCalledOnce();
+    expect(routeListeners.size).toBe(0);
+
+    pending = true;
+    stop!();
+    chatgptComposer();
+    start();
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+    expect(routeListeners.size).toBe(0);
   });
 });

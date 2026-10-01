@@ -600,10 +600,13 @@ say`), `src/pages/content/platformTheme/__tests__/platformTheme.test.ts`.
   alarm failed, and across a browser restart.
 - **Rule:** Peek and claim only on the exact new-chat path (ChatGPT `/`, Claude `/new`; a query or
   hash is tolerated), and check the route, the document and the composer again after the claim.
-  Use each site's main composer selector, require exactly one, require it to be empty, and collapse
-  the selection to its end before inserting. Any failed check inserts nothing and points the user
-  back to Gemini's Copy. Keep the record in `storage.session` only; without it, report every
-  target unready.
+  Watch navigations from the peek on (the shared route watcher plus the Navigation API): any
+  departure cancels the receiver for good, even if the tab comes back, because an SPA round trip
+  such as `/` → `/c/A` → `/` keeps the document and may leave the old conversation's composer on
+  screen. Use each site's main composer selector, require exactly one, require it to be empty, and
+  collapse the selection to its end before inserting. Any failed check inserts nothing and points
+  the user back to Gemini's Copy. Keep the record in `storage.session` only; without it, report
+  every target unready.
 - **Guard:** `src/pages/content/researchPack/__tests__/receiver.test.ts`,
   `src/features/researchPack/services/__tests__/handoff.test.ts` (`cannot be taken once its tab
 has left the new-chat page`, `stores nothing and reports every target unready without

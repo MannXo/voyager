@@ -23,6 +23,7 @@ import type { TranslationKey } from '@/utils/translations';
 
 import { insertTextIntoChatInput } from '../chatInput';
 import type { StopNativeFeature } from '../featureLifecycle';
+import { watchRouteChanges } from '../utils/routeWatcher';
 
 export const RECEIVER_POLL_MS = 150;
 /** The same element on this many polls in a row: the app has finished mounting it. */
@@ -36,6 +37,36 @@ export interface ResearchPackReceiverDeps {
   pageUrl?: () => string;
   isTopFrame?: () => boolean;
   t?: (key: TranslationKey) => string;
+  /**
+   * Subscribe to same-document navigations; returns the unsubscribe. The
+   * listener gets the destination URL when it is known before the URL commits.
+   */
+  watchRoute?: (onChange: (href?: string) => void) => () => void;
+}
+
+interface NavigateEventLike extends Event {
+  readonly destination?: { readonly url?: string };
+}
+
+/**
+ * Every same-document navigation the content script can see: the shared route
+ * watcher (popstate, hashchange and its poll), plus the Navigation API where
+ * the browser has it, which also reports the page's own pushState and
+ * replaceState from the main world, so a quick round trip is not missed
+ * between polls.
+ */
+function watchHandoffRoute(onChange: (href?: string) => void): () => void {
+  const stopWatcher = watchRouteChanges(() => onChange());
+  const navigation = (window as { navigation?: EventTarget }).navigation;
+  const onNavigate = (event: Event) => onChange((event as NavigateEventLike).destination?.url);
+  const onEntryChange = () => onChange();
+  navigation?.addEventListener('navigate', onNavigate);
+  navigation?.addEventListener('currententrychange', onEntryChange);
+  return () => {
+    stopWatcher();
+    navigation?.removeEventListener('navigate', onNavigate);
+    navigation?.removeEventListener('currententrychange', onEntryChange);
+  };
 }
 
 function isUsable(candidate: HTMLElement): boolean {
@@ -95,9 +126,15 @@ export function startResearchPackReceiver(deps: ResearchPackReceiverDeps = {}): 
   const target = handoffNewChatTargetForUrl(pageUrl());
   if (!target || !isTopFrame()) return () => {};
   const startDocument = document;
-  /** Still the new-chat page this receiver started on, in the same document. */
+  /**
+   * Set for good by any departure from the new-chat page. Coming back (an SPA
+   * round trip such as / -> /c/A -> /) does not clear it: the composer on
+   * screen may still belong to the conversation the tab passed through.
+   */
+  let departed = false;
+  /** Still the new-chat page this receiver started on, in the same document, never left. */
   const onNewChat = (): boolean =>
-    document === startDocument && handoffNewChatTargetForUrl(pageUrl()) === target;
+    !departed && document === startDocument && handoffNewChatTargetForUrl(pageUrl()) === target;
 
   const send = deps.send ?? ((message: HandoffMessage) => chrome.runtime.sendMessage(message));
   const insert =
@@ -109,6 +146,21 @@ export function startResearchPackReceiver(deps: ResearchPackReceiverDeps = {}): 
   const timers = new Set<ReturnType<typeof setTimeout>>();
   const toasts = new Set<HTMLElement>();
   let abandonWait: (() => void) | null = null;
+
+  // Watched from the first peek until the pack is in or given up on.
+  let stopRoute: (() => void) | null = (deps.watchRoute ?? watchHandoffRoute)((href) => {
+    if (departed) return;
+    if (handoffNewChatTargetForUrl(href ?? pageUrl()) === target && document === startDocument) {
+      return;
+    }
+    departed = true;
+    unwatchRoute();
+    abandonWait?.();
+  });
+  function unwatchRoute(): void {
+    stopRoute?.();
+    stopRoute = null;
+  }
 
   const later = (run: () => void, ms: number): void => {
     const timer = setTimeout(() => {
@@ -191,7 +243,9 @@ export function startResearchPackReceiver(deps: ResearchPackReceiverDeps = {}): 
     toast('researchPackHandoffReady', 'ok');
   };
 
-  void receive().catch(() => undefined);
+  void receive()
+    .catch(() => undefined)
+    .finally(unwatchRoute);
   return () => {
     if (stopped) return;
     stopped = true;
@@ -199,6 +253,7 @@ export function startResearchPackReceiver(deps: ResearchPackReceiverDeps = {}): 
     timers.clear();
     for (const root of toasts) root.remove();
     toasts.clear();
+    unwatchRoute();
     abandonWait?.();
   };
 }
