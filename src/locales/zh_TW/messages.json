@@ -2577,6 +2577,34 @@
     "message": "將目前對話加入此處",
     "description": "Floating folder panel folder menu item that files the open conversation into that folder"
   },
+  "chatgptFoldersAddCurrent": {
+    "message": "加入目前對話",
+    "description": "ChatGPT folder panel header button that files the open conversation at the top level"
+  },
+  "chatgptFoldersHint": {
+    "message": "歸檔對話：先開啟對話，再點擊書籤按鈕，或在資料夾上按右鍵。",
+    "description": "ChatGPT folder panel hint explaining how to file a conversation"
+  },
+  "chatgptFoldersNoConversation": {
+    "message": "請先開啟一個已儲存的對話。暫時對話無法歸檔。",
+    "description": "ChatGPT folder panel status when no saved conversation is open to add"
+  },
+  "chatgptFoldersAdded": {
+    "message": "已加入資料夾。",
+    "description": "ChatGPT folder panel status after filing the open conversation"
+  },
+  "chatgptFoldersAlreadyFiled": {
+    "message": "已在此資料夾中。",
+    "description": "ChatGPT folder panel status when the open conversation is already in that folder"
+  },
+  "chatgptFoldersImportWrongSite": {
+    "message": "此檔案包含其他網站的資料夾，因此未匯入任何內容。",
+    "description": "ChatGPT folder import error when the file holds conversations from another site"
+  },
+  "chatgptFoldersUntitled": {
+    "message": "未命名對話",
+    "description": "Title used for a filed ChatGPT conversation whose title could not be read"
+  },
   "folder_new_chat_in_folder": {
     "message": "在此資料夾新增對話",
     "description": "Folder context menu item to create a new chat and auto-assign it to this folder"

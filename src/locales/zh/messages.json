@@ -2581,6 +2581,34 @@
     "message": "将当前对话添加到此处",
     "description": "Floating folder panel folder menu item that files the open conversation into that folder"
   },
+  "chatgptFoldersAddCurrent": {
+    "message": "添加当前对话",
+    "description": "ChatGPT folder panel header button that files the open conversation at the top level"
+  },
+  "chatgptFoldersHint": {
+    "message": "归档对话：先打开对话，再点击书签按钮，或右键点击文件夹。",
+    "description": "ChatGPT folder panel hint explaining how to file a conversation"
+  },
+  "chatgptFoldersNoConversation": {
+    "message": "请先打开一个已保存的对话。临时对话无法归档。",
+    "description": "ChatGPT folder panel status when no saved conversation is open to add"
+  },
+  "chatgptFoldersAdded": {
+    "message": "已添加到文件夹。",
+    "description": "ChatGPT folder panel status after filing the open conversation"
+  },
+  "chatgptFoldersAlreadyFiled": {
+    "message": "已在此文件夹中。",
+    "description": "ChatGPT folder panel status when the open conversation is already in that folder"
+  },
+  "chatgptFoldersImportWrongSite": {
+    "message": "此文件包含其他网站的文件夹，因此未导入任何内容。",
+    "description": "ChatGPT folder import error when the file holds conversations from another site"
+  },
+  "chatgptFoldersUntitled": {
+    "message": "未命名对话",
+    "description": "Title used for a filed ChatGPT conversation whose title could not be read"
+  },
   "responseCompleteNotification": {
     "message": "Gemini 思考完成通知",
     "description": "Gemini 回答完成系统通知开关"

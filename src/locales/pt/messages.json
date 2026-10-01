@@ -2577,6 +2577,34 @@
     "message": "Adicionar a conversa atual aqui",
     "description": "Floating folder panel folder menu item that files the open conversation into that folder"
   },
+  "chatgptFoldersAddCurrent": {
+    "message": "Adicionar a conversa atual",
+    "description": "ChatGPT folder panel header button that files the open conversation at the top level"
+  },
+  "chatgptFoldersHint": {
+    "message": "Para arquivar uma conversa: abra-a e clique no botão de marcador ou clique com o botão direito em uma pasta.",
+    "description": "ChatGPT folder panel hint explaining how to file a conversation"
+  },
+  "chatgptFoldersNoConversation": {
+    "message": "Abra primeiro uma conversa salva. Chats temporários não podem ser arquivados.",
+    "description": "ChatGPT folder panel status when no saved conversation is open to add"
+  },
+  "chatgptFoldersAdded": {
+    "message": "Adicionada à pasta.",
+    "description": "ChatGPT folder panel status after filing the open conversation"
+  },
+  "chatgptFoldersAlreadyFiled": {
+    "message": "Já está nesta pasta.",
+    "description": "ChatGPT folder panel status when the open conversation is already in that folder"
+  },
+  "chatgptFoldersImportWrongSite": {
+    "message": "Este arquivo contém pastas de outro site, então nada foi importado.",
+    "description": "ChatGPT folder import error when the file holds conversations from another site"
+  },
+  "chatgptFoldersUntitled": {
+    "message": "Conversa sem título",
+    "description": "Title used for a filed ChatGPT conversation whose title could not be read"
+  },
   "folder_new_chat_in_folder": {
     "message": "Novo chat nesta pasta",
     "description": "Folder context menu item to create a new chat and auto-assign it to this folder"

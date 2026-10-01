@@ -2581,6 +2581,34 @@
     "message": "Add current conversation here",
     "description": "Floating folder panel folder menu item that files the open conversation into that folder"
   },
+  "chatgptFoldersAddCurrent": {
+    "message": "Add current conversation",
+    "description": "ChatGPT folder panel header button that files the open conversation at the top level"
+  },
+  "chatgptFoldersHint": {
+    "message": "To file a conversation: open it, then click the bookmark button or right-click a folder.",
+    "description": "ChatGPT folder panel hint explaining how to file a conversation"
+  },
+  "chatgptFoldersNoConversation": {
+    "message": "Open a saved conversation first. Temporary chats can't be filed.",
+    "description": "ChatGPT folder panel status when no saved conversation is open to add"
+  },
+  "chatgptFoldersAdded": {
+    "message": "Added to folder.",
+    "description": "ChatGPT folder panel status after filing the open conversation"
+  },
+  "chatgptFoldersAlreadyFiled": {
+    "message": "Already in this folder.",
+    "description": "ChatGPT folder panel status when the open conversation is already in that folder"
+  },
+  "chatgptFoldersImportWrongSite": {
+    "message": "This file holds folders from another site, so nothing was imported.",
+    "description": "ChatGPT folder import error when the file holds conversations from another site"
+  },
+  "chatgptFoldersUntitled": {
+    "message": "Untitled conversation",
+    "description": "Title used for a filed ChatGPT conversation whose title could not be read"
+  },
   "responseCompleteNotification": {
     "message": "Response completion notifications",
     "description": "Toggle label for response completion system notifications"

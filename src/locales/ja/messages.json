@@ -2577,6 +2577,34 @@
     "message": "現在の会話をここに追加",
     "description": "Floating folder panel folder menu item that files the open conversation into that folder"
   },
+  "chatgptFoldersAddCurrent": {
+    "message": "現在の会話を追加",
+    "description": "ChatGPT folder panel header button that files the open conversation at the top level"
+  },
+  "chatgptFoldersHint": {
+    "message": "会話を整理するには：会話を開き、ブックマークボタンを押すか、フォルダを右クリックします。",
+    "description": "ChatGPT folder panel hint explaining how to file a conversation"
+  },
+  "chatgptFoldersNoConversation": {
+    "message": "先に保存済みの会話を開いてください。一時チャットは追加できません。",
+    "description": "ChatGPT folder panel status when no saved conversation is open to add"
+  },
+  "chatgptFoldersAdded": {
+    "message": "フォルダに追加しました。",
+    "description": "ChatGPT folder panel status after filing the open conversation"
+  },
+  "chatgptFoldersAlreadyFiled": {
+    "message": "すでにこのフォルダにあります。",
+    "description": "ChatGPT folder panel status when the open conversation is already in that folder"
+  },
+  "chatgptFoldersImportWrongSite": {
+    "message": "このファイルには別のサイトのフォルダが含まれているため、何もインポートされませんでした。",
+    "description": "ChatGPT folder import error when the file holds conversations from another site"
+  },
+  "chatgptFoldersUntitled": {
+    "message": "無題の会話",
+    "description": "Title used for a filed ChatGPT conversation whose title could not be read"
+  },
   "folder_new_chat_in_folder": {
     "message": "このフォルダで新規チャット",
     "description": "Folder context menu item to create a new chat and auto-assign it to this folder"

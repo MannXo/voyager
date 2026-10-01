@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
+import { NATIVE_HANDLER_BINDINGS } from '@/pages/content/pluginNativeRegistration';
+
 import { checkPrimitivesAreShippable } from '../../../../scripts/lib/pluginChecks';
 import { validateManifest } from '../manifest/validate';
-import { BUILTIN_PLUGINS } from './index';
+import { activateChatGptFolders } from './chatgptFolders';
+import { BUILTIN_PLUGINS, NATIVE_BUILTIN_PLUGIN_IDS } from './index';
 
 describe('BUILTIN_PLUGINS', () => {
   it('every builtin manifest passes validation', () => {
@@ -120,6 +123,18 @@ describe('BUILTIN_PLUGINS', () => {
       expect(timeline?.i18n?.[locale]?.description, locale).toContain('ChatGPT');
       expect(timeline?.i18n?.[locale]?.settings?.compactView?.label, locale).toBeTruthy();
     }
+  });
+
+  it('binds ChatGPT folders, a ChatGPT-only native plugin, to its activate handler', () => {
+    const folders = BUILTIN_PLUGINS.find((m) => m.id === 'voyager.chatgpt-folders');
+    expect(folders?.matches).toEqual(['https://chatgpt.com/*', 'https://chat.openai.com/*']);
+    expect(folders?.contributes).toEqual({});
+    expect(folders?.i18n?.zh?.name).toBe('ChatGPT · 文件夹');
+    // Manifest -> handler and handler -> manifest.
+    expect(NATIVE_BUILTIN_PLUGIN_IDS).toContain('voyager.chatgpt-folders');
+    expect(NATIVE_HANDLER_BINDINGS['voyager.chatgpt-folders']).toEqual({
+      activate: activateChatGptFolders,
+    });
   });
 
   it('does not expose the retired Claude usage plugin', () => {

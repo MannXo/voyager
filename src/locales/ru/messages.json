@@ -2577,6 +2577,34 @@
     "message": "Добавить текущий диалог сюда",
     "description": "Floating folder panel folder menu item that files the open conversation into that folder"
   },
+  "chatgptFoldersAddCurrent": {
+    "message": "Добавить текущий диалог",
+    "description": "ChatGPT folder panel header button that files the open conversation at the top level"
+  },
+  "chatgptFoldersHint": {
+    "message": "Чтобы добавить диалог: откройте его и нажмите кнопку закладки или щёлкните папку правой кнопкой.",
+    "description": "ChatGPT folder panel hint explaining how to file a conversation"
+  },
+  "chatgptFoldersNoConversation": {
+    "message": "Сначала откройте сохранённый диалог. Временные чаты добавить нельзя.",
+    "description": "ChatGPT folder panel status when no saved conversation is open to add"
+  },
+  "chatgptFoldersAdded": {
+    "message": "Добавлено в папку.",
+    "description": "ChatGPT folder panel status after filing the open conversation"
+  },
+  "chatgptFoldersAlreadyFiled": {
+    "message": "Уже в этой папке.",
+    "description": "ChatGPT folder panel status when the open conversation is already in that folder"
+  },
+  "chatgptFoldersImportWrongSite": {
+    "message": "В этом файле папки с другого сайта, поэтому ничего не импортировано.",
+    "description": "ChatGPT folder import error when the file holds conversations from another site"
+  },
+  "chatgptFoldersUntitled": {
+    "message": "Диалог без названия",
+    "description": "Title used for a filed ChatGPT conversation whose title could not be read"
+  },
   "folder_new_chat_in_folder": {
     "message": "Новый чат в этой папке",
     "description": "Folder context menu item to create a new chat and auto-assign it to this folder"

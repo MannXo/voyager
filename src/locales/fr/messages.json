@@ -2577,6 +2577,34 @@
     "message": "Ajouter la conversation actuelle ici",
     "description": "Floating folder panel folder menu item that files the open conversation into that folder"
   },
+  "chatgptFoldersAddCurrent": {
+    "message": "Ajouter la conversation actuelle",
+    "description": "ChatGPT folder panel header button that files the open conversation at the top level"
+  },
+  "chatgptFoldersHint": {
+    "message": "Pour classer une conversation : ouvrez-la, puis cliquez sur le bouton signet ou faites un clic droit sur un dossier.",
+    "description": "ChatGPT folder panel hint explaining how to file a conversation"
+  },
+  "chatgptFoldersNoConversation": {
+    "message": "Ouvrez d'abord une conversation enregistrée. Les discussions temporaires ne peuvent pas être classées.",
+    "description": "ChatGPT folder panel status when no saved conversation is open to add"
+  },
+  "chatgptFoldersAdded": {
+    "message": "Ajoutée au dossier.",
+    "description": "ChatGPT folder panel status after filing the open conversation"
+  },
+  "chatgptFoldersAlreadyFiled": {
+    "message": "Déjà dans ce dossier.",
+    "description": "ChatGPT folder panel status when the open conversation is already in that folder"
+  },
+  "chatgptFoldersImportWrongSite": {
+    "message": "Ce fichier contient des dossiers d'un autre site ; rien n'a été importé.",
+    "description": "ChatGPT folder import error when the file holds conversations from another site"
+  },
+  "chatgptFoldersUntitled": {
+    "message": "Conversation sans titre",
+    "description": "Title used for a filed ChatGPT conversation whose title could not be read"
+  },
   "folder_new_chat_in_folder": {
     "message": "Nouvelle conversation dans ce dossier",
     "description": "Folder context menu item to create a new chat and auto-assign it to this folder"

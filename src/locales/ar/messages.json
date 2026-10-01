@@ -2577,6 +2577,34 @@
     "message": "أضف المحادثة الحالية هنا",
     "description": "Floating folder panel folder menu item that files the open conversation into that folder"
   },
+  "chatgptFoldersAddCurrent": {
+    "message": "أضف المحادثة الحالية",
+    "description": "ChatGPT folder panel header button that files the open conversation at the top level"
+  },
+  "chatgptFoldersHint": {
+    "message": "لحفظ محادثة في مجلد: افتحها، ثم انقر زر الإشارة المرجعية أو انقر بزر الفأرة الأيمن على مجلد.",
+    "description": "ChatGPT folder panel hint explaining how to file a conversation"
+  },
+  "chatgptFoldersNoConversation": {
+    "message": "افتح محادثة محفوظة أولاً. لا يمكن حفظ المحادثات المؤقتة في مجلد.",
+    "description": "ChatGPT folder panel status when no saved conversation is open to add"
+  },
+  "chatgptFoldersAdded": {
+    "message": "تمت الإضافة إلى المجلد.",
+    "description": "ChatGPT folder panel status after filing the open conversation"
+  },
+  "chatgptFoldersAlreadyFiled": {
+    "message": "موجودة بالفعل في هذا المجلد.",
+    "description": "ChatGPT folder panel status when the open conversation is already in that folder"
+  },
+  "chatgptFoldersImportWrongSite": {
+    "message": "يحتوي هذا الملف على مجلدات من موقع آخر، لذلك لم يتم استيراد أي شيء.",
+    "description": "ChatGPT folder import error when the file holds conversations from another site"
+  },
+  "chatgptFoldersUntitled": {
+    "message": "محادثة بلا عنوان",
+    "description": "Title used for a filed ChatGPT conversation whose title could not be read"
+  },
   "folder_new_chat_in_folder": {
     "message": "محادثة جديدة في هذا المجلد",
     "description": "Folder context menu item to create a new chat and auto-assign it to this folder"

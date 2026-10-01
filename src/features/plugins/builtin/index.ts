@@ -411,6 +411,64 @@ export const BUILTIN_PLUGINS: readonly PluginManifest[] = [
     matches: ['https://chatgpt.com/*', 'https://chat.openai.com/*'],
     contributes: {},
   },
+  {
+    id: 'voyager.chatgpt-folders',
+    name: 'ChatGPT · Folders',
+    version: '1.0.0',
+    description:
+      'Organize ChatGPT conversations into folders in a floating panel, with import and export.',
+    i18n: {
+      zh: {
+        name: 'ChatGPT · 文件夹',
+        description: '在浮动面板中用文件夹整理 ChatGPT 对话，支持导入和导出。',
+      },
+      zh_TW: {
+        name: 'ChatGPT · 資料夾',
+        description: '在浮動面板中用資料夾整理 ChatGPT 對話，支援匯入與匯出。',
+      },
+      ja: {
+        name: 'ChatGPT · フォルダ',
+        description:
+          'フローティングパネルで ChatGPT の会話をフォルダに整理できます。インポートとエクスポートにも対応。',
+      },
+      ko: {
+        name: 'ChatGPT · 폴더',
+        description:
+          '플로팅 패널에서 ChatGPT 대화를 폴더로 정리합니다. 가져오기와 내보내기를 지원합니다.',
+      },
+      fr: {
+        name: 'ChatGPT · Dossiers',
+        description:
+          'Classez vos conversations ChatGPT dans des dossiers depuis un panneau flottant, avec import et export.',
+      },
+      es: {
+        name: 'ChatGPT · Carpetas',
+        description:
+          'Organiza las conversaciones de ChatGPT en carpetas desde un panel flotante, con importación y exportación.',
+      },
+      pt: {
+        name: 'ChatGPT · Pastas',
+        description:
+          'Organize as conversas do ChatGPT em pastas num painel flutuante, com importação e exportação.',
+      },
+      ru: {
+        name: 'ChatGPT · Папки',
+        description:
+          'Раскладывайте диалоги ChatGPT по папкам в плавающей панели, с импортом и экспортом.',
+      },
+      ar: {
+        name: 'ChatGPT · المجلدات',
+        description: 'نظّم محادثات ChatGPT في مجلدات من لوحة عائمة، مع الاستيراد والتصدير.',
+      },
+    },
+    author: 'voyager-official',
+    category: 'productivity',
+    license: 'GPL-3.0-or-later',
+    engine: '>=1.2.0',
+    tier: 'declarative',
+    matches: ['https://chatgpt.com/*', 'https://chat.openai.com/*'],
+    contributes: {},
+  },
 ];
 
 /**
