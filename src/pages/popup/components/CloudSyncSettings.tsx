@@ -765,17 +765,17 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
         const nextTimelineHierarchy = shouldOverwrite
           ? cloudTimelineHierarchyData
           : mergeTimelineHierarchy(localTimelineHierarchy, cloudTimelineHierarchyData);
-        await restoreBackupableSyncSettings(
-          cloudSettingsPayload?.data,
-          undefined,
-          shouldOverwrite ? 'overwrite' : 'merge',
-        );
         if (cloudPluginsPayload?.format === 'gemini-voyager.plugins.v1') {
           await restorePluginState(
             cloudPluginsPayload.data,
             shouldOverwrite ? 'overwrite' : 'merge',
           );
         }
+        await restoreBackupableSyncSettings(
+          cloudSettingsPayload?.data,
+          undefined,
+          shouldOverwrite ? 'overwrite' : 'merge',
+        );
 
         console.log(
           '[CloudSyncSettings] Resolved folders count:',

@@ -118,7 +118,12 @@ export async function loadPluginState(): Promise<PluginStateMap> {
   }
 }
 
-/** Restore plugin state downloaded from Drive. Cloud entries win on merge. */
+/**
+ * Restore plugin state downloaded from Drive. Cloud entries win on merge.
+ * A merge reads local state strictly: if that read fails the restore rejects
+ * and writes nothing, rather than writing the cloud entries alone and dropping
+ * every local-only plugin's state.
+ */
 export async function restorePluginState(
   value: unknown,
   mode: PluginStateRestoreMode = 'merge',
@@ -137,7 +142,7 @@ export async function restorePluginState(
     mode === 'overwrite'
       ? cloudState
       : {
-          ...(await loadPluginState()),
+          ...(await readPluginStateStrict(local)),
           ...cloudState,
         };
   await local.set({ [KEY]: next });

@@ -90,6 +90,15 @@ describe('cloud plugin-state restore', () => {
     });
   });
 
+  it('rejects a merge restore when local state cannot be read, keeping local-only entries', async () => {
+    (chrome.storage.local.get as unknown as Mock).mockRejectedValue(new Error('get failed'));
+
+    await expect(
+      restorePluginState({ cloud: { enabled: true, installedAt: 4 } }, 'merge'),
+    ).rejects.toThrow('get failed');
+    expect(chrome.storage.local.set).not.toHaveBeenCalled();
+  });
+
   it('replaces local plugin state in overwrite mode', async () => {
     await restorePluginState(
       { cloud: { enabled: false, installedAt: 5, settings: { compact: true } } },
