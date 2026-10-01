@@ -44,7 +44,12 @@ export type PromptLibraryOp =
   /** Put the listed prompts in this order, in the places they hold; others stay put. */
   | { kind: 'reorder'; ids: string[] }
   /** The prompts import: merge by id or text, as `mergeImportedPrompts` does. */
-  | { kind: 'import'; items: PromptItem[] };
+  | { kind: 'import'; items: PromptItem[] }
+  /**
+   * The one-time copy of a page's legacy localStorage library: stored as given,
+   * and only while the key holds nothing at all.
+   */
+  | { kind: 'seed'; items: unknown[] };
 
 export interface PromptLibraryResult {
   /** Prompts the op added. */
@@ -55,6 +60,8 @@ export interface PromptLibraryResult {
   total: number;
   /** Prompts whose name another prompt also uses, after the op. */
   nameConflicts: number;
+  /** The library as stored after the op, for a writer to adopt as its state. */
+  items: unknown[];
 }
 
 export interface PromptLibraryOwner {
@@ -91,6 +98,7 @@ function summarize(items: unknown[], added: number, skipped: number): PromptLibr
     skipped,
     total: items.length,
     nameConflicts: getPromptNameConflictIds(namedPrompts(items)).size,
+    items,
   };
 }
 
@@ -171,6 +179,7 @@ function importPrompts(stored: unknown[], incoming: PromptItem[], now: number) {
       skipped: merged.duplicates,
       total: merged.total,
       nameConflicts: merged.nameConflicts,
+      items: merged.items,
     },
   };
 }
@@ -191,6 +200,11 @@ export function applyPromptLibraryOp(
       return reorderPrompts(stored, op.ids);
     case 'import':
       return importPrompts(stored, op.items, now);
+    case 'seed':
+      // Only reached for an empty library; the owner checks the raw value first.
+      return stored.length === 0
+        ? { items: op.items, result: summarize(op.items, op.items.length, 0) }
+        : { items: null, result: summarize(stored, 0, op.items.length) };
   }
 }
 
@@ -207,12 +221,26 @@ export function createPromptLibraryOwner(options: {
     return next;
   };
 
+  const readRaw = async (): Promise<unknown> =>
+    (await options.area.get(PROMPT_LIBRARY_KEY))?.[PROMPT_LIBRARY_KEY];
+
   const readStored = async (): Promise<unknown[]> => {
-    const stored = (await options.area.get(PROMPT_LIBRARY_KEY))?.[PROMPT_LIBRARY_KEY];
+    const stored = await readRaw();
     if (stored === undefined) return [];
     if (!Array.isArray(stored)) throw new Error('The prompt library is not a list');
     return stored;
   };
+
+  /** A seed never replaces anything stored, a non-list included, as the migration always skipped it. */
+  const seed = (items: unknown[]): Promise<PromptLibraryResult> =>
+    serialize(async () => {
+      const stored = await readRaw();
+      if (stored !== undefined) {
+        return summarize(Array.isArray(stored) ? stored : [], 0, items.length);
+      }
+      await options.area.set({ [PROMPT_LIBRARY_KEY]: items });
+      return summarize(items, items.length, 0);
+    });
 
   const transact = <T>(
     change: (stored: unknown[]) => { items: unknown[] | null; result: T },
@@ -224,7 +252,10 @@ export function createPromptLibraryOwner(options: {
     });
 
   return {
-    apply: (op) => transact((stored) => applyPromptLibraryOp(stored, op, now())),
+    apply: (op) =>
+      op.kind === 'seed'
+        ? seed(op.items)
+        : transact((stored) => applyPromptLibraryOp(stored, op, now())),
     read: () => serialize(readStored),
     transact,
   };

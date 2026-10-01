@@ -89,8 +89,14 @@ describe('prompt library owner', () => {
       ],
     });
 
-    expect(result).toEqual({ added: 1, skipped: 4, total: 3, nameConflicts: 0 });
-    expect(stored()).toEqual([prompt('d', 'Fresh one', { name: 'Fresh' }), ...original]);
+    expect(result).toEqual({
+      added: 1,
+      skipped: 4,
+      total: 3,
+      nameConflicts: 0,
+      items: [prompt('d', 'Fresh one', { name: 'Fresh' }), ...original],
+    });
+    expect(stored()).toEqual(result.items);
     expect(writes()).toBe(1);
 
     await owner.apply({ kind: 'add', items: [prompt('z', 'alpha')] });
@@ -128,7 +134,79 @@ describe('prompt library owner', () => {
     const expected = mergeImportedPrompts(structuredClone(library), structuredClone(incoming), 50);
 
     expect(stored()).toEqual(expected.items);
-    expect(result).toEqual({ added: 1, skipped: 1, total: 3, nameConflicts: 0 });
+    expect(result).toEqual({
+      added: 1,
+      skipped: 1,
+      total: 3,
+      nameConflicts: 0,
+      items: expected.items,
+    });
+  });
+
+  it('stamps every prompt one import adds with one time, and keeps the library newest first', async () => {
+    // Accepted on purpose: a batch shares one `now` rather than reading the clock per prompt.
+    const { area, stored } = memoryArea([
+      prompt('old', 'Old', { createdAt: 10 }),
+      prompt('older', 'Older', { createdAt: 5 }),
+    ]);
+    let clock = 100;
+    const owner = createPromptLibraryOwner({ area, now: () => clock++ });
+
+    await owner.apply({
+      kind: 'import',
+      items: [prompt('n1', 'New one', { createdAt: 1 }), prompt('n2', 'New two', { createdAt: 2 })],
+    });
+
+    const items = stored() as PromptItem[];
+    expect(items.map((item) => [item.id, item.createdAt])).toEqual([
+      ['n1', 100],
+      ['n2', 100],
+      ['old', 10],
+      ['older', 5],
+    ]);
+  });
+
+  it('seeds an empty library once, keeping legacy records as they were', async () => {
+    const legacy = [{ id: 'l', text: 'Legacy', tags: [], createdAt: 1, extra: 'kept' }];
+    const empty = memoryArea();
+    const owner = createPromptLibraryOwner({ area: empty.area });
+
+    await expect(owner.apply({ kind: 'seed', items: legacy })).resolves.toMatchObject({
+      added: 1,
+      items: legacy,
+    });
+    await owner.apply({ kind: 'seed', items: [{ id: 'other', text: 'Other' }] });
+    expect(empty.stored()).toEqual(legacy);
+
+    for (const existing of [[], [prompt('a', 'A')], { not: 'a list' }]) {
+      const area = memoryArea(existing);
+      await createPromptLibraryOwner({ area: area.area }).apply({ kind: 'seed', items: legacy });
+      expect(area.stored()).toEqual(existing);
+      expect(area.writes()).toBe(0);
+    }
+  });
+
+  it('goes on with the next op after a write fails', async () => {
+    const { area, stored } = memoryArea([prompt('a', 'A')]);
+    const set = area.set;
+    let failNext = true;
+    area.set = async (items) => {
+      if (failNext) {
+        failNext = false;
+        throw new Error('Quota exceeded');
+      }
+      return set(items);
+    };
+    const owner = createPromptLibraryOwner({ area });
+
+    const [failed, next] = await Promise.allSettled([
+      owner.apply({ kind: 'add', items: [prompt('b', 'B')] }),
+      owner.apply({ kind: 'add', items: [prompt('c', 'C')] }),
+    ]);
+
+    expect(failed.status).toBe('rejected');
+    expect(next.status).toBe('fulfilled');
+    expect(stored()).toEqual([prompt('c', 'C'), prompt('a', 'A')]);
   });
 
   it('never overwrites a stored value that is not a list, and goes on with the next op', async () => {
@@ -156,7 +234,7 @@ describe('prompt library owner', () => {
     ];
 
     await expect(Promise.all(pending)).resolves.toEqual([
-      { added: 1, skipped: 0, total: 1, nameConflicts: 0 },
+      { added: 1, skipped: 0, total: 1, nameConflicts: 0, items: [prompt('t', 'Template')] },
       1,
     ]);
     expect(stored()).toEqual([prompt('t', 'Template'), prompt('d', 'From Drive')]);
@@ -179,9 +257,25 @@ describe('prompt library messages', () => {
       { kind: 'update', id: 'a', changes: { pinnedAt: 'now' } },
       { kind: 'delete' },
       { kind: 'reorder', ids: ['a', 1] },
+      { kind: 'seed', items: ['not a record'] },
+      { kind: 'add', items: [prompt('x'.repeat(1025), 'Long id')] },
+      { kind: 'add', items: [prompt('a', 'A', { tags: ['t'.repeat(1025)] })] },
+      {
+        kind: 'add',
+        items: [prompt('a', 'A', { tags: Array.from({ length: 1001 }, (_, i) => `${i}`) })],
+      },
+      { kind: 'update', id: 'a', changes: { text: 'x'.repeat(10 * 1024 * 1024 + 1) } },
     ]) {
       expect(parsePromptLibraryOp(op)).toBeNull();
     }
+  });
+
+  it('refuses an op over the byte budget, counting multibyte text as UTF-8', () => {
+    // Each prompt fits on its own; together they pass 32 MiB only as UTF-8.
+    const text = '字'.repeat(3 * 1024 * 1024);
+    const items = [prompt('a', text), prompt('b', text), prompt('c', text), prompt('d', text)];
+    expect(parsePromptLibraryOp({ kind: 'import', items })).toBeNull();
+    expect(parsePromptLibraryOp({ kind: 'import', items: items.slice(0, 3) })).not.toBeNull();
   });
 
   it('accepts every prompt the prompts import accepts', () => {
@@ -213,6 +307,7 @@ describe('prompt library messages', () => {
       skipped: 0,
       total: 1,
       nameConflicts: 0,
+      items: [prompt('a', 'A')],
     });
     expect(stored()).toEqual([prompt('a', 'A')]);
 
