@@ -1,11 +1,14 @@
 import path from 'path';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/tests/setup.ts'],
+    // Agent and local worktrees are full checkouts inside the repo; their
+    // copies of the suite belong to their own runs.
+    exclude: [...configDefaults.exclude, '.claude/worktrees/**', '.worktrees/**'],
     // Vitest stubs CSS imports to '' unless the file is listed here, which
     // also swallows `?raw` imports. The bundled plugin catalog is plain CSS
     // read as text, so let Vite serve it for real; app CSS stays stubbed.
