@@ -460,9 +460,12 @@ devices: the pusher sets Drive, a puller keeps its own order`).
   edit time; tags still union. Every unpin writes `pinnedAt: null`, and a winner's `null` unpins.
   An absent `pinnedAt` means "no pin information" and keeps the local pin: 1.9.0 and earlier drop
   the field on every unpinned prompt and stamp their merge time as `updatedAt`, so treating
-  absence as an unpin let one pull from an older device unpin everything. Those versions read
-  `null` as unpinned (`isPinned` checks for a number; no validator looks at the field). Do not
-  strip `null` in a parser or serializer. Pinning must keep bumping `updatedAt`, or a pin loses
+  absence as an unpin let one pull from an older device unpin everything. Those versions show
+  `null` as unpinned and keep the prompt (`isPinned` checks for a number; their library
+  validators do not read the field), but their file parser drops `null` and their merge still
+  stamps its run time as `updatedAt`. So until an old device updates, its pushed copy can revive
+  a pin removed elsewhere or overwrite a newer edit. Do not strip `null` in a parser or
+  serializer. Pinning must keep bumping `updatedAt`, or a pin loses
   to the older copy. An added prompt keeps the times it came with. A copy without `createdAt`
   gets 0 from the file parser, the oldest edit time, so it never beats a timestamped copy; the
   field stays a number because every prompt validator, old and new, requires one. Known limit:
