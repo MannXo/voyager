@@ -77,12 +77,16 @@ function hasTemplateTag(value: unknown): boolean {
   );
 }
 
-// Control characters other than tab and newline have no place in a name or an
-// instruction; a name is a single line.
+// Control characters other than tab and newline have no place in an instruction.
 // oxlint-disable-next-line no-control-regex -- matching control characters is the point
 const TEXT_CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
-// oxlint-disable-next-line no-control-regex -- matching control characters is the point
-const NAME_CONTROL = /[\u0000-\u001F\u007F]/;
+// A name is one visible line that tells templates apart, so it also refuses
+// what renders as nothing or reorders what follows: format characters
+// (zero-width spaces and joiners, soft hyphens, BOM, bidi marks, embeddings,
+// overrides and isolates), line and paragraph separators, and the blank
+// Hangul fillers. Otherwise "Trusted" and "Trusted" plus a zero-width space
+// would show as the same name.
+const NAME_FORBIDDEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u034F\u115F\u1160\u3164\uFFA0]/u;
 
 function normalizeNewlines(text: string): string {
   return text.replace(/\r\n?/g, '\n');
@@ -99,7 +103,7 @@ export function checkTemplateDraft(name: unknown, text: unknown): TemplateDraft 
   const cleanText = normalizeNewlines(text).trim();
   if (!cleanName || cleanName.length > RESEARCH_PACK_TEMPLATE_LIMITS.maxNameChars) return null;
   if (!cleanText || cleanText.length > RESEARCH_PACK_TEMPLATE_LIMITS.maxTextChars) return null;
-  if (NAME_CONTROL.test(cleanName) || TEXT_CONTROL.test(cleanText)) return null;
+  if (NAME_FORBIDDEN.test(cleanName) || TEXT_CONTROL.test(cleanText)) return null;
   return { name: cleanName, text: cleanText };
 }
 

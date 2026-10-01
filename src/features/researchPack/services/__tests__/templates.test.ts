@@ -118,6 +118,35 @@ describe('research pack template files', () => {
     }
   });
 
+  it('rejects names with invisible or direction-changing characters that could pass for another', () => {
+    const named = (name: string) => fileOf([{ name, text: 'Body', tags: [TAG] }]);
+    for (const name of [
+      'Trusted\u200B',
+      'Tru\u200Dsted',
+      'Tru\uFEFFsted',
+      'Trus\u00ADted',
+      'Trusted\u2060',
+      '\u202ETrusted',
+      '\u2066Trusted\u2069',
+      'Trusted\u200F',
+      'Trusted\u2028more',
+      'Trusted\u3164',
+    ]) {
+      expect(parseTemplateFile(named(name))).toEqual({ ok: false, error: 'invalid_template' });
+    }
+    // Right-to-left script and emoji are ordinary characters.
+    for (const name of ['مراجعة الأدبيات', '📚 Review', 'Café Review']) {
+      expect(parseTemplateFile(named(name))).toEqual({
+        ok: true,
+        templates: [{ name, text: 'Body' }],
+      });
+    }
+    // Only names: an instruction may carry a direction mark for mixed-script text.
+    expect(
+      parseTemplateFile(fileOf([{ name: 'Mixed', text: 'abc \u200F עברית', tags: [TAG] }])).ok,
+    ).toBe(true);
+  });
+
   it('writes one template in the prompts format that the popup import also accepts', () => {
     const content = buildTemplateFile(
       { name: 'Review', text: 'Compare the sources.' },
