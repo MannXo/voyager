@@ -75,6 +75,8 @@ let isEnabled = false;
 let observer: MutationObserver | null = null;
 let inputLookupFrame: number | null = null;
 let composerFocusListener: ((event: Event) => void) | null = null;
+/** Bumped on enable and disable so restores started earlier stop at their next step. */
+let restoreGeneration = 0;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let sendCheckTimer: ReturnType<typeof setInterval> | null = null;
 let stopRouteWatcher: (() => void) | null = null;
@@ -449,11 +451,16 @@ function stopSendDetection(): void {
 /**
  * Attempt to restore a draft for the current conversation.
  */
-async function restoreDraft(): Promise<void> {
+async function restoreDraft(generation = restoreGeneration): Promise<void> {
+  // Every continuation re-checks this: a restore that outlives disable or
+  // cleanup must not rebind the input or write a draft into it.
+  const isCurrent = () => isEnabled && generation === restoreGeneration;
+  if (!isCurrent()) return;
   const path = getConversationPath();
   if (hasRestoredForCurrentPath && path === currentPath) return;
 
   const savedContent = await loadDraft(path);
+  if (!isCurrent()) return;
   if (path !== currentPath || path !== getConversationPath()) return;
 
   const content = savedContent ? stripInstructionBlock(savedContent).trim() : null;
@@ -464,6 +471,7 @@ async function restoreDraft(): Promise<void> {
 
   // Wait for the input to be available
   const tryRestore = (attempts: number) => {
+    if (!isCurrent()) return;
     if (path !== currentPath || path !== getConversationPath()) return;
 
     const input = findChatInput();
@@ -522,7 +530,8 @@ function startUrlWatcher(): void {
       hasRestoredForCurrentPath = false;
 
       // Restore draft for the new page after a short delay
-      setTimeout(() => restoreDraft(), RESTORE_DELAY_MS);
+      const generation = restoreGeneration;
+      setTimeout(() => restoreDraft(generation), RESTORE_DELAY_MS);
     }
   });
 }
@@ -620,6 +629,7 @@ function enableFeature(): void {
   if (isEnabled) return;
 
   isEnabled = true;
+  restoreGeneration += 1;
   currentPath = getConversationPath();
   lastSavedContent = '';
   hasRestoredForCurrentPath = false;
@@ -646,6 +656,7 @@ function disableFeature(): void {
   if (!isEnabled) return;
 
   isEnabled = false;
+  restoreGeneration += 1;
 
   if (saveTimer) {
     clearTimeout(saveTimer);

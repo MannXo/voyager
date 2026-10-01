@@ -653,3 +653,16 @@ drop, or hover layout.
 - **Guard:** `src/pages/content/draftSave/__tests__/draftSave.test.ts`
   (`saves typing in the composer the user focuses`,
   `rebinds to the visible composer on the next send-detection check`).
+
+## Delayed draft restoration must not outlive draft auto-save
+
+- **Trap:** Draft restoration waits on `loadDraft()`, up to five retries for the composer and a
+  route-change delay. Those continuations only checked the route, so a restore pending when the
+  feature was disabled or cleaned up rebound the input listener and wrote the draft into the
+  composer; drafts kept saving while the setting was off, and a second cleanup returned early.
+- **Rule:** `restoreDraft` captures `restoreGeneration`, which enable and disable bump, and every
+  continuation (after the load, each retry, the route-change timer) stops unless the feature is
+  still enabled in the same generation.
+- **Guard:** `src/pages/content/draftSave/__tests__/draftSave.test.ts`
+  (`does not rebind or restore when a retry fires after stopping`,
+  `does not rebind or restore when the draft load resolves after stopping`).

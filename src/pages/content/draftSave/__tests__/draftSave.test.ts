@@ -368,6 +368,64 @@ describe('draftSave', () => {
     cleanup();
   });
 
+  describe('a restore still pending when the feature stops', () => {
+    const draftKey = 'gvDraft_/app/test-conversation-123';
+
+    function seedDraft(): void {
+      localStore[draftKey] = {
+        content: 'My saved draft',
+        timestamp: Date.now(),
+        path: '/app/test-conversation-123',
+      };
+    }
+
+    function expectInert(input: HTMLElement): void {
+      expect(document.execCommand).not.toHaveBeenCalled();
+      input.textContent = 'Typed after stopping';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      vi.advanceTimersByTime(2000);
+      expect((localStore[draftKey] as { content: string }).content).toBe('My saved draft');
+    }
+
+    it('does not rebind or restore when a retry fires after stopping', async () => {
+      setupMocks(true);
+      seedDraft();
+      document.execCommand = vi.fn().mockReturnValue(true);
+      const { startDraftSave } = await import('../index');
+      const stop = await startDraftSave();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // The composer has not rendered yet, so restore is waiting on a retry.
+      stop();
+      const input = createContentEditable();
+      await vi.advanceTimersByTimeAsync(5 * 500);
+
+      expectInert(input);
+    });
+
+    it('does not rebind or restore when the draft load resolves after stopping', async () => {
+      setupMocks(true);
+      seedDraft();
+      document.execCommand = vi.fn().mockReturnValue(true);
+      const local = chrome.storage.local as unknown as { get: ReturnType<typeof vi.fn> };
+      const immediateGet = local.get.getMockImplementation() as (
+        key: unknown,
+        callback: (r: unknown) => void,
+      ) => void;
+      local.get.mockImplementation((key: unknown, callback: (r: unknown) => void) => {
+        setTimeout(() => immediateGet(key, callback), 50);
+      });
+      const input = createContentEditable();
+      const { startDraftSave } = await import('../index');
+      const stop = await startDraftSave();
+
+      stop();
+      await vi.advanceTimersByTimeAsync(5 * 500);
+
+      expectInert(input);
+    });
+  });
+
   it('strips folder project instructions from older polluted drafts during restore', async () => {
     vi.useRealTimers();
     setupMocks(true);
