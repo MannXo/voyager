@@ -38,6 +38,8 @@ export interface Marker {
   /** Last-known center offset within the scroll target; reused while unmounted. */
   center: number;
   dotElement: HTMLButtonElement | null;
+  /** Snapshot mode: `element` is a list item whose message is unloaded. */
+  placeholder?: boolean;
 }
 
 export interface MountedTurn {

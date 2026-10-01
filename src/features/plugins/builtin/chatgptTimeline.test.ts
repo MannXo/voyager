@@ -620,6 +620,49 @@ describe('ChatGPT timeline', () => {
     expect(addStarredMessage).not.toHaveBeenCalled();
   });
 
+  it('aims a jump again once the unloaded turn it targets mounts', async () => {
+    const scroller = makeScroller();
+    const target = addExchange(1, 'Scrolled away');
+    addExchange(2, 'Visible');
+    await mount();
+    unmountContent(target);
+    await settle();
+    target.getBoundingClientRect = rect(700);
+
+    dots()[0].click();
+    expect(scroller.scrollTo).toHaveBeenLastCalledWith({ top: 450, behavior: 'smooth' });
+
+    // ChatGPT mounts the message and re-measures the items around it.
+    const content = mountContent(target, 'user', 'Scrolled away');
+    content.getBoundingClientRect = rect(900);
+    await settle(400);
+
+    expect(scroller.scrollTo).toHaveBeenLastCalledWith({ top: 650, behavior: 'smooth' });
+    // Aimed once at the mounted message, then done.
+    vi.clearAllMocks();
+    await settle(2_000);
+    expect(scroller.scrollTo).not.toHaveBeenCalled();
+  });
+
+  it('stops waiting for an unloaded turn that never mounts', async () => {
+    const scroller = makeScroller();
+    const target = addExchange(1, 'Scrolled away');
+    addExchange(2, 'Visible');
+    await mount();
+    unmountContent(target);
+    await settle();
+    target.getBoundingClientRect = rect(700);
+
+    dots()[0].click();
+    expect(scroller.scrollTo).toHaveBeenCalledTimes(1);
+    await settle(10_000);
+    const content = mountContent(target, 'user', 'Scrolled away');
+    content.getBoundingClientRect = rect(900);
+    await settle(400);
+
+    expect(scroller.scrollTo).toHaveBeenCalledTimes(1);
+  });
+
   it('clears the rail when leaving for a page without turns', async () => {
     const first = addExchange(1, 'Question');
     await mount();

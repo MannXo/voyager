@@ -136,6 +136,16 @@ conversation`, `drops a star press whose read was still pending`),
   `src/features/plugins/verbs/turnNavigatorStarIsolation.test.ts` (`drops the previous
 conversation's dots when a star change lands mid-switch`).
 
+## A jump to an unloaded ChatGPT turn aims again when its message mounts
+
+- **Trap:** ChatGPT keeps an empty list item for an unloaded turn and re-measures the items
+  around it when the message mounts, so a jump aimed at the empty item landed off target.
+- **Rule:** Snapshot markers record whether their element is an unloaded item (`placeholder`).
+  A jump to one aims at the item, then the pending-navigation loop waits for the message and
+  aims once more when it mounts; the loop's 8s deadline and wheel/touch cancel still end it.
+- **Guard:** `src/features/plugins/builtin/chatgptTimeline.test.ts` (`aims a jump again once the
+unloaded turn it targets mounts`, `stops waiting for an unloaded turn that never mounts`).
+
 ## Column-reverse scrollers count offsets from the newest turn
 
 - **Trap:** ChatGPT's thread was reported to scroll as a `column-reverse` flex box, where

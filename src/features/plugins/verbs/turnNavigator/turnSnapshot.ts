@@ -126,8 +126,10 @@ export function snapshotMarkers(
         element: turn.element,
         center,
         dotElement: null,
+        placeholder: !turn.content,
       };
     }
+    marker.placeholder = !turn.content;
     marker.element = turn.element;
     marker.summary = turn.summary;
     marker.center = center;

@@ -657,6 +657,11 @@ export class TurnNavigator {
           this.getScrollTop(),
           this.getViewportHeight(),
         );
+        // Aim again once the message mounts: ChatGPT re-measures the items then.
+        if (marker.placeholder) {
+          this.beginPendingNavigation(marker);
+          this.schedulePendingNavigationHop();
+        }
         return;
       }
       // Long jump to a mounted turn: Claude re-measures once the landing region
@@ -736,6 +741,8 @@ export class TurnNavigator {
     }
     this.navigationActiveLockUntil = Date.now() + NAVIGATION_ACTIVE_LOCK_MS;
     if (marker.element.isConnected) {
+      // An unloaded item was already aimed at: wait for its message to mount.
+      if (marker.placeholder) return this.schedulePendingNavigationHop();
       this.clearPendingNavigation();
       scrollElementToAnchor(
         this.getScrollTarget(marker.element),
