@@ -207,6 +207,25 @@ describe('prompt pins through the prompts-only Drive merges', () => {
     expect(pinOf(laptop.stored(), 'b')).toBe(40);
   });
 
+  it('unpins when the newer Drive copy says `pinnedAt: null`', async () => {
+    const local = device(library());
+    await local.pin('a', true, 50);
+
+    await local.pull({
+      format: 'gemini-voyager.prompts.v1',
+      exportedAt: '2026-01-01T00:00:00.000Z',
+      items: [{ id: 'a', text: 'A', tags: [], createdAt: 1, updatedAt: 60, pinnedAt: null }],
+    });
+
+    expect(local.stored().find((item) => item.id === 'a')).toEqual({
+      id: 'a',
+      text: 'A',
+      tags: [],
+      createdAt: 1,
+      updatedAt: 60,
+    });
+  });
+
   it('keeps a newer local pin over an older unpinned copy', async () => {
     const local = device(library());
     await local.pin('a', true, 50);
