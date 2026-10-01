@@ -762,6 +762,26 @@
     "message": "✗ Falha na importação: {error}",
     "description": "Import error message"
   },
+  "conversation_added_to_folder": {
+    "message": "Adicionado a \"{folder}\"",
+    "description": "Notification after a prompt is dropped into a folder"
+  },
+  "conversation_saved_to_root": {
+    "message": "Salvo em Sem categoria",
+    "description": "Notification after a prompt is dropped on Uncategorized"
+  },
+  "folder_default_name": {
+    "message": "Minha pasta",
+    "description": "Name of the folder created when a prompt is dropped and no folder exists"
+  },
+  "folder_import_in_progress": {
+    "message": "Já há uma importação em andamento",
+    "description": "Notice when a folder import is started while another is running"
+  },
+  "folder_export_in_progress": {
+    "message": "Já há uma exportação em andamento",
+    "description": "Notice when a folder export is started while another is running"
+  },
   "folder_save_error": {
     "message": "Não foi possível salvar as alterações nas pastas. Tente novamente.",
     "description": "Shown when folder changes could not be saved"

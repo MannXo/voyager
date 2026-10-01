@@ -12,7 +12,6 @@ import { isSafari } from '@/core/utils/browser';
 import { AISTUDIO_ROOT_BUCKET_ID } from '@/features/folder/constants';
 import { cloneFolderData, ownBucket, validateFolderData } from '@/features/folder/model/folderData';
 import { placeConversations } from '@/features/folder/model/placeConversations';
-import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
 import { createTranslator, initI18n } from '@/utils/i18n';
 import {
   mergeFolderData as mergeSyncedFolderData,
@@ -22,6 +21,7 @@ import {
 import { watchRouteChanges } from '../utils/routeWatcher';
 import type { FolderDataSession } from './FolderDataSession';
 import { FolderRepository, type FolderStoreChange } from './FolderRepository';
+import { mergeAIStudioImport } from './aistudioImport';
 import {
   createInlineFolderEditor,
   createInlineMaterialIcon,
@@ -207,23 +207,6 @@ export function parseDragDataPayload(raw: string): DragData | null {
     url: parsed.url ?? '',
     ...(parsed.sourceFolderId ? { sourceFolderId: parsed.sourceFolderId } : {}),
   };
-}
-
-/**
- * Merge an imported file into a copy of the current data: imported folders are
- * appended, and only their buckets are read, so the file's Uncategorized and
- * orphan buckets are ignored. A new folder's bucket replaces any orphan bucket
- * left under its id; an existing folder gains the prompts it lacks.
- */
-function mergeImportedFolders(current: FolderData, file: FolderData): FolderData {
-  const existing = cloneFolderData(current);
-  const existingIds = new Set(existing.folders.map((folder) => folder.id));
-  const imported: FolderData = { folders: file.folders, folderContents: {} };
-  for (const folder of file.folders) {
-    if (!existingIds.has(folder.id)) delete existing.folderContents[folder.id];
-    imported.folderContents[folder.id] = file.folderContents[folder.id] || [];
-  }
-  return FolderImportExportService.mergeData(existing, imported).merged;
 }
 
 export class AIStudioFolderManager {
@@ -2694,10 +2677,7 @@ export class AIStudioFolderManager {
 
         const saved = await this.save();
         if (!saved || this.accountScopeRequest !== scopeRequest) return;
-        this.showNotification(
-          this.t('conversation_saved_to_root') || 'Saved to Uncategorized',
-          'info',
-        );
+        this.showNotification(this.t('conversation_saved_to_root'), 'info');
       };
 
       rootItem.addEventListener('dragenter', (e) => {
@@ -2725,7 +2705,7 @@ export class AIStudioFolderManager {
       if (this.data.folders.length === 0) {
         const defaultFolder: Folder = {
           id: uid(),
-          name: this.t('folder_default_name') || 'My Folder',
+          name: this.t('folder_default_name'),
           parentId: null,
           isExpanded: true,
           createdAt: now(),
@@ -2805,7 +2785,7 @@ export class AIStudioFolderManager {
           const saved = await this.save();
           if (!saved || this.accountScopeRequest !== scopeRequest) return;
           this.showNotification(
-            `${this.t('conversation_added_to_folder') || 'Added to'} "${folder.name}"`,
+            this.t('conversation_added_to_folder').replace('{folder}', folder.name),
             'info',
           );
         });
@@ -2990,13 +2970,18 @@ export class AIStudioFolderManager {
             alert(this.t('folder_import_invalid_format') || 'Invalid file format');
             return;
           }
-          const saved = await this.replaceData(mergeImportedFolders(this.data, next));
+          const merge = mergeAIStudioImport(this.data, next);
+          const saved = await this.replaceData(merge.data);
           if (this.dataSession !== session || this.accountScopeRequest !== scopeRequest) return;
           if (!saved) return;
-          alert(this.t('folder_import_success') || 'Imported');
-        } catch {
+          alert(
+            this.t('folder_import_success')
+              .replace('{folders}', String(merge.stats.foldersImported))
+              .replace('{conversations}', String(merge.stats.conversationsImported)),
+          );
+        } catch (error) {
           if (this.dataSession !== session || this.accountScopeRequest !== scopeRequest) return;
-          alert(this.t('folder_import_error') || 'Import failed');
+          alert(this.t('folder_import_error').replace('{error}', String(error)));
         }
       },
       { once: true },

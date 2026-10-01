@@ -762,6 +762,26 @@
     "message": "✗ インポート失敗：{error}",
     "description": "Import error message"
   },
+  "conversation_added_to_folder": {
+    "message": "「{folder}」に追加しました",
+    "description": "Notification after a prompt is dropped into a folder"
+  },
+  "conversation_saved_to_root": {
+    "message": "未分類に保存しました",
+    "description": "Notification after a prompt is dropped on Uncategorized"
+  },
+  "folder_default_name": {
+    "message": "マイフォルダ",
+    "description": "Name of the folder created when a prompt is dropped and no folder exists"
+  },
+  "folder_import_in_progress": {
+    "message": "インポートはすでに実行中です",
+    "description": "Notice when a folder import is started while another is running"
+  },
+  "folder_export_in_progress": {
+    "message": "エクスポートはすでに実行中です",
+    "description": "Notice when a folder export is started while another is running"
+  },
   "folder_save_error": {
     "message": "フォルダの変更を保存できませんでした。もう一度お試しください。",
     "description": "Shown when folder changes could not be saved"

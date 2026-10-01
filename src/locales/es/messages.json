@@ -762,6 +762,26 @@
     "message": "✗ Error en la importación: {error}",
     "description": "Import error message"
   },
+  "conversation_added_to_folder": {
+    "message": "Añadido a \"{folder}\"",
+    "description": "Notification after a prompt is dropped into a folder"
+  },
+  "conversation_saved_to_root": {
+    "message": "Guardado en Sin categorizar",
+    "description": "Notification after a prompt is dropped on Uncategorized"
+  },
+  "folder_default_name": {
+    "message": "Mi carpeta",
+    "description": "Name of the folder created when a prompt is dropped and no folder exists"
+  },
+  "folder_import_in_progress": {
+    "message": "Ya hay una importación en curso",
+    "description": "Notice when a folder import is started while another is running"
+  },
+  "folder_export_in_progress": {
+    "message": "Ya hay una exportación en curso",
+    "description": "Notice when a folder export is started while another is running"
+  },
   "folder_save_error": {
     "message": "No se pudieron guardar los cambios en las carpetas. Inténtalo de nuevo.",
     "description": "Shown when folder changes could not be saved"

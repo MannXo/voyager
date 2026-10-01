@@ -762,6 +762,26 @@
     "message": "✗ 가져오기 실패: {error}",
     "description": "Import error message"
   },
+  "conversation_added_to_folder": {
+    "message": "\"{folder}\"에 추가했습니다",
+    "description": "Notification after a prompt is dropped into a folder"
+  },
+  "conversation_saved_to_root": {
+    "message": "미분류에 저장했습니다",
+    "description": "Notification after a prompt is dropped on Uncategorized"
+  },
+  "folder_default_name": {
+    "message": "내 폴더",
+    "description": "Name of the folder created when a prompt is dropped and no folder exists"
+  },
+  "folder_import_in_progress": {
+    "message": "이미 가져오기가 진행 중입니다",
+    "description": "Notice when a folder import is started while another is running"
+  },
+  "folder_export_in_progress": {
+    "message": "이미 내보내기가 진행 중입니다",
+    "description": "Notice when a folder export is started while another is running"
+  },
   "folder_save_error": {
     "message": "폴더 변경 사항을 저장하지 못했습니다. 다시 시도해 주세요.",
     "description": "Shown when folder changes could not be saved"

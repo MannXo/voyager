@@ -607,6 +607,21 @@ drop, or hover layout.
 - **Guard:** `src/pages/content/folder/__tests__/nativeTitleSyncScale.test.ts` checks the id shapes
   that must still match and bounds URL parses on a 1,500-row sidebar.
 
+## Folder messages must use keys that exist and fill every placeholder
+
+- **Trap:** AI Studio's library drop toasts showed `conversation_added_to_folder "Name"` and
+  `conversation_saved_to_root`, and its empty-library folder was saved as `folder_default_name`.
+  The translator returns a missing key unchanged, so the `t(key) || 'English'` fallbacks never
+  ran. The AI Studio import alerts also showed `{folders}`, `{conversations}` and `{error}`
+  literally, because the translator does not interpolate.
+- **Rule:** Every literal key the folder UI translates exists in all 10 locales, and each caller
+  fills its placeholders with `.replace('{name}', value)`. Do not rely on `|| 'fallback'` after
+  `t()`. A message that wraps a value, such as a folder name, takes it as a placeholder so each
+  locale can place it.
+- **Guard:** `src/pages/content/folder/__tests__/folderMessages.test.ts` (`exist in the English
+locale for every literal key the folder UI translates`, `confirms library drops in words`,
+  `reports import results and failures with their values filled in`).
+
 ## Hide-archived membership checks must not scan every stored conversation per row
 
 - **Trap:** With hide-archived on, every sidebar row asked `FolderStore.isConversationInFolders`,

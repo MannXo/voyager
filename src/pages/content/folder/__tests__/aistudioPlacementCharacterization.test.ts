@@ -324,17 +324,13 @@ describe('AI Studio library floating drop zone', () => {
       conversationId: 'p2',
       title: 'P2',
     });
-    // Neither key exists in the locales, so the raw keys show today.
-    expect(manager.showNotification).toHaveBeenCalledWith(
-      'conversation_added_to_folder "Folder b"',
-      'info',
-    );
+    expect(manager.showNotification).toHaveBeenCalledWith('Added to "Folder b"', 'info');
     await dropTargets[1].drop(manager, null, {
       type: 'conversation',
       conversationId: 'p2',
       title: 'P2',
     });
-    expect(manager.showNotification).toHaveBeenLastCalledWith('conversation_saved_to_root', 'info');
+    expect(manager.showNotification).toHaveBeenLastCalledWith('Saved to Uncategorized', 'info');
   });
 });
 
@@ -397,9 +393,8 @@ describe('AI Studio import', () => {
         [ROOT]: [prompt('p4')],
       },
     });
-    expect(alertSpy).toHaveBeenCalledWith(
-      '✓ Imported {folders} folders, {conversations} conversations',
-    );
+    // The counts are what the merge added; the file's duplicates count as they are appended.
+    expect(alertSpy).toHaveBeenCalledWith('✓ Imported 2 folders, 3 conversations');
   });
 
   it('drafts the merge on a copy that shares nothing with live data', async () => {
@@ -470,7 +465,7 @@ describe('AI Studio import', () => {
       'Invalid file format. Please select a valid folder configuration file.',
     );
     await importText(manager, 'not json {}');
-    expect(alertSpy).toHaveBeenLastCalledWith('✗ Import failed: {error}');
+    expect(alertSpy.mock.lastCall?.[0]).toMatch(/^✗ Import failed: SyntaxError: /);
     expect(manager.replaceData).not.toHaveBeenCalled();
     expect(sessionStorage.length).toBe(0);
   });

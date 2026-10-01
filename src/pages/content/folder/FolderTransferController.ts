@@ -63,7 +63,7 @@ export class FolderTransferController {
     const { session } = context;
     if (!session?.ready) return false;
     if (this.importInProgress) {
-      this.host.notify(t('folder_import_in_progress') || 'Import already in progress', 'info');
+      this.host.notify(t('folder_import_in_progress'), 'info');
       return false;
     }
 
@@ -149,7 +149,7 @@ export class FolderTransferController {
   exportFolders(): void {
     // Prevent concurrent exports
     if (this.exportInProgress) {
-      this.host.notify(t('folder_export_in_progress') || 'Export already in progress', 'info');
+      this.host.notify(t('folder_export_in_progress'), 'info');
       return;
     }
 
