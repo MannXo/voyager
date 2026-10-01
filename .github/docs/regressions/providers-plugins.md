@@ -134,44 +134,55 @@ conversation, Projects routes included`).
   URL from after it. Inferring "the thread was swapped" from a disjoint set of turns let a DOM
   that changed under the old URL be starred into it, took a ChatGPT key rename for a swap, and an
   empty refresh mid-switch reset the guard, so the previous thread's remounted turns got through.
+  Every later inference that granted ownership had a counterexample: a new chat's turn (owner
+  null) could be starred into an unrelated conversation opened before it rendered; a turn mounted
+  under the old URL but first seen after the URL changed was given to the new conversation;
+  same-text "renames" and one surviving sibling handed a new thread's turns to the old one.
 - **Rule:** No timing heuristics. In snapshot mode (`turnSnapshot.ts`) the rail is rebuilt from
   the list items in the DOM on every refresh, with labels of unloaded items remembered by the
   host's turn id, and removing an item (even an empty one) triggers a refresh. Merge mode resets
   when the route differs from `markerRouteId`, which only `refresh()` writes. Stars are read and
   written for the id the URL names at that moment (`conversationId.ts`); a site with a
   `conversationIdPattern` cannot star a route that does not match it, so star records never move.
-  A write also needs a refresh to have seen the current route and the pressed turn to belong to
-  the current conversation (`turnOwnership.ts`). A turn gets an owner when first seen and keeps
-  it: the host key in snapshot mode (every turn item, labelled or not, in a bounded map), else the
-  element (WeakMap). Until the route has shown a turn of its own, new turns are its own (merge
-  mode: unless another conversation's turn is on screen or every new element repeats a text of
-  the previous conversation). After that, a new keyed turn needs continuity: another of the
-  route's turns on screen, or a same-text turn that vanished in the previous refresh (a rename);
-  otherwise it is unattributed. Merge mode skips continuity, since a far scroll replaces every
-  element. A new chat's turn (owner null) may be starred under the id the chat gets, which then
-  owns it. A route change seen by a refresh cancels a pending long press. A press fixes its turn,
-  conversation and URL before any await and is dropped if the route changed by the time its read
-  lands. Known limits: ChatGPT turns that appear under the old URL (DOM first) stay unstarrable;
-  in keyed mode, a DOM-first thread that appears while some old turns are still on screen looks
-  like the old thread growing; in merge mode, DOM-first cannot be told from a far scroll; a new
-  chat's turn pressed while the URL already names a conversation opened URL-first is filed there.
+  A write also needs a refresh to have seen the current route and the pressed turn to be owned by
+  the current conversation (`turnOwnership.ts`). Ownership is evidence, not inference: a
+  MutationObserver attached before the first refresh stamps every inserted node with the URL's id
+  at the end of the inserting task, and a turn takes the latest stamp on itself or its ancestors
+  (its list item in snapshot mode, so renames and messages mounting inside old items keep the
+  item's owner). Turns on the page at start take the URL at start. Rules only ever withhold: no
+  id in the URL (new chat), another conversation's or an unattributed turn still on screen, keyed
+  items after the route's own all left, merge-mode texts that all repeat the previous
+  conversation. The first owner is kept (by host key in snapshot mode, in a bounded map, else by
+  element in a WeakMap); nothing adopts a turn. Ambiguous turns are unstarrable, never filed
+  elsewhere. A route change seen by a refresh cancels a pending long press. A press fixes its
+  turn, conversation and URL before any await and is dropped if the route changed by the time its
+  read lands. This proves a turn's conversation only on hosts that change the URL
+  before they render the next thread (measured on ChatGPT, Claude and DeepSeek). Known limits:
+  a DOM-first host, and a navigator started mid-switch, give the old URL's id to the new
+  thread's turns until the URL changes; a new chat's turns stay unstarrable until a reload (keyed)
+  or a re-render (merge); one unattributed turn on screen withholds every later one.
 - **Guard:** `src/features/plugins/verbs/turnNavigator/turnOwnership.test.ts`,
   `src/features/plugins/verbs/turnNavigator/navigatorStars.test.ts`,
   `src/features/plugins/builtin/chatgptTimeline.test.ts` (`shows what is on screen
 while the URL changes before the DOM`, `drops the previous conversation's off-screen turns`,
   `shows the next conversation when its DOM arrives well before the URL`, `keeps the previous
-conversation off the rail when a star change lands mid-switch`, `never moves or deletes a star
-stored under a new-chat id`, `keeps a new chat out of a conversation opened while the new chat is
-still on screen`, `ignores a star press in the moment between a URL change and the next refresh`,
-  `stars only the new conversation's turns while the previous one is still on screen`, `cannot
-star the previous turn under the next id after ChatGPT renamed it`, `cannot star the previous
-conversation after its DOM briefly empties mid-switch`, `cannot star a previous-conversation turn
-that first mounts after the URL changed`, `follows a turn whose list id ChatGPT renames`, `drops a
-press begun in the previous conversation`, `drops a star press whose read was still pending`),
+conversation off the rail when a star change lands mid-switch`, `cannot star a new chat's turns,
+not even under the id ChatGPT gives it`, `keeps a new chat's turns unstarrable after leaving and
+coming back`, `cannot star a new chat turn under a conversation opened before that one renders`,
+  `never moves or deletes a star stored under a new-chat id`, `keeps a new chat out of a
+conversation opened while the new chat is still on screen`, `ignores a star press in the moment
+between a URL change and the next refresh`, `cannot star either conversation's turns while the
+previous one is still on screen`, `cannot star the previous turn under the next id after ChatGPT
+renamed it`, `cannot star the previous conversation after its DOM briefly empties mid-switch`,
+  `cannot star a previous-conversation turn that first mounts after the URL changed`, `follows a
+turn whose list id ChatGPT renames`, `drops a press begun in the previous conversation`, `drops a
+star press whose read was still pending`),
   `src/features/plugins/verbs/turnNavigatorStarIsolation.test.ts` (`drops the previous
 conversation's dots when a star change lands mid-switch`, `cannot star the previous thread after a
-far scroll replaced every mounted turn`, `cannot star the previous thread when its turns remount
-after the DOM briefly empties`, `stars a new chat re-rendered under the id it was given`).
+far scroll replaced every mounted turn`, `cannot star a turn that mounted before the URL named the
+next conversation`, `stars a turn that mounted after the URL named the conversation`, `cannot star
+the previous thread when its turns remount after the DOM briefly empties`, `stars a new chat
+re-rendered under the id it was given`).
 
 ## A jump to an unloaded ChatGPT turn aims again when its message mounts
 

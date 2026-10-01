@@ -6,7 +6,7 @@
  * read. A write needs more than the URL, because hosts change the URL and the
  * thread DOM in separate steps. A write is refused
  *   - before a refresh has seen the current route (`observe`), and
- *   - for a turn the DOM evidence does not give to the current conversation
+ *   - for a turn that did not enter the page under the current conversation
  *     (`turnOwnership.ts`).
  * Each press takes its target, conversation and URL before any await, and is
  * dropped if the route changed by the time the stars it toggles have loaded.
@@ -53,7 +53,17 @@ export class NavigatorStars {
   private readonly owners: TurnOwnership;
 
   constructor(private readonly sources: StarSources) {
-    this.owners = new TurnOwnership(sources.keyedTurns);
+    this.owners = new TurnOwnership(sources.keyedTurns, sources.starId);
+  }
+
+  /** Turns on the page now belong to the URL now; call before `recordInsertions`. */
+  begin(): void {
+    this.owners.begin();
+  }
+
+  /** Stamp what a mutation batch inserted with the conversation the URL names now. */
+  recordInsertions(records: readonly MutationRecord[]): void {
+    this.owners.recordInsertions(records.flatMap((record) => Array.from(record.addedNodes)));
   }
 
   get(hash: string): StarEntry | undefined {
@@ -133,7 +143,6 @@ export class NavigatorStars {
         return false;
       }
     }
-    this.owners.adopt(token, conversationId);
     const existing = this.byHash.get(hash);
     if (existing) {
       this.byHash.delete(hash);

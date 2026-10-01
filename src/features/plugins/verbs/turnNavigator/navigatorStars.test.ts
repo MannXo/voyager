@@ -21,18 +21,30 @@ vi.mock('@/pages/content/timeline/StarredMessagesService', () => ({
 }));
 
 const turn = { id: 'c-same', hash: 'same', summary: 'Same prompt', token: 'item-1' };
-const onScreen = [{ token: turn.token, hash: turn.hash }];
 
 let route: string;
+let stars: NavigatorStars;
 
-function create(): NavigatorStars {
-  return new NavigatorStars({
+function create(starId: () => string | null = () => route): NavigatorStars {
+  stars = new NavigatorStars({
     routeId: () => route,
-    starId: () => route,
+    starId,
     alive: () => true,
     keyedTurns: () => true,
   });
+  stars.begin();
+  return stars;
 }
+
+/** The host inserts a turn item now, under whatever the URL names. */
+function insert(): HTMLElement {
+  const element = document.createElement('div');
+  document.body.appendChild(element);
+  stars.recordInsertions([{ addedNodes: [element] } as unknown as MutationRecord]);
+  return element;
+}
+
+const seen = (token: string, element: Node, hash = 'same') => ({ token, element, hash });
 
 function deferRead(): (messages: StarredMessage[]) => void {
   let release!: (messages: StarredMessage[]) => void;
@@ -46,6 +58,7 @@ function deferRead(): (messages: StarredMessage[]) => void {
 }
 
 beforeEach(() => {
+  document.body.innerHTML = '';
   route = 'site:conv:b';
   addStarredMessage.mockClear();
   getStarredMessagesForConversation.mockClear();
@@ -53,8 +66,8 @@ beforeEach(() => {
 
 describe('navigator star writes', () => {
   it('writes what was pressed, where it was pressed, once the read lands', async () => {
-    const stars = create();
-    stars.observe(onScreen);
+    create();
+    stars.observe([seen(turn.token, insert())]);
     const release = deferRead();
     void stars.load();
 
@@ -72,14 +85,14 @@ describe('navigator star writes', () => {
   });
 
   it('drops a press when the conversation changes while its read is pending', async () => {
-    const stars = create();
-    stars.observe(onScreen);
+    create();
+    stars.observe([seen(turn.token, insert())]);
     const release = deferRead();
     void stars.load();
 
     const toggled = stars.toggle(turn, () => ({ url: 'https://site/c/b', title: 'B' }));
     route = 'site:conv:c';
-    stars.observe([{ token: 'item-c', hash: 'same' }]);
+    stars.observe([seen('item-c', insert())]);
     void stars.load();
     release([]);
 
@@ -88,35 +101,46 @@ describe('navigator star writes', () => {
   });
 
   it('refuses a press before a refresh has seen the current route', () => {
-    route = '/';
-    const stars = new NavigatorStars({
-      routeId: () => route,
-      starId: () => (route.startsWith('site:conv:') ? route : null),
-      alive: () => true,
-      keyedTurns: () => true,
-    });
-    // A new chat's turn: any id it gets may star it, but only once a refresh saw that id.
-    stars.observe([{ token: 'draft-1', hash: 'x' }]);
+    create();
+    stars.observe([seen(turn.token, insert())]);
     route = 'site:conv:c';
-    expect(stars.canStar('draft-1')).toBe(false);
-
-    stars.observe([{ token: 'draft-1', hash: 'x' }]);
-    expect(stars.canStar('draft-1')).toBe(true);
+    expect(stars.canStar(turn.token)).toBe(false);
   });
 
-  it('refuses a turn first seen under another conversation', () => {
-    const stars = create();
-    stars.observe(onScreen);
+  it("never stars a new chat's turn, not even under the id the chat gets", () => {
+    route = '/';
+    create(() => (route.startsWith('site:conv:') ? route : null));
+    const draft = insert();
+    stars.observe([seen('draft-1', draft, 'x')]);
     route = 'site:conv:c';
-    stars.observe([...onScreen, { token: 'item-c', hash: 'other' }]);
+    stars.observe([seen('draft-1', draft, 'x')]);
 
-    expect(stars.canStar('item-1')).toBe(false);
-    expect(stars.canStar('item-c')).toBe(true);
+    expect(stars.canStar('draft-1')).toBe(false);
+  });
+
+  it('refuses a turn that entered the page under another conversation', () => {
+    create();
+    const item = insert();
+    stars.observe([seen(turn.token, item)]);
+    route = 'site:conv:c';
+    // Inserted while B's turn is still on screen: whose it is is not proven.
+    const early = insert();
+    stars.observe([seen(turn.token, item), seen('item-c', early, 'other')]);
+    item.remove();
+    stars.observe([seen('item-c', early, 'other')]);
+    const later = document.createElement('div');
+    early.replaceWith(later);
+    stars.recordInsertions([{ addedNodes: [later] } as unknown as MutationRecord]);
+    stars.observe([seen('item-d', later, 'other')]);
+
+    expect(stars.canStar(turn.token)).toBe(false);
+    expect(stars.canStar('item-c')).toBe(false);
+    expect(stars.canStar('item-d')).toBe(true);
   });
 
   it('writes the turn as it was when pressed, even if the marker changes meanwhile', async () => {
-    const stars = create();
-    stars.observe(onScreen);
+    create();
+    stars.observe([seen(turn.token, insert())]);
     const release = deferRead();
     void stars.load();
     const target = { ...turn };

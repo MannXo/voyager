@@ -490,7 +490,7 @@ describe('ChatGPT timeline', () => {
     expect(labels()).toEqual(['Prompt B']);
   });
 
-  it('cannot star a new chat until ChatGPT gives it an id, then stars under that id', async () => {
+  it("cannot star a new chat's turns, not even under the id ChatGPT gives it", async () => {
     history.replaceState({}, '', '/');
     addExchange(1, 'Brand new chat');
     await mount();
@@ -503,13 +503,61 @@ describe('ChatGPT timeline', () => {
     history.pushState({}, '', '/c/assigned-id');
     await settle(ROUTE_SETTLE_MS);
     expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('chatgpt:conv:assigned-id');
+    // Nothing proves the new chat became this conversation rather than another one opened.
     await longPress(dots()[0]);
+    expect(addStarredMessage).not.toHaveBeenCalled();
+    expect(labels()).toEqual(['Brand new chat']);
 
+    addExchange(2, 'Sent under the id');
+    await settle();
+    await longPress(dots()[1]);
+    expect(starStore.get('chatgpt:conv:assigned-id')?.map((message) => message.content)).toEqual([
+      'Sent under the id',
+    ]);
+  });
+
+  it("keeps a new chat's turns unstarrable after leaving and coming back, until a reload", async () => {
+    history.replaceState({}, '', '/');
+    addExchange(1, 'Brand new chat');
+    await mount();
+    history.pushState({}, '', '/c/assigned-id');
+    await settle(ROUTE_SETTLE_MS);
+
+    history.pushState({}, '', '/c/other');
+    await settle(ROUTE_SETTLE_MS);
+    thread.replaceChildren(turnShell('user-7', 'user', 'Other prompt'));
+    await settle();
+    history.pushState({}, '', '/c/assigned-id');
+    await settle(ROUTE_SETTLE_MS);
+    thread.replaceChildren();
+    addExchange(1, 'Brand new chat');
+    await settle();
+    expect(labels()).toEqual(['Brand new chat']);
+    // ChatGPT keeps the turn's id, which was first seen in the new chat.
+    await longPress(dots()[0]);
+    expect(addStarredMessage).not.toHaveBeenCalled();
+
+    // A reload starts a navigator that sees the turn already under this conversation.
+    await scope.dispose();
+    scope = new PluginScope();
+    await mount();
+    await longPress(dots()[0]);
     expect(starStore.get('chatgpt:conv:assigned-id')?.map((message) => message.content)).toEqual([
       'Brand new chat',
     ]);
-    expect(labels()).toEqual(['Brand new chat']);
-    expect(dots()[0].getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('cannot star a new chat turn under a conversation opened before that one renders', async () => {
+    history.replaceState({}, '', '/');
+    addExchange(1, 'Draft prompt');
+    await mount();
+
+    history.pushState({}, '', '/c/unrelated');
+    await settle(ROUTE_SETTLE_MS);
+    expect(labels()).toEqual(['Draft prompt']);
+    await longPress(dots()[0]);
+
+    expect(addStarredMessage).not.toHaveBeenCalled();
   });
 
   it('never moves or deletes a star stored under a new-chat id', async () => {
@@ -570,7 +618,7 @@ describe('ChatGPT timeline', () => {
     expect(addStarredMessage).not.toHaveBeenCalled();
   });
 
-  it("stars only the new conversation's turns while the previous one is still on screen", async () => {
+  it("cannot star either conversation's turns while the previous one is still on screen", async () => {
     addExchange(1, 'Prompt A');
     await mount();
 
@@ -580,15 +628,21 @@ describe('ChatGPT timeline', () => {
     await longPress(dots()[0]);
     expect(addStarredMessage).not.toHaveBeenCalled();
 
-    thread.append(turnShell('user-9', 'user', 'Prompt B'));
+    // Inserted while A's turn is on screen: it may still be A's thread growing.
+    const early = thread.appendChild(turnShell('user-9', 'user', 'Prompt B'));
     await settle();
-    // A's turn was seen under the previous URL; B's first appeared under this one.
     await longPress(dots()[0]);
-    expect(addStarredMessage).not.toHaveBeenCalled();
     await longPress(dots()[1]);
+    expect(addStarredMessage).not.toHaveBeenCalled();
 
+    thread.replaceChildren();
+    await settle();
+    thread.append(early, turnShell('user-10', 'user', 'Prompt C'));
+    await settle();
+    await longPress(dots()[0]);
+    await longPress(dots()[1]);
     expect(starStore.get('chatgpt:conv:second')?.map((message) => message.content)).toEqual([
-      'Prompt B',
+      'Prompt C',
     ]);
   });
 

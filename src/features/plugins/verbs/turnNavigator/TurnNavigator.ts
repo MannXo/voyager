@@ -161,6 +161,13 @@ export class TurnNavigator {
 
   async start(settings: PluginSettings = {}): Promise<void> {
     this.updateSettings(settings);
+    // A turn belongs to the conversation the URL named when it entered the page.
+    this.stars.begin();
+    if (document.body) {
+      this.scope.observe(document.body, { childList: true, subtree: true }, (records) =>
+        this.stars.recordInsertions(records),
+      );
+    }
     // Markers stamp `data-gv-turn-id` onto the site's own turn nodes; roll
     // every stamp back when the plugin unmounts.
     this.scope.effect(
@@ -377,7 +384,7 @@ export class TurnNavigator {
       ? snapshotMarkers(this.markers, turns, centerOf)
       : mergeMountedTurns(this.markers, mounted, centerOf);
     const onScreen = this.snapshot
-      ? snapshotOwnershipTurns(this.markers, this.snapshot.itemKeys)
+      ? snapshotOwnershipTurns(this.markers, this.snapshot.items)
       : mountedOwnershipTurns(mounted);
     // A press that began under the previous route must not land under this one.
     if (this.stars.observe(onScreen)) this.cancelLongPress();
