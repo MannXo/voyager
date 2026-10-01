@@ -11,6 +11,7 @@ import type { PromptItem, SyncAccountScope } from '@/core/types/sync';
 import { isSafari } from '@/core/utils/browser';
 import { AISTUDIO_ROOT_BUCKET_ID } from '@/features/folder/constants';
 import { cloneFolderData, validateFolderData } from '@/features/folder/model/folderData';
+import { placeConversations } from '@/features/folder/model/placeConversations';
 import { createTranslator, initI18n } from '@/utils/i18n';
 import {
   mergeFolderData as mergeSyncedFolderData,
@@ -1652,48 +1653,33 @@ export class AIStudioFolderManager {
       dragEnterCounter = 0; // Reset counter on drop
       el.classList.remove('gv-folder-dragover');
       if (!this.canEdit) return;
-      const data = this.parseDragDataFromEvent(e);
-      if (!data || data.type !== 'conversation' || !data.conversationId) return;
-      const conv: ConversationReference = {
-        conversationId: data.conversationId,
-        title: normalizeText(data.title) || this.t('conversation_untitled'),
-        url: data.url || '',
-        addedAt: now(),
-      };
-      const folderId = targetFolderId;
-      if (!folderId || folderId === this.UNCATEGORIZED_KEY) {
-        // Drop to root or uncategorized section: move to uncategorized section
-        // First remove from any existing folder
-        Object.keys(this.data.folderContents).forEach((fid) => {
-          if (fid === this.UNCATEGORIZED_KEY) return; // Don't remove from uncategorized yet
-          this.data.folderContents[fid] = (this.data.folderContents[fid] || []).filter(
-            (c) => c.conversationId !== conv.conversationId,
-          );
-        });
-        // Add to uncategorized if not already there
-        const uncatArr = this.data.folderContents[this.UNCATEGORIZED_KEY] || [];
-        const existsInUncat = uncatArr.some((c) => c.conversationId === conv.conversationId);
-        if (!existsInUncat) {
-          uncatArr.push(conv);
-          this.data.folderContents[this.UNCATEGORIZED_KEY] = uncatArr;
-        }
-      } else {
-        const arr = this.data.folderContents[folderId] || [];
-        const exists = arr.some((c) => c.conversationId === conv.conversationId);
-        if (!exists) {
-          arr.push(conv);
-          this.data.folderContents[folderId] = arr;
-        }
-        // If moving from another folder (including uncategorized), remove there
-        Object.keys(this.data.folderContents).forEach((fid) => {
-          if (fid === folderId) return;
-          this.data.folderContents[fid] = (this.data.folderContents[fid] || []).filter(
-            (c) => c.conversationId !== conv.conversationId,
-          );
-        });
-      }
+      if (!this.placeDroppedPrompt(e, targetFolderId)) return;
       this.save().then(() => this.render());
     });
+  }
+
+  /**
+   * Place a dropped prompt in one bucket (null: Uncategorized) and take it out
+   * of every other bucket: an AI Studio prompt lives in one place. A record the
+   * target already holds is kept, and no sortIndex is added because AI Studio
+   * renders array order. Returns false when the drop carries no prompt.
+   */
+  private placeDroppedPrompt(event: DragEvent, targetFolderId: string | null): boolean {
+    const data = this.parseDragDataFromEvent(event);
+    if (!data || data.type !== 'conversation' || !data.conversationId) return false;
+    const record: ConversationReference = {
+      conversationId: data.conversationId,
+      title: normalizeText(data.title) || this.t('conversation_untitled'),
+      url: data.url || '',
+      addedAt: now(),
+    };
+    this.data = placeConversations(this.data, [record], {
+      target: targetFolderId || this.UNCATEGORIZED_KEY,
+      placement: 'keep',
+      removeFrom: 'everywhere',
+      removeWhenPresent: true,
+    }).data;
+    return true;
   }
 
   private observePromptList(): void {
@@ -2677,30 +2663,7 @@ export class AIStudioFolderManager {
         rootItem.style.background = 'rgba(138, 180, 248, 0.2)';
         rootItem.style.borderColor = '#8ab4f8';
 
-        const data = this.parseDragDataFromEvent(e);
-        if (!data || data.type !== 'conversation' || !data.conversationId) return;
-
-        const conv: ConversationReference = {
-          conversationId: data.conversationId,
-          title: normalizeText(data.title) || this.t('conversation_untitled'),
-          url: data.url || '',
-          addedAt: now(),
-        };
-
-        // Add to uncategorized section
-        Object.keys(this.data.folderContents).forEach((fid) => {
-          if (fid === this.UNCATEGORIZED_KEY) return;
-          this.data.folderContents[fid] = (this.data.folderContents[fid] || []).filter(
-            (c) => c.conversationId !== conv.conversationId,
-          );
-        });
-
-        const uncatArr = this.data.folderContents[this.UNCATEGORIZED_KEY] || [];
-        const existsInUncat = uncatArr.some((c) => c.conversationId === conv.conversationId);
-        if (!existsInUncat) {
-          uncatArr.push(conv);
-          this.data.folderContents[this.UNCATEGORIZED_KEY] = uncatArr;
-        }
+        if (!this.placeDroppedPrompt(e, null)) return;
 
         const saved = await this.save();
         if (!saved || this.accountScopeRequest !== scopeRequest) return;
@@ -2810,31 +2773,7 @@ export class AIStudioFolderManager {
           folderItem.style.background = 'rgba(255, 255, 255, 0.05)';
           folderItem.style.borderColor = 'transparent';
 
-          const data = this.parseDragDataFromEvent(e);
-          if (!data || data.type !== 'conversation' || !data.conversationId) return;
-
-          const conv: ConversationReference = {
-            conversationId: data.conversationId,
-            title: normalizeText(data.title) || this.t('conversation_untitled'),
-            url: data.url || '',
-            addedAt: now(),
-          };
-
-          // Add to this folder
-          const arr = this.data.folderContents[folder.id] || [];
-          const exists = arr.some((c) => c.conversationId === conv.conversationId);
-          if (!exists) {
-            arr.push(conv);
-            this.data.folderContents[folder.id] = arr;
-          }
-
-          // Remove from other folders
-          Object.keys(this.data.folderContents).forEach((fid) => {
-            if (fid === folder.id) return;
-            this.data.folderContents[fid] = (this.data.folderContents[fid] || []).filter(
-              (c) => c.conversationId !== conv.conversationId,
-            );
-          });
+          if (!this.placeDroppedPrompt(e, folder.id)) return;
 
           const saved = await this.save();
           if (!saved || this.accountScopeRequest !== scopeRequest) return;
