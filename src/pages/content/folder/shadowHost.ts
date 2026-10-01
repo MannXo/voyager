@@ -1,4 +1,5 @@
 import { SCHEME_ATTR, getScheme } from '@/pages/content/platformTheme/scheme';
+import { SHADOW_SURFACE_ATTR } from '@/pages/content/shadowKeyGuard';
 
 /** Host attribute that carries `body.gv-rtl` into a shadow tree. */
 export const SHADOW_RTL_ATTR = 'data-gv-rtl';
@@ -30,6 +31,8 @@ export type ShadowSurface = {
  */
 export function attachShadowSurface(host: HTMLElement, css: string): ShadowSurface {
   const root = host.attachShadow({ mode: 'open' });
+  // Lets the document_start key guard recognise fields in this surface.
+  host.setAttribute(SHADOW_SURFACE_ATTR, '');
   const style = document.createElement('style');
   style.textContent = css;
   root.appendChild(style);
@@ -49,7 +52,9 @@ export function attachShadowSurface(host: HTMLElement, css: string): ShadowSurfa
   // Page listeners see the host, not the field, as the target, so a page's
   // "type anywhere to focus the prompt" or single-key shortcut would take
   // keystrokes meant for a field in this surface. Keep them inside. This runs
-  // after the field's own handlers; page capture listeners still run first.
+  // after the field's own handlers and covers page bubble listeners; page
+  // capture listeners are handled by the shadowKeyGuard content entry, where
+  // one is installed.
   const keepTypingInside = (event: Event) => {
     if (isTextField(event.composedPath()[0])) event.stopPropagation();
   };

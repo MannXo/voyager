@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { SCHEME_ATTR } from '@/pages/content/platformTheme/scheme';
+import { SHADOW_SURFACE_ATTR } from '@/pages/content/shadowKeyGuard';
 
 import { SHADOW_RTL_ATTR, attachShadowSurface, eventPassedThrough } from '../shadowHost';
 import { destroyMountedPanels, mountPanel } from './floatingPanelHarness';
@@ -27,6 +28,8 @@ describe('attachShadowSurface', () => {
     const surface = attachShadowSurface(host, '.x { color: red; }');
 
     expect(surface.root).toBe(host.shadowRoot);
+    // The document_start key guard only protects fields in marked surfaces.
+    expect(host.hasAttribute(SHADOW_SURFACE_ATTR)).toBe(true);
     expect(surface.root.querySelector('style')!.textContent).toBe('.x { color: red; }');
     expect(host.getAttribute(SCHEME_ATTR)).toBe('dark');
     expect(host.hasAttribute(SHADOW_RTL_ATTR)).toBe(false);

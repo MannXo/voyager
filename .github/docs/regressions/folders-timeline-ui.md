@@ -638,13 +638,20 @@ locale for every literal key the folder UI translates`, `confirms library drops 
   a shadow-rooted panel use `event.composedPath()` (`eventPassedThrough` in
   `folder/shadowHost.ts`), and focus checks read the shadow root's `activeElement`. Read
   `composedPath()` during dispatch; it is empty afterwards. Page code cannot be changed, so
-  `attachShadowSurface` stops `keydown`, `keypress` and `keyup` from a text field at the shadow
-  root. That stops page bubble-phase listeners only; a page capture-phase listener still runs
-  before the field sees the key.
+  `attachShadowSurface` marks its host (`data-gv-shadow-surface`), and the `document_start`
+  entry `shadowKeyGuardLoader.ts` listens on `window` in the capture phase, ahead of the page.
+  For a key from a text field in a marked surface it calls `stopImmediatePropagation` and
+  replays a non-composed copy on the field, so the panel's own Enter and Escape handlers run and
+  the copy stops at the shadow root. It never cancels the original, so the browser still types
+  the character and IME composition is untouched. The shadow-root bubble stopper stays as the
+  fallback where no guard is installed. The loader is a dynamic import, so a page window-capture
+  key listener registered before it resolves would still run first; any other page listener
+  runs after the guard.
 - **Guard:** `src/core/services/__tests__/KeyboardShortcutService.test.ts` (`ignores shortcuts
 typed into an input inside an open shadow root`),
   `src/pages/content/chatInput/__tests__/vimModeShadowTarget.test.ts`,
-  `src/core/utils/__tests__/composedTarget.test.ts` and
+  `src/core/utils/__tests__/composedTarget.test.ts`,
+  `src/pages/content/shadowKeyGuard/__tests__/shadowKeyGuard.test.ts` and
   `src/pages/content/folder/__tests__/shadowHost.test.ts`.
 
 ## Page rules beat a normal `:host` declaration whatever their specificity

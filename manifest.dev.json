@@ -42,6 +42,16 @@
       "css": ["contentStyle.css"]
     },
     {
+      "matches": [
+        "https://gemini.google.com/*",
+        "https://business.gemini.google/*",
+        "https://aistudio.google.com/*",
+        "https://aistudio.google.cn/*"
+      ],
+      "js": ["src/pages/content/shadowKeyGuardLoader.ts"],
+      "run_at": "document_start"
+    },
+    {
       "matches": ["https://gemini.google.com/*", "https://business.gemini.google/*"],
       "js": ["src/pages/content/usageObserverLoader.ts"],
       "run_at": "document_start"
