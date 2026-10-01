@@ -207,7 +207,7 @@ describe('floating panel parity with the sidebar tree', () => {
 });
 
 describe('floating panel inline name form', () => {
-  it('cancels on Escape, ignores an empty name and leaves an unchanged one to the owner', () => {
+  it('cancels on Escape and ignores an empty or unchanged name', () => {
     const onCreateFolder = vi.fn();
     const onRenameFolder = vi.fn();
     const handle = mountPanel({ onCreateFolder, onRenameFolder });
@@ -230,8 +230,7 @@ describe('floating panel inline name form', () => {
     const rename = part<HTMLInputElement>(handle, 'inline-input');
     expect(rename.value).toBe('Alpha');
     keydown(rename, 'Enter');
-    // The store compares with live data; the form's name may be stale.
-    expect(onRenameFolder).toHaveBeenCalledWith('folder-a', 'Alpha');
+    expect(onRenameFolder).not.toHaveBeenCalled();
   });
 
   it('stays open for a mousedown inside the form and saves from its button', () => {

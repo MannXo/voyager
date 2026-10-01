@@ -59,7 +59,18 @@ export function mountFolderTree({
   let inlineEditor: InlineEditorState | null = null;
   let contextMenu: ContextMenuState | null = null;
   const expandedFolders = new Map<string, boolean>();
-  const { onToggleFolderExpanded } = actions;
+  const { onToggleFolderExpanded, onRenameFolder } = actions;
+  // The rename form keeps the folder it opened on, and renders wait while it
+  // has focus; compare with live data, as not every owner ignores a no-op.
+  const treeActions: TreeActions = onRenameFolder
+    ? {
+        ...actions,
+        onRenameFolder: (folderId, name) => {
+          const live = currentData.folders.find((folder) => folder.id === folderId);
+          if (live?.name !== name) onRenameFolder(folderId, name);
+        },
+      }
+    : actions;
 
   // With a store callback, expansion is the folder's persisted `isExpanded`,
   // shared with the sidebar; without one it stays local to this tree.
@@ -87,7 +98,7 @@ export function mountFolderTree({
       data: currentData,
       rootBucketId,
       conversationSortMode: currentConversationSortMode,
-      actions,
+      actions: treeActions,
       inlineEditor,
       contextMenu,
       isExpanded,

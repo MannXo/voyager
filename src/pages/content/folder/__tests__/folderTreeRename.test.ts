@@ -1,7 +1,7 @@
 /**
  * Inline rename in the shared folder tree. While the input has focus, the
  * controller defers renders, so the folder the form was opened on can be
- * stale by the time the user submits. The owner compares against live data.
+ * stale by the time the user submits, so the tree compares with live data.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -73,12 +73,25 @@ describe('inline rename', () => {
     expect(onRenameFolder).toHaveBeenCalledWith('a', 'Draft');
   });
 
-  it('leaves an unchanged name to the owner to ignore', () => {
+  it('does not ask for the name the folder already has', () => {
     const onRenameFolder = vi.fn();
     const { root } = mount(named('Same'), onRenameFolder);
     submit(openRename(root), 'Same');
 
-    expect(onRenameFolder).toHaveBeenCalledWith('a', 'Same');
+    expect(onRenameFolder).not.toHaveBeenCalled();
+  });
+
+  // ChatGPT's store saves every rename it is asked for, so the tree compares
+  // with the live name, not the one the form opened on.
+  it('does not ask for the name another tab gave the folder meanwhile', () => {
+    const onRenameFolder = vi.fn();
+    const { root, tree } = mount(named('Draft'), onRenameFolder);
+    const input = openRename(root);
+
+    tree.update(named('Synced'));
+    submit(input, 'Synced');
+
+    expect(onRenameFolder).not.toHaveBeenCalled();
   });
 
   it('does not ask for an empty name', () => {
