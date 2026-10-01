@@ -97,12 +97,20 @@ describe('BUILTIN_PLUGINS', () => {
     expect(timeline?.i18n?.zh?.settings?.compactView?.label).toBe('使用紧凑索引');
   });
 
-  it('includes the ChatGPT timeline, configured entirely by the ChatGPT adapter', () => {
+  it("includes the ChatGPT timeline, which needs the engine that reads a turn's item", () => {
     const timeline = BUILTIN_PLUGINS.find((m) => m.id === 'voyager.chatgpt-timeline');
     expect(timeline).toBeDefined();
     expect(timeline?.matches).toEqual(['https://chatgpt.com/*', 'https://chat.openai.com/*']);
+    expect(timeline?.engine).toBe('>=1.5.0');
     expect(timeline?.contributes.domOps).toEqual([
-      { op: 'native', handler: 'turnNavigator', params: { turnKey: 'data-turn-id-container' } },
+      {
+        op: 'native',
+        handler: 'turnNavigator',
+        params: {
+          turnItem: '[data-turn-key]',
+          conversationIdAttribute: 'data-chatgpt-selection-conversation-id',
+        },
+      },
     ]);
     expect(timeline?.requires).toEqual({ handlers: ['turnNavigator'], semantic: ['userTurn'] });
     expect(timeline?.contributes.settings?.compactView?.default).toBe(false);

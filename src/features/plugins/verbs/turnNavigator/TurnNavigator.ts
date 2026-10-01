@@ -36,7 +36,13 @@ import {
   scrollToCenter,
 } from './scrollMotion';
 import { extractTurnHash } from './starSnapshot';
-import { type Marker, type MountedTurn, TURN_ID_ATTR, mergeMountedTurns } from './turnMerge';
+import {
+  type Marker,
+  type MountedTurn,
+  TURN_ID_ATTR,
+  mergeMountedTurns,
+  rememberedMarkers,
+} from './turnMerge';
 import { mountedOwnershipTurns, snapshotOwnershipTurns, turnToken } from './turnOwnership';
 import { snapshotMarkers, TurnSnapshot } from './turnSnapshot';
 import { renderedCheck, togglesVisibility } from './turnVisibility';
@@ -396,14 +402,7 @@ export class TurnNavigator {
     if (mounted[0]) this.setScrollTarget(this.getScrollTarget(mounted[0].element));
     this.markers = turns
       ? snapshotMarkers(this.markers, turns, centerOf)
-      : mergeMountedTurns(
-          // A remembered turn still in the page but hidden belongs to a thread the host put away.
-          this.markers.filter(
-            (marker) => !marker.element.isConnected || isRendered(marker.element),
-          ),
-          mounted,
-          centerOf,
-        );
+      : mergeMountedTurns(rememberedMarkers(this.markers, mounted), mounted, centerOf);
     const onScreen = this.snapshot
       ? snapshotOwnershipTurns(this.markers, this.snapshot.items)
       : mountedOwnershipTurns(mounted);

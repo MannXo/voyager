@@ -86,11 +86,13 @@ and turn ids`).
   deep in a long run. Reserving markers per text let a turn skip other texts' markers, so a
   missing turn before a long run left phantom dots; a search on raw centres could pick a
   far-off out-of-order marker.)
-  Repeat ids (`~n`) are handed out without rescanning earlier ones. ChatGPT keeps
-  one `[data-turn-id-container]` item per turn mounted, so it names that attribute as `turnKey` and uses snapshot mode (see the route
-  switch entry): duplicate items fold by id, preferring the copy with a mounted message, and an
-  element holding other items or several turns (a `*-root` wrapper) is never a turn. `turnKey`
-  has `sinceEngine` 1.5.0, so a manifest setting it needs `engine >=1.5.0`.
+  Repeat ids (`~n`) are handed out without rescanning earlier ones. ChatGPT unmounts whole
+  `[data-turn-key]` items off-screen (4-7 of a long thread mounted, measured live), so it uses
+  merge mode too. Only a marker whose element left the DOM is remembered as virtualized out: one
+  whose element is still in the page but hidden, no longer a turn, or now reads as another text (a
+  prompt edited in place) is dropped and its element re-filed (`rememberedMarkers`). In snapshot
+  mode (`turnKey`, `sinceEngine` 1.5.0), duplicate items fold by id, preferring the copy with a
+  mounted message, and an element holding other items or several turns is never a turn.
 - **Guard:** `src/features/plugins/verbs/turnNavigator/turnMerge.test.ts` (`re-matches a long run
 of repeats after a shift, past the alignment budget`, `keeps every turn of a long identical run
 after a uniform shift with no anchor`, `reads a bounded number of remembered positions`, `files a
@@ -102,11 +104,9 @@ centre that lags behind`, `files a deep window by position past a stale centre t
 far-off remembered centre that is out of order`),
   `src/features/plugins/builtin/claudeTimeline/index.test.ts` (`files a remounted window of
 repeats past a turn measured before the page above shrank`),
-  `src/features/plugins/builtin/chatgptTimeline.test.ts` (`keeps repeated identical prompts
-apart`, `folds a turn ChatGPT briefly renders twice`, `follows a turn whose list id ChatGPT
-renames`, `updates the dot when a prompt is edited in place`, `does not treat a wrapper around
-several turns as one turn`), `scripts/__tests__/plugin-check.test.ts` (`older than a primitive
-param it sets`).
+  `src/features/plugins/builtin/chatgptTimeline.test.ts` (`keeps a dot while ChatGPT unmounts
+the item`, `updates the dot when a prompt is edited in place`),
+  `scripts/__tests__/plugin-check.test.ts` (`older than a primitive param it sets`).
 
 ## Turn navigator must re-key on route changes that mutate no turn
 
@@ -116,9 +116,9 @@ param it sets`).
 - **Rule:** `TurnNavigator.start()` subscribes to the shared `watchRouteChanges` inside its
   plugin scope and schedules a refresh. ChatGPT's `conversationIdPattern` accepts `/u/<n>/` and
   Projects `/g/<id>/` prefixes, matching the export adapter's conversation route.
-- **Guard:** `src/features/plugins/builtin/chatgptTimeline.test.ts` (`cannot star a new chat
-until ChatGPT gives it an id`, `clears the rail when leaving`, `rebuilds for the next
-conversation, Projects routes included`).
+- **Guard:** `src/features/plugins/builtin/chatgptTimeline.test.ts` (`stars a new chat's turns
+once their replies name the id ChatGPT gave it`, `clears the rail when leaving`, `rebuilds for
+the next conversation, Projects routes included`).
 
 ## Rail contents and star ids must not depend on the order of URL and DOM changes
 
@@ -169,26 +169,36 @@ conversation, Projects routes included`).
   and under no `display: none` ancestor (`turnVisibility.ts`): ChatGPT keeps the pages of earlier
   conversations hidden in the DOM, so the rail, the withholding rules and remembered merge
   markers skip hidden turns, and a `style`/`hidden` change that shows or hides a thread refreshes.
+  ChatGPT: the prompt is `[data-user-message-bubble]`, and the reply inside the same
+  `[data-turn-key]` item carries `data-chatgpt-selection-conversation-id`, equal to the URL's
+  `/c/<id>` on every mounted item checked live; a new chat's turns become starrable without a
+  reload once their reply names the id in the URL. Whether a draft's reply carries an id before
+  the URL has one is not verified live (that needs sending a message); either way nothing on `/`
+  is starrable. Known unproven assumption: DeepSeek names no conversation on its turns, so its
+  stars still rest on the URL changing before the next thread renders (measured, not proven for
+  every path). Residuals elsewhere are unstarrable turns or wrong dot positions: an item ChatGPT
+  removes outright after the URL changed (rather than hiding its page) stays as a dot until the
+  next route change, and its reply still names the previous conversation.
 - **Guard:** `src/features/plugins/verbs/turnNavigator/turnOwnership.test.ts`,
   `src/features/plugins/verbs/turnNavigator/navigatorStars.test.ts`,
   `src/features/plugins/verbs/turnNavigator/turnVisibility.test.ts`,
   `src/features/plugins/verbs/turnNavigator/conversationId.test.ts`,
   `src/features/plugins/verbs/turnNavigatorStarIsolation.test.ts` (`keeps the next conversation
 starrable while the previous thread stays hidden in the page`),
-  `src/features/plugins/builtin/chatgptTimeline.test.ts` (`shows what is on screen
-while the URL changes before the DOM`, `drops the previous conversation's off-screen turns`,
-  `shows the next conversation when its DOM arrives well before the URL`, `keeps the previous
-conversation off the rail when a star change lands mid-switch`, `cannot star a new chat's turns,
-not even under the id ChatGPT gives it`, `keeps a new chat's turns unstarrable after leaving and
-coming back`, `cannot star a new chat turn under a conversation opened before that one renders`,
-  `never moves or deletes a star stored under a new-chat id`, `keeps a new chat out of a
-conversation opened while the new chat is still on screen`, `ignores a star press in the moment
-between a URL change and the next refresh`, `cannot star either conversation's turns while the
-previous one is still on screen`, `cannot star the previous turn under the next id after ChatGPT
-renamed it`, `cannot star the previous conversation after its DOM briefly empties mid-switch`,
-  `cannot star a previous-conversation turn that first mounts after the URL changed`, `follows a
-turn whose list id ChatGPT renames`, `drops a press begun in the previous conversation`, `drops a
-star press whose read was still pending`),
+  `src/features/plugins/builtin/chatgptTimeline.test.ts` (`refuses a turn whose reply has not
+named the conversation yet`, `refuses a turn whose reply names another conversation`, `keeps the
+next conversation starrable while the previous page stays hidden in the DOM`, `shows what is on
+screen while the URL changes before the page`, `drops the previous conversation's turns, mounted
+or not, when its page is put away`, `stars the next conversation as soon as the URL names what its
+replies name`, `keeps the previous conversation off the rail when a star change lands
+mid-switch`, `leaves a turn removed outright after the route changed as a dot that cannot be
+starred`, `stars a new chat's turns once their replies name the id ChatGPT gave it`, `cannot star
+a new chat turn under a conversation opened before that one renders`, `never moves or deletes a
+star stored under a new-chat id`, `keeps a new chat out of a conversation opened while the new
+chat is still on screen`, `ignores a star press in the moment between a URL change and the next
+refresh`, `stars the next conversation's turns, never the previous one's, while both are on
+screen`, `cannot star a previous-conversation turn that mounts after the URL changed`, `drops a
+press begun in the previous conversation`, `drops a star press whose read was still pending`),
   `src/features/plugins/verbs/turnNavigatorStarIsolation.test.ts` (`drops the previous
 conversation's dots when a star change lands mid-switch`, `cannot star the previous thread after a
 far scroll replaced every mounted turn`, `cannot star a turn that mounted before the URL named the
@@ -197,16 +207,6 @@ the previous thread when its turns remount after the DOM briefly empties`, `star
 re-rendered under the id it was given`),
   `src/features/plugins/builtin/claudeTimeline/index.test.ts` (`refuses a turn Claude files under
 another conversation`, `stars a new chat's turn once Claude files it under the id in the URL`).
-
-## A jump to an unloaded ChatGPT turn aims again when its message mounts
-
-- **Trap:** ChatGPT keeps an empty list item for an unloaded turn and re-measures the items
-  around it when the message mounts, so a jump aimed at the empty item landed off target.
-- **Rule:** Snapshot markers record whether their element is an unloaded item (`placeholder`).
-  A jump to one aims at the item, then the pending-navigation loop waits for the message and
-  aims once more when it mounts; the loop's 8s deadline and wheel/touch cancel still end it.
-- **Guard:** `src/features/plugins/builtin/chatgptTimeline.test.ts` (`aims a jump again once the
-unloaded turn it targets mounts`, `stops waiting for an unloaded turn that never mounts`).
 
 ## Column-reverse scrollers count offsets from the newest turn
 

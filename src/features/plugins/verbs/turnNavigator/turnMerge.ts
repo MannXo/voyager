@@ -399,6 +399,23 @@ function lowerBound(values: readonly number[], min: number): number {
   return low;
 }
 
+/**
+ * The remembered markers that can still stand for a turn. One whose element
+ * left the DOM is only virtualized out and is kept. One whose element is still
+ * in the page but hidden (a thread the host put away), no longer a turn, or
+ * now reading as another text (edited in place) no longer stands for what it
+ * remembers: the mounted turns (rendered ones only) re-file that element.
+ */
+export function rememberedMarkers(
+  known: readonly Marker[],
+  mounted: readonly MountedTurn[],
+): Marker[] {
+  const current = new Map(mounted.map((turn) => [turn.element, hashString(turn.summary)]));
+  return known.filter(
+    (marker) => !marker.element.isConnected || current.get(marker.element) === marker.hash,
+  );
+}
+
 export function mergeMountedTurns(
   known: Marker[],
   turns: readonly MountedTurn[],

@@ -1,10 +1,12 @@
 /**
  * The ChatGPT timeline is the `voyager.chatgpt-timeline` builtin manifest
  * driving the `turnNavigator` primitive with the bundled ChatGPT adapter.
- * Fixtures follow the DOM the ChatGPT export adapter is built and tested
- * against (`export/adapter/__tests__/chatgpt.test.ts`): one
- * `[data-turn-id-container]` virtual-list item per turn whose inner message
- * DOM unmounts off-screen, plus `*-root` bookkeeping containers.
+ * Fixtures are small, sanitized captures of the live DOM: one
+ * `[data-turn-key]` virtual-list item per exchange, which ChatGPT unmounts
+ * whole off-screen; the prompt in `[data-user-message-bubble]`; the reply
+ * naming its conversation in `data-chatgpt-selection-conversation-id`. Each
+ * conversation is a page surface, and ChatGPT keeps earlier ones in the DOM
+ * as `display: none`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -70,10 +72,13 @@ vi.mock('@/pages/content/timeline/timelineStyleCoachmark', () => ({
 const ROUTE_SETTLE_MS = 400 + 150;
 /** Longer than any settle window a timing heuristic could wait out. */
 const SLOW_HOST_MS = 2_500;
+const CONVERSATION_ATTR = 'data-chatgpt-selection-conversation-id';
 
 let scope: PluginScope;
+/** The open page's thread, where ChatGPT renders the exchange items. */
 let thread: HTMLElement;
 let targetCount: () => number;
+let itemCount = 0;
 
 function manifest() {
   const timeline = BUILTIN_PLUGINS.find((plugin) => plugin.id === 'voyager.chatgpt-timeline');
@@ -104,39 +109,81 @@ async function settle(ms = 150): Promise<void> {
   await vi.advanceTimersByTimeAsync(ms);
 }
 
-function message(role: 'user' | 'assistant', text: string): HTMLElement {
-  const element = document.createElement('div');
-  element.setAttribute('data-message-author-role', role);
-  element.textContent = text;
-  return element;
+/** The conversation id the URL names, as ChatGPT stamps it on replies. */
+function urlConversation(): string | null {
+  return location.pathname.match(/\/c\/([^/?#]+)/)?.[1] ?? null;
 }
 
-/** One virtual-list item: `<div data-turn-id-container><section data-turn>…`. */
-function turnShell(id: string, role: 'user' | 'assistant', text: string): HTMLElement {
-  const shell = document.createElement('div');
-  shell.setAttribute('data-turn-id-container', id);
-  mountContent(shell, role, text);
-  return shell;
+/** A page surface with its thread, made the open one. */
+function openPage(): HTMLElement {
+  const page = document.createElement('div');
+  page.setAttribute('data-app-shell-active-page', 'true');
+  page.innerHTML = `
+    <div data-app-shell-page-surface="true">
+      <div data-app-action-timeline-scroll="" role="presentation"><div class="thread"></div></div>
+    </div>`;
+  document.getElementById('workspace')!.append(page);
+  thread = page.querySelector<HTMLElement>('.thread')!;
+  return page;
 }
 
-function mountContent(shell: HTMLElement, role: 'user' | 'assistant', text: string): HTMLElement {
-  const frame = document.createElement('section');
-  frame.setAttribute('data-turn', role);
-  const content = message(role, text);
-  frame.appendChild(content);
-  shell.replaceChildren(frame);
-  return content;
+/** ChatGPT keeps a left conversation's page, hidden. */
+function hidePage(page: HTMLElement): void {
+  page.setAttribute('data-app-shell-active-page', 'false');
+  page.querySelector<HTMLElement>('[data-app-shell-page-surface]')!.style.display = 'none';
 }
 
-/** ChatGPT keeps the item and drops its message DOM once it leaves the viewport. */
-function unmountContent(shell: HTMLElement): void {
-  shell.replaceChildren();
+/** ChatGPT opens the next conversation on a new page and hides the open one. */
+function switchPage(): HTMLElement {
+  const open = thread.closest<HTMLElement>('[data-app-shell-active-page]')!;
+  hidePage(open);
+  return openPage();
 }
 
-function addExchange(index: number, prompt: string, answer = `Answer ${index}`): HTMLElement {
-  const user = turnShell(`user-${index}`, 'user', prompt);
-  thread.append(user, turnShell(`assistant-${index}`, 'assistant', answer));
-  return user;
+function showPage(page: HTMLElement): void {
+  page.setAttribute('data-app-shell-active-page', 'true');
+  page.querySelector<HTMLElement>('[data-app-shell-page-surface]')!.style.display = '';
+}
+
+/**
+ * One exchange item, sanitized from the live DOM. `conversation` is what the
+ * reply names: the URL's id by default, null for a reply without the id yet.
+ */
+function exchange(
+  prompt: string,
+  conversation: string | null = urlConversation(),
+  answer = 'Answer',
+): HTMLElement {
+  const key = `turn-${(itemCount += 1)}`;
+  const item = document.createElement('div');
+  item.setAttribute('data-turn-key', key);
+  item.innerHTML = `
+    <div data-content-search-turn-key="${key}">
+      <h4 class="sr-only"></h4>
+      <div data-chatgpt-search-unit-key="" data-chatgpt-search-message-ids="">
+        <div data-content-search-unit-key=""><div><div data-user-message-bubble="true"></div></div></div>
+      </div>
+      <div data-content-search-unit-key="" data-chatgpt-search-unit-key="" data-chatgpt-search-message-ids="">
+        <h4 data-conversation-role="assistant" class="sr-only"></h4>
+        <div data-chatgpt-selection-message-id="m-${key}"></div>
+      </div>
+    </div>`;
+  item.querySelector('[data-user-message-bubble]')!.textContent = prompt;
+  const reply = item.querySelector('[data-chatgpt-selection-message-id]')!;
+  reply.textContent = answer;
+  if (conversation !== null) reply.setAttribute(CONVERSATION_ATTR, conversation);
+  thread.append(item);
+  return item;
+}
+
+function bubble(item: HTMLElement): HTMLElement {
+  return item.querySelector<HTMLElement>('[data-user-message-bubble]')!;
+}
+
+function nameConversation(item: HTMLElement, conversation: string): void {
+  item
+    .querySelector('[data-chatgpt-selection-message-id]')!
+    .setAttribute(CONVERSATION_ATTR, conversation);
 }
 
 function draftId(path = '/'): string {
@@ -158,6 +205,10 @@ function star(conversation: string, text: string): StarredMessage {
     conversationTitle: 'Saved',
     starredAt: 1,
   };
+}
+
+function starred(conversation: string): string[] | undefined {
+  return starStore.get(conversation)?.map((message) => message.content);
 }
 
 /** The storage echo every star write sends to open tabs. */
@@ -185,31 +236,27 @@ function rect(top: number): () => DOMRect {
 }
 
 function makeScroller(options: { reverse?: boolean } = {}): HTMLElement & { scrollTo: never } {
-  thread.style.overflowY = 'auto';
+  const scroller = thread.parentElement!;
+  scroller.style.overflowY = 'auto';
   if (options.reverse) {
-    thread.style.display = 'flex';
-    thread.style.flexDirection = 'column-reverse';
+    scroller.style.display = 'flex';
+    scroller.style.flexDirection = 'column-reverse';
   }
-  Object.defineProperties(thread, {
+  Object.defineProperties(scroller, {
     clientHeight: { configurable: true, value: 600 },
     scrollHeight: { configurable: true, value: 2000 },
   });
-  thread.getBoundingClientRect = rect(0);
-  thread.scrollTo = vi.fn() as never;
-  return thread as HTMLElement & { scrollTo: never };
+  scroller.getBoundingClientRect = rect(0);
+  scroller.scrollTo = vi.fn() as never;
+  return scroller as HTMLElement & { scrollTo: never };
 }
 
 beforeEach(() => {
   vi.useFakeTimers();
   history.replaceState({}, '', '/c/first');
-  document.body.innerHTML = `
-    <main>
-      <div id="thread">
-        <div data-turn-id-container="paginated-root:first"></div>
-      </div>
-    </main>
-  `;
-  thread = document.getElementById('thread')!;
+  document.body.innerHTML = '<div data-app-shell-workspace-row="true" id="workspace"></div>';
+  openPage();
+  itemCount = 0;
   scope = new PluginScope();
   targetCount = () => -1;
   starStore.clear();
@@ -227,9 +274,9 @@ afterEach(async () => {
 });
 
 describe('ChatGPT timeline', () => {
-  it('marks every user turn, skips answers and bookkeeping roots, and files stars under chatgpt', async () => {
-    addExchange(1, 'First question');
-    addExchange(2, 'Second question');
+  it('marks every prompt, skips replies, and files stars under chatgpt', async () => {
+    exchange('First question');
+    exchange('Second question');
 
     await mount();
 
@@ -237,14 +284,15 @@ describe('ChatGPT timeline', () => {
     expect(labels()).toEqual(['First question', 'Second question']);
     expect(targetCount()).toBe(2);
     expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('chatgpt:conv:first');
+
+    await longPress(dots()[1]);
+    expect(starred('chatgpt:conv:first')).toEqual(['Second question']);
   });
 
   it('scrolls the conversation container, not the window, when a dot is clicked', async () => {
     const scroller = makeScroller();
-    addExchange(1, 'Opening question');
-    const target = addExchange(2, 'Jump here');
-    target.querySelector<HTMLElement>('[data-message-author-role]')!.getBoundingClientRect =
-      rect(700);
+    exchange('Opening question');
+    bubble(exchange('Jump here')).getBoundingClientRect = rect(700);
     await mount();
 
     dots()[1].click();
@@ -256,13 +304,11 @@ describe('ChatGPT timeline', () => {
 
   it('jumps through a column-reverse thread, whose offsets run negative from the newest turn', async () => {
     const scroller = makeScroller({ reverse: true });
-    const target = addExchange(1, 'Older question');
-    addExchange(2, 'Newest question');
     // Resting at scrollTop 0 shows the last 600px of 2000, so the view starts
     // 1400px in. This 40px turn starts 640px above that edge: its centre is
     // 1400 - 640 + 20 = 780px into the conversation.
-    target.querySelector<HTMLElement>('[data-message-author-role]')!.getBoundingClientRect =
-      rect(-640);
+    bubble(exchange('Older question')).getBoundingClientRect = rect(-640);
+    exchange('Newest question');
     await mount();
 
     dots()[0].click();
@@ -276,10 +322,8 @@ describe('ChatGPT timeline', () => {
     const scroller = makeScroller();
     // Safari reports a negative scrollTop while bouncing past the top edge.
     Object.defineProperty(scroller, 'scrollTop', { configurable: true, value: -20 });
-    addExchange(1, 'Opening question');
-    const target = addExchange(2, 'Jump here');
-    target.querySelector<HTMLElement>('[data-message-author-role]')!.getBoundingClientRect =
-      rect(700);
+    exchange('Opening question');
+    bubble(exchange('Jump here')).getBoundingClientRect = rect(700);
     await mount();
 
     dots()[1].click();
@@ -289,97 +333,40 @@ describe('ChatGPT timeline', () => {
   });
 
   it('adds a dot when a new prompt is sent', async () => {
-    addExchange(1, 'First question');
+    exchange('First question');
     await mount();
 
-    addExchange(2, 'Follow-up');
+    exchange('Follow-up');
     await settle();
 
     expect(labels()).toEqual(['First question', 'Follow-up']);
   });
 
-  it('keeps a dot while ChatGPT unmounts the turn, and does not duplicate it on remount', async () => {
-    const first = addExchange(1, 'Scrolled away');
-    addExchange(2, 'Still visible');
+  it('keeps a dot while ChatGPT unmounts the item, and does not duplicate it on remount', async () => {
+    const first = exchange('Scrolled away');
+    const second = exchange('Still visible');
     await mount();
     const id = dots()[0].dataset.targetTurnId;
 
-    unmountContent(first);
+    first.remove();
     await settle();
     expect(labels()).toEqual(['Scrolled away', 'Still visible']);
 
-    const remounted = mountContent(first, 'user', 'Scrolled away');
+    const remounted = exchange('Scrolled away');
+    second.before(remounted);
     await settle();
     expect(labels()).toEqual(['Scrolled away', 'Still visible']);
-    expect(dots()[0].dataset.targetTurnId).toBe(id);
-    expect(remounted.getAttribute('data-gv-turn-id')).toBe(id);
-  });
-
-  it('keeps repeated identical prompts apart across unmount and remount', async () => {
-    const shells = [1, 2, 3].map((index) => addExchange(index, 'continue'));
-    await mount();
-    const ids = dots().map((dot) => dot.dataset.targetTurnId);
-    expect(new Set(ids).size).toBe(3);
-
-    // Only the third "continue" comes back into view. Without the turn key it
-    // would be taken for the first one: same text, and no layout in jsdom.
-    shells.forEach(unmountContent);
-    await settle();
-    const third = mountContent(shells[2], 'user', 'continue');
-    await settle();
-
-    expect(dots().map((dot) => dot.dataset.targetTurnId)).toEqual(ids);
-    expect(third.getAttribute('data-gv-turn-id')).toBe(ids[2]);
-  });
-
-  it.each(['after', 'before'] as const)(
-    'folds a turn ChatGPT briefly renders twice (copy %s the original) into one dot',
-    async (where) => {
-      const original = addExchange(1, 'Hello');
-      await mount();
-      expect(dots()).toHaveLength(1);
-
-      // Virtual-list reconciliation can retain a second item with the same id.
-      const copy = turnShell('user-1', 'user', 'Hello');
-      if (where === 'after') original.after(copy);
-      else original.before(copy);
-      await settle();
-      expect(labels()).toEqual(['Hello']);
-
-      copy.remove();
-      await settle();
-      expect(labels()).toEqual(['Hello']);
-    },
-  );
-
-  it('follows a turn whose list id ChatGPT renames, and its remount under the new id', async () => {
-    const sent = addExchange(1, 'Just sent');
-    await mount();
-    const id = dots()[0].dataset.targetTurnId;
-
-    // A sent turn could move from a client-side id to the server's.
-    sent.setAttribute('data-turn-id-container', 'server-1');
-    await settle();
-    expect(labels()).toEqual(['Just sent']);
+    expect(bubble(remounted).getAttribute('data-gv-turn-id')).toBe(id);
     await longPress(dots()[0]);
-    expect(starStore.get('chatgpt:conv:first')?.map((message) => message.content)).toEqual([
-      'Just sent',
-    ]);
-
-    unmountContent(sent);
-    await settle();
-    const remounted = mountContent(sent, 'user', 'Just sent');
-    await settle();
-    expect(labels()).toEqual(['Just sent']);
-    expect(remounted.getAttribute('data-gv-turn-id')).toBe(id);
+    expect(starred('chatgpt:conv:first')).toEqual(['Scrolled away']);
   });
 
   it('updates the dot when a prompt is edited in place, without leaving a phantom', async () => {
-    const shell = addExchange(1, 'Hello');
-    addExchange(2, 'After');
+    const item = exchange('Hello');
+    exchange('After');
     await mount();
 
-    mountContent(shell, 'user', 'Hello edited');
+    bubble(item).textContent = 'Hello edited';
     await settle();
     expect(labels()).toEqual(['Hello edited', 'After']);
 
@@ -394,105 +381,165 @@ describe('ChatGPT timeline', () => {
     expect(dots()[0].getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('does not treat a wrapper around several turns as one turn', async () => {
-    const root = document.createElement('div');
-    root.setAttribute('data-turn-id-container', 'client-created-root');
-    root.append(message('user', 'One'), message('assistant', 'A'), message('user', 'Two'));
-    thread.appendChild(root);
-
-    await mount();
-
-    expect(labels()).toEqual(['One', 'Two']);
-  });
-
   it('rebuilds for the next conversation, Projects routes included', async () => {
-    addExchange(1, 'Old conversation');
+    exchange('Old conversation');
     await mount();
 
     history.pushState({}, '', '/g/g-p-6a9f32f7/c/second');
-    thread.replaceChildren(turnShell('user-9', 'user', 'New conversation'));
-    await settle();
+    thread.replaceChildren();
+    exchange('New conversation');
+    await settle(ROUTE_SETTLE_MS);
 
     expect(labels()).toEqual(['New conversation']);
     expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('chatgpt:conv:second');
+    await longPress(dots()[0]);
+    expect(starred('chatgpt:conv:second')).toEqual(['New conversation']);
   });
 
-  it('shows what is on screen while the URL changes before the DOM', async () => {
-    const old = addExchange(1, 'Prompt A');
+  it('refuses a turn whose reply has not named the conversation yet, then stars it once it has', async () => {
+    exchange('Answered');
+    await mount();
+
+    // Sent: the prompt shows before the reply carries the conversation id.
+    const pending = exchange('Streaming', null);
+    await settle();
+    await longPress(dots()[1]);
+    expect(addStarredMessage).not.toHaveBeenCalled();
+
+    nameConversation(pending, 'first');
+    await longPress(dots()[1]);
+    expect(starred('chatgpt:conv:first')).toEqual(['Streaming']);
+  });
+
+  it('refuses a turn whose reply names another conversation', async () => {
+    exchange('Mine');
+    exchange('Theirs', 'elsewhere');
+    await mount();
+
+    await longPress(dots()[1]);
+    expect(addStarredMessage).not.toHaveBeenCalled();
+    await longPress(dots()[0]);
+    expect(starred('chatgpt:conv:first')).toEqual(['Mine']);
+  });
+
+  it('keeps the next conversation starrable while the previous page stays hidden in the DOM', async () => {
+    const pageA = document.querySelector<HTMLElement>('[data-app-shell-active-page]')!;
+    exchange('Prompt A');
+    await mount();
+
+    history.pushState({}, '', '/c/second');
+    hidePage(pageA);
+    const pageB = openPage();
+    exchange('Prompt B');
+    await settle(ROUTE_SETTLE_MS);
+
+    expect(labels()).toEqual(['Prompt B']);
+    await longPress(dots()[0]);
+    expect(starred('chatgpt:conv:second')).toEqual(['Prompt B']);
+
+    // Back to the cached page: ChatGPT flips which surface is hidden.
+    history.pushState({}, '', '/c/first');
+    hidePage(pageB);
+    showPage(pageA);
+    await settle(ROUTE_SETTLE_MS);
+    expect(labels()).toEqual(['Prompt A']);
+    await longPress(dots()[0]);
+    expect(starred('chatgpt:conv:first')).toEqual(['Prompt A']);
+    expect(starred('chatgpt:conv:second')).toEqual(['Prompt B']);
+  });
+
+  it('shows what is on screen while the URL changes before the page', async () => {
+    exchange('Prompt A');
     await mount();
 
     history.pushState({}, '', '/c/second');
     await settle(ROUTE_SETTLE_MS);
-    // A's turn is still on screen until ChatGPT replaces it.
+    // A's page is still the open one until ChatGPT swaps it, and its turn is still A's.
     expect(labels()).toEqual(['Prompt A']);
+    await longPress(dots()[0]);
+    expect(addStarredMessage).not.toHaveBeenCalled();
 
-    thread.append(turnShell('user-9', 'user', 'Prompt B'));
-    await settle();
-    old.nextElementSibling?.remove();
-    old.remove();
+    switchPage();
+    exchange('Prompt B');
     await settle();
 
     expect(labels()).toEqual(['Prompt B']);
     expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('chatgpt:conv:second');
+    await longPress(dots()[0]);
+    expect(starred('chatgpt:conv:second')).toEqual(['Prompt B']);
   });
 
-  it("drops the previous conversation's off-screen turns when ChatGPT removes their items", async () => {
-    const shells = [addExchange(1, 'Prompt A1'), addExchange(2, 'Prompt A2')];
+  it("drops the previous conversation's turns, mounted or not, when its page is put away", async () => {
+    const items = [exchange('Prompt A1'), exchange('Prompt A2'), exchange('Prompt A3')];
     await mount();
-    shells.forEach(unmountContent);
+    items[0].remove();
     await settle();
-    expect(labels()).toEqual(['Prompt A1', 'Prompt A2']);
+    expect(labels()).toEqual(['Prompt A1', 'Prompt A2', 'Prompt A3']);
 
     history.pushState({}, '', '/c/second');
     await settle(ROUTE_SETTLE_MS);
-    thread.append(turnShell('user-9', 'user', 'Prompt B'));
-    await settle();
-    // The items React removes hold no message DOM any more.
-    for (const shell of shells) {
-      shell.nextElementSibling?.remove();
-      shell.remove();
-    }
+    switchPage();
+    exchange('Prompt B');
     await settle();
 
     expect(labels()).toEqual(['Prompt B']);
   });
 
-  it('shows the next conversation when its DOM arrives well before the URL', async () => {
-    addExchange(1, 'Prompt A');
+  it('stars the next conversation as soon as the URL names what its replies name', async () => {
+    exchange('Prompt A');
     await mount();
 
-    thread.replaceChildren(turnShell('user-9', 'user', 'Prompt B'));
+    // ChatGPT rendered B before the URL changed: B's turns are not this URL's.
+    switchPage();
+    exchange('Prompt B', 'second');
     await settle(600);
     expect(labels()).toEqual(['Prompt B']);
-    // Nothing ties these turns to the URL that still names the previous conversation.
     await longPress(dots()[0]);
     expect(addStarredMessage).not.toHaveBeenCalled();
 
     history.pushState({}, '', '/c/second');
     await settle(ROUTE_SETTLE_MS);
     expect(labels()).toEqual(['Prompt B']);
-    expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('chatgpt:conv:second');
-    // Seen under the previous URL first: left unstarrable rather than guessed.
     await longPress(dots()[0]);
-    expect(addStarredMessage).not.toHaveBeenCalled();
+    expect(starred('chatgpt:conv:second')).toEqual(['Prompt B']);
+    expect(starred('chatgpt:conv:first')).toBeUndefined();
   });
 
   it('keeps the previous conversation off the rail when a star change lands mid-switch', async () => {
-    addExchange(1, 'Prompt A');
+    exchange('Prompt A');
     await mount();
 
     history.pushState({}, '', '/c/second');
     // Another tab starred something before this tab noticed the route change.
     notifyStars();
-    thread.replaceChildren(turnShell('user-9', 'user', 'Prompt B'));
+    switchPage();
+    exchange('Prompt B');
     await settle(ROUTE_SETTLE_MS);
 
     expect(labels()).toEqual(['Prompt B']);
   });
 
-  it("cannot star a new chat's turns, not even under the id ChatGPT gives it", async () => {
+  it('leaves a turn removed outright after the route changed as a dot that cannot be starred', async () => {
+    const old = exchange('Prompt A');
+    await mount();
+
+    history.pushState({}, '', '/c/second');
+    await settle(ROUTE_SETTLE_MS);
+    // Removal looks like virtualization, so the dot stays; its reply still names A.
+    exchange('Prompt B');
+    await settle();
+    old.remove();
+    await settle();
+    expect(labels()).toEqual(['Prompt A', 'Prompt B']);
+    await longPress(dots()[0]);
+    expect(addStarredMessage).not.toHaveBeenCalled();
+  });
+
+  it("stars a new chat's turns once their replies name the id ChatGPT gave it, with no reload", async () => {
     history.replaceState({}, '', '/');
-    addExchange(1, 'Brand new chat');
+    // Whether a draft's reply carries an id before the URL has one is not
+    // proven live; either way nothing on / can be starred.
+    const draft = exchange('Brand new chat', null);
     await mount();
 
     await longPress(dots()[0]);
@@ -503,53 +550,18 @@ describe('ChatGPT timeline', () => {
     history.pushState({}, '', '/c/assigned-id');
     await settle(ROUTE_SETTLE_MS);
     expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('chatgpt:conv:assigned-id');
-    // Nothing proves the new chat became this conversation rather than another one opened.
-    await longPress(dots()[0]);
-    expect(addStarredMessage).not.toHaveBeenCalled();
-    expect(labels()).toEqual(['Brand new chat']);
-
-    addExchange(2, 'Sent under the id');
-    await settle();
-    await longPress(dots()[1]);
-    expect(starStore.get('chatgpt:conv:assigned-id')?.map((message) => message.content)).toEqual([
-      'Sent under the id',
-    ]);
-  });
-
-  it("keeps a new chat's turns unstarrable after leaving and coming back, until a reload", async () => {
-    history.replaceState({}, '', '/');
-    addExchange(1, 'Brand new chat');
-    await mount();
-    history.pushState({}, '', '/c/assigned-id');
-    await settle(ROUTE_SETTLE_MS);
-
-    history.pushState({}, '', '/c/other');
-    await settle(ROUTE_SETTLE_MS);
-    thread.replaceChildren(turnShell('user-7', 'user', 'Other prompt'));
-    await settle();
-    history.pushState({}, '', '/c/assigned-id');
-    await settle(ROUTE_SETTLE_MS);
-    thread.replaceChildren();
-    addExchange(1, 'Brand new chat');
-    await settle();
-    expect(labels()).toEqual(['Brand new chat']);
-    // ChatGPT keeps the turn's id, which was first seen in the new chat.
+    // Still no id on the reply: unstarrable rather than guessed.
     await longPress(dots()[0]);
     expect(addStarredMessage).not.toHaveBeenCalled();
 
-    // A reload starts a navigator that sees the turn already under this conversation.
-    await scope.dispose();
-    scope = new PluginScope();
-    await mount();
+    nameConversation(draft, 'assigned-id');
     await longPress(dots()[0]);
-    expect(starStore.get('chatgpt:conv:assigned-id')?.map((message) => message.content)).toEqual([
-      'Brand new chat',
-    ]);
+    expect(starred('chatgpt:conv:assigned-id')).toEqual(['Brand new chat']);
   });
 
   it('cannot star a new chat turn under a conversation opened before that one renders', async () => {
     history.replaceState({}, '', '/');
-    addExchange(1, 'Draft prompt');
+    exchange('Draft prompt', 'draft-id');
     await mount();
 
     history.pushState({}, '', '/c/unrelated');
@@ -566,7 +578,7 @@ describe('ChatGPT timeline', () => {
     starStore.set(draftId(), [saved]);
     // A store near its quota drops a write without an error.
     addStarredMessage.mockImplementation(async () => {});
-    addExchange(1, 'Star me');
+    exchange('Star me', null);
     await mount();
 
     history.pushState({}, '', '/c/assigned-id');
@@ -579,35 +591,30 @@ describe('ChatGPT timeline', () => {
   it('keeps a new chat out of a conversation opened while the new chat is still on screen', async () => {
     history.replaceState({}, '', '/');
     starStore.set('chatgpt:conv:other', [star('chatgpt:conv:other', 'Other prompt')]);
-    const draft = addExchange(1, 'Draft prompt');
+    exchange('Draft prompt', null);
     await mount();
     await longPress(dots()[0]);
 
     history.pushState({}, '', '/c/other');
     // ChatGPT is slow to load the conversation: the new chat stays on screen.
     await settle(ROUTE_SETTLE_MS + SLOW_HOST_MS);
-    draft.nextElementSibling?.remove();
-    draft.remove();
-    thread.append(turnShell('user-7', 'user', 'Other prompt'));
+    await longPress(dots()[0]);
+    expect(addStarredMessage).not.toHaveBeenCalled();
+    switchPage();
+    exchange('Other prompt');
     await settle();
 
     expect(labels()).toEqual(['Other prompt']);
     expect(dots()[0].getAttribute('aria-pressed')).toBe('true');
-    expect(starStore.get('chatgpt:conv:other')?.map((message) => message.content)).toEqual([
-      'Other prompt',
-    ]);
 
-    thread.append(turnShell('user-8', 'user', 'Next prompt'));
+    exchange('Next prompt');
     await settle();
     await longPress(dots()[1]);
-    expect(starStore.get('chatgpt:conv:other')?.map((message) => message.content)).toEqual([
-      'Other prompt',
-      'Next prompt',
-    ]);
+    expect(starred('chatgpt:conv:other')).toEqual(['Other prompt', 'Next prompt']);
   });
 
   it('ignores a star press in the moment between a URL change and the next refresh', async () => {
-    addExchange(1, 'Prompt A');
+    exchange('Prompt A');
     await mount();
 
     dots()[0].dispatchEvent(new Event('pointerdown'));
@@ -618,95 +625,55 @@ describe('ChatGPT timeline', () => {
     expect(addStarredMessage).not.toHaveBeenCalled();
   });
 
-  it("cannot star either conversation's turns while the previous one is still on screen", async () => {
-    addExchange(1, 'Prompt A');
+  it("stars the next conversation's turns, never the previous one's, while both are on screen", async () => {
+    exchange('Prompt A');
     await mount();
 
     history.pushState({}, '', '/c/second');
     await settle(ROUTE_SETTLE_MS);
-    expect(labels()).toEqual(['Prompt A']);
+    exchange('Prompt B');
+    await settle();
+    expect(labels()).toEqual(['Prompt A', 'Prompt B']);
+
     await longPress(dots()[0]);
     expect(addStarredMessage).not.toHaveBeenCalled();
-
-    // Inserted while A's turn is on screen: it may still be A's thread growing.
-    const early = thread.appendChild(turnShell('user-9', 'user', 'Prompt B'));
-    await settle();
-    await longPress(dots()[0]);
     await longPress(dots()[1]);
-    expect(addStarredMessage).not.toHaveBeenCalled();
-
-    thread.replaceChildren();
-    await settle();
-    thread.append(early, turnShell('user-10', 'user', 'Prompt C'));
-    await settle();
-    await longPress(dots()[0]);
-    await longPress(dots()[1]);
-    expect(starStore.get('chatgpt:conv:second')?.map((message) => message.content)).toEqual([
-      'Prompt C',
-    ]);
+    expect(starred('chatgpt:conv:second')).toEqual(['Prompt B']);
+    expect(starred('chatgpt:conv:first')).toBeUndefined();
   });
 
-  it('cannot star the previous turn under the next id after ChatGPT renamed it', async () => {
-    const sent = addExchange(1, 'Just sent');
-    await mount();
-    sent.setAttribute('data-turn-id-container', 'server-1');
-    await settle();
-
-    history.pushState({}, '', '/c/second');
-    await settle(ROUTE_SETTLE_MS);
-    await longPress(dots()[0]);
-
-    expect(addStarredMessage).not.toHaveBeenCalled();
-  });
-
-  it('cannot star the previous conversation after its DOM briefly empties mid-switch', async () => {
-    addExchange(1, 'Prompt A');
+  it('cannot star a previous-conversation turn that mounts after the URL changed', async () => {
+    exchange('Prompt A');
     await mount();
     history.pushState({}, '', '/c/second');
     await settle(ROUTE_SETTLE_MS);
 
     thread.replaceChildren();
     await settle();
-    addExchange(1, 'Prompt A');
+    exchange('Prompt A', 'first');
     await settle();
     expect(labels()).toEqual(['Prompt A']);
     await longPress(dots()[0]);
-
-    expect(addStarredMessage).not.toHaveBeenCalled();
-  });
-
-  it('cannot star a previous-conversation turn that first mounts after the URL changed', async () => {
-    addExchange(1, 'Prompt A');
-    const hidden = addExchange(2, 'Hidden A');
-    unmountContent(hidden);
-    await mount();
-    expect(labels()).toEqual(['Prompt A']);
-
-    history.pushState({}, '', '/c/second');
-    await settle(ROUTE_SETTLE_MS);
-    mountContent(hidden, 'user', 'Hidden A');
-    await settle();
-    expect(labels()).toEqual(['Prompt A', 'Hidden A']);
-    await longPress(dots()[1]);
 
     expect(addStarredMessage).not.toHaveBeenCalled();
   });
 
   it('drops a press begun in the previous conversation when the next one has the same prompt', async () => {
-    addExchange(1, 'Same prompt');
+    exchange('Same prompt');
     await mount();
 
     dots()[0].dispatchEvent(new Event('pointerdown'));
     await vi.advanceTimersByTimeAsync(100);
-    thread.replaceChildren(turnShell('user-9', 'user', 'Same prompt'));
     history.pushState({}, '', '/c/second');
+    thread.replaceChildren();
+    exchange('Same prompt');
     await settle(ROUTE_SETTLE_MS);
 
     expect(addStarredMessage).not.toHaveBeenCalled();
   });
 
   it('drops a star press whose read was still pending when the user moved on', async () => {
-    addExchange(1, 'Same prompt');
+    exchange('Same prompt');
     await mount();
     let release!: (messages: StarredMessage[]) => void;
     getStarredMessagesForConversation.mockImplementationOnce(
@@ -722,7 +689,8 @@ describe('ChatGPT timeline', () => {
     await vi.advanceTimersByTimeAsync(1);
     // The next conversation opens with the same prompt before that read lands.
     history.pushState({}, '', '/c/third');
-    thread.replaceChildren(turnShell('user-c', 'user', 'Same prompt'));
+    thread.replaceChildren();
+    exchange('Same prompt');
     await settle(ROUTE_SETTLE_MS);
     release?.([]);
     await settle();
@@ -730,51 +698,8 @@ describe('ChatGPT timeline', () => {
     expect(addStarredMessage).not.toHaveBeenCalled();
   });
 
-  it('aims a jump again once the unloaded turn it targets mounts', async () => {
-    const scroller = makeScroller();
-    const target = addExchange(1, 'Scrolled away');
-    addExchange(2, 'Visible');
-    await mount();
-    unmountContent(target);
-    await settle();
-    target.getBoundingClientRect = rect(700);
-
-    dots()[0].click();
-    expect(scroller.scrollTo).toHaveBeenLastCalledWith({ top: 450, behavior: 'smooth' });
-
-    // ChatGPT mounts the message and re-measures the items around it.
-    const content = mountContent(target, 'user', 'Scrolled away');
-    content.getBoundingClientRect = rect(900);
-    await settle(400);
-
-    expect(scroller.scrollTo).toHaveBeenLastCalledWith({ top: 650, behavior: 'smooth' });
-    // Aimed once at the mounted message, then done.
-    vi.clearAllMocks();
-    await settle(2_000);
-    expect(scroller.scrollTo).not.toHaveBeenCalled();
-  });
-
-  it('stops waiting for an unloaded turn that never mounts', async () => {
-    const scroller = makeScroller();
-    const target = addExchange(1, 'Scrolled away');
-    addExchange(2, 'Visible');
-    await mount();
-    unmountContent(target);
-    await settle();
-    target.getBoundingClientRect = rect(700);
-
-    dots()[0].click();
-    expect(scroller.scrollTo).toHaveBeenCalledTimes(1);
-    await settle(10_000);
-    const content = mountContent(target, 'user', 'Scrolled away');
-    content.getBoundingClientRect = rect(900);
-    await settle(400);
-
-    expect(scroller.scrollTo).toHaveBeenCalledTimes(1);
-  });
-
   it('clears the rail when leaving for a page without turns', async () => {
-    const first = addExchange(1, 'Question');
+    const first = exchange('Question');
     await mount();
 
     // The thread goes away before the URL changes: the turn mutation alone
@@ -788,12 +713,12 @@ describe('ChatGPT timeline', () => {
   });
 
   it('removes the rail, tooltip and every stamp on disable, and stays gone', async () => {
-    addExchange(1, 'Question');
+    exchange('Question');
     await mount();
     expect(document.querySelectorAll('[data-gv-turn-id]')).toHaveLength(1);
 
     await scope.dispose();
-    addExchange(2, 'After disable');
+    exchange('After disable');
     history.pushState({}, '', '/c/other');
     await settle(ROUTE_SETTLE_MS);
 

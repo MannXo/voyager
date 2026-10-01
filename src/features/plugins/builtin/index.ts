@@ -292,11 +292,15 @@ export const BUILTIN_PLUGINS: readonly PluginManifest[] = [
         {
           op: 'native',
           handler: 'turnNavigator',
-          // Selectors and the conversation id come from the ChatGPT adapter, so
-          // fixes travel with site.json. ChatGPT keeps one virtual-list item per
-          // turn mounted and only unloads the message inside it, so the rail is
-          // rebuilt from those items (snapshot mode) instead of accumulated.
-          params: { turnKey: 'data-turn-id-container' },
+          // Selectors and the URL's conversation id come from the ChatGPT
+          // adapter, so fixes travel with site.json. ChatGPT unmounts whole
+          // exchange items off-screen, so the rail accumulates them. A star is
+          // written only for a turn whose reply, inside its item, names the
+          // conversation the URL is on.
+          params: {
+            turnItem: '[data-turn-key]',
+            conversationIdAttribute: 'data-chatgpt-selection-conversation-id',
+          },
         },
       ],
     },
