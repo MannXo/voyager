@@ -64,6 +64,17 @@ export function parseSyncPlatform(value: unknown): SyncPlatform | null {
 }
 
 /**
+ * The page a sync request came from: the tab URL, or the frame URL when a browser omits the tab
+ * URL (Firefox/Safari without tab access), so a web page cannot pass as an extension page.
+ */
+export function getSenderPageUrl(sender: {
+  tab?: { url?: string };
+  url?: string;
+}): string | undefined {
+  return sender.tab?.url || sender.url;
+}
+
+/**
  * A web page may only sync the folder platform it belongs to, so a ChatGPT/Claude/DeepSeek tab can
  * never read Gemini or AI Studio folders through the background. Extension pages (popup, options
  * fallback) have no web page URL and keep their access; their tab is checked by the popup.

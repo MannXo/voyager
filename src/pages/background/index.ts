@@ -104,6 +104,7 @@ import { unregisterRegisteredContentScripts } from './contentScriptRegistration'
 import { resolveOptionalHighlightSetting } from './highlightOptionalSetting';
 import {
   canSenderPageUseSyncPlatform,
+  getSenderPageUrl,
   isHandledBackgroundRuntimeMessage,
   isTrustedExtensionPageSender,
   isTrustedSyncMessageSender,
@@ -2576,7 +2577,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           case 'gv.sync.download': {
             const interactive = message.payload?.interactive !== false;
             const platform = parseSyncPlatform(message.payload?.platform);
-            if (!platform || !canSenderPageUseSyncPlatform(sender.tab?.url, platform)) {
+            if (!platform || !canSenderPageUseSyncPlatform(getSenderPageUrl(sender), platform)) {
               sendResponse({ ok: false, error: 'unsupported_sync_platform' });
               return;
             }

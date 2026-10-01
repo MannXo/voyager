@@ -19,6 +19,7 @@ import {
 
 import {
   canSenderPageUseSyncPlatform,
+  getSenderPageUrl,
   isAllowedSyncContentSender,
   isHandledBackgroundRuntimeMessage,
   isTrustedSyncMessageSender,
@@ -237,5 +238,15 @@ describe('background runtime message routing', () => {
       true,
     );
     expect(canSenderPageUseSyncPlatform('https://gemini.google.com/app', 'aistudio')).toBe(false);
+  });
+
+  it('checks the frame URL when the browser omits the tab URL', () => {
+    const chatgpt = getSenderPageUrl({ tab: {}, url: 'https://chatgpt.com/c/abc' });
+    expect(canSenderPageUseSyncPlatform(chatgpt, 'gemini')).toBe(false);
+    const popup = getSenderPageUrl({ url: `chrome-extension://${EXTENSION_ID}/popup.html` });
+    expect(canSenderPageUseSyncPlatform(popup, 'gemini')).toBe(true);
+    expect(getSenderPageUrl({ tab: { url: 'https://gemini.google.com/app' }, url: 'x' })).toBe(
+      'https://gemini.google.com/app',
+    );
   });
 });
