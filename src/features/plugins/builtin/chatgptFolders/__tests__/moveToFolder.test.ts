@@ -135,6 +135,49 @@ describe('"Move to folder" in a sidebar row menu', () => {
     expect(document.querySelector(PICKER)).toBeNull();
   });
 
+  it('is reachable with the arrow keys and opens the picker with Enter', async () => {
+    const menu = sidebar.openMenu(TARGET.id);
+    await nextPass();
+    const item = (label: string) =>
+      [...menu.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+        (candidate) => candidate.textContent === label,
+      )!;
+    // Radix's handlers are React's, delegated to an ancestor of the menu.
+    const radixSaw: string[] = [];
+    const radix = (event: KeyboardEvent) => radixSaw.push(event.key);
+    document.addEventListener('keydown', radix);
+    const press = (key: string) =>
+      (document.activeElement ?? document.body).dispatchEvent(
+        new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+      );
+
+    try {
+      item('Move to project').focus();
+      press('ArrowDown');
+      const entry = menu.querySelector<HTMLElement>(ENTRY)!;
+      expect(document.activeElement).toBe(entry);
+      expect(entry.hasAttribute('data-highlighted')).toBe(true);
+      press('ArrowDown');
+      expect(document.activeElement).toBe(item('Share'));
+      expect(entry.hasAttribute('data-highlighted')).toBe(false);
+      press('ArrowUp');
+      expect(document.activeElement).toBe(entry);
+      press('ArrowUp');
+      expect(document.activeElement).toBe(item('Move to project'));
+      // Moves elsewhere in the menu stay Radix's.
+      press('ArrowUp');
+      expect(radixSaw).toEqual(['ArrowUp']);
+
+      item('Share').focus();
+      press('ArrowUp');
+      press('Enter');
+      expect(radixSaw).toEqual(['ArrowUp', 'Escape']);
+      expect(document.querySelector(PICKER)).not.toBeNull();
+    } finally {
+      document.removeEventListener('keydown', radix);
+    }
+  });
+
   it('keeps the Project route of a row inside a Project', async () => {
     sidebar.move(TARGET.id, `/g/g-p-67ab12cd34-trip/c/${TARGET.id}`);
     const menu = sidebar.openMenu(TARGET.id);

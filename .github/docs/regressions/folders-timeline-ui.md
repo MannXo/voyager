@@ -866,16 +866,20 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
 
 - **Trap:** "Move to folder" is a clone of a native item in ChatGPT's Radix "Chat actions" menu. A
   clone that keeps `data-radix-collection-item`, an `id`, or `data-highlighted` confuses Radix's
-  roving focus and highlight. Without Radix's item wiring, a click on the clone does not close the
-  menu by itself. The menu content can also render a few frames after its
-  trigger turns `aria-expanded="true"`, and waiting for it without a bound polled every frame
-  forever when it never rendered.
+  roving focus and highlight. Adding those attributes back does not make it reachable either:
+  Radix only moves between items React registered, so its arrow keys skip the clone. Without
+  Radix's item wiring, a click on the clone does not close the menu by itself. The menu content
+  can also render a few frames after its trigger turns `aria-expanded="true"`, and waiting for it
+  without a bound polled every frame forever when it never rendered.
 - **Rule:** `buildEntry` strips Radix wiring (`data-radix-collection-item`, `id`, highlight,
-  disabled and submenu attributes). The entry is pointer-only, and selecting it closes the menu
-  with the Escape keydown that Radix listens for. `ChatGptMoveMenu.check` finds the menu by
+  disabled and submenu attributes). `wireKeyboard` handles ArrowDown/ArrowUp into and out of the
+  entry with a listener on the menu, which runs before Radix's delegated React handlers, and
+  leaves every other key to Radix (verified live 2026-10-01). Enter, Space and click close the
+  menu with the Escape keydown that Radix listens for. `ChatGptMoveMenu.check` finds the menu by
   comparing `aria-labelledby` (Radix ids need escaping in selectors). It waits at most
   `MENU_WAIT_FRAMES` frames per trigger, and it injects once per open menu.
 - **Guard:** `src/features/plugins/builtin/chatgptFolders/__tests__/moveToFolder.test.ts`
   (`sits after Move to project once, and files the row into the picked folder`,
+  `is reachable with the arrow keys and opens the picker with Enter`,
   `reaches a menu whose content renders after its trigger opens`,
   `stops waiting for a menu that never renders`).

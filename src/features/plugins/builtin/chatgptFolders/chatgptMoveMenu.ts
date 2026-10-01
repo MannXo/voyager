@@ -6,9 +6,10 @@
  * Observed live (2026-10-01): the menu is a Radix menu portaled under `body` and
  * labelled by the row's trigger, which reads `aria-expanded="true"` while it is
  * open. The entry is a clone of a native item, so it inherits ChatGPT's look and
- * hover. Without `data-radix-collection-item`, Radix's arrow keys skip it: the
- * entry is pointer-only. Selecting it closes the menu with the Escape Radix
- * listens for, which also returns focus to the trigger.
+ * hover. Radix's roving focus only knows the items React registered, so a DOM
+ * attribute cannot add the clone to it; `wireKeyboard` steps the arrow keys into
+ * and out of the entry instead. Selecting it closes the menu with the Escape
+ * Radix listens for, which also returns focus to the trigger.
  */
 import type { ConversationReference } from '@/core/types/folder';
 
@@ -67,6 +68,50 @@ function buildEntry(template: Element, label: string): HTMLElement {
     for (const extra of texts.slice(1)) extra.remove();
   }
   return entry;
+}
+
+const ACTIVATE_KEYS = new Set(['Enter', ' ']);
+
+function isEnabled(item: Element): boolean {
+  return !item.hasAttribute('data-disabled') && item.getAttribute('aria-disabled') !== 'true';
+}
+
+function claim(event: KeyboardEvent): void {
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+/**
+ * Arrow keys into and out of the entry. Radix handles them in React handlers
+ * delegated to an ancestor, so a listener on the menu itself runs first and can
+ * keep Radix from moving past the entry. Everything else (Escape, Tab,
+ * typeahead) still reaches Radix.
+ */
+function wireKeyboard(menu: HTMLElement, entry: HTMLElement, activate: () => void): void {
+  const neighbour = (step: 1 | -1): HTMLElement | null => {
+    const items = [...menu.querySelectorAll<HTMLElement>(ITEM_SELECTOR)].filter(
+      (item) => item.closest('[role="menu"]') === menu && (item === entry || isEnabled(item)),
+    );
+    return items[items.indexOf(entry) + step] ?? null;
+  };
+  entry.addEventListener('focus', () => entry.setAttribute('data-highlighted', ''));
+  entry.addEventListener('blur', () => entry.removeAttribute('data-highlighted'));
+  entry.addEventListener('keydown', (event) => {
+    if (ACTIVATE_KEYS.has(event.key)) {
+      claim(event);
+      activate();
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      claim(event);
+      neighbour(event.key === 'ArrowDown' ? 1 : -1)?.focus();
+    }
+  });
+  menu.addEventListener('keydown', (event) => {
+    if (!entry.isConnected || !(event.target instanceof HTMLElement)) return;
+    const from = event.key === 'ArrowDown' ? -1 : event.key === 'ArrowUp' ? 1 : 0;
+    if (from === 0 || event.target !== neighbour(from)) return;
+    claim(event);
+    entry.focus();
+  });
 }
 
 function closeMenu(menu: HTMLElement): void {
@@ -140,12 +185,16 @@ export class ChatGptMoveMenu {
       addedAt: 0,
     };
     const entry = buildEntry(template, this.options.label());
+    const activate = (): void => {
+      closeMenu(menu);
+      this.options.onMove({ ...conversation, addedAt: Date.now() });
+    };
     entry.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      closeMenu(menu);
-      this.options.onMove({ ...conversation, addedAt: Date.now() });
+      activate();
     });
+    wireKeyboard(menu, entry, activate);
     // Next to ChatGPT's own "Move to project" (its only submenu), else last.
     const anchor = items.find((item) => item.hasAttribute('aria-haspopup')) ?? items.at(-1);
     anchor?.after(entry);
