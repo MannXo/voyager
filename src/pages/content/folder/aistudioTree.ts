@@ -170,7 +170,7 @@ function findFolder(data: FolderData, folderId: string): Folder | undefined {
 
 export function renameFolder(data: FolderData, folderId: string, name: string, at: number) {
   const folder = findFolder(data, folderId);
-  if (!folder) return false;
+  if (!folder || folder.name === name) return false;
   folder.name = name;
   folder.updatedAt = at;
   return true;

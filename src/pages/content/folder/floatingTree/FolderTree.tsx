@@ -260,10 +260,11 @@ function FolderNode({ tree, layout, folder, depth }: FolderNodeProps) {
             <InlineForm
               key={`rename:${folder.id}`}
               initialValue={folder.name}
+              // `folder` is the record the form opened on; renders wait while
+              // the input has focus, so the owner compares with live data.
               onSubmit={(newName) =>
                 apply({ inlineEditor: null }, () => {
-                  if (newName && newName !== folder.name)
-                    actions.onRenameFolder?.(folder.id, newName);
+                  if (newName) actions.onRenameFolder?.(folder.id, newName);
                 })
               }
               onCancel={() => apply({ inlineEditor: null })}

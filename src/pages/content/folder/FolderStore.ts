@@ -188,7 +188,7 @@ export class FolderStore {
   renameFolder(folderId: string, name: string): void {
     if (!this.canEdit) return;
     const folder = this.data.folders.find((item) => item.id === folderId);
-    if (!folder) return;
+    if (!folder || folder.name === name) return;
     folder.name = name;
     folder.updatedAt = Date.now();
     void this.saveData();

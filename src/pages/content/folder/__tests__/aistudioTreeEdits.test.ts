@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { addFolder, deleteFolderTree } from '../aistudioTree';
+import { addFolder, deleteFolderTree, renameFolder } from '../aistudioTree';
 import type { FolderData } from '../types';
 
 function data(): FolderData {
@@ -31,6 +31,18 @@ describe('AI Studio tree edits', () => {
     expect(current.folders.at(-1)).toMatchObject({ id: 'n', parentId: 'b', createdAt: 3 });
     expect(Object.hasOwn(current.folderContents, 'n')).toBe(true);
     expect(current.folderContents.n).toEqual([]);
+  });
+
+  // The tree asks for every non-empty rename; it cannot see the live name.
+  it('renames against the live name, and ignores a name that is already there', () => {
+    const current = data();
+    const before = structuredClone(current);
+
+    expect(renameFolder(current, 'a', 'A', 9)).toBe(false);
+    expect(current).toEqual(before);
+
+    expect(renameFolder(current, 'a', 'Renamed', 9)).toBe(true);
+    expect(current.folders[0]).toMatchObject({ name: 'Renamed', updatedAt: 9 });
   });
 
   it('deletes a folder with its descendants and their buckets, and nothing else', () => {

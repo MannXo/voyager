@@ -428,6 +428,18 @@ describe('FolderStore editable account and save completion', () => {
     ]);
   });
 
+  it('ignores a rename to the name the folder already has', async () => {
+    const before = structuredClone(store.data);
+    const { name } = before.folders.find((folder) => folder.id === 'root')!;
+
+    store.renameFolder('root', name);
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(store.data).toEqual(before);
+    expect(adapter.saveData).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('rejects stale data commands after destroy without changing existing data', async () => {
     const before = structuredClone(store.data);
     const conversation: ConversationReference = before.folderContents.root[0];
