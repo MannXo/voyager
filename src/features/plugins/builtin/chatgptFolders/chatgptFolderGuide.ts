@@ -1,18 +1,20 @@
 /**
  * One-time guide that points at the folder section in ChatGPT's sidebar, on the
  * shared coachmark (`src/pages/content/coachmark`). It is checked after every
- * sidebar change, never on a timer. It shows only once the section is in the
- * page and the folders have loaded, and never over an open menu or dialog; until
- * then it waits for the next sidebar change. Seen state is the shared coachmark
- * list, so it shows once per user. Turning the plugin off closes an open guide
- * without marking it seen.
+ * sidebar change, scroll, resize and change in the header's visibility, never on
+ * a timer. It shows only once the folders have loaded and the section header is
+ * actually on screen (not scrolled out of the sidebar, not collapsed away), and
+ * never over an open menu or dialog; until then it waits. Seen state is the
+ * shared coachmark list, so it shows once per user. Turning the plugin off, or
+ * the header leaving the screen, closes an open guide without marking it seen.
  */
 import { detectRTL } from '@/core/utils/rtl';
-import type { PluginScope } from '@/features/plugins/runtime/pluginScope';
+import type { Dispose, PluginScope } from '@/features/plugins/runtime/pluginScope';
 import { type CoachmarkResult, hasSeenCoachmark, showCoachmark } from '@/pages/content/coachmark';
 import { FLOATING_PANEL_CLASS } from '@/pages/content/folder/floatingTree/shared';
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
+import { isOnScreen } from './anchorVisibility';
 import { FOLDER_PICKER_CLASS } from './chatgptFolderPicker';
 
 export const CHATGPT_FOLDERS_GUIDE_ID = 'chatgpt-folders-sidebar-intro-v1';
@@ -61,6 +63,11 @@ type GuideState = 'idle' | 'pending' | 'showing' | 'done';
 export class ChatGptFolderGuide {
   private state: GuideState = 'idle';
   private readonly open = new Set<AbortController>();
+  /** Re-check triggers; released once the guide has been seen. */
+  private readonly triggers: Dispose[] = [];
+  private visibility: IntersectionObserver | null = null;
+  private observed: HTMLElement | null = null;
+  private checkQueued = false;
 
   constructor(
     private readonly scope: PluginScope,
@@ -71,24 +78,38 @@ export class ChatGptFolderGuide {
         this.state = 'done';
         for (const controller of this.open) controller.abort();
         this.open.clear();
+        this.visibility?.disconnect();
+        this.visibility = null;
       },
       'chatgpt-folders:guide',
     );
     scope.on(document, CHATGPT_FOLDERS_GUIDE_DEBUG_EVENT, () => void this.present(false));
+    // Scrolling the sidebar, resizing, or showing a collapsed sidebar can bring
+    // the header on screen without any change inside the sidebar.
+    this.triggers.push(
+      scope.on(document, 'scroll', (event) => this.onScroll(event), {
+        capture: true,
+        passive: true,
+      }),
+      scope.on(window, 'resize', () => this.queueCheck(), { passive: true }),
+    );
   }
 
   /** Whether the guide could show now. Reads only. */
   isEligible(): boolean {
     if (this.scope.isDisposed || !this.target.ready() || this.target.busy()) return false;
-    return !!this.target.anchor()?.isConnected && !hasOpenOverlay();
+    const anchor = this.target.anchor();
+    return !!anchor && isOnScreen(anchor) && !hasOpenOverlay();
   }
 
-  /** Called after every sidebar change. */
+  /** Called after every sidebar change, and by the guide's own triggers. */
   check(): void {
+    this.watch(this.target.anchor());
     if (this.state === 'showing') {
-      // ChatGPT dropped the section: close without marking it seen and wait for it.
-      if (!this.target.anchor()?.isConnected)
-        for (const controller of this.open) controller.abort();
+      // The header was dropped, scrolled away or hidden: close without marking
+      // the guide seen, and wait for the header to come back.
+      const anchor = this.target.anchor();
+      if (!anchor || !isOnScreen(anchor)) for (const controller of this.open) controller.abort();
       return;
     }
     if (this.state !== 'idle' || !this.isEligible()) return;
@@ -96,11 +117,53 @@ export class ChatGptFolderGuide {
     void this.run();
   }
 
+  /** At most one check per frame, however many events arrive. */
+  private queueCheck(): void {
+    if (this.checkQueued || this.state === 'done' || this.scope.isDisposed) return;
+    this.checkQueued = true;
+    this.scope.frame(() => {
+      this.checkQueued = false;
+      this.check();
+    });
+  }
+
+  /** Only a scroll of something that holds the section can move the header. */
+  private onScroll(event: Event): void {
+    const anchor = this.target.anchor();
+    if (!anchor) return;
+    const root = anchor.getRootNode();
+    const holder = root instanceof ShadowRoot ? root.host : anchor;
+    const scrolled = event.target;
+    if (scrolled === document || (scrolled instanceof Node && scrolled.contains(holder))) {
+      this.queueCheck();
+    }
+  }
+
+  /** Follows the header's visibility, which catches a sidebar being shown again. */
+  private watch(anchor: HTMLElement | null): void {
+    if (!anchor || anchor === this.observed || this.state === 'done') return;
+    if (typeof IntersectionObserver !== 'function' || this.scope.isDisposed) return;
+    // Threshold 1 reports the moment a sliding sidebar has fully brought it in.
+    this.visibility ??= new IntersectionObserver(() => this.queueCheck(), { threshold: [0, 1] });
+    if (this.observed) this.visibility.unobserve(this.observed);
+    this.visibility.observe(anchor);
+    this.observed = anchor;
+  }
+
+  /** Seen: nothing left to wait for. */
+  private finish(): void {
+    this.state = 'done';
+    for (const release of this.triggers.splice(0)) void release();
+    this.visibility?.disconnect();
+    this.visibility = null;
+    this.observed = null;
+  }
+
   private async run(): Promise<void> {
     const seen = await hasSeenCoachmark(CHATGPT_FOLDERS_GUIDE_ID);
     if (this.state !== 'pending') return;
     if (seen) {
-      this.state = 'done';
+      this.finish();
       return;
     }
     // A menu may have opened while the seen list loaded.
@@ -112,7 +175,8 @@ export class ChatGptFolderGuide {
     const result = await this.present(true);
     if (this.state !== 'showing') return;
     // Skipped means it never showed or was interrupted: try again on a later change.
-    this.state = result === 'skipped' ? 'idle' : 'done';
+    if (result === 'skipped') this.state = 'idle';
+    else this.finish();
   }
 
   private async present(once: boolean): Promise<CoachmarkResult> {

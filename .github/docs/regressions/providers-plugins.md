@@ -1036,16 +1036,22 @@ template file`, `exports only the chosen template, never the pack or other promp
 background unless the user turned it off`, `stays on when a setting changes before the user ever
 flipped it`, `never by itself offers visual effects or makes Voyager contact the catalog host`).
 
-## A plugin-site coachmark has no `body.gv-rtl` and must not open over a host menu
+## A plugin-site coachmark has no `body.gv-rtl` and must not open over a host menu or off screen
 
 - **Trap:** The shared coachmark mirrors itself under `body.gv-rtl`, which only Gemini's content
   features set, so a guide on chatgpt.com stayed left-to-right on an RTL page. Its outside-click
   guard also swallows every page click while it is open, so showing it over an open Radix menu
-  or dialog traps the user.
+  or dialog traps the user. A connected anchor is not a visible one: a header scrolled out of
+  the sidebar, below the window or in a collapsed sidebar left the bubble pointing at nothing
+  while still blocking clicks.
 - **Rule:** A plugin-site guide passes `rtl: detectRTL()` (the bubble gets `gv-coach--rtl`). It
-  starts from a sidebar change, never on a timer, only when its anchor is connected, data has
-  loaded and no `[role=menu]`, `[role=dialog]`, picker or section form is open. Dropping the
-  anchor or disposing the plugin closes it without marking it seen.
+  starts from a sidebar change, scroll, resize or visibility change, never on a timer, only when
+  its anchor is on screen (`isOnScreen`: non-zero, not hidden, inside the window and every
+  clipping ancestor), data has loaded and no `[role=menu]`, `[role=dialog]`, picker or section
+  form is open. Dropping the anchor, moving it off screen or disposing the plugin closes it
+  without marking it seen.
 - **Guard:** `src/features/plugins/builtin/chatgptFolders/__tests__/folderGuide.test.ts`
   (`never opens over an open menu, and shows after it closes`, `waits while the section is naming
-a new folder`, `lays itself out right to left on an RTL page`).
+a new folder`, `lays itself out right to left on an RTL page`, `waits while the header is scrolled
+out of the sidebar, and shows once it scrolls in`, `waits below the window, and while the sidebar
+is collapsed, until shown`).

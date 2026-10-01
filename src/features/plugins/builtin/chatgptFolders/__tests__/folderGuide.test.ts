@@ -26,6 +26,51 @@ const ROWS = makeRows(6);
 /** Longer than the coachmark's entrance/exit animation. */
 const ANIMATION_MS = 260;
 const RECENTS = '[data-chatgpt-project-conversation-drop-target]';
+const HEADER_CLASS = 'gv-chatgpt-folder-section__header';
+
+/**
+ * jsdom has no layout. Every element is laid out inside the window unless a test
+ * places it: `place(predicate, rect)` gives matching elements another rect.
+ */
+const ON_SCREEN = { top: 100, left: 10, width: 220, height: 32 };
+type Rect = typeof ON_SCREEN;
+let placements: Array<[(element: Element) => boolean, Rect]> = [];
+function place(match: (element: Element) => boolean, rect: Rect): void {
+  placements.unshift([match, rect]);
+}
+const isHeader = (element: Element) => element.classList.contains(HEADER_CLASS);
+function rectOf(element: Element): DOMRect {
+  const { top, left, width, height } =
+    placements.find(([match]) => match(element))?.[1] ?? ON_SCREEN;
+  return DOMRect.fromRect({ x: left, y: top, width, height });
+}
+
+/** IntersectionObserver stand-in: `intersect(el)` reports a visibility change of `el`. */
+const observers = new Set<FakeIntersectionObserver>();
+class FakeIntersectionObserver {
+  readonly targets = new Set<Element>();
+  constructor(readonly callback: () => void) {
+    observers.add(this);
+  }
+  observe(target: Element): void {
+    this.targets.add(target);
+  }
+  unobserve(target: Element): void {
+    this.targets.delete(target);
+  }
+  disconnect(): void {
+    this.targets.clear();
+  }
+}
+function intersect(target: Element): void {
+  for (const observer of observers) if (observer.targets.has(target)) observer.callback();
+}
+
+function header(): HTMLElement {
+  return document
+    .querySelector<HTMLElement>(SECTION)!
+    .shadowRoot!.querySelector<HTMLElement>(`.${HEADER_CLASS}`)!;
+}
 
 let memory: MemoryStorage;
 let originalStorage: typeof chrome.storage;
@@ -63,6 +108,12 @@ beforeEach(() => {
   globalThis.chrome.storage = memory.api;
   scope = new PluginScope();
   sidebar = mountSidebarFixture(ROWS);
+  placements = [];
+  observers.clear();
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    return rectOf(this);
+  });
+  vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
 });
 
 afterEach(async () => {
@@ -73,6 +124,7 @@ afterEach(async () => {
   document.documentElement.removeAttribute('dir');
   globalThis.chrome.storage = originalStorage;
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 async function activate(): Promise<void> {
@@ -155,6 +207,62 @@ describe('ChatGPT folders sidebar guide', () => {
     sidebar.rerenderList();
     await nextPass();
     expect(root.querySelector('input')).toBeNull();
+    expect(bubble()).not.toBeNull();
+  });
+
+  it('waits while the header is scrolled out of the sidebar, and shows once it scrolls in', async () => {
+    sidebar.sidebar.style.overflowY = 'auto';
+    place((element) => element === sidebar.sidebar, { top: 0, left: 0, width: 260, height: 400 });
+    place(isHeader, { top: 640, left: 10, width: 220, height: 32 });
+    await activate();
+    sidebar.rerenderList();
+    await nextPass();
+    expect(bubble()).toBeNull();
+
+    place(isHeader, { top: 380, left: 10, width: 220, height: 32 });
+    sidebar.sidebar.dispatchEvent(new Event('scroll'));
+    await nextPass();
+    expect(bubble()).toBeNull();
+
+    place(isHeader, ON_SCREEN);
+    sidebar.sidebar.dispatchEvent(new Event('scroll'));
+    await nextPass();
+    expect(bubble()).not.toBeNull();
+  });
+
+  it('waits below the window, and while the sidebar is collapsed, until shown', async () => {
+    place(isHeader, { top: 900, left: 10, width: 220, height: 32 });
+    await activate();
+    expect(bubble()).toBeNull();
+
+    // Collapsed: laid out with no size.
+    place(isHeader, { top: 100, left: 0, width: 0, height: 0 });
+    window.dispatchEvent(new Event('resize'));
+    await nextPass();
+    expect(bubble()).toBeNull();
+
+    place(isHeader, ON_SCREEN);
+    intersect(header());
+    await nextPass();
+    expect(bubble()).not.toBeNull();
+  });
+
+  it('closes unseen when the header scrolls away, and comes back with it', async () => {
+    sidebar.sidebar.style.overflowY = 'auto';
+    place((element) => element === sidebar.sidebar, { top: 0, left: 0, width: 260, height: 400 });
+    await activate();
+    expect(bubble()).not.toBeNull();
+
+    place(isHeader, { top: -200, left: 10, width: 220, height: 32 });
+    sidebar.sidebar.dispatchEvent(new Event('scroll'));
+    await nextPass();
+    await animation();
+    expect(bubble()).toBeNull();
+    expect(seen()).toBeUndefined();
+
+    place(isHeader, ON_SCREEN);
+    sidebar.sidebar.dispatchEvent(new Event('scroll'));
+    await nextPass();
     expect(bubble()).not.toBeNull();
   });
 
