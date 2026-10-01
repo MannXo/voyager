@@ -354,7 +354,13 @@ export class FolderRepository {
       );
       session.data = migratedData;
       session.markReady();
-      session.activeSave = this.persistDataSession(session, cloneFolderData(session.data));
+      // Migrated legacy data is no local edit: a failed write must not outrank a newer backup.
+      session.activeSave = this.persistDataSession(
+        session,
+        cloneFolderData(session.data),
+        undefined,
+        false,
+      );
       const saved = await session.activeSave;
       if (!saved) {
         console.warn(`${this.tag} Failed to persist scoped migration data`);

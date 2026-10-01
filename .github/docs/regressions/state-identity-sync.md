@@ -105,8 +105,8 @@ off a ChatGPT tab`).
   last reload request (`reconcileAttemptedAt`). While memory holds an edit whose write failed
   (`failedEditGen`), recovery repairs storage from live memory instead of the older primary
   backup, which would roll back the edit and then overwrite the emergency backup holding it.
-  Each write attempt takes the next `writeGen`; a failed write that carried a local edit (not a
-  draft replacement or a recovered backup) records its generation, and only an operation that
+  Each write attempt takes the next `writeGen`; a failed write that carried a local edit (not a legacy
+  migration, a draft replacement or a recovered backup) records its generation, and only an operation that
   started at or after it clears it: a successful write, or an applied load whose read started
   after that write. Two orderings keep this sound: no load applies while one of the session's
   writes is in flight (`loadData` returns early for a ready session that is saving, and a save

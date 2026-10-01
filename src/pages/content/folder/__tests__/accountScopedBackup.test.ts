@@ -221,6 +221,31 @@ async function mountGeminiPanel(harness: Harness): Promise<HTMLElement> {
   return harness.manager.sidebarRuntime.panel!;
 }
 
+/** Routes the platform's folder writes through `write`. */
+function mockWrites(
+  harness: Harness,
+  platform: Platform,
+  write: (key: string, data: FolderData) => Promise<boolean>,
+): void {
+  if (platform === 'gemini') vi.spyOn(harness.adapter!, 'saveData').mockImplementation(write);
+  else
+    mockBrowser.storage.local.set.mockImplementation(async (values) => {
+      const [key, data] = Object.entries(values)[0];
+      await write(key, data as FolderData);
+    });
+}
+
+/** Account a's legacy unscoped data, holding a conversation from its route. */
+function legacyData(platform: Platform): FolderData {
+  const legacy = privateData('a');
+  const url = {
+    gemini: 'https://gemini.google.com/u/1/app/abc',
+    aistudio: 'https://aistudio.google.com/prompts/abc',
+  }[platform];
+  legacy.folderContents.a.push({ conversationId: 'legacy-a', title: 'Legacy a', addedAt: 1, url });
+  return legacy;
+}
+
 function pauseFirstWrite(harness: Harness, platform: Platform, storageKey: string) {
   const pending = deferred<void>();
   const started = deferred<void>();
@@ -235,12 +260,7 @@ function pauseFirstWrite(harness: Harness, platform: Platform, storageKey: strin
     extensionLocal[key] = snapshot;
     return true;
   };
-  if (platform === 'gemini') vi.spyOn(harness.adapter!, 'saveData').mockImplementation(write);
-  else
-    mockBrowser.storage.local.set.mockImplementation(async (values) => {
-      const [key, data] = Object.entries(values)[0];
-      await write(key, data as FolderData);
-    });
+  mockWrites(harness, platform, write);
   return { started: started.promise, release: () => pending.resolve() };
 }
 
@@ -424,12 +444,7 @@ describe.each<Platform>(['gemini', 'aistudio'])('%s backup account ownership', (
       Object.assign(extensionLocal, structuredClone({ [key]: data }));
       return true;
     };
-    if (platform === 'gemini') vi.spyOn(harness.adapter!, 'saveData').mockImplementation(write);
-    else
-      mockBrowser.storage.local.set.mockImplementation(async (values) => {
-        const [key, data] = Object.entries(values)[0];
-        await write(key, data as FolderData);
-      });
+    mockWrites(harness, platform, write);
     const oldSave = harness.save();
     await started.promise;
     harness.data.folders[0].name = 'Later edit in a';
@@ -480,12 +495,7 @@ describe.each<Platform>(['gemini', 'aistudio'])('%s backup account ownership', (
       extensionLocal[key] = structuredClone(data);
       return true;
     };
-    if (platform === 'gemini') vi.spyOn(harness.adapter!, 'saveData').mockImplementation(write);
-    else
-      mockBrowser.storage.local.set.mockImplementation(async (values) => {
-        const [key, data] = Object.entries(values)[0];
-        await write(key, data as FolderData);
-      });
+    mockWrites(harness, platform, write);
     const oldSave = harness.save();
     await started.promise;
     harness.data.folders[0].name = 'Queued a';
@@ -550,12 +560,7 @@ describe.each<Platform>(['gemini', 'aistudio'])('%s backup account ownership', (
       extensionLocal[key] = snapshot;
       return true;
     };
-    if (platform === 'gemini') vi.spyOn(harness.adapter!, 'saveData').mockImplementation(write);
-    else
-      mockBrowser.storage.local.set.mockImplementation(async (values) => {
-        const [key, data] = Object.entries(values)[0];
-        await write(key, data as FolderData);
-      });
+    mockWrites(harness, platform, write);
     const originalSave = harness.save();
     await started.promise;
     harness.data.folders[0].name = 'Older queued a';
@@ -630,16 +635,7 @@ describe.each<Platform>(['gemini', 'aistudio'])('%s backup account ownership', (
     const harness = await makeHarness(platform, 'a');
     delete extensionLocal[aKeys.live];
     localStorage.removeItem(aKeys.live);
-    const legacy = privateData('a');
-    legacy.folderContents.a.push({
-      conversationId: 'legacy-a',
-      title: 'Legacy a',
-      addedAt: 1,
-      url:
-        platform === 'gemini'
-          ? 'https://gemini.google.com/u/1/app/abc'
-          : 'https://aistudio.google.com/prompts/abc',
-    });
+    const legacy = legacyData(platform);
     extensionLocal[baseKey(platform)] = legacy;
     const writes = pauseFirstWrite(harness, platform, aKeys.live);
     const migration = harness.load();
@@ -659,6 +655,42 @@ describe.each<Platform>(['gemini', 'aistudio'])('%s backup account ownership', (
     );
     expect(backupData(aKeys.backup)?.folders[0]?.name).toBe('Edited after migration started');
     expect(extensionLocal[baseKey(platform)]).toEqual(legacy);
+  });
+
+  it('lets a newer backup outrank a legacy migration whose write failed', async () => {
+    const aKeys = await accountKeys(platform, 'a');
+    extensionLocal[aKeys.live] = privateData('a');
+    const harness = await makeHarness(platform, 'a');
+    delete extensionLocal[aKeys.live];
+    localStorage.removeItem(aKeys.live);
+    const legacy = legacyData(platform);
+    extensionLocal[baseKey(platform)] = legacy;
+    let failing = true;
+    const write = async (key: string, data: FolderData) => {
+      if (key === aKeys.live && failing) throw new Error('quota');
+      extensionLocal[key] = structuredClone(data);
+      return true;
+    };
+    mockWrites(harness, platform, write);
+    await harness.load();
+    expect(harness.data.folders[0]?.name).toBe('Private a');
+    expect(extensionLocal[aKeys.live]).toBeUndefined();
+    failing = false;
+
+    // Another tab of this account saves newer data, then storage turns corrupt
+    // before this tab reads it: the migrated copy is no edit and must not win.
+    const newer = privateData('a');
+    newer.folders[0].name = 'Newer from another tab';
+    new DataBackupService<FolderData>(aKeys.backup).createPrimaryBackup(newer);
+    extensionLocal[aKeys.live] = { folders: 'corrupted', folderContents: {} };
+    await harness.load();
+
+    expect(harness.data.folders[0]?.name).toBe('Newer from another tab');
+    const live = extensionLocal[aKeys.live] as FolderData;
+    expect([live, backupData(aKeys.backup)].map((d) => d?.folders[0]?.name)).toEqual([
+      'Newer from another tab',
+      'Newer from another tab',
+    ]);
   });
 
   it('ignores an earlier account resolution that finishes after a newer one', async () => {
