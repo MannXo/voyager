@@ -12,6 +12,7 @@ import { isSafari } from '@/core/utils/browser';
 import { AISTUDIO_ROOT_BUCKET_ID } from '@/features/folder/constants';
 import { cloneFolderData, validateFolderData } from '@/features/folder/model/folderData';
 import { placeConversations } from '@/features/folder/model/placeConversations';
+import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
 import { createTranslator, initI18n } from '@/utils/i18n';
 import {
   mergeFolderData as mergeSyncedFolderData,
@@ -205,6 +206,23 @@ export function parseDragDataPayload(raw: string): DragData | null {
     title: parsed.title,
     url: parsed.url ?? '',
   };
+}
+
+/**
+ * Merge an imported file into a copy of the current data: imported folders are
+ * appended, and only their buckets are read, so the file's Uncategorized and
+ * orphan buckets are ignored. A new folder's bucket replaces any orphan bucket
+ * left under its id; an existing folder gains the prompts it lacks.
+ */
+function mergeImportedFolders(current: FolderData, file: FolderData): FolderData {
+  const existing = cloneFolderData(current);
+  const existingIds = new Set(existing.folders.map((folder) => folder.id));
+  const imported: FolderData = { folders: file.folders, folderContents: {} };
+  for (const folder of file.folders) {
+    if (!existingIds.has(folder.id)) delete existing.folderContents[folder.id];
+    imported.folderContents[folder.id] = file.folderContents[folder.id] || [];
+  }
+  return FolderImportExportService.mergeData(existing, imported).merged;
 }
 
 export class AIStudioFolderManager {
@@ -2963,25 +2981,7 @@ export class AIStudioFolderManager {
             alert(this.t('folder_import_invalid_format') || 'Invalid file format');
             return;
           }
-          // Merge mode by default: simple union without duplicates
-          const draft = cloneFolderData(this.data);
-          const existingIds = new Set(draft.folders.map((x) => x.id));
-          for (const f of next.folders) {
-            if (!existingIds.has(f.id)) {
-              draft.folders.push(f);
-              draft.folderContents[f.id] = next.folderContents[f.id] || [];
-            } else {
-              // Merge conversations
-              const base = draft.folderContents[f.id] || [];
-              const add = next.folderContents[f.id] || [];
-              const seen = new Set(base.map((c) => c.conversationId));
-              for (const c of add) {
-                if (!seen.has(c.conversationId)) base.push(c);
-              }
-              draft.folderContents[f.id] = base;
-            }
-          }
-          const saved = await this.replaceData(draft);
+          const saved = await this.replaceData(mergeImportedFolders(this.data, next));
           if (this.dataSession !== session || this.accountScopeRequest !== scopeRequest) return;
           if (!saved) return;
           alert(this.t('folder_import_success') || 'Imported');
