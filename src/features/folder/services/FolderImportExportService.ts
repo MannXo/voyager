@@ -15,7 +15,7 @@ import {
 
 import { SESSION_BACKUP_KEY, SESSION_BACKUP_TIMESTAMP_KEY } from '../constants';
 import {
-  findFolderInsideItself,
+  cutFolderCycles,
   findInheritedFolderKey,
   findRepeatedFolderId,
   ownBucket,
@@ -208,18 +208,6 @@ export class FolderImportExportService {
       };
     }
 
-    const insideItself = findFolderInsideItself(data.folders as Folder[]);
-    if (insideItself !== null) {
-      return {
-        success: false,
-        error: {
-          type: ValidationErrorType.CORRUPTED_DATA,
-          message: `Folder "${insideItself}" is inside itself`,
-          details: insideItself,
-        },
-      };
-    }
-
     // Per-entry validation of folderContents — lenient: malformed conversation
     // entries are dropped (and counted) instead of rejecting the whole import.
     const { contents: sanitizedContents, skipped } = this.sanitizeFolderContents(
@@ -237,7 +225,9 @@ export class FolderImportExportService {
       data: {
         ...(payload as FolderExportPayload),
         data: {
-          folders: data.folders as Folder[],
+          // Stored data can hold a parent cycle (a Drive merge of two moves),
+          // so its own export must import. The cut folder lands at the root.
+          folders: cutFolderCycles(data.folders as Folder[]),
           folderContents: sanitizedContents,
         },
       },

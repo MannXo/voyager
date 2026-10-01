@@ -565,31 +565,49 @@ describe('AI Studio folder persistence', () => {
   });
 
   it.each([
-    ['its own parent', [['a', 'a']]],
+    ['its own parent', [['a', 'a']], 'a'],
     [
       'a pair of folders',
       [
         ['a', 'b'],
         ['b', 'a'],
       ],
+      'a',
     ],
-  ] as const)('refuses a file where a folder is inside itself through %s', async (_kind, links) => {
-    const manager = await mountManager();
-    const key = manager.activeStorageKey;
-    const [template] = folderData('P').folders;
+  ] as const)(
+    'imports a file where a folder is inside itself through %s, with that folder at the root',
+    async (_kind, links, cutId) => {
+      const manager = await mountManager();
+      const key = manager.activeStorageKey;
+      const [template] = folderData('P').folders;
+      const file: FolderData = {
+        folders: links.map(([id, parentId]) => ({ ...template, id, name: id, parentId })),
+        folderContents: Object.fromEntries(
+          links.map(([id]) => [
+            id,
+            [{ conversationId: `p_${id}`, title: id, url: `https://x.test/${id}`, addedAt: 1 }],
+          ]),
+        ),
+      };
 
-    chooseImport(manager, {
-      folders: links.map(([id, parentId]) => ({ ...template, id, parentId })),
-      folderContents: {},
-    });
-    await vi.waitFor(() =>
-      expect(window.alert).toHaveBeenCalledWith(getTranslationSync('folder_import_invalid_format')),
-    );
-    await vi.advanceTimersByTimeAsync(0);
+      chooseImport(manager, file, { format: 'gemini-voyager.folders.v1' });
+      await vi.waitFor(() =>
+        expect((local[key] as FolderData).folders).toHaveLength(1 + links.length),
+      );
 
-    expect(manager.data).toEqual(folderData('Private a'));
-    expect(local[key]).toEqual(folderData('Private a'));
-  });
+      const saved = local[key] as FolderData;
+      expect(saved.folders.slice(1)).toEqual(
+        file.folders.map((folder) =>
+          folder.id === cutId ? { ...folder, parentId: null } : folder,
+        ),
+      );
+      for (const [id] of links) expect(saved.folderContents[id]).toEqual(file.folderContents[id]);
+      expect(manager.data).toEqual(saved);
+      expect(window.alert).not.toHaveBeenCalledWith(
+        getTranslationSync('folder_import_invalid_format'),
+      );
+    },
+  );
 
   it('refuses a folder file ChatGPT exported', async () => {
     const manager = await mountManager();

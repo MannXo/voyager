@@ -90,6 +90,19 @@ export function findCycleRoots(folders: readonly Folder[]): Set<string> {
 }
 
 /**
+ * Moves the folder `findCycleRoots` picks to cut each parent cycle to the root,
+ * where the tree already shows it, so an imported file keeps every folder and
+ * bucket and stores no cycle. Returns `folders` itself when there is none.
+ */
+export function cutFolderCycles(folders: Folder[]): Folder[] {
+  const cycleRoots = findCycleRoots(folders);
+  if (cycleRoots.size === 0) return folders;
+  return folders.map((folder) =>
+    cycleRoots.has(folder.id) ? { ...folder, parentId: null } : folder,
+  );
+}
+
+/**
  * Includes the requested ID, even when only its legacy contents bucket remains.
  * Follows what the tree shows: the first record of a repeated id, and a parent
  * cycle cut where `findCycleRoots` cuts it.
@@ -409,30 +422,6 @@ export function findRepeatedFolderId(folders: readonly { id?: unknown }[]): stri
   for (const id of folders.map((folder) => folder?.id)) {
     if (seen.has(id)) return typeof id === 'string' ? id : String(id);
     seen.add(id);
-  }
-  return null;
-}
-
-/**
- * A folder id on a cycle of parent links in an imported file, a folder that is
- * its own parent included. The tree shows such a file only by cutting the
- * cycle, so the file is refused instead.
- */
-export function findFolderInsideItself(
-  folders: readonly { id?: unknown; parentId?: unknown }[],
-): string | null {
-  const parents = new Map<unknown, unknown>();
-  for (const folder of folders) {
-    if (folder && !parents.has(folder.id)) parents.set(folder.id, folder.parentId);
-  }
-  const sound = new Set<unknown>();
-  for (const start of parents.keys()) {
-    const path = new Set<unknown>();
-    for (let id: unknown = start; id && !sound.has(id); id = parents.get(id)) {
-      if (path.has(id)) return String(id);
-      path.add(id);
-    }
-    path.forEach((id) => sound.add(id));
   }
   return null;
 }

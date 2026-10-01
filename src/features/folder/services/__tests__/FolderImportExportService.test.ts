@@ -317,20 +317,32 @@ describe('FolderImportExportService.validatePayload repeated folder ids', () => 
   });
 
   it.each([
-    ['its own parent', [folderOf('a', null), folderOf('x', 'x')]],
-    ['a pair of folders', [folderOf('a', 'b'), folderOf('b', 'a')]],
+    ['its own parent', [folderOf('a', null), folderOf('x', 'x')], { x: null }],
+    ['a pair of folders', [folderOf('a', 'b'), folderOf('b', 'a')], { a: null }],
     [
       'three folders',
       [folderOf('r', null), folderOf('a', 'c'), folderOf('b', 'a'), folderOf('c', 'b')],
+      { a: null },
     ],
     [
       'folders below a sound tree',
       [folderOf('r', null), folderOf('a', 'r'), folderOf('b', 'c'), folderOf('c', 'b')],
+      { b: null },
     ],
-  ])('rejects a file where a folder is inside itself through %s', (_kind, folders) => {
-    const result = FolderImportExportService.validatePayload(payloadOf(folders));
-    expect(result.success).toBe(false);
-  });
+  ] as const)(
+    'accepts a file where a folder is inside itself through %s, moving the cut folder to the root',
+    (_kind, folders, cut) => {
+      const payload = payloadOf([...folders]);
+      const before = structuredClone(payload);
+      const result = FolderImportExportService.validatePayload(payload);
+
+      const expected = folders.map((folder) =>
+        folder.id in cut ? { ...folder, parentId: null } : folder,
+      );
+      expect(result.success && result.data.data.folders).toEqual(expected);
+      expect(payload).toEqual(before);
+    },
+  );
 
   it('keeps accepting siblings and parents the file does not hold', () => {
     const folders = [
