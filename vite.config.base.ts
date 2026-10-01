@@ -67,7 +67,9 @@ export default defineConfig({
   plugins: [
     tailwindcss(),
     tsconfigPaths(),
-    react(),
+    // The floating folder tree is Preact (per-file @jsxImportSource); keep
+    // React Refresh from wrapping it.
+    react({ exclude: /src\/pages\/content\/folder\/floatingTree\/.*\.tsx$/ }),
     stripDevIcons(isDev),
     stripI18nDescriptions(isDev),
     crxI18n({ localize, src: './src/locales', stripDescriptions: !isDev }),

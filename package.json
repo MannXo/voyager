@@ -66,6 +66,7 @@
     "mermaid": "11.12.2",
     "mermaid-legacy": "npm:mermaid@9.2.2",
     "onml": "^2.1.0",
+    "preact": "^11.0.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tailwind-merge": "^3.3.1",
