@@ -333,6 +333,15 @@ describe('Gemini conversation placement entry points', () => {
       expect(onArchive).not.toHaveBeenCalled();
     });
 
+    it('completes a move whose source bucket is missing', async () => {
+      await mount(data(['f', 's'], { f: [] }));
+      delete store.data.folderContents.s;
+      store.addConversationsToFolder('f', [ref('a')], 's');
+      expect(ids('f')).toEqual(['a']);
+      expect(await saves()).toBe(1);
+      expect(onChange).toHaveBeenCalledWith('data');
+    });
+
     it('leaves another spelling in the source when moving by id', async () => {
       await mount(data(['f', 's'], { f: [], s: [ref('c_abc', { sortIndex: 0 })] }));
       store.addConversationsToFolder('f', [ref('abc')], 's');

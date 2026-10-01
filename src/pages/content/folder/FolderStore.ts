@@ -390,69 +390,29 @@ export class FolderStore {
       sourceFolderId,
     });
 
-    if (!this.data.folderContents[folderId]) {
-      this.data.folderContents[folderId] = [];
-    }
-
-    let addedCount = 0;
-    const conversationsToRemove: string[] = [];
-    let maxSortIndex = this.data.folderContents[folderId].reduce(
-      (max, c) => Math.max(max, c.sortIndex ?? -1),
-      -1,
-    );
-
-    conversations.forEach((conv) => {
-      // Check if conversation is already in this folder
-      const exists = this.data.folderContents[folderId].some(
-        (c) => c.conversationId === conv.conversationId,
-      );
-
-      if (!exists) {
-        maxSortIndex++;
-        // Create a copy with updated timestamp
-        const newConv: ConversationReference = {
-          ...conv,
-          title: sourceFolderId
-            ? conv.title
-            : this.resolveDraggedConversationTitleForStorage(conv.conversationId, conv.title),
-          addedAt: Date.now(),
-          lastTurnAt:
-            conv.lastTurnAt ?? this.getKnownConversationLastTurnAt(conv.conversationId, conv.url),
-          sortIndex: maxSortIndex,
-        };
-
-        this.data.folderContents[folderId].push(newConv);
-        addedCount++;
-
-        // Track conversations to remove from source folder
-        if (sourceFolderId && sourceFolderId !== folderId) {
-          conversationsToRemove.push(conv.conversationId);
-        }
-      }
+    const records = conversations.map((conv) => ({
+      ...conv,
+      title: sourceFolderId
+        ? conv.title
+        : this.resolveDraggedConversationTitleForStorage(conv.conversationId, conv.title),
+      addedAt: Date.now(),
+      lastTurnAt:
+        conv.lastTurnAt ?? this.getKnownConversationLastTurnAt(conv.conversationId, conv.url),
+    }));
+    const { data, added } = placeConversations(this.data, records, {
+      target: folderId,
+      placement: 'append',
+      // Ids the target already held stay in the source.
+      removeFrom:
+        sourceFolderId && sourceFolderId !== folderId ? { bucket: sourceFolderId } : undefined,
     });
+    this.data = data;
+    folderDebug(`Added ${added.length} conversations to ${folderId}`);
 
-    folderDebug(
-      `Added ${addedCount} conversations. Total in folder:`,
-      this.data.folderContents[folderId].length,
-    );
-
-    // Remove from source folder if moving
-    if (sourceFolderId && sourceFolderId !== folderId && conversationsToRemove.length > 0) {
-      folderDebug('Removing conversations from source folder:', sourceFolderId);
-      conversationsToRemove.forEach((convId) => {
-        this.data.folderContents[sourceFolderId] = this.data.folderContents[sourceFolderId].filter(
-          (c) => c.conversationId !== convId,
-        );
-      });
-    }
-
-    // Save immediately before refresh to persist data
     this.saveData();
     this.options.onChange('data');
-    // Trigger nudge only if at least one conversation was actually added from
-    // outside. If the whole batch came from another folder (sourceFolderId set),
-    // it's a folder→folder move and not a "first archive" event.
-    if (addedCount > 0 && !sourceFolderId) {
+    // A batch from another folder is a folder→folder move, not a "first archive".
+    if (added.length > 0 && !sourceFolderId) {
       this.options.onArchive();
     }
   }
