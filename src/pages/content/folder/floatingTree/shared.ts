@@ -28,6 +28,8 @@ export type ContextMenuState = {
   x: number;
   y: number;
   confirmingDelete: boolean;
+  /** Opened from the keyboard: the menu takes focus and returns it on close. */
+  fromKeyboard?: boolean;
 };
 
 /** Data callbacks the tree raises; the host decides how each one is stored. */
@@ -103,6 +105,8 @@ export type TreeProps = {
   /** Applies `change`, runs `effect`, then re-renders the tree. */
   apply: (change: TreeChange, effect?: () => void) => void;
   site?: TreeSiteOptions;
+  /** The controller renders the folder menu in a body-level layer instead. */
+  menuInLayer?: boolean;
 };
 
 export type ConversationDragData = {

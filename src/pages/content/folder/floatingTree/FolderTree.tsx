@@ -327,6 +327,8 @@ function FolderNode({ tree, layout, folder, depth }: FolderNodeProps) {
                   x: rect.left,
                   y: rect.bottom,
                   confirmingDelete: false,
+                  // Enter or Space on the button: a click with no pointer.
+                  ...(e.detail === 0 ? { fromKeyboard: true } : {}),
                 },
               });
             }}
@@ -443,7 +445,7 @@ export function FolderTree(tree: TreeProps) {
         <FolderNode key={folder.id} tree={tree} layout={layout} folder={folder} depth={0} />
       ))}
       {rootSection && <RootSection tree={tree} labelKey={rootSection.labelKey} />}
-      <ContextMenu {...tree} />
+      {!tree.menuInLayer && <ContextMenu {...tree} />}
     </>
   );
 }

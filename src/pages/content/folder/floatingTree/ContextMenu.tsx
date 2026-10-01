@@ -1,4 +1,6 @@
 /** @jsxImportSource preact */
+import { render } from 'preact';
+
 import { getFolderDepth } from '@/features/folder/model/folderData';
 
 import { FOLDER_COLORS, getFolderColor, isDarkMode } from '../folderColors';
@@ -149,4 +151,9 @@ export function ContextMenu({ data, contextMenu, actions, apply }: TreeProps) {
       />
     </div>
   );
+}
+
+/** Renders the folder menu into `container` on its own; `null` unmounts it. */
+export function renderContextMenu(container: HTMLElement, tree: TreeProps | null): void {
+  render(tree ? <ContextMenu {...tree} /> : null, container);
 }

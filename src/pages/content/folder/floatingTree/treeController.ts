@@ -2,12 +2,15 @@ import type { ConversationSortMode } from '@/features/folder/model/folderData';
 
 import { eventPassedThrough } from '../shadowHost';
 import type { Folder, FolderData } from '../types';
+import { renderContextMenu } from './ContextMenu';
 import { renderFolderTree } from './FolderTree';
+import { mountPopoverLayer } from './popoverLayer';
 import {
   type ContextMenuState,
   type InlineEditorState,
   type TreeActions,
   type TreeChange,
+  type TreeProps,
   type TreeSiteOptions,
   cls,
 } from './shared';
@@ -24,6 +27,12 @@ export type FolderTreeOptions = {
   conversationSortMode: ConversationSortMode;
   actions: TreeActions;
   site?: TreeSiteOptions;
+  /**
+   * Renders the folder menu in its own surface on `document.body`, styled by
+   * `css`, for a tree inside a container that transforms or clips. Removed
+   * with the tree.
+   */
+  popoverLayer?: { css: string };
 };
 
 export type FolderTreeController = {
@@ -52,6 +61,7 @@ export function mountFolderTree({
   conversationSortMode,
   actions,
   site,
+  popoverLayer,
 }: FolderTreeOptions): FolderTreeController {
   let currentSite = site;
   let currentData = data;
@@ -71,6 +81,7 @@ export function mountFolderTree({
         },
       }
     : actions;
+  const layer = popoverLayer ? mountPopoverLayer(popoverLayer.css) : null;
 
   // With a store callback, expansion is the folder's persisted `isExpanded`,
   // shared with the sidebar; without one it stays local to this tree.
@@ -94,7 +105,7 @@ export function mountFolderTree({
       }
     }
 
-    renderFolderTree(body, {
+    const tree: TreeProps = {
       data: currentData,
       rootBucketId,
       conversationSortMode: currentConversationSortMode,
@@ -104,22 +115,45 @@ export function mountFolderTree({
       isExpanded,
       apply,
       site: currentSite,
-    });
+    };
+    renderFolderTree(body, layer ? { ...tree, menuInLayer: true } : tree);
+    if (layer) renderContextMenu(layer.container, tree);
   };
 
+  // A menu opened from the keyboard takes focus, and gives it back to its
+  // button when it closes and nothing else took it.
+  const focusMenuButton = (folderId: string) =>
+    Array.from(body.querySelectorAll<HTMLElement>(`.${cls('folder-header')}`))
+      .find((header) => header.dataset.folderId === folderId)
+      ?.querySelector<HTMLElement>(`.${cls('icon-button--menu')}`)
+      ?.focus();
+  const focusIsLost = () => !document.activeElement || document.activeElement === document.body;
+
   function apply(change: TreeChange, effect?: () => void): void {
+    const closing = contextMenu && change.contextMenu === null ? contextMenu : null;
     if (change.inlineEditor !== undefined) inlineEditor = change.inlineEditor;
     if (change.contextMenu !== undefined) contextMenu = change.contextMenu;
     if (change.expand) setExpanded(change.expand.folderId, change.expand.expanded);
     effect?.();
     render();
+    if (change.contextMenu?.fromKeyboard) {
+      (layer?.container ?? body).querySelector<HTMLElement>(`.${cls('menu-item')}`)?.focus();
+    } else if (closing?.fromKeyboard && focusIsLost()) {
+      focusMenuButton(closing.folderId);
+    }
   }
   render();
 
   const onDocumentClick = (e: MouseEvent) => {
-    if (contextMenu && !eventPassedThrough(e, boundary)) apply({ contextMenu: null });
+    if (!contextMenu || eventPassedThrough(e, boundary)) return;
+    if (layer && eventPassedThrough(e, layer.host)) return;
+    apply({ contextMenu: null });
+  };
+  const onDocumentKeyDown = (e: KeyboardEvent) => {
+    if (contextMenu && e.key === 'Escape') apply({ contextMenu: null });
   };
   document.addEventListener('click', onDocumentClick);
+  document.addEventListener('keydown', onDocumentKeyDown);
 
   // Is the user currently typing into an inline create/rename input?
   // Focus inside the shadow root shows as the host on `document.activeElement`.
@@ -168,8 +202,13 @@ export function mountFolderTree({
     },
     destroy: () => {
       document.removeEventListener('click', onDocumentClick);
+      document.removeEventListener('keydown', onDocumentKeyDown);
       // Unmount first so the inline form drops its document listener.
       renderFolderTree(body, null);
+      if (layer) {
+        renderContextMenu(layer.container, null);
+        layer.destroy();
+      }
     },
   };
 }

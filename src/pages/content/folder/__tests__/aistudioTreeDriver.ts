@@ -1,11 +1,13 @@
 /**
  * Drives AI Studio's folder tree the way a user does, so the characterization
  * suite states behaviour once and survives a change of tree DOM. The tree is
- * the shared folder tree in the `.gv-aistudio-folder-tree` shadow root.
+ * the shared folder tree in the `.gv-aistudio-folder-tree` shadow root; its
+ * folder menu renders in a popover layer on `document.body`.
  */
 import { AISTUDIO_ROOT_BUCKET_ID } from '@/features/folder/constants';
 
 import { AISTUDIO_TREE_HOST_CLASS } from '../aistudioTree';
+import { POPOVER_LAYER_HOST_CLASS } from '../floatingTree/popoverLayer';
 import { cls, t } from '../floatingTree/shared';
 
 export const ROOT = AISTUDIO_ROOT_BUCKET_ID;
@@ -62,6 +64,13 @@ export function treeRoot(): ShadowRoot {
   return root;
 }
 
+/** Where the folder menu renders: the tree's popover layer. */
+export function menuRoot(): ShadowRoot {
+  const root = document.querySelector(`.${POPOVER_LAYER_HOST_CLASS}`)?.shadowRoot;
+  if (!root) throw new Error('folder menu layer is not mounted');
+  return root;
+}
+
 /** The tree's text, or '' while no tree is mounted. */
 export function treeText(): string {
   return mountedTreeRoot()?.textContent ?? '';
@@ -91,7 +100,7 @@ function menuItem(labelKey: string): HTMLButtonElement | null {
   const label = t(labelKey);
   return (
     Array.from(
-      treeRoot().querySelectorAll<HTMLButtonElement>(`${part('context-menu')} button`),
+      menuRoot().querySelectorAll<HTMLButtonElement>(`${part('context-menu')} button`),
     ).find((item) => item.textContent === label) ?? null
   );
 }
@@ -208,7 +217,7 @@ export const tree = {
         .click();
       return;
     }
-    const confirming = treeRoot().querySelector(part('context-menu--confirming'))!;
+    const confirming = menuRoot().querySelector(part('context-menu--confirming'))!;
     confirming
       .querySelector<HTMLButtonElement>(
         confirm

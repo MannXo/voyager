@@ -440,6 +440,8 @@ describe('AI Studio folder tree: lifetime', () => {
       await new Promise((resolve) => setTimeout(resolve, 300));
       await flush();
       expect(document.querySelectorAll('.gv-aistudio-folder-tree')).toHaveLength(1);
+      // The folder menu's layer on document.body goes with each old tree.
+      expect(document.querySelectorAll('.gv-folder-tree-popover-layer')).toHaveLength(1);
       expect(mousedownSwallowed()).toBe(false);
       expect(tree.folderOrder()).toContain('Alpha');
     }
@@ -447,6 +449,7 @@ describe('AI Studio folder tree: lifetime', () => {
     tree.startRootFolder();
     (manager as unknown as { destroy(): void }).destroy();
     expect(document.querySelector('.gv-aistudio-folder-tree')).toBeNull();
+    expect(document.querySelector('.gv-folder-tree-popover-layer')).toBeNull();
     expect(mousedownSwallowed()).toBe(false);
   });
 });

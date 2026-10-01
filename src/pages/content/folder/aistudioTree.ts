@@ -121,6 +121,8 @@ export function mountAIStudioTree(options: {
     conversationSortMode: 'manual',
     actions: options.actions,
     site: { ...SITE, activeConversationId },
+    // The nav may transform or clip the tree; the menu must not be.
+    popoverLayer: { css: panelCss },
   });
 
   return {
