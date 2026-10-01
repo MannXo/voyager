@@ -144,4 +144,26 @@ describe('enabling a local plugin from the popup', () => {
     expect(requestMock).not.toHaveBeenCalled();
     expect(enabled()).toBe(false);
   });
+
+  it('reports a storage failure as a failed save, not as a re-import', async () => {
+    await importLocalPlugin(authored('.gv-wide{max-width:none}'));
+    const seen = await shownManifest();
+    containsMock.mockResolvedValue(true);
+    (chrome.storage.local.set as unknown as Mock).mockRejectedValue(new Error('quota'));
+    const onChange = vi.fn();
+
+    expect(await setPluginEnabledWithSiteAccess(seen, true, CLAUDE, onChange)).toBe('write_failed');
+    expect(enabled()).toBe(false);
+    expect(onChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('reports a failed optimistic write before the permission prompt without prompting', async () => {
+    await importLocalPlugin(authored('.gv-wide{max-width:none}'));
+    const seen = await shownManifest();
+    containsMock.mockResolvedValue(false);
+    (chrome.storage.local.set as unknown as Mock).mockRejectedValue(new Error('quota'));
+
+    expect(await setPluginEnabledWithSiteAccess(seen, true, CLAUDE, vi.fn())).toBe('write_failed');
+    expect(requestMock).not.toHaveBeenCalled();
+  });
 });

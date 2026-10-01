@@ -286,7 +286,11 @@ export function PluginManager({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [deniedId, setDeniedId] = useState<string | null>(null);
   const [unsupportedId, setUnsupportedId] = useState<string | null>(null);
-  const [changedId, setChangedId] = useState<string | null>(null);
+  // Why a local plugin's enable was refused: re-imported meanwhile, or not stored.
+  const [enableRefusal, setEnableRefusal] = useState<{
+    id: string;
+    key: 'localPluginChangedBeforeEnable' | 'watermarkNotice_error';
+  } | null>(null);
   const [missingPermissionIds, setMissingPermissionIds] = useState<Set<string>>(new Set());
   const [catalogSettings, setCatalogSettings] = useState<PluginCatalogSettings>(
     DEFAULT_PLUGIN_CATALOG_SETTINGS,
@@ -464,13 +468,17 @@ export function PluginManager({
     async (plugin: PluginManifest, next: boolean) => {
       setDeniedId(null);
       setUnsupportedId(null);
-      setChangedId(null);
+      setEnableRefusal(null);
       const outcome = await setPluginEnabledWithSiteAccess(plugin, next, activeUrl, (enabled) =>
         setEnabledMap((prev) => ({ ...prev, [plugin.id]: enabled })),
       );
       if (outcome === 'denied') setDeniedId(plugin.id);
       else if (outcome === 'unsupported') setUnsupportedId(plugin.id);
-      else if (outcome === 'changed') setChangedId(plugin.id);
+      else if (outcome === 'changed')
+        setEnableRefusal({ id: plugin.id, key: 'localPluginChangedBeforeEnable' });
+      // The generic "Couldn't update the setting. Try again." message.
+      else if (outcome === 'write_failed')
+        setEnableRefusal({ id: plugin.id, key: 'watermarkNotice_error' });
     },
     [activeUrl],
   );
@@ -857,10 +865,8 @@ export function PluginManager({
                     </p>
                   )}
 
-                  {changedId === plugin.id && (
-                    <p className="mt-1 text-[11px] text-red-500">
-                      {t('localPluginChangedBeforeEnable')}
-                    </p>
+                  {enableRefusal?.id === plugin.id && (
+                    <p className="mt-1 text-[11px] text-red-500">{t(enableRefusal.key)}</p>
                   )}
                 </div>
                 <Switch

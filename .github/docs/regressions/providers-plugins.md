@@ -529,7 +529,8 @@ say`), `src/pages/content/platformTheme/__tests__/platformTheme.test.ts`.
 - **Rule:** Enabling a `local.*` plugin goes through `enableLocalPluginIfUnchanged`
   (`local/localPluginStore.ts`), which, under the plugin-storage lock, re-validates the stored
   record and enables only if it equals the manifest the user saw; otherwise it writes nothing and
-  `setPluginEnabledWithSiteAccess` reports `changed`, which the popup explains.
+  `setPluginEnabledWithSiteAccess` reports `changed`, which the popup explains. A storage failure is
+  `write_failed` (the generic save-failed note), never `changed`.
 - **Guard:** `src/pages/popup/utils/__tests__/pluginEnablement.test.ts`
   (`refuses when the same id was re-imported with other content while the enable was pending`).
 
