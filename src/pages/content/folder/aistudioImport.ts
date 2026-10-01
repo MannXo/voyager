@@ -48,11 +48,13 @@ export function mergeLegacySyncFolderData(local: FolderData, sync: FolderData): 
   ];
   const mergedContents = { ...local.folderContents };
   for (const [folderId, conversations] of Object.entries(sync.folderContents)) {
-    const existing = ownBucket(mergedContents, folderId);
-    if (!existing) {
+    // A malformed local bucket is not replaced: `.map` throws and the
+    // migration leaves storage as it was.
+    if (!Object.hasOwn(mergedContents, folderId) || !mergedContents[folderId]) {
       setBucket(mergedContents, folderId, conversations);
       continue;
     }
+    const existing = mergedContents[folderId];
     const existingIds = new Set(existing.map((c) => c.conversationId));
     for (const conv of conversations) {
       if (!existingIds.has(conv.conversationId)) existing.push(conv);

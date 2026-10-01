@@ -36,6 +36,8 @@ drop, or hover layout.
   (`gives folders named after inherited object keys real buckets of their own`,
   `refuses a malformed bucket a folder owns, so the load recovers a backup`),
   `src/utils/merge.test.ts` (`mergeFolderData with a folder stored as __proto__`),
+  `src/pages/content/folder/__tests__/folderBucketRebuilds.test.ts` (the AI Studio legacy sync
+  merge and the account route filter, which run before the load normalizes),
   `src/features/folder/model/__tests__/placeConversations.test.ts`
   (`placeConversations into a folder stored as __proto__`),
   `src/features/plugins/builtin/chatgptFolders/__tests__/ChatGptFolderStore.test.ts`
