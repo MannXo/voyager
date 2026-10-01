@@ -27,13 +27,16 @@ drop, or hover layout.
   (`findInheritedFolderKey` in `src/features/folder/model/folderData.ts`), in the shared validator
   (Gemini, ChatGPT) and in `readAIStudioImportFile`. Stored data keeps loading: the normalizer
   requires an own array bucket and writes it with `defineProperty`, normalizer and clone leave a
-  non-array orphan bucket as stored, and the floating tree reads buckets through `ownBucket`.
+  non-array orphan bucket as stored, and the floating tree and AI Studio's sidebar (which never
+  normalizes) read buckets through `ownBucket`.
 - **Guard:** `src/features/folder/model/__tests__/folderData.test.ts`
   (`gives folders named after inherited object keys real buckets of their own`),
   `src/features/folder/services/__tests__/FolderImportExportService.test.ts`
   (`rejects %s that every object inherits`),
   `src/features/plugins/builtin/chatgptFolders/__tests__/activate.test.ts`
-  (`opens over stored folders named after inherited object keys`), and the
+  (`opens over stored folders named after inherited object keys`),
+  `src/pages/content/folder/__tests__/aistudioPersistence.test.ts`
+  (`loads stored folders named after inherited object keys`), and the
   `refuses a folder whose id every object inherits` cases in
   `src/pages/content/folder/__tests__/FolderTransferController.test.ts` and
   `src/pages/content/folder/__tests__/aistudioPersistence.test.ts`.

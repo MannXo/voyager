@@ -507,6 +507,24 @@ describe('AI Studio folder persistence', () => {
     expect(local.gvPromptItems).toEqual([]);
   });
 
+  it('loads stored folders named after inherited object keys', async () => {
+    local[await accountKey('a')] = JSON.parse(
+      '{"folders":[' +
+        '{"id":"__proto__","name":"Proto","parentId":null,"isExpanded":true,"createdAt":1,"updatedAt":1},' +
+        '{"id":"constructor","name":"Ctor","parentId":null,"isExpanded":true,"createdAt":1,"updatedAt":1}],' +
+        '"folderContents":{}}',
+    );
+    const instance = new AIStudioFolderManager();
+    managers.push(instance as unknown as Manager);
+
+    await instance.init();
+
+    const list = document.querySelector('.gv-folder-list')?.textContent ?? '';
+    expect(list).toContain('Proto');
+    expect(list).toContain('Ctor');
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
   it('refuses a folder whose id every object inherits', async () => {
     const manager = await mountManager();
     const key = manager.activeStorageKey;

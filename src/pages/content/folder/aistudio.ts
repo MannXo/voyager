@@ -1256,7 +1256,7 @@ export class AIStudioFolderManager {
       this.bindDropZone(content, folder.id);
 
       // Render conversations in this folder
-      const convs = this.data.folderContents[folder.id] || [];
+      const convs = ownBucket(this.data.folderContents, folder.id) ?? [];
       for (const conv of convs) {
         const convEl = this.renderConversation(folder.id, conv);
         // Add indentation for nested conversations
@@ -1590,7 +1590,7 @@ export class AIStudioFolderManager {
 
   private removeConversationFromFolder(folderId: string, conversationId: string): void {
     if (!this.canEdit) return;
-    const arr = this.data.folderContents[folderId] || [];
+    const arr = ownBucket(this.data.folderContents, folderId) ?? [];
     this.data.folderContents[folderId] = arr.filter((c) => c.conversationId !== conversationId);
     this.save().then(() => this.render());
   }
