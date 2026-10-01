@@ -98,9 +98,44 @@ export function findHandoffComposer(
   return candidates.length === 1 ? candidates[0] : null;
 }
 
-/** A composer the pack may go into: nothing typed, pasted or restored as a draft. */
+/** Whitespace, including the zero-width characters editors use to hold a caret. */
+const BLANK_TEXT = /^[\s​﻿]*$/;
+
+/**
+ * Elements of an empty editor: the paragraph, its trailing `<br>`, and the
+ * caret separator image ProseMirror adds. Placeholders are attributes or CSS
+ * on the paragraph, never child nodes.
+ */
+function isEmptySkeletonElement(element: Element): boolean {
+  switch (element.tagName) {
+    case 'P':
+    case 'BR':
+      return true;
+    case 'IMG':
+      return element.classList.contains('ProseMirror-separator');
+    default:
+      return false;
+  }
+}
+
+/**
+ * A composer the pack may go into: nothing typed, pasted, attached or restored
+ * as a draft. Empty text is not enough, since an image or a mention chip has
+ * none; any element outside the empty-editor skeleton counts as content.
+ */
 function isEmptyComposer(composer: HTMLElement): boolean {
-  return (composer.textContent ?? '').trim() === '';
+  const walker = composer.ownerDocument.createTreeWalker(
+    composer,
+    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+  );
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      if (!BLANK_TEXT.test(node.nodeValue ?? '')) return false;
+    } else if (!isEmptySkeletonElement(node as Element)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /** Put the caret at the end so the insertion can never replace a selection. */

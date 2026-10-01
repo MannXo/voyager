@@ -396,4 +396,51 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     await vi.advanceTimersByTimeAsync(SETTLE_MS);
     expect(routeListeners.size).toBe(0);
   });
+
+  it('treats an image in the composer as content', async () => {
+    const { composer } = chatgptComposer();
+    composer.innerHTML = '<p><img src="blob:https://chatgpt.com/1"></p>';
+    start();
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+
+    expect(sent()).toEqual([HANDOFF_MESSAGES.peek]);
+    expect(insert).not.toHaveBeenCalled();
+    expect(composer.querySelector('img')).not.toBeNull();
+  });
+
+  it('treats a text-less chip in the composer as content', async () => {
+    const { composer } = chatgptComposer();
+    composer.innerHTML =
+      '<p><span data-type="mention" contenteditable="false" class="chip"></span></p>';
+    start();
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+
+    expect(sent()).toEqual([HANDOFF_MESSAGES.peek]);
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('treats an image that arrives during the claim as content', async () => {
+    const { composer } = chatgptComposer();
+    const release = holdClaim();
+    start();
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+    composer.innerHTML = '<p><img src="blob:https://chatgpt.com/1"></p>';
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(insert).not.toHaveBeenCalled();
+    expect(toast()?.dataset.tone).toBe('error');
+  });
+
+  it('counts the editor placeholder skeleton as empty', async () => {
+    const { composer } = chatgptComposer();
+    composer.innerHTML =
+      '<p data-placeholder="Ask anything" class="placeholder">' +
+      '<img class="ProseMirror-separator" alt=""><br class="ProseMirror-trailingBreak"></p>';
+    start();
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+
+    expect(insert).toHaveBeenCalledOnce();
+    expect(composer.textContent).toContain('Rayleigh scattering.');
+  });
 });
