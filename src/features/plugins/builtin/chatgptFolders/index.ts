@@ -4,6 +4,7 @@
  * panel is the shared shadow-root panel. Everything this plugin creates is
  * registered on its PluginScope, so turning it off leaves nothing behind.
  */
+import type { ConversationReference } from '@/core/types/folder';
 import { cloneFolderData } from '@/features/folder/model/folderData';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
 import type { PluginScope } from '@/features/plugins/runtime/pluginScope';
@@ -16,8 +17,10 @@ import { getTranslationSyncUnsafe as t, initI18n } from '@/utils/i18n';
 
 import { isTemporaryChat } from '../chatgptTemporaryHandoff/handoff';
 import { ChatGptFolderStore } from './ChatGptFolderStore';
+import { type FolderPickerHandle, openFolderPicker } from './chatgptFolderPicker';
 import { ChatGptFolderSection } from './chatgptFolderSection';
 import { ChatGptHideFiled, HIDE_FILED_SETTING } from './chatgptHideFiled';
+import { ChatGptMoveMenu, MOVE_ENTRY_ATTR } from './chatgptMoveMenu';
 import { openChatGptConversation, readCurrentConversation } from './chatgptPage';
 import { ChatGptSidebarWatcher } from './chatgptSidebarWatcher';
 import { syncSidebarTitles } from './chatgptTitleSync';
@@ -42,6 +45,7 @@ function format(key: string, values: Record<string, string | number>): string {
 class ChatGptFoldersView {
   private panel: FloatingPanelHandle | null = null;
   private section: ChatGptFolderSection | null = null;
+  private picker: FolderPickerHandle | null = null;
   // Gemini's removal confirm; it closes with the panel.
   private readonly dialogs = createFolderDialogs();
 
@@ -75,6 +79,14 @@ class ChatGptFoldersView {
         section.destroy();
       };
     }, 'chatgpt-folders:section');
+    this.scope.effect(
+      () => () => {
+        this.picker?.close();
+        this.picker = null;
+        for (const entry of document.querySelectorAll(`[${MOVE_ENTRY_ATTR}]`)) entry.remove();
+      },
+      'chatgpt-folders:move-to-folder',
+    );
     if (this.prefs.open) this.mountPanel();
   }
 
@@ -88,6 +100,17 @@ class ChatGptFoldersView {
   /** Keeps the sidebar section in ChatGPT's sidebar; called after every sidebar change. */
   placeSection(sidebar: HTMLElement | null): void {
     this.section?.place(sidebar);
+  }
+
+  /** "Move to folder" from a sidebar row's menu: files `conversation` where the user picks. */
+  pickFolderFor(conversation: ConversationReference): void {
+    if (this.scope.isDisposed || !this.store.ready) return;
+    this.picker?.close();
+    this.picker = openFolderPicker(this.store.data.folders, (folderId) => {
+      this.picker = null;
+      const added = this.store.addConversation(folderId, conversation);
+      this.panel?.flash(t(added ? 'chatgptFoldersAdded' : 'chatgptFoldersAlreadyFiled'));
+    });
   }
 
   private setOpen(open: boolean): void {
@@ -248,9 +271,16 @@ export async function activateChatGptFolders(
   const view = new ChatGptFoldersView(scope, store, prefs);
   view.start();
   const sidebar = new ChatGptSidebarWatcher(scope);
+  const moveMenu = new ChatGptMoveMenu({
+    label: () => t('conversation_move_to_folder'),
+    untitled: () => t('chatgptFoldersUntitled'),
+    canFile: () => store.ready,
+    onMove: (conversation) => view.pickFolderFor(conversation),
+  });
   sidebar.onChange((nav) => {
     view.placeSection(nav);
     syncSidebarTitles(store, nav);
+    if (moveMenu.check(nav)) sidebar.schedule();
   });
   scope.effect(() => store.subscribe(() => sidebar.schedule()), 'chatgpt-folders:sidebar-sync');
   sidebar.start();

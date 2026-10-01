@@ -6,14 +6,15 @@ export type SidebarListener = (sidebar: HTMLElement | null) => void;
 
 /**
  * Rows appear (pagination), are renamed in place (text or `href` changes), and
- * the whole sidebar can be remounted. Text and link changes only matter inside it.
+ * the whole sidebar can be remounted. A row's menu trigger flips `aria-expanded`
+ * when its menu opens. Text and attribute changes only matter inside it.
  */
 const SIDEBAR_OBSERVER_OPTIONS: MutationObserverInit = {
   childList: true,
   subtree: true,
   characterData: true,
   attributes: true,
-  attributeFilter: ['href'],
+  attributeFilter: ['href', 'aria-expanded'],
 };
 
 /**
