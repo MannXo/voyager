@@ -370,6 +370,30 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     }
   });
 
+  it('never polls for the composer when the tab leaves during the peek', async () => {
+    let releasePeek!: () => void;
+    const heldPeek = new Promise<void>((resolve) => (releasePeek = resolve));
+    const answer = send.getMockImplementation()!;
+    send.mockImplementation(async (message) => {
+      if (message.type === HANDOFF_MESSAGES.peek) await heldPeek;
+      return answer(message);
+    });
+    start();
+    const lookups = vi.spyOn(document, 'querySelectorAll');
+    try {
+      navigate('https://chatgpt.com/c/A');
+      releasePeek();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(RECEIVER_COMPOSER_TIMEOUT_MS);
+      expect(lookups).not.toHaveBeenCalled();
+      expect(sent()).toEqual([HANDOFF_MESSAGES.peek]);
+    } finally {
+      lookups.mockRestore();
+    }
+  });
+
   it('stops polling for the composer on teardown', async () => {
     start();
     await vi.advanceTimersByTimeAsync(RECEIVER_POLL_MS);

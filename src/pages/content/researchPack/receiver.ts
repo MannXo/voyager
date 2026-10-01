@@ -273,7 +273,8 @@ export function startResearchPackReceiver(deps: ResearchPackReceiverDeps = {}): 
 
   const receive = async (): Promise<void> => {
     const peek = (await send({ type: HANDOFF_MESSAGES.peek })) as { pending?: unknown } | undefined;
-    if (stopped || peek?.pending !== true) return;
+    // Leaving during the peek round trip ends it here, before any composer poll.
+    if (stopped || peek?.pending !== true || !onNewChat()) return;
 
     const composer = await waitForComposer();
     if (stopped) return;
