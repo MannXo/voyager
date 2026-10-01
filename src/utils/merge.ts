@@ -1,5 +1,6 @@
 import type { PromptItem } from '@/core/types/sync';
 import { getPromptNameConflictIds } from '@/core/utils/promptName';
+import { isNewerPromptCopy } from '@/core/utils/promptRevision';
 import { setBucket } from '@/features/folder/model/folderData';
 import type { ForkNode, ForkNodesData } from '@/pages/content/fork/forkTypes';
 import type {
@@ -244,8 +245,9 @@ export interface PromptMergeResult {
 }
 
 /**
- * Preserves every prompt even when names conflict. Newer same-ID content wins,
- * while a local name survives a legacy cloud record that omits the field.
+ * Preserves every prompt even when names conflict. Newer same-ID content wins
+ * (`isNewerPromptCopy`: the later edit, then a content tie-break every device
+ * agrees on), while a local name survives a legacy cloud record that omits the field.
  * Duplicate-name groups are reported so callers can show a non-blocking
  * warning and slash completion can disable the ambiguous names.
  */
@@ -259,9 +261,7 @@ export function mergePromptsWithStats(local: PromptItem[], cloud: PromptItem[]):
       continue;
     }
 
-    const cloudTime = cloudItem.updatedAt || cloudItem.createdAt || 0;
-    const localTime = localItem.updatedAt || localItem.createdAt || 0;
-    if (cloudTime <= localTime) continue;
+    if (!isNewerPromptCopy(cloudItem, localItem)) continue;
 
     itemMap.set(
       cloudItem.id,

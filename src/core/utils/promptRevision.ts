@@ -20,9 +20,13 @@ export function promptEditTime(copy: PromptCopy): number {
   return copy.updatedAt || copy.createdAt || 0;
 }
 
-/** What two copies edited at the same moment are told apart by. */
+/**
+ * What two copies edited at the same moment are told apart by. Only the order
+ * has to be the same everywhere; a missing name sorts low, so a legacy copy
+ * without one does not win a tie against a named copy.
+ */
 function contentKey(copy: PromptCopy): string {
-  return JSON.stringify([copy.text, copy.name ?? null, copy.pinnedAt ?? null]);
+  return JSON.stringify([copy.text, copy.name ?? '', copy.pinnedAt ?? 0]);
 }
 
 /**
