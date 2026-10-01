@@ -31,28 +31,17 @@ export function readScopeContext(pageUrl = window.location.href): ResearchPackSc
 }
 
 /**
- * Whether the page now belongs to a different account than `bound`. An email
- * that is not (yet) visible counts as unknown, not as a change.
+ * Everything the pack key depends on in a context, as one comparable value.
+ * Two contexts with the same identity resolve to the same key (for the same
+ * isolation setting); a different identity may or may not, which only
+ * resolving it tells. A conversation change within one account keeps it.
  */
-export function isDifferentAccount(
-  bound: ResearchPackScopeContext,
-  current: ResearchPackScopeContext,
-): boolean {
-  if (bound.routeUserId !== current.routeUserId) return true;
-  return Boolean(bound.email && current.email && bound.email !== current.email);
-}
-
-/**
- * The page now shows an email for the route the scope was bound to without
- * one. At startup a reused `/u/<index>/` route can still alias the account
- * that last used it, so the email may name a different pack; only resolving
- * both tells.
- */
-export function gainsAccountEmail(
-  bound: ResearchPackScopeContext,
-  current: ResearchPackScopeContext,
-): boolean {
-  return bound.routeUserId === current.routeUserId && !bound.email && Boolean(current.email);
+export function scopeIdentity(context: ResearchPackScopeContext): string {
+  return JSON.stringify([
+    detectAccountPlatformFromUrl(context.pageUrl),
+    context.routeUserId,
+    context.email,
+  ]);
 }
 
 /**

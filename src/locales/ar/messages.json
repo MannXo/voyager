@@ -3305,9 +3305,5 @@
   "researchPackNoComposer": {
     "message": "لا يوجد مربع رسالة في هذه الصفحة",
     "description": "Research pack: no composer found"
-  },
-  "researchPackScopeChanged": {
-    "message": "تغيّر الحساب، وتظهر الآن حزمة هذا الحساب. تحقّق منها ثم أعد المحاولة.",
-    "description": "Research pack: the page switched accounts, so the panel now shows that account's pack and the action was not run"
   }
 }

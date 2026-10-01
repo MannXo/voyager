@@ -3305,9 +3305,5 @@
   "researchPackNoComposer": {
     "message": "No hay cuadro de mensaje en esta página",
     "description": "Research pack: no composer found"
-  },
-  "researchPackScopeChanged": {
-    "message": "La cuenta cambió y ahora se muestra el paquete de esta cuenta. Revísalo y vuelve a intentarlo.",
-    "description": "Research pack: the page switched accounts, so the panel now shows that account's pack and the action was not run"
   }
 }

@@ -3305,9 +3305,5 @@
   "researchPackNoComposer": {
     "message": "此頁面找不到輸入框",
     "description": "Research pack: no composer found"
-  },
-  "researchPackScopeChanged": {
-    "message": "帳號已切換，現在顯示的是目前帳號的資料包。請確認後再試一次。",
-    "description": "Research pack: the page switched accounts, so the panel now shows that account's pack and the action was not run"
   }
 }

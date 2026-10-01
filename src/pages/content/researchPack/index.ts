@@ -15,11 +15,15 @@ import {
   buildResearchPackMarkdown,
 } from '@/features/researchPack/services/markdown';
 import { createResearchPackClient } from '@/features/researchPack/services/packMessages';
-import { createEmptyPack, setInstruction } from '@/features/researchPack/services/packModel';
-import type { ResearchPackOp } from '@/features/researchPack/services/packOps';
 import {
-  type ResearchPackStore,
-  isResearchPackStorageKey,
+  createEmptyPack,
+  parsePack,
+  setInstruction,
+} from '@/features/researchPack/services/packModel';
+import type { ResearchPackOp } from '@/features/researchPack/services/packOps';
+import type {
+  ResearchPackApplyResult,
+  ResearchPackStore,
 } from '@/features/researchPack/services/packStore';
 import type { AddItemOutcome, ResearchPack } from '@/features/researchPack/services/types';
 import { getTranslationSync } from '@/utils/i18n';
@@ -30,10 +34,9 @@ import { createResearchPackPanel } from './panel';
 import {
   type ResearchPackScopeContext,
   createResearchPackKeyResolver,
-  gainsAccountEmail,
-  isDifferentAccount,
   isIsolationSettingChange,
   readScopeContext,
+  scopeIdentity,
 } from './scope';
 import {
   ADD_BUTTON_CLASS,
@@ -84,13 +87,9 @@ export interface StartResearchPackOptions {
   pageUrl?: () => string;
 }
 
-/**
- * The pack scope an action is bound to. The key is resolved from the context
- * captured at bind time, so later account switches cannot redirect it. The
- * context only changes to record an email that turned out to name the same key.
- */
-interface BoundScope {
-  context: ResearchPackScopeContext;
+/** A context whose pack key is being resolved, tagged with that context's identity. */
+interface ScopeCheck {
+  readonly identity: string;
   readonly key: Promise<string>;
 }
 
@@ -118,144 +117,132 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     panel.notify(t('researchPackSaveFailed'), 'error');
   };
 
-  const bind = (context: ResearchPackScopeContext): BoundScope => {
-    const key = resolveKey(context);
-    key.catch(() => undefined);
-    return { context, key };
-  };
-  let scope = bind(readContext());
-  // Results for a scope that is no longer shown are dropped, not rendered.
-  const isCurrent = (bound: BoundScope): boolean => !stopped && bound === scope;
+  // Which pack the page belongs to. `settled` is the last resolved scope and
+  // `checking` resolves a context whose identity differs from it; a check is
+  // dropped once the page's identity moves on. The isolation epoch is part of
+  // the identity because toggling isolation maps the same context to another key.
+  let isolationEpoch = 0;
+  let settled: { identity: string; key: string | null } | null = null;
+  let checking: ScopeCheck | null = null;
+  const identityOf = (context: ResearchPackScopeContext): string =>
+    `${isolationEpoch}:${scopeIdentity(context)}`;
 
-  // Within one scope, a load or apply that started earlier than the one on
-  // screen holds older data (a load read before an add was saved), so it is
-  // dropped. Every write fires a storage change and a fresh load, so the
-  // newest request always carries the latest pack.
-  let requestCount = 0;
-  let shownRequest = 0;
-  const nextRequest = (): number => (requestCount += 1);
-  const showIfLatest = (
-    bound: BoundScope,
-    request: number,
-    next: ResearchPack,
-    replaceInstruction = false,
-  ): void => {
-    if (!isCurrent(bound) || request < shownRequest) return;
-    shownRequest = request;
-    show(next, replaceInstruction);
+  // What the panel shows: the pack under `view.key` at `view.revision`. A null
+  // revision means that pack has no snapshot on screen yet, so the panel is locked.
+  let view: { key: string | null; revision: number | null } = { key: null, revision: null };
+
+  /** Show a snapshot unless another pack is on screen or a newer revision of it already is. */
+  const offer = (key: string, snapshot: ResearchPack): void => {
+    if (stopped || key !== view.key) return;
+    if (view.revision !== null && snapshot.revision < view.revision) return;
+    const first = view.revision === null;
+    view = { key, revision: snapshot.revision };
+    pack = snapshot;
+    panel.render(pack, markdown(), { replaceInstruction: first });
   };
 
-  const show = (next: ResearchPack, replaceInstruction = false): void => {
-    pack = next;
-    panel.render(pack, markdown(), { replaceInstruction });
-  };
-
-  /** Apply `op` to the pack of `bound`, whichever scope is on screen by the time it lands. */
-  const applyIn = async (
-    bound: BoundScope,
+  const apply = async (
+    key: string,
     op: ResearchPackOp,
-  ): Promise<{ outcome: AddItemOutcome | null } | null> => {
-    const request = nextRequest();
+  ): Promise<ResearchPackApplyResult | null> => {
     try {
-      const update = await store.apply(await bound.key, op);
-      showIfLatest(bound, request, update.pack);
-      return { outcome: update.outcome };
+      const result = await store.apply(key, op);
+      offer(key, result.pack);
+      return result;
     } catch (error) {
       reportError(error);
       return null;
     }
   };
 
-  /** Load the pack for `bound`. An unresolvable scope stays empty: no read, no write. */
-  const loadScope = async (bound: BoundScope, replaceInstruction: boolean): Promise<void> => {
-    const request = nextRequest();
+  const load = async (key: string): Promise<void> => {
     try {
-      const loaded = await store.load(await bound.key);
-      showIfLatest(bound, request, loaded, replaceInstruction);
+      offer(key, await store.load(key));
     } catch {
-      // Fail closed and quietly: the panel stays empty, and the next user
-      // action on this scope reports the failure.
+      // Stay locked and empty; the next write to this pack still renders.
     }
   };
 
   /**
-   * Rebind to the page's current account or isolation setting. Unsaved typing
-   * goes to the scope it was typed in, the old content is hidden at once, and
-   * the new scope's pack loads in its place.
+   * Put another pack on screen. Unsaved typing is saved to the pack it was
+   * typed in, and the panel stays cleared and locked until the new pack's
+   * first snapshot, so that snapshot cannot overwrite anything typed meanwhile.
    */
-  const switchScope = (next: BoundScope = bind(readContext())): void => {
-    const previous = scope;
+  const showPack = (key: string | null): void => {
     const pending = panel.takePendingInstruction();
-    if (pending !== null) void applyIn(previous, { kind: 'setInstruction', instruction: pending });
-    scope = next;
-    show(createEmptyPack(), true);
-    void loadScope(scope, true);
+    if (view.key !== null && pending !== null) {
+      void apply(view.key, { kind: 'setInstruction', instruction: pending });
+    }
+    view = { key, revision: null };
+    pack = createEmptyPack();
+    panel.render(pack, markdown(), { replaceInstruction: true, locked: true });
+    if (key !== null) void load(key);
+  };
+
+  const settle = (check: ScopeCheck, key: string | null): void => {
+    if (stopped || checking !== check) return;
+    checking = null;
+    if (identityOf(readContext()) !== check.identity) {
+      // The page moved on while this resolved; check where it is now instead.
+      checkScope();
+      return;
+    }
+    settled = { identity: check.identity, key };
+    if (key !== view.key) showPack(key);
   };
 
   /**
-   * An email that appears after binding (common at startup) may name another
-   * account than the route alias did. Resolve it once: a different key moves
-   * the panel to that pack, the same key only records the email on the scope,
-   * so the panel, its typing and in-flight loads are left alone.
+   * Match the scope to the page as it is now. Any change of route, email,
+   * platform or isolation setting is resolved; only a different key switches
+   * the pack on screen. Returns the running check for the current context, or
+   * null when the settled scope already matches it.
    */
-  let emailCheck: { from: BoundScope; candidate: BoundScope } | null = null;
-  const checkLateEmail = (): BoundScope | null => {
-    const current = readContext();
-    if (!gainsAccountEmail(scope.context, current)) return null;
-    if (emailCheck?.from === scope) return emailCheck.candidate;
-    const check = { from: scope, candidate: bind(current) };
-    emailCheck = check;
-    const settle = (sameKey: boolean): void => {
-      if (emailCheck === check) emailCheck = null;
-      if (!isCurrent(check.from)) return;
-      if (sameKey) check.from.context = check.candidate.context;
-      else switchScope(check.candidate);
-    };
-    // A key that cannot be resolved fails closed on the candidate's scope.
-    void Promise.all([check.from.key, check.candidate.key]).then(
-      ([fromKey, candidateKey]) => settle(fromKey === candidateKey),
-      () => settle(false),
-    );
-    return check.candidate;
-  };
-
-  /** The scope for something the user does now; rebinds first if the page changed accounts. */
-  const scopeForAction = (): { bound: BoundScope; switched: boolean } => {
-    if (!isDifferentAccount(scope.context, readContext())) {
-      return { bound: scope, switched: false };
+  const checkScope = (): ScopeCheck | null => {
+    const context = readContext();
+    const identity = identityOf(context);
+    if (checking?.identity === identity) return checking;
+    if (settled?.identity === identity) {
+      checking = null;
+      return null;
     }
-    switchScope();
-    return { bound: scope, switched: true };
+    const check: ScopeCheck = { identity, key: resolveKey(context) };
+    checking = check;
+    // A key that cannot be resolved fails closed: no pack is read or written.
+    void check.key.then(
+      (key) => settle(check, key),
+      () => settle(check, null),
+    );
+    return check;
   };
 
-  /** Panel edits and exports act on what is on screen; after a switch they stop and say so. */
-  const panelScope = (): BoundScope | null => {
-    const { bound, switched } = scopeForAction();
-    if (!switched) return bound;
-    panel.notify(t('researchPackScopeChanged'), 'error');
-    return null;
+  /** The pack for what the page shows now, waiting for its check if one is running. */
+  const keyForPage = async (): Promise<string> => {
+    const check = checkScope();
+    const key = check ? await check.key : (settled?.key ?? null);
+    if (key === null) throw new Error('This page has no research pack scope');
+    return key;
   };
 
-  const applyFromPanel = (op: ResearchPackOp): void => {
-    const bound = panelScope();
-    if (bound) void applyIn(bound, op);
+  /** Panel edits act on the pack on screen, and only once it has rendered. */
+  const editShown = (op: ResearchPackOp): Promise<unknown> | undefined => {
+    if (view.key === null || view.revision === null) return undefined;
+    return apply(view.key, op);
   };
 
   const panel = createResearchPackPanel(t, {
-    onMove: (id, delta) => applyFromPanel({ kind: 'move', id, delta }),
-    onRemove: (id) => applyFromPanel({ kind: 'remove', id }),
+    onMove: (id, delta) => void editShown({ kind: 'move', id, delta }),
+    onRemove: (id) => void editShown({ kind: 'remove', id }),
     // The text belongs to the pack on screen, so it is saved there.
-    onInstructionChange: (instruction) => applyIn(scope, { kind: 'setInstruction', instruction }),
-    onClear: () => applyFromPanel({ kind: 'clear' }),
+    onInstructionChange: (instruction) => editShown({ kind: 'setInstruction', instruction }),
+    onClear: () => void editShown({ kind: 'clear' }),
+    // Exports hand over the pack on screen; the buttons are disabled while it loads.
     onCopy: () => {
-      if (!panelScope()) return;
       void navigator.clipboard
         .writeText(exportMarkdown())
         .then(() => panel.notify(t('researchPackCopied')))
         .catch(() => panel.notify(t('researchPackCopyFailed'), 'error'));
     },
     onDownload: () => {
-      if (!panelScope()) return;
       const url = URL.createObjectURL(
         new Blob([exportMarkdown()], { type: 'text/markdown;charset=utf-8' }),
       );
@@ -275,7 +262,6 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     },
     onInsert: () => {
       // Fill the composer only. The user reviews the pack and sends it.
-      if (!panelScope()) return;
       const input = findChatInput();
       if (!input || !insertTextIntoChatInput(exportMarkdown(), input)) {
         panel.notify(t('researchPackNoComposer'), 'error');
@@ -298,11 +284,15 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
       panel.notify(t('researchPackCaptureFailed'), 'error');
       return;
     }
-    // The answer belongs to the page as it is now, so a switched scope is the
-    // right one, and so is the account an email that just appeared names.
-    const { bound } = scopeForAction();
-    const target = checkLateEmail() ?? bound;
-    const outcome = (await applyIn(target, { kind: 'add', draft }))?.outcome;
+    // The answer belongs to the page as it is at the click, whichever pack is on screen.
+    let key: string;
+    try {
+      key = await keyForPage();
+    } catch (error) {
+      reportError(error);
+      return;
+    }
+    const outcome = (await apply(key, { kind: 'add', draft }))?.outcome;
     if (!outcome || stopped) return;
     panel.notify(t(ADD_OUTCOME_MESSAGES[outcome]), outcome === 'added' ? 'ok' : 'error');
     if (outcome === 'added') {
@@ -323,9 +313,9 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
 
   const scan = (): void => {
     if (stopped) return;
-    // In-app navigation can move the page to another /u/<index>/ account.
-    if (isDifferentAccount(scope.context, readContext())) switchScope();
-    else checkLateEmail();
+    // In-app navigation can move the page to another /u/<index>/ account, and
+    // the account email often shows up only after the page has loaded.
+    checkScope();
     ensureAddButtons(document, addButtonOptions);
   };
 
@@ -351,11 +341,16 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     changes: Record<string, chrome.storage.StorageChange>,
     areaName: string,
   ): void => {
-    if (areaName === 'local' && Object.keys(changes).some(isResearchPackStorageKey)) {
-      void loadScope(scope, false);
+    const shownKey = view.key;
+    if (areaName === 'local' && shownKey !== null && shownKey in changes) {
+      const { newValue } = changes[shownKey];
+      // A removed pack starts over, so its next write (revision 1) must show.
+      if (newValue === undefined) view = { key: shownKey, revision: null };
+      offer(shownKey, parsePack(newValue));
     }
     if (isIsolationSettingChange(changes, areaName, pageUrl())) {
-      switchScope();
+      isolationEpoch += 1;
+      checkScope();
     }
     if ((areaName === 'sync' || areaName === 'local') && changes[StorageKeys.LANGUAGE]) {
       addButtonOptions.label = t('researchPackAdd');
@@ -365,11 +360,10 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
   };
 
   document.body.appendChild(panel.root);
-  show(pack, true);
+  panel.render(pack, markdown(), { replaceInstruction: true, locked: true });
   scan();
   observer.observe(document.body, { childList: true, subtree: true });
   chrome.storage.onChanged.addListener(onStorageChanged);
-  void loadScope(scope, true);
 
   return () => {
     if (stopped) return;

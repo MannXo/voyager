@@ -3305,9 +3305,5 @@
   "researchPackNoComposer": {
     "message": "No message box found on this page",
     "description": "Research pack: no composer found"
-  },
-  "researchPackScopeChanged": {
-    "message": "Account changed, so this account’s pack is shown now. Check it, then try again.",
-    "description": "Research pack: the page switched accounts, so the panel now shows that account's pack and the action was not run"
   }
 }

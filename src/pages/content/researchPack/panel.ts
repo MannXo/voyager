@@ -28,13 +28,14 @@ export interface ResearchPackPanel {
   readonly root: HTMLElement;
   /**
    * Show `pack`. The instruction box keeps what the user is typing unless
-   * `replaceInstruction` is set, which a scope switch uses so one account's
-   * text never stays on screen for another.
+   * `replaceInstruction` is set, which the first snapshot of a scope uses so
+   * one account's text never stays on screen for another. `locked` disables
+   * every edit and action while a scope has no snapshot yet.
    */
   render: (
     pack: ResearchPack,
     markdown: string,
-    options?: { replaceInstruction?: boolean },
+    options?: { replaceInstruction?: boolean; locked?: boolean },
   ) => void;
   open: () => void;
   close: () => void;
@@ -266,9 +267,14 @@ export function createResearchPackPanel(
   const render = (
     pack: ResearchPack,
     markdown: string,
-    options: { replaceInstruction?: boolean } = {},
+    options: { replaceInstruction?: boolean; locked?: boolean } = {},
   ): void => {
+    const locked = options.locked === true;
     currentPack = pack;
+    panel.setAttribute('aria-busy', String(locked));
+    instruction.disabled = locked;
+    // A confirm opened for the old content must not act on what replaces it.
+    if (locked) confirmSurfaces.close();
     count.textContent = format(t('researchPackItemCount'), { count: pack.items.length });
     const hasItems = pack.items.length > 0;
     empty.hidden = hasItems;
@@ -284,7 +290,7 @@ export function createResearchPackPanel(
     }
     markdownView.textContent = markdown;
     for (const button of [insertButton, copyButton, downloadButton, clearButton]) {
-      button.disabled = !hasItems;
+      button.disabled = locked || !hasItems;
     }
     syncLauncher();
   };

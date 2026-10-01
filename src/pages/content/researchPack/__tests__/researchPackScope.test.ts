@@ -108,7 +108,7 @@ describe('research pack account scope', () => {
     let isolated = false;
     stop = startResearchPack({
       pageUrl: geminiPageUrl,
-      store,
+      store: gated(store, { load: ACCOUNT_A, ms: 40 }),
       resolveKey: async () => (isolated ? ACCOUNT_A : GLOBAL),
     });
     await flush();
@@ -116,9 +116,10 @@ describe('research pack account scope', () => {
 
     isolated = true;
     emitStorageChange(ISOLATION_ON, 'sync');
+    await flush();
     // The old scope's content is hidden before the new one has loaded.
     expect(shownItems()).toEqual([]);
-    await flush();
+    await wait(60);
     expect(shownItems()).toEqual(['A item']);
 
     const writeText = vi.fn(async (_text: string) => undefined);
@@ -180,6 +181,54 @@ describe('research pack account scope', () => {
     // Copy is the second footer button (Insert, Copy, Download, Clear).
     document.querySelectorAll<HTMLButtonElement>('.gv-rp-actions button')[1].click();
     expect(writeText.mock.calls[0][0]).toContain('Fresh answer.');
+  });
+
+  it('never puts an older snapshot back after a newer add has rendered', async () => {
+    // Storage that reports every write like chrome.storage.onChanged does.
+    const data = new Map<string, unknown>();
+    const area: ResearchPackStorageArea = {
+      get: async (key) => (data.has(key) ? { [key]: structuredClone(data.get(key)) } : {}),
+      set: async (items) => {
+        for (const [key, value] of Object.entries(items)) {
+          const oldValue = data.get(key);
+          data.set(key, structuredClone(value));
+          emitStorageChange({ [key]: { oldValue, newValue: structuredClone(value) } }, 'local');
+        }
+      },
+    };
+    const owner = createResearchPackOwner({ area });
+    // Every load after the first reads storage at once but answers late.
+    const held: Array<() => void> = [];
+    let loads = 0;
+    const store: ResearchPackStore = {
+      load: async (key) => {
+        loads += 1;
+        const snapshot = await owner.load(key);
+        if (loads > 1) await new Promise<void>((resolve) => held.push(resolve));
+        return snapshot;
+      },
+      apply: (key, op) => owner.apply(key, op),
+    };
+    const writeText = vi.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const first = turn('<p>First answer.</p>', 'First question?');
+    const second = turn('<p>Second answer.</p>', 'Second question?');
+    stop = startResearchPack({ pageUrl: geminiPageUrl, store, resolveKey: async () => GLOBAL });
+    await flush();
+
+    clickAdd(first);
+    clickAdd(second);
+    await wait(20);
+    // The load started by the first write lands while the later one is still out.
+    held.shift()?.();
+    await flush();
+
+    expect((data.get(GLOBAL) as ResearchPack).items).toHaveLength(2);
+    expect(shownItems()).toHaveLength(2);
+    document.querySelectorAll<HTMLButtonElement>('.gv-rp-actions button')[1].click();
+    expect(writeText.mock.calls[0][0]).toContain('First answer.');
+    expect(writeText.mock.calls[0][0]).toContain('Second answer.');
+    for (const release of held.splice(0)) release();
   });
 
   it('writes an answer to the account it was added under, even if the page switches first', async () => {
@@ -272,10 +321,11 @@ describe('research pack account scope', () => {
     // A reused /u/0 route still aliases the previous account A until B's email is seen.
     const staleRouteAlias = async (context: ResearchPackScopeContext) =>
       context.email === 'b@example.com' ? ACCOUNT_B_EMAIL : ACCOUNT_A;
-    const showEmail = (email: string): void => {
+    const showEmail = (email: string): HTMLElement => {
       const account = document.createElement('div');
-      account.setAttribute('aria-label', `Google Account: B (${email})`);
+      account.setAttribute('aria-label', `Google Account (${email})`);
       document.body.appendChild(account);
+      return account;
     };
     const copyButton = () =>
       document.querySelectorAll<HTMLButtonElement>('.gv-rp-actions button')[1];
@@ -333,6 +383,67 @@ describe('research pack account scope', () => {
         'Clicked as soon as the email appeared.',
       ]);
       expect(shared.at(ACCOUNT_A).map((item) => item.text)).toEqual(['A item']);
+    });
+
+    it('adds to the account of the latest email while an older email is still being checked', async () => {
+      const ACCOUNT_C_EMAIL = buildScopedStorageKey(StorageKeys.RESEARCH_PACK, 'email:c');
+      const shared = sharedStorage({ [ACCOUNT_A]: packOf('A item') });
+      const resolveKey = async (context: ResearchPackScopeContext) => {
+        if (context.email === 'b@example.com') {
+          await wait(80);
+          return ACCOUNT_B_EMAIL;
+        }
+        return context.email === 'c@example.com' ? ACCOUNT_C_EMAIL : ACCOUNT_A;
+      };
+      const host = turn('<p>Asked as C.</p>');
+      stop = startResearchPack({ pageUrl: geminiPageUrl, store: shared.store, resolveKey });
+      await flush();
+
+      const account = showEmail('b@example.com');
+      // The rescan starts checking B, which takes 80ms; C signs in meanwhile.
+      await wait(330);
+      account.setAttribute('aria-label', 'Google Account (c@example.com)');
+      clickAdd(host);
+      await wait(120);
+
+      expect(shared.at(ACCOUNT_C_EMAIL).map((item) => item.text)).toEqual(['Asked as C.']);
+      expect(shared.at(ACCOUNT_B_EMAIL)).toEqual([]);
+      expect(shared.at(ACCOUNT_A).map((item) => item.text)).toEqual(['A item']);
+      await flush();
+      expect(shownItems()).toEqual(['Asked as C.']);
+    });
+
+    it('locks editing until the new account pack has loaded, so the load cannot overwrite typing', async () => {
+      const shared = sharedStorage({
+        [ACCOUNT_A]: packOf('A item'),
+        [ACCOUNT_B_EMAIL]: { ...packOf('B item'), instruction: 'B instruction' },
+      });
+      stop = startResearchPack({
+        pageUrl: geminiPageUrl,
+        store: gated(shared.store, { load: ACCOUNT_B_EMAIL, ms: 200 }),
+        resolveKey: staleRouteAlias,
+      });
+      await flush();
+      const textarea = document.querySelector<HTMLTextAreaElement>('#gv-rp-instruction')!;
+
+      showEmail('b@example.com');
+      // The rescan switches to B; B's pack is still loading.
+      await wait(350);
+      expect(shownItems()).toEqual([]);
+      expect(textarea.value).toBe('');
+      expect(textarea.disabled).toBe(true);
+      expect(
+        Array.from(document.querySelectorAll<HTMLButtonElement>('.gv-rp-actions button')).every(
+          (button) => button.disabled,
+        ),
+      ).toBe(true);
+
+      await wait(250);
+      await flush();
+      expect(shownItems()).toEqual(['B item']);
+      expect(textarea.disabled).toBe(false);
+      expect(textarea.value).toBe('B instruction');
+      expect(shared.instruction(ACCOUNT_B_EMAIL)).toBe('B instruction');
     });
 
     it('keeps the panel and the typing untouched when the email resolves to the same pack', async () => {

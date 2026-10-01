@@ -3305,9 +3305,5 @@
   "researchPackNoComposer": {
     "message": "Aucune zone de saisie sur cette page",
     "description": "Research pack: no composer found"
-  },
-  "researchPackScopeChanged": {
-    "message": "Le compte a changé : le dossier de ce compte est maintenant affiché. Vérifiez-le, puis réessayez.",
-    "description": "Research pack: the page switched accounts, so the panel now shows that account's pack and the action was not run"
   }
 }

@@ -3,11 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildScopedStorageKey } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 
-import {
-  createResearchPackKeyResolver,
-  isDifferentAccount,
-  isIsolationSettingChange,
-} from '../scope';
+import { createResearchPackKeyResolver, isIsolationSettingChange, scopeIdentity } from '../scope';
 
 const PAGE = 'https://gemini.google.com/u/1/app/abc';
 const context = { pageUrl: PAGE, routeUserId: '1', email: null };
@@ -88,13 +84,18 @@ describe('research pack key resolver', () => {
 });
 
 describe('research pack scope changes', () => {
-  it('treats a new route or a different visible email as another account', () => {
-    const bound = { pageUrl: PAGE, routeUserId: '1', email: 'a@example.com' };
-
-    expect(isDifferentAccount(bound, { ...bound, pageUrl: `${PAGE}/other` })).toBe(false);
-    expect(isDifferentAccount(bound, { ...bound, email: null })).toBe(false);
-    expect(isDifferentAccount(bound, { ...bound, routeUserId: '2' })).toBe(true);
-    expect(isDifferentAccount(bound, { ...bound, email: 'b@example.com' })).toBe(true);
+  it('identifies a scope by platform, route and email, not by conversation', () => {
+    const bound = { pageUrl: PAGE, routeUserId: '0', email: null };
+    const same = scopeIdentity(bound);
+    expect(scopeIdentity({ ...bound, pageUrl: `${PAGE}/other` })).toBe(same);
+    expect(scopeIdentity({ ...bound, routeUserId: '1' })).not.toBe(same);
+    expect(scopeIdentity({ ...bound, email: 'b@example.com' })).not.toBe(same);
+    expect(scopeIdentity({ ...bound, email: 'c@example.com' })).not.toBe(
+      scopeIdentity({ ...bound, email: 'b@example.com' }),
+    );
+    expect(scopeIdentity({ ...bound, pageUrl: 'https://aistudio.google.com/prompts' })).not.toBe(
+      same,
+    );
   });
 
   it('reacts only to isolation flags in sync storage', () => {
