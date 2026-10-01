@@ -9,12 +9,13 @@
 import { safeHttpUrl } from './citations';
 import type { ResearchPack, ResearchPackCitation } from './types';
 
-const PLATFORM_LABELS: Readonly<Record<string, string>> = {
-  gemini: 'Gemini',
-  aistudio: 'AI Studio',
-  chatgpt: 'ChatGPT',
-  claude: 'Claude',
-};
+/** A Map, not an object: a stored platform such as `constructor` must not hit Object.prototype. */
+const PLATFORM_LABELS: ReadonlyMap<string, string> = new Map([
+  ['gemini', 'Gemini'],
+  ['aistudio', 'AI Studio'],
+  ['chatgpt', 'ChatGPT'],
+  ['claude', 'Claude'],
+]);
 
 export interface PackSourceEntry extends ResearchPackCitation {
   /** 1-based position in the pack-wide source list. */
@@ -83,7 +84,7 @@ function formatDate(now: number): string {
 }
 
 export function platformLabel(platform: string): string {
-  return PLATFORM_LABELS[platform] ?? platform;
+  return PLATFORM_LABELS.get(platform) ?? platform;
 }
 
 export function buildResearchPackMarkdown(pack: ResearchPack, now: number): string {

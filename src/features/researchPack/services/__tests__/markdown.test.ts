@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   buildResearchPackFilename,
   buildResearchPackMarkdown,
+  escapeInlineMarkdown,
   indexPackSources,
+  platformLabel,
 } from '../markdown';
 import { addItem, createEmptyPack, setInstruction } from '../packModel';
 import type { ResearchPack, ResearchPackDraftItem } from '../types';
@@ -139,6 +141,17 @@ describe('research pack markdown', () => {
     expect(markdown).toContain('- From: \\<img src=x onerror=alert(3)\\>');
     expect(markdown).toContain('- Prompt: \\<script\\>alert(1)\\</script\\> \\*bold\\*');
     expect(markdown).toContain('[\\<i\\>Fine\\</i\\> \\& \\[ok\\]](https://example.com/ok)');
+  });
+
+  it('renders platform names that collide with Object.prototype as plain text', () => {
+    for (const platform of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+      const pack = buildPack([draft({ text: `From ${platform}`, platform })]);
+      expect(platformLabel(platform), platform).toBe(platform);
+      expect(buildResearchPackMarkdown(pack, NOW), platform).toContain(
+        `(${escapeInlineMarkdown(platform)})`,
+      );
+    }
+    expect(platformLabel('gemini')).toBe('Gemini');
   });
 
   it('omits empty sections', () => {
