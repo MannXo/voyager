@@ -87,6 +87,9 @@ export function StarredHistory({ onClose, sourceTabId }: StarredHistoryProps) {
         ? await chrome.tabs.get(sourceTabId).catch(() => undefined)
         : (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
     const pageUrl = tab?.url ?? '';
+    const platform = detectAccountPlatformFromUrl(pageUrl);
+    // Sites without their own highlight bucket must not open Gemini's for the same account.
+    if (!platform) throw new Error('Highlight account scope is unavailable');
     let routeUserId = extractRouteUserIdFromUrl(pageUrl);
     let email: string | null = null;
     if (tab?.id) {
@@ -111,7 +114,7 @@ export function StarredHistory({ onClose, sourceTabId }: StarredHistoryProps) {
       email,
     });
     return {
-      platform: detectAccountPlatformFromUrl(pageUrl),
+      platform,
       accountKey: resolved.accountKey,
       accountId: resolved.accountId,
       routeUserId: resolved.routeUserId,

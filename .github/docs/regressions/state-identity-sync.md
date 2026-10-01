@@ -16,6 +16,32 @@ mirrors, clear markers, or Drive sync.
   `src/pages/content/promptHistory/__tests__/promptHistory.test.ts`
   (`keeps captures separate when the same route switches to another account`).
 
+## Non-native sites must not fall back to Gemini folder buckets
+
+- **Trap:** `detectAccountPlatformFromUrl` returned `'gemini'` for every host except AI Studio, and
+  folder routing used `platform === 'aistudio' ? <AI Studio> : <Gemini>` branches. On ChatGPT,
+  Claude and DeepSeek, where Prompt Manager and plugins run, popup isolation, Prompt Manager folder
+  backup and Drive sync routing therefore resolved Gemini's `gvFolderData`, isolation switch, Drive
+  file and sync timestamps. Adding a platform to the union would also have compiled and silently
+  used the Gemini branch.
+- **Rule:** Folder storage keys, isolation keys, Drive file names and types, sync timestamps and
+  hosts come from `FOLDER_PLATFORMS` in `src/features/folder/platforms.ts`, whose `Record` type
+  requires an entry for every platform. `detectAccountPlatformFromUrl` returns `null` for every other
+  http(s) site, and callers skip folder storage, backup, isolation and sync on `null`; only pages
+  without a web URL (new tab, extension pages) keep the Gemini default. The background rejects
+  unknown sync platforms and web-page senders whose host does not own the requested platform. Do
+  not add `=== 'aistudio' ? … : <Gemini>` or `!== 'aistudio'` branches for folder data: use the map
+  or a positive `=== 'gemini'` check.
+- **Guard:** `src/features/folder/__tests__/platforms.test.ts`,
+  `src/core/services/__tests__/AccountIsolationService.test.ts` (`never resolves a non-Gemini site
+to a Gemini or AI Studio folder platform`), `src/pages/content/prompt/__tests__/localBackup.test.ts`,
+  `src/pages/background/__tests__/runtimeMessageRouting.test.ts`,
+  `src/core/services/__tests__/GoogleDriveSyncPlatform.test.ts`,
+  `src/pages/popup/components/__tests__/CloudSyncSettingsPlatform.test.tsx`,
+  `src/pages/popup/hooks/__tests__/useFolderPopupSettings.test.tsx` and
+  `src/pages/popup/__tests__/Popup.test.tsx` (`keeps Gemini folder data, isolation and Cloud Sync
+off a ChatGPT tab`).
+
 ## onMessage listeners must not return true unconditionally
 
 - **Trap:** Background broadcasts (e.g. `gv.remoteAnnouncement.show` via `chrome.tabs.sendMessage`)

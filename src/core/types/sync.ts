@@ -2,6 +2,7 @@
  * Sync-related type definitions for Google Drive sync feature
  * Provides type safety for sync state management and data transfer
  */
+import type { FolderPlatform } from '@/features/folder/platforms';
 import type { PluginStateMap } from '@/features/plugins/storage/pluginState';
 import type { StarredMessagesData } from '@/pages/content/timeline/starredTypes';
 
@@ -19,11 +20,10 @@ export type SyncMode = 'disabled' | 'manual' | 'auto';
 export type SyncProvider = 'googleDrive' | 'icloud';
 
 /**
- * Platform identifier for sync operations
- * - gemini: Main Gemini website (gemini.google.com)
- * - aistudio: AI Studio website (aistudio.google.com, aistudio.google.cn)
+ * Platform identifier for folder sync operations. Hosts, storage keys, Drive files and sync
+ * timestamps for each platform live in `FOLDER_PLATFORMS` (`src/features/folder/platforms.ts`).
  */
-export type SyncPlatform = 'gemini' | 'aistudio';
+export type SyncPlatform = FolderPlatform;
 
 export interface SyncAccountScope {
   accountKey: string;

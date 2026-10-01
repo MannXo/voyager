@@ -2,7 +2,7 @@
   "limit": 1000,
   "files": {
     "src/core/services/__tests__/GoogleDriveSyncService.test.ts": 1142,
-    "src/core/services/GoogleDriveSyncService.ts": 1685,
+    "src/core/services/GoogleDriveSyncService.ts": 1680,
     "src/core/services/HighlightAnnotationService.ts": 1444,
     "src/features/export/services/__tests__/DOMContentExtractor.test.ts": 1960,
     "src/features/export/services/DOMContentExtractor.ts": 1499,
@@ -12,7 +12,7 @@
     "src/features/plugins/builtin/chatgptTemporaryHandoff/handoff.ts": 1050,
     "src/features/plugins/builtin/claudeUsage/index.ts": 1011,
     "src/features/plugins/verbs/turnNavigator/TurnNavigator.ts": 1172,
-    "src/pages/background/index.ts": 2853,
+    "src/pages/background/index.ts": 2839,
     "src/pages/content/chatInput/__tests__/vimMode.test.ts": 1969,
     "src/pages/content/chatInput/vimMode.ts": 2821,
     "src/pages/content/defaultModel/__tests__/modelLocker.test.ts": 2577,
@@ -39,6 +39,6 @@
     "src/pages/content/watermarkRemover/index.ts": 1012,
     "src/pages/content/wavedrom/index.ts": 1075,
     "src/pages/popup/components/__tests__/PluginManager.test.tsx": 1002,
-    "src/pages/popup/components/CloudSyncSettings.tsx": 1213
+    "src/pages/popup/components/CloudSyncSettings.tsx": 1204
   }
 }

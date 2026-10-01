@@ -63,6 +63,7 @@ import {
   highlightImportExportService,
 } from '@/features/backup/services/HighlightImportExportService';
 import { PromptImportExportService } from '@/features/backup/services/PromptImportExportService';
+import { FOLDER_PLATFORMS } from '@/features/folder/platforms';
 import { registerWelcomePageOnInstall } from '@/features/onboarding/welcomePage';
 import {
   chatGptHandoffTabIdResponse,
@@ -102,8 +103,11 @@ import type { TranslationKey } from '@/utils/translations';
 import { unregisterRegisteredContentScripts } from './contentScriptRegistration';
 import { resolveOptionalHighlightSetting } from './highlightOptionalSetting';
 import {
-  isAllowedSyncContentSender,
+  canSenderPageUseSyncPlatform,
   isHandledBackgroundRuntimeMessage,
+  isTrustedExtensionPageSender,
+  isTrustedSyncMessageSender,
+  parseSyncPlatform,
 } from './runtimeMessageRouting';
 import { registerWatermarkDefaultMigrationOnInstall } from './watermarkDefaultMigration';
 import { injectWatermarkInterceptorIntoOpenTabs } from './watermarkOpenTabs';
@@ -480,15 +484,6 @@ function isHighlightStoredAccountScope(value: unknown): value is HighlightStored
   return isHighlightPlatform(scope.platform) && typeof scope.accountHash === 'string';
 }
 
-function isTrustedExtensionPageSender(sender: chrome.runtime.MessageSender): boolean {
-  if (sender.tab || sender.id !== chrome.runtime.id || typeof sender.url !== 'string') return false;
-  try {
-    return sender.url.startsWith(chrome.runtime.getURL(''));
-  } catch {
-    return false;
-  }
-}
-
 async function resolveHighlightAccountScope(
   sender: chrome.runtime.MessageSender,
   payload: Record<string, unknown> | undefined,
@@ -500,12 +495,10 @@ async function resolveHighlightAccountScope(
     (typeof payload?.conversationUrl === 'string' && payload.conversationUrl) ||
     sender.tab?.url ||
     null;
-  const detectedPlatform = detectAccountPlatformFromUrl(pageUrl);
+  // Highlight buckets keep their Gemini default off-platform; only folder routing is gated here.
   const platform = isHighlightPlatform(payload?.platform)
     ? payload.platform
-    : detectedPlatform === 'aistudio'
-      ? 'aistudio'
-      : 'gemini';
+    : (detectAccountPlatformFromUrl(pageUrl) ?? 'gemini');
   const scope = await accountIsolationService.resolveAccountScope({ pageUrl });
   return {
     platform,
@@ -642,8 +635,7 @@ async function loadAuthoritativeSyncPayload(
   platform: AccountPlatform,
   accountScope: SyncAccountScope | null,
 ): Promise<{ folders: FolderData; prompts: PromptItem[] }> {
-  const baseFolderStorageKey =
-    platform === 'aistudio' ? StorageKeys.FOLDER_DATA_AISTUDIO : StorageKeys.FOLDER_DATA;
+  const baseFolderStorageKey = FOLDER_PLATFORMS[platform].folderStorageKey;
   const folderStorageKey = accountScope
     ? buildScopedStorageKey(baseFolderStorageKey, accountScope.accountKey)
     : baseFolderStorageKey;
@@ -658,16 +650,6 @@ async function loadAuthoritativeSyncPayload(
     throw new Error('Local prompt data is invalid');
   }
   return { folders, prompts: rawPrompts ?? [] };
-}
-
-function isTrustedSyncMessageSender(
-  sender: chrome.runtime.MessageSender,
-  platform: AccountPlatform,
-): boolean {
-  return (
-    isTrustedExtensionPageSender(sender) ||
-    (sender.id === chrome.runtime.id && isAllowedSyncContentSender(sender.tab?.url, platform))
-  );
 }
 
 function matchesRouteScope(url: string, routeUserId: string | null): boolean {
@@ -2478,14 +2460,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               includeHighlights,
             } = message.payload as {
               interactive?: boolean;
-              platform?: 'gemini' | 'aistudio';
+              platform?: unknown;
               accountScope?: unknown;
               timelineHierarchyAccountScope?: unknown;
               highlightAccountScope?: unknown;
               includeHighlights?: boolean;
             };
-            const platform = rawPlatform || 'gemini';
-            if (!isTrustedSyncMessageSender(sender, platform)) {
+            const platform = parseSyncPlatform(rawPlatform);
+            if (!platform || !isTrustedSyncMessageSender(sender, platform)) {
               sendResponse({ ok: false, error: 'untrusted_sender' });
               return;
             }
@@ -2511,11 +2493,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             const shouldSyncHighlights = syncHighlights && highlightAccountScope !== null;
             // Also get Gemini-only timeline data from local storage
             const starredDataRaw =
-              platform !== 'aistudio' ? await starredMessagesManager.getAllStarredMessages() : null;
+              platform === 'gemini' ? await starredMessagesManager.getAllStarredMessages() : null;
             const forksDataRaw =
-              platform !== 'aistudio' ? await forkNodesManager.getAllForkNodes() : null;
+              platform === 'gemini' ? await forkNodesManager.getAllForkNodes() : null;
             const timelineHierarchyRaw =
-              platform !== 'aistudio'
+              platform === 'gemini'
                 ? await chrome.storage.local.get(
                     getTimelineHierarchyStorageKeysToRead(
                       timelineHierarchyAccountScope?.accountKey,
@@ -2531,7 +2513,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 ? filterForkNodesByRouteScope(forksDataRaw, accountScope.routeUserId)
                 : forksDataRaw;
             const timelineHierarchyDataRaw =
-              platform !== 'aistudio' && timelineHierarchyRaw
+              platform === 'gemini' && timelineHierarchyRaw
                 ? resolveTimelineHierarchyDataForStorageScope(
                     timelineHierarchyRaw as Record<string, unknown>,
                     timelineHierarchyAccountScope?.accountKey,
@@ -2593,7 +2575,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
           case 'gv.sync.download': {
             const interactive = message.payload?.interactive !== false;
-            const platform = (message.payload?.platform as 'gemini' | 'aistudio') || 'gemini';
+            const platform = parseSyncPlatform(message.payload?.platform);
+            if (!platform || !canSenderPageUseSyncPlatform(sender.tab?.url, platform)) {
+              sendResponse({ ok: false, error: 'unsupported_sync_platform' });
+              return;
+            }
             const syncHighlights = await isHighlightCloudSyncRequested(
               platform,
               message.payload?.includeHighlights === true,

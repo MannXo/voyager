@@ -55,10 +55,9 @@ import {
   writeSafariICloudFile,
 } from '@/core/utils/safariICloudSync';
 import { EXTENSION_VERSION } from '@/core/utils/version';
+import { FOLDER_PLATFORMS, FOLDER_PLATFORM_IDS } from '@/features/folder/platforms';
 import type { PluginStateMap } from '@/features/plugins/storage/pluginState';
 
-const FOLDERS_FILE_NAME = 'gemini-voyager-folders.json';
-const AISTUDIO_FOLDERS_FILE_NAME = 'gemini-voyager-aistudio-folders.json';
 const PROMPTS_FILE_NAME = 'gemini-voyager-prompts.json';
 const SETTINGS_FILE_NAME = 'gemini-voyager-settings.json';
 const PLUGINS_FILE_NAME = 'gemini-voyager-plugins.json';
@@ -72,8 +71,7 @@ const BACKUP_FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 const BACKUP_FOLDER_MARKER_KEY = 'voyagerDataFolder';
 const BACKUP_FOLDER_MARKER_VALUE = '1';
 const BACKUP_FOLDER_RECOVERY_FILE_NAMES = [
-  FOLDERS_FILE_NAME,
-  AISTUDIO_FOLDERS_FILE_NAME,
+  ...FOLDER_PLATFORM_IDS.map((platform) => FOLDER_PLATFORMS[platform].driveFoldersFileName),
   PROMPTS_FILE_NAME,
   SETTINGS_FILE_NAME,
   PLUGINS_FILE_NAME,
@@ -294,11 +292,13 @@ export class GoogleDriveSyncService {
         : null;
 
       // Upload folders file (platform-specific)
-      const foldersBaseFileName =
-        platform === 'aistudio' ? AISTUDIO_FOLDERS_FILE_NAME : FOLDERS_FILE_NAME;
-      const foldersFileName = this.getFileNameForScope(foldersBaseFileName, accountScope);
-      const foldersType = platform === 'aistudio' ? 'aistudio-folders' : 'folders';
-      const foldersFileIdToUse = await this.ensureFileId(token, foldersFileName, foldersType);
+      const { driveFoldersFileName, driveFoldersFileType } = FOLDER_PLATFORMS[platform];
+      const foldersFileName = this.getFileNameForScope(driveFoldersFileName, accountScope);
+      const foldersFileIdToUse = await this.ensureFileId(
+        token,
+        foldersFileName,
+        driveFoldersFileType,
+      );
       await this.uploadFileWithRetry(token, foldersFileIdToUse, folderPayload);
       console.log(`[GoogleDriveSyncService] ${platform} folders uploaded successfully`);
 
@@ -390,11 +390,9 @@ export class GoogleDriveSyncService {
 
       const uploadTime = Date.now();
       // Update platform-specific upload time
-      if (platform === 'aistudio') {
-        this.updateState({ isSyncing: false, lastUploadTimeAIStudio: uploadTime, error: null });
-      } else {
-        this.updateState({ isSyncing: false, lastUploadTime: uploadTime, error: null });
-      }
+      const uploadTimePatch: Partial<SyncState> = { isSyncing: false, error: null };
+      uploadTimePatch[FOLDER_PLATFORMS[platform].lastUploadTimeField] = uploadTime;
+      this.updateState(uploadTimePatch);
       await this.saveState();
 
       const fileCount =
@@ -627,9 +625,8 @@ export class GoogleDriveSyncService {
       await this.migrateBackupFolderIfPresent(token);
 
       // Download folders file (platform-specific)
-      const foldersBaseFileName =
-        platform === 'aistudio' ? AISTUDIO_FOLDERS_FILE_NAME : FOLDERS_FILE_NAME;
-      const foldersFileId = await this.findFileForScope(token, foldersBaseFileName, accountScope);
+      const { driveFoldersFileName } = FOLDER_PLATFORMS[platform];
+      const foldersFileId = await this.findFileForScope(token, driveFoldersFileName, accountScope);
       let folders: FolderExportPayload | null = null;
       if (foldersFileId) {
         folders = await this.downloadFileWithRetry(token, foldersFileId);
@@ -708,11 +705,9 @@ export class GoogleDriveSyncService {
 
       const syncTime = Date.now();
       // Update platform-specific sync time
-      if (platform === 'aistudio') {
-        this.updateState({ isSyncing: false, lastSyncTimeAIStudio: syncTime, error: null });
-      } else {
-        this.updateState({ isSyncing: false, lastSyncTime: syncTime, error: null });
-      }
+      const syncTimePatch: Partial<SyncState> = { isSyncing: false, error: null };
+      syncTimePatch[FOLDER_PLATFORMS[platform].lastSyncTimeField] = syncTime;
+      this.updateState(syncTimePatch);
       await this.saveState();
 
       return { folders, prompts, settings, plugins, starred, forks, timelineHierarchy };

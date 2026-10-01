@@ -1,5 +1,10 @@
 import type { SyncPlatform } from '@/core/types/sync';
 import {
+  FOLDER_PLATFORMS,
+  getFolderPlatformForHost,
+  isFolderPlatform,
+} from '@/features/folder/platforms';
+import {
   CHATGPT_HANDOFF_CANCEL_EXPIRY_MESSAGE,
   CHATGPT_HANDOFF_GET_TAB_ID_MESSAGE,
   CHATGPT_HANDOFF_SCHEDULE_EXPIRY_MESSAGE,
@@ -26,9 +31,56 @@ export function isAllowedSyncContentSender(
 ): boolean {
   const parsed = parseHttpsUrl(senderPageUrl);
   if (!parsed) return false;
-  return platform === 'aistudio'
-    ? parsed.hostname === 'aistudio.google.com' || parsed.hostname === 'aistudio.google.cn'
-    : parsed.hostname === 'gemini.google.com' || parsed.hostname === 'business.gemini.google';
+  return FOLDER_PLATFORMS[platform].hosts.includes(parsed.hostname);
+}
+
+export function isTrustedExtensionPageSender(sender: chrome.runtime.MessageSender): boolean {
+  if (sender.tab || sender.id !== chrome.runtime.id || typeof sender.url !== 'string') return false;
+  try {
+    return sender.url.startsWith(chrome.runtime.getURL(''));
+  } catch {
+    return false;
+  }
+}
+
+export function isTrustedSyncMessageSender(
+  sender: chrome.runtime.MessageSender,
+  platform: SyncPlatform,
+): boolean {
+  return (
+    isTrustedExtensionPageSender(sender) ||
+    (sender.id === chrome.runtime.id && isAllowedSyncContentSender(sender.tab?.url, platform))
+  );
+}
+
+/**
+ * Folder sync platform requested by a `gv.sync.upload` / `gv.sync.download` payload. A missing
+ * value keeps the historical Gemini default; any unknown value is rejected instead of falling
+ * back to Gemini's folder bucket.
+ */
+export function parseSyncPlatform(value: unknown): SyncPlatform | null {
+  if (value === undefined || value === null || value === '') return 'gemini';
+  return isFolderPlatform(value) ? value : null;
+}
+
+/**
+ * A web page may only sync the folder platform it belongs to, so a ChatGPT/Claude/DeepSeek tab can
+ * never read Gemini or AI Studio folders through the background. Extension pages (popup, options
+ * fallback) have no web page URL and keep their access; their tab is checked by the popup.
+ */
+export function canSenderPageUseSyncPlatform(
+  senderPageUrl: string | undefined,
+  platform: SyncPlatform,
+): boolean {
+  if (!senderPageUrl) return true;
+  let parsed: URL;
+  try {
+    parsed = new URL(senderPageUrl);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return true;
+  return getFolderPlatformForHost(parsed.hostname) === platform;
 }
 
 const HANDLED_BACKGROUND_MESSAGE_TYPES = new Set([

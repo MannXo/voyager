@@ -18,9 +18,19 @@ import {
 } from '@/features/plugins/runtime/messages';
 
 import {
+  canSenderPageUseSyncPlatform,
   isAllowedSyncContentSender,
   isHandledBackgroundRuntimeMessage,
+  isTrustedSyncMessageSender,
+  parseSyncPlatform,
 } from '../runtimeMessageRouting';
+
+const EXTENSION_ID = 'test-extension-id';
+const contentSender = (url: string): chrome.runtime.MessageSender => ({
+  id: EXTENSION_ID,
+  url,
+  tab: { id: 7, url } as chrome.tabs.Tab,
+});
 
 describe('background runtime message routing', () => {
   it('keeps the async channel open only for exact handled message types', () => {
@@ -168,5 +178,64 @@ describe('background runtime message routing', () => {
     expect(isAllowedSyncContentSender('https://example.com/app', 'gemini')).toBe(false);
     expect(isAllowedSyncContentSender('https://gemini.google.com/app', 'aistudio')).toBe(false);
     expect(isAllowedSyncContentSender('http://gemini.google.com/app', 'gemini')).toBe(false);
+    expect(isAllowedSyncContentSender('https://chatgpt.com/c/1', 'gemini')).toBe(false);
+    expect(isAllowedSyncContentSender('https://claude.ai/chat/1', 'aistudio')).toBe(false);
+  });
+
+  it('rejects unknown sync platforms instead of falling back to Gemini folders', () => {
+    expect(parseSyncPlatform(undefined)).toBe('gemini');
+    expect(parseSyncPlatform('gemini')).toBe('gemini');
+    expect(parseSyncPlatform('aistudio')).toBe('aistudio');
+    expect(parseSyncPlatform('chatgpt')).toBeNull();
+    expect(parseSyncPlatform('__proto__')).toBeNull();
+    expect(parseSyncPlatform({ platform: 'gemini' })).toBeNull();
+  });
+
+  it('keeps ChatGPT, Claude and DeepSeek tabs away from Gemini and AI Studio folder sync', () => {
+    for (const url of [
+      'https://chatgpt.com/c/1',
+      'https://claude.ai/chat/1',
+      'https://chat.deepseek.com/a/chat/s/1',
+    ]) {
+      for (const platform of ['gemini', 'aistudio'] as const) {
+        expect(isTrustedSyncMessageSender(contentSender(url), platform), url).toBe(false);
+        expect(canSenderPageUseSyncPlatform(url, platform), url).toBe(false);
+      }
+    }
+  });
+
+  it('keeps folder sync available to native tabs and extension pages', () => {
+    const popup: chrome.runtime.MessageSender = {
+      id: EXTENSION_ID,
+      url: `chrome-extension://${EXTENSION_ID}/src/pages/popup/index.html`,
+    };
+    expect(isTrustedSyncMessageSender(popup, 'gemini')).toBe(true);
+    expect(isTrustedSyncMessageSender(popup, 'aistudio')).toBe(true);
+    expect(
+      isTrustedSyncMessageSender(contentSender('https://gemini.google.com/app'), 'gemini'),
+    ).toBe(true);
+    expect(
+      isTrustedSyncMessageSender(contentSender('https://aistudio.google.com/prompts'), 'aistudio'),
+    ).toBe(true);
+    expect(
+      isTrustedSyncMessageSender(
+        { ...contentSender('https://gemini.google.com/app'), id: 'other-extension' },
+        'gemini',
+      ),
+    ).toBe(false);
+
+    expect(canSenderPageUseSyncPlatform(undefined, 'aistudio')).toBe(true);
+    // Options-page fallback runs the popup inside an extension tab.
+    expect(
+      canSenderPageUseSyncPlatform(
+        `chrome-extension://${EXTENSION_ID}/src/pages/options/index.html?sourceTabId=4`,
+        'aistudio',
+      ),
+    ).toBe(true);
+    expect(canSenderPageUseSyncPlatform('https://gemini.google.com/u/1/app', 'gemini')).toBe(true);
+    expect(canSenderPageUseSyncPlatform('https://aistudio.google.cn/prompts', 'aistudio')).toBe(
+      true,
+    );
+    expect(canSenderPageUseSyncPlatform('https://gemini.google.com/app', 'aistudio')).toBe(false);
   });
 });

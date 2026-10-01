@@ -26,6 +26,53 @@ describe('local backup folder data', () => {
     );
   });
 
+  it('has no folder key on sites without a folder bucket', () => {
+    for (const url of [
+      'https://chatgpt.com/c/123',
+      'https://claude.ai/chat/123',
+      'https://chat.deepseek.com/a/chat/s/123',
+    ]) {
+      expect(getFolderBackupBaseStorageKey(url), url).toBeNull();
+    }
+  });
+
+  it('never reads Gemini folders when backing up from ChatGPT, Claude or DeepSeek', async () => {
+    document.body.innerHTML = '<div aria-label="user@example.com"></div>';
+    const loadData = vi.fn(async (_key: string): Promise<FolderData | null> => ({
+      folders: [
+        { id: 'g', name: 'Gemini', parentId: null, isExpanded: true, createdAt: 1, updatedAt: 1 },
+      ],
+      folderContents: {},
+    }));
+    const isIsolationEnabled = vi.fn().mockResolvedValue(true);
+    const resolveAccountScope = vi.fn();
+
+    for (const url of [
+      'https://chatgpt.com/c/123',
+      'https://claude.ai/chat/123',
+      'https://chat.deepseek.com/a/chat/s/123',
+    ]) {
+      await expect(
+        resolveFolderBackupStorageKey({
+          pageUrl: url,
+          doc: document,
+          isIsolationEnabled,
+          resolveAccountScope,
+        }),
+      ).resolves.toBeNull();
+      await expect(
+        loadFolderDataForLocalBackup({ loadData }, url, document, {
+          isIsolationEnabled,
+          resolveAccountScope,
+        }),
+      ).resolves.toEqual({ folders: [], folderContents: {} });
+    }
+
+    expect(loadData).not.toHaveBeenCalled();
+    expect(isIsolationEnabled).not.toHaveBeenCalled();
+    expect(resolveAccountScope).not.toHaveBeenCalled();
+  });
+
   it('scopes the AI Studio key when account isolation is enabled', async () => {
     document.body.innerHTML = '<div class="account-switcher-text">User@Example.com</div>';
     const isIsolationEnabled = vi.fn().mockResolvedValue(true);

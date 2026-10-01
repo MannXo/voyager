@@ -23,6 +23,7 @@ import { DEFAULT_SYNC_STATE } from '@/core/types/sync';
 import { getVoyagerBuildTarget, isSafari } from '@/core/utils/browser';
 import { getPromptNameConflictIds } from '@/core/utils/promptName';
 import { deleteSafariICloudBackup } from '@/core/utils/safariICloudSync';
+import { FOLDER_PLATFORMS } from '@/features/folder/platforms';
 import { restorePluginState } from '@/features/plugins/storage/pluginState';
 import {
   getTimelineHierarchyStorageKey,
@@ -112,6 +113,10 @@ const PLATFORM_LOGO_URLS: Record<SyncPlatform, string> = {
   aistudio:
     'https://www.gstatic.com/images/branding/productlogos/ai_studio/v1/web-512dp/logo_ai_studio_color_1x_web_512dp.png',
 };
+const PLATFORM_LABEL_KEYS: Record<SyncPlatform, 'platformGemini' | 'platformAIStudio'> = {
+  gemini: 'platformGemini',
+  aistudio: 'platformAIStudio',
+};
 
 export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) {
   const { t } = useLanguage();
@@ -127,13 +132,9 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
   const [isDeletingICloudBackup, setIsDeletingICloudBackup] = useState(false);
   const [downloadMode, setDownloadMode] = useState<DownloadMode | null>(null);
   const [platform, setPlatform] = useState<SyncPlatform>('gemini');
+  // False on tabs without a folder bucket (ChatGPT, Claude, …): render nothing, sync nothing.
+  const [hasFolderPlatform, setHasFolderPlatform] = useState(true);
   const [highlightSyncEnabled, setHighlightSyncEnabled] = useState(true);
-
-  const getBaseFolderStorageKey = useCallback(
-    (targetPlatform: SyncPlatform) =>
-      targetPlatform === 'aistudio' ? StorageKeys.FOLDER_DATA_AISTUDIO : StorageKeys.FOLDER_DATA,
-    [],
-  );
 
   const getTargetTab = useCallback(async (): Promise<chrome.tabs.Tab | undefined> => {
     if (typeof sourceTabId === 'number') {
@@ -147,7 +148,7 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
   }, [sourceTabId]);
 
   // Detect current platform from active tab URL
-  const detectPlatform = useCallback(async (): Promise<SyncPlatform> => {
+  const detectPlatform = useCallback(async (): Promise<SyncPlatform | null> => {
     try {
       const tab = await getTargetTab();
       return detectAccountPlatformFromUrl(tab?.url ?? null);
@@ -222,7 +223,7 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
     accountScope: SyncAccountScope | null;
     folderStorageKey: string;
   }> => {
-    const baseFolderStorageKey = getBaseFolderStorageKey(platform);
+    const baseFolderStorageKey = FOLDER_PLATFORMS[platform].folderStorageKey;
     const accountScope = await resolveCurrentPageSyncScope(true);
     if (!accountScope) {
       return {
@@ -235,7 +236,7 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
       accountScope,
       folderStorageKey: buildScopedStorageKey(baseFolderStorageKey, accountScope.accountKey),
     };
-  }, [getBaseFolderStorageKey, platform, resolveCurrentPageSyncScope]);
+  }, [platform, resolveCurrentPageSyncScope]);
 
   const resolveTimelineHierarchySyncContext = useCallback(async (): Promise<{
     accountScope: SyncAccountScope | null;
@@ -275,7 +276,8 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
     };
     const initPlatform = async () => {
       const detected = await detectPlatform();
-      setPlatform(detected);
+      setHasFolderPlatform(detected !== null);
+      if (detected) setPlatform(detected);
       console.log('[CloudSyncSettings] Detected platform:', detected);
     };
     fetchState();
@@ -452,7 +454,7 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
             if (response.accountScope) {
               accountScope = response.accountScope;
               folderStorageKey = buildScopedStorageKey(
-                getBaseFolderStorageKey(platform),
+                FOLDER_PLATFORMS[platform].folderStorageKey,
                 response.accountScope.accountKey,
               );
             }
@@ -532,7 +534,6 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
       setIsUploading(false);
     }
   }, [
-    getBaseFolderStorageKey,
     getTargetTab,
     highlightSyncEnabled,
     platform,
@@ -643,7 +644,7 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
               if (tabResponse.accountScope) {
                 accountScope = tabResponse.accountScope;
                 folderStorageKey = buildScopedStorageKey(
-                  getBaseFolderStorageKey(platform),
+                  FOLDER_PLATFORMS[platform].folderStorageKey,
                   tabResponse.accountScope.accountKey,
                 );
               }
@@ -849,7 +850,6 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
       }
     },
     [
-      getBaseFolderStorageKey,
       getTargetTab,
       highlightSyncEnabled,
       platform,
@@ -868,6 +868,7 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
     }
   }, [statusMessage]);
 
+  if (!hasFolderPlatform) return null;
   return (
     <Card className="p-3 transition-all hover:shadow-md">
       <CardTitle className="mb-2">{t('cloudSync')}</CardTitle>
@@ -1112,9 +1113,7 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
                     className="bg-primary/70 size-1.5 shrink-0 rounded-full"
                   />
                   <span className="sr-only">{t('currentPlatform')}: </span>
-                  <span className="min-w-0 break-words">
-                    {t(platform === 'aistudio' ? 'platformAIStudio' : 'platformGemini')}
-                  </span>
+                  <span className="min-w-0 break-words">{t(PLATFORM_LABEL_KEYS[platform])}</span>
                 </p>
 
                 <div className="text-muted-foreground grid min-w-0 gap-1 text-xs leading-snug">
@@ -1123,11 +1122,7 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
                       ↑
                     </span>
                     <span className="min-w-0 break-words">
-                      {formatLastUpload(
-                        platform === 'aistudio'
-                          ? syncState.lastUploadTimeAIStudio
-                          : syncState.lastUploadTime,
-                      )}
+                      {formatLastUpload(syncState[FOLDER_PLATFORMS[platform].lastUploadTimeField])}
                     </span>
                   </p>
                   <p className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-1.5">
@@ -1135,11 +1130,7 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
                       ↓
                     </span>
                     <span className="min-w-0 break-words">
-                      {formatLastSync(
-                        platform === 'aistudio'
-                          ? syncState.lastSyncTimeAIStudio
-                          : syncState.lastSyncTime,
-                      )}
+                      {formatLastSync(syncState[FOLDER_PLATFORMS[platform].lastSyncTimeField])}
                     </span>
                   </p>
                 </div>

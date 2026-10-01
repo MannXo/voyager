@@ -123,7 +123,9 @@ export default function Popup({ sourceTabId }: PopupProps = {}) {
     pluginState: plugins.pluginState,
   });
   const sections = usePopupSections({
-    nativePopupPlatform: tab.activeAccountPlatform,
+    // Plugin sites hide native sections through `isPluginSite`; keep the full allowlist for the
+    // sections they still show (visual effects) instead of treating them as AI Studio.
+    nativePopupPlatform: tab.activeAccountPlatform ?? 'gemini',
     isPluginSite,
     visualEffectsAvailable,
     t,

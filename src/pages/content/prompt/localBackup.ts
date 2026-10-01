@@ -7,7 +7,7 @@ import {
   detectAccountContextFromDocument,
   detectAccountPlatformFromUrl,
 } from '@/core/services/AccountIsolationService';
-import { StorageKeys } from '@/core/types/common';
+import { FOLDER_PLATFORMS } from '@/features/folder/platforms';
 
 import type { FolderData } from '../folder/types';
 
@@ -29,10 +29,10 @@ export interface ResolveFolderBackupStorageKeyOptions {
   resolveAccountScope?: ResolveAccountScope;
 }
 
-export function getFolderBackupBaseStorageKey(pageUrl: string): string {
-  return detectAccountPlatformFromUrl(pageUrl) === 'aistudio'
-    ? StorageKeys.FOLDER_DATA_AISTUDIO
-    : StorageKeys.FOLDER_DATA;
+/** `null` on sites without a folder bucket (ChatGPT, Claude, DeepSeek, custom websites). */
+export function getFolderBackupBaseStorageKey(pageUrl: string): string | null {
+  const platform = detectAccountPlatformFromUrl(pageUrl);
+  return platform ? FOLDER_PLATFORMS[platform].folderStorageKey : null;
 }
 
 export async function resolveFolderBackupStorageKey({
@@ -40,9 +40,10 @@ export async function resolveFolderBackupStorageKey({
   doc,
   isIsolationEnabled = (options) => accountIsolationService.isIsolationEnabled(options),
   resolveAccountScope = (hints) => accountIsolationService.resolveAccountScope(hints),
-}: ResolveFolderBackupStorageKeyOptions): Promise<string> {
+}: ResolveFolderBackupStorageKeyOptions): Promise<string | null> {
   const platform = detectAccountPlatformFromUrl(pageUrl);
-  const baseKey = getFolderBackupBaseStorageKey(pageUrl);
+  if (!platform) return null;
+  const baseKey = FOLDER_PLATFORMS[platform].folderStorageKey;
 
   try {
     const enabled = await isIsolationEnabled({ platform, pageUrl });
@@ -75,8 +76,9 @@ export async function loadFolderDataForLocalBackup(
     ...options,
   });
 
+  // Sites without a folder bucket back up no folders rather than another platform's.
   return (
-    (await storage.loadData(storageKey)) || {
+    (storageKey ? await storage.loadData(storageKey) : null) || {
       folders: [],
       folderContents: {},
     }

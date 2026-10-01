@@ -218,6 +218,27 @@ describe('Popup settings integration', () => {
     expect(container.querySelectorAll('button[aria-pressed="true"]')).toHaveLength(1);
   });
 
+  it('keeps Gemini folder data, isolation and Cloud Sync off a ChatGPT tab', async () => {
+    extensionApi.tabs.query.mockResolvedValue([{ id: 10, url: 'https://chatgpt.com/c/abc' }]);
+    local[StorageKeys.FOLDER_DATA] = { folders: [], folderContents: {} };
+    sync[StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED_GEMINI] = true;
+    await mount();
+    expect(container.querySelector('#prompt-manager-site-enabled')).not.toBeNull();
+    expect(container.querySelector('[data-testid="sync-platform-summary"]')).toBeNull();
+    expect(container.querySelector('#account-isolation-enabled')).toBeNull();
+    expect(container.querySelector('#folder-enabled')).toBeNull();
+    const requestedLocalKeys = extensionApi.storage.local.get.mock.calls.flatMap(([keys]) =>
+      typeof keys === 'string' ? [keys] : Array.isArray(keys) ? keys : Object.keys(keys ?? {}),
+    );
+    expect(requestedLocalKeys).not.toContain(StorageKeys.FOLDER_DATA);
+    const messageTypes = extensionApi.runtime.sendMessage.mock.calls.map(
+      ([message]) => (message as { type?: string } | undefined)?.type,
+    );
+    expect(messageTypes).not.toContain('gv.sync.upload');
+    expect(messageTypes).not.toContain('gv.sync.download');
+    expect(extensionApi.storage.sync.set).not.toHaveBeenCalled();
+  });
+
   it('retains dependent input settings when search hides and then restores their card', async () => {
     await mount();
     await act(async () =>
