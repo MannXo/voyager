@@ -5,7 +5,7 @@
   "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
   "selectors": {
     "userTurn": "[data-user-message-bubble]",
-    "assistantTurn": "[data-message-author-role=\"assistant\"], [class*=\"group/imagegen-image\"]",
+    "assistantTurn": "[data-chatgpt-selection-message-id]",
     "composer": "#prompt-textarea, div[contenteditable=\"true\"]",
     "sidebar": "nav[aria-label], #stage-slideover-sidebar"
   },
