@@ -1,5 +1,5 @@
 import { AISTUDIO_ROOT_BUCKET_ID } from '@/features/folder/constants';
-import { ownBucket, setBucket } from '@/features/folder/model/folderData';
+import { getFolderAndDescendants, ownBucket, setBucket } from '@/features/folder/model/folderData';
 
 import panelCss from './floatingPanel.css?raw';
 import {
@@ -178,18 +178,9 @@ export function renameFolder(data: FolderData, folderId: string, name: string, a
   return true;
 }
 
-/** Removes a folder, the folders inside it, and what they hold. */
+/** Removes a folder, the folders the tree shows inside it, and what they hold. */
 export function deleteFolderTree(data: FolderData, folderId: string): boolean {
-  const doomed = new Set([folderId]);
-  for (let grew = true; grew;) {
-    grew = false;
-    for (const folder of data.folders) {
-      if (folder.parentId && doomed.has(folder.parentId) && !doomed.has(folder.id)) {
-        doomed.add(folder.id);
-        grew = true;
-      }
-    }
-  }
+  const doomed = new Set(getFolderAndDescendants(data, folderId));
   const before = data.folders.length;
   data.folders = data.folders.filter((folder) => !doomed.has(folder.id));
   for (const id of doomed) {

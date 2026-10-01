@@ -167,6 +167,57 @@ describe('folder data traversal and removal', () => {
     expect(data.folders.map((item) => item.parentId)).toEqual(['b', 'a', null]);
   });
 
+  // Imports refuse parent cycles, but a Drive merge of two moves or data
+  // stored before that check can still hold one.
+  it('removes a folder on a parent cycle without the folder the tree shows above it', () => {
+    const data = freezeData({
+      folders: [folder('a', 'b'), folder('b', 'a'), folder('c')],
+      folderContents: {
+        a: [conversation('a-chat')],
+        b: [conversation('b-chat')],
+        c: [conversation('c-chat')],
+      },
+    });
+    const result = removeFolder(data, 'b');
+    expect(result.folders.map((item) => item.id)).toEqual(['a', 'c']);
+    expect(Object.keys(result.folderContents)).toEqual(['a', 'c']);
+    expect(result.folders[0]).toBe(data.folders[0]);
+  });
+
+  it('removes the folders a cycle hangs under the folder that stands in as its root', () => {
+    const data = freezeData({
+      folders: [
+        folder('r'),
+        folder('a', 'c'),
+        folder('b', 'a'),
+        folder('c', 'b'),
+        folder('d', 'b'),
+      ],
+      folderContents: {},
+    });
+    expect(getFolderAndDescendants(data, 'a')).toEqual(['a', 'b', 'c', 'd']);
+    expect(getFolderAndDescendants(data, 'b')).toEqual(['b', 'c', 'd']);
+    expect(getFolderAndDescendants(data, 'c')).toEqual(['c']);
+    expect(removeFolder(data, 'x')).toBe(data);
+  });
+
+  it('removes a folder that is its own parent with the folders under it, once', () => {
+    const data = freezeData({
+      folders: [folder('s', 's'), folder('t', 's')],
+      folderContents: { s: [conversation('s-chat')], t: [conversation('t-chat')] },
+    });
+    expect(getFolderAndDescendants(data, 's')).toEqual(['s', 't']);
+    expect(getFolderAndDescendants(data, 't')).toEqual(['t']);
+  });
+
+  it('follows the first record of a repeated id, as the tree does', () => {
+    const data = freezeData({
+      folders: [folder('p'), folder('x'), folder('x', 'p')],
+      folderContents: {},
+    });
+    expect(getFolderAndDescendants(data, 'p')).toEqual(['p']);
+  });
+
   it('removes only exact subtree IDs while preserving root conversations and unrelated legacy buckets', () => {
     const data = freezeData({
       folders: [folder('a'), folder('child', 'a'), folder('ab')],

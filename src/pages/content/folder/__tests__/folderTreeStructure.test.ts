@@ -5,6 +5,8 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { getFolderAndDescendants } from '@/features/folder/model/folderData';
+
 import { cls } from '../floatingTree/shared';
 import { type FolderTreeController, mountFolderTree } from '../floatingTree/treeController';
 import type { Folder, FolderData } from '../types';
@@ -147,5 +149,38 @@ describe('folders on a parent cycle', () => {
       root.querySelector(`.${cls('folder-header')}[data-folder-id="${id}"] .${cls('count')}`)
         ?.textContent;
     expect(count('x')).toBe('1');
+  });
+});
+
+describe('removing a folder takes what the tree shows inside it', () => {
+  /** Each rendered folder with the folders rendered inside its block. */
+  function shownSubtrees(root: ShadowRoot): Map<string, string[]> {
+    const subtrees = new Map<string, string[]>();
+    for (const node of root.querySelectorAll<HTMLElement>(`.${cls('folder')}`)) {
+      const ids = Array.from(
+        node.querySelectorAll(`.${cls('folder-header')}`),
+        (header) => header.getAttribute('data-folder-id') ?? '',
+      );
+      subtrees.set(ids[0], ids.sort());
+    }
+    return subtrees;
+  }
+
+  it.each([
+    ['its own parent', [folder('s', 's'), folder('t', 's')]],
+    ['a pair', [folder('a', 'b'), folder('b', 'a'), folder('c', 'b')]],
+    [
+      'three folders beside a real root',
+      [folder('r', null), folder('k', 'r'), folder('a', 'c'), folder('b', 'a'), folder('c', 'b')],
+    ],
+    ['a repeated id', [folder('p', null), folder('x', null), folder('x', 'p')]],
+  ])('on a cycle through %s', (_kind, folders) => {
+    const data: FolderData = { folders, folderContents: {} };
+    const subtrees = shownSubtrees(mount(data));
+
+    expect(subtrees.size).toBe(new Set(folders.map((item) => item.id)).size);
+    for (const [id, shown] of subtrees) {
+      expect([...getFolderAndDescendants(data, id)].sort(), id).toEqual(shown);
+    }
   });
 });

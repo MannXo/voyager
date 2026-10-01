@@ -35,11 +35,73 @@ export function sortConversationsByPriority(
   });
 }
 
-/** Includes the requested ID, even when only its legacy contents bucket remains. */
+/**
+ * Whether a folder shows at the root: its parent is unset (`null`, missing or
+ * `''`, all of which stored and imported data hold) or names no folder. Read
+ * only for display and removal; stored data keeps its `parentId`.
+ */
+export function isRootFolder(folder: Folder, folderIds: { has: (id: string) => boolean }): boolean {
+  return !folder.parentId || !folderIds.has(folder.parentId);
+}
+
+/**
+ * The folders that stand in as roots because a cycle of stored parents keeps
+ * every real root from reaching them: the first of each such group in stored
+ * order. A repeated id counts by its first record. The tree shows each one at
+ * the root with the rest of its group under it as stored, and removal cuts the
+ * cycle at the same folder. Imports refuse cycles, but a Drive merge of two
+ * moves or data stored before that check can still hold one.
+ */
+export function findCycleRoots(folders: readonly Folder[]): Set<string> {
+  const unique = new Map<string, Folder>();
+  for (const folder of folders) if (!unique.has(folder.id)) unique.set(folder.id, folder);
+  const kidsOf = new Map<string, string[]>();
+  const reached = new Set<string>();
+  const pending: string[] = [];
+  for (const folder of unique.values()) {
+    if (isRootFolder(folder, unique)) {
+      reached.add(folder.id);
+      pending.push(folder.id);
+      continue;
+    }
+    const kids = kidsOf.get(folder.parentId as string) ?? [];
+    kids.push(folder.id);
+    kidsOf.set(folder.parentId as string, kids);
+  }
+  const reachFromPending = () => {
+    while (pending.length > 0) {
+      for (const kid of kidsOf.get(pending.pop()!) ?? []) {
+        if (reached.has(kid)) continue;
+        reached.add(kid);
+        pending.push(kid);
+      }
+    }
+  };
+  reachFromPending();
+  const cycleRoots = new Set<string>();
+  for (const id of unique.keys()) {
+    if (reached.has(id)) continue;
+    cycleRoots.add(id);
+    reached.add(id);
+    pending.push(id);
+    reachFromPending();
+  }
+  return cycleRoots;
+}
+
+/**
+ * Includes the requested ID, even when only its legacy contents bucket remains.
+ * Follows what the tree shows: the first record of a repeated id, and a parent
+ * cycle cut where `findCycleRoots` cuts it.
+ */
 export function getFolderAndDescendants(data: FolderData, folderId: string): string[] {
+  const cycleRoots = findCycleRoots(data.folders);
   const children = new Map<string, string[]>();
+  const listed = new Set<string>();
   for (const folder of data.folders) {
-    if (folder.parentId === null) continue;
+    if (listed.has(folder.id)) continue;
+    listed.add(folder.id);
+    if (folder.parentId === null || cycleRoots.has(folder.id)) continue;
     const siblings = children.get(folder.parentId) ?? [];
     siblings.push(folder.id);
     children.set(folder.parentId, siblings);

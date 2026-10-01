@@ -1,5 +1,10 @@
 import { MAX_FOLDER_DEPTH } from '@/features/folder/constants';
-import { type ConversationSortMode, sortFolders } from '@/features/folder/model/folderData';
+import {
+  type ConversationSortMode,
+  findCycleRoots,
+  isRootFolder,
+  sortFolders,
+} from '@/features/folder/model/folderData';
 import { getTranslationSyncUnsafe } from '@/utils/i18n';
 
 import { readDragPayload } from '../dragPayload';
@@ -130,9 +135,9 @@ export type FolderLayout = {
 
 /**
  * Lays out folders for display without rewriting them. A repeated id keeps its
- * first record. Folders a parent walk from the roots never reaches sit on a
- * parent cycle: the first of each such group in stored order stands in as a
- * root after the real ones, and the rest hang under it as stored.
+ * first record. The folders `findCycleRoots` picks to cut each parent cycle
+ * stand in as roots, in stored order after the real ones, and the rest of the
+ * cycle hangs under them as stored. Removal cuts cycles at the same folders.
  */
 export function layoutFolders(
   data: FolderData,
@@ -142,51 +147,26 @@ export function layoutFolders(
     order === 'created' ? sortFoldersByCreation(folders) : sortFolders(folders);
   const unique = new Map<string, Folder>();
   for (const folder of data.folders) if (!unique.has(folder.id)) unique.set(folder.id, folder);
-  const ids = new Set(unique.keys());
+  const cycleRoots = findCycleRoots(data.folders);
 
   const byParent = new Map<string, Folder[]>();
   const realRoots: Folder[] = [];
+  const standIns: Folder[] = [];
   for (const folder of unique.values()) {
-    if (isRootFolder(folder, ids)) {
+    if (isRootFolder(folder, unique)) {
       realRoots.push(folder);
-      continue;
+    } else if (cycleRoots.has(folder.id)) {
+      standIns.push(folder);
+    } else {
+      const siblings = byParent.get(folder.parentId as string) ?? [];
+      siblings.push(folder);
+      byParent.set(folder.parentId as string, siblings);
     }
-    const siblings = byParent.get(folder.parentId as string) ?? [];
-    siblings.push(folder);
-    byParent.set(folder.parentId as string, siblings);
   }
 
   const children = new Map<string, Folder[]>();
-  const placed = new Set<string>();
-  const place = (top: Folder) => {
-    placed.add(top.id);
-    const pending = [top];
-    while (pending.length > 0) {
-      const parent = pending.pop()!;
-      const kids = sort((byParent.get(parent.id) ?? []).filter((kid) => !placed.has(kid.id)));
-      for (const kid of kids) placed.add(kid.id);
-      children.set(parent.id, kids);
-      pending.push(...kids);
-    }
-  };
-
-  const roots = sort(realRoots);
-  roots.forEach(place);
-  for (const folder of unique.values()) {
-    if (placed.has(folder.id)) continue;
-    roots.push(folder);
-    place(folder);
-  }
-  return { roots, children };
-}
-
-/**
- * Whether a folder shows at the root: its parent is unset (`null`, missing or
- * `''`, all of which stored and imported data hold) or names no folder. Read
- * only for display; stored data keeps its `parentId`.
- */
-export function isRootFolder(folder: Folder, folderIds: ReadonlySet<string>): boolean {
-  return !folder.parentId || !folderIds.has(folder.parentId);
+  for (const [parentId, kids] of byParent) children.set(parentId, sort(kids));
+  return { roots: [...sort(realRoots), ...standIns], children };
 }
 
 /** Which drags a drop target accepts at dragover, when the payload cannot be read yet. */
