@@ -31,7 +31,7 @@ import {
   mergeLegacySyncFolderData,
   readAIStudioImportFile,
 } from './aistudioImport';
-import { openLibraryInApp } from './aistudioNavigation';
+import { openLibraryInApp, openPromptInApp } from './aistudioNavigation';
 import {
   AISTUDIO_PROMPT_DRAG_TYPES,
   type AIStudioTree,
@@ -2250,21 +2250,7 @@ export class AIStudioFolderManager {
   }
 
   private navigateToPrompt(promptId: string, url: string): void {
-    // Prefer clicking the native link to preserve SPA behavior
-    const selector = `ms-prompt-history-v3 a.prompt-link[href*="/prompts/${promptId}"]`;
-    const a = document.querySelector(selector) as HTMLAnchorElement | null;
-    if (a) {
-      a.click();
-      setTimeout(() => this.highlightActiveConversation(), 0);
-      return;
-    }
-    try {
-      window.history.pushState({}, '', url);
-      window.dispatchEvent(new PopStateEvent('popstate'));
-      setTimeout(() => this.highlightActiveConversation(), 0);
-    } catch {
-      location.href = url;
-    }
+    if (openPromptInApp(promptId, url)) setTimeout(() => this.highlightActiveConversation(), 0);
   }
 
   private handleExport(): void {

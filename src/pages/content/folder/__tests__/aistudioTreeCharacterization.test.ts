@@ -6,6 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { logger } from '@/core/services/LoggerService';
 import { StorageKeys } from '@/core/types/common';
 
 import { AIStudioFolderManager } from '../aistudio';
@@ -478,6 +479,27 @@ describe('AI Studio folder tree: navigation', () => {
     expect(popstate).toHaveBeenCalledTimes(1);
     expect(location.pathname).toBe('/prompts/c4');
     window.removeEventListener('popstate', popstate);
+  });
+
+  it('stays on the page and logs when the History API refuses the prompt', async () => {
+    await mount();
+    const before = location.href;
+    const refusal = new DOMException('blocked', 'SecurityError');
+    vi.spyOn(history, 'pushState').mockImplementation(() => {
+      throw refusal;
+    });
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    // jsdom reports a page load it cannot perform through console.error.
+    const pageLoad = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    tree.openConversation('a', 'c4');
+
+    expect(location.href).toBe(before);
+    expect(pageLoad).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(expect.any(String), {
+      url: 'https://aistudio.google.com/prompts/c4',
+      error: refusal,
+    });
   });
 
   it("opens /library through the nav's own Library link when the nav has one", async () => {
