@@ -1,14 +1,15 @@
 import browser, { type Runtime } from 'webextension-polyfill';
 
 import {
+  type AccountContext,
   type AccountScope,
   accountIsolationService,
-  buildScopedStorageKey,
   detectAccountContextFromDocument,
 } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 import type { PromptItem, SyncAccountScope } from '@/core/types/sync';
 import { isSafari } from '@/core/utils/browser';
+import { AISTUDIO_ROOT_BUCKET_ID } from '@/features/folder/constants';
 import { cloneFolderData, validateFolderData } from '@/features/folder/model/folderData';
 import { createTranslator, initI18n } from '@/utils/i18n';
 import {
@@ -17,13 +18,16 @@ import {
 } from '@/utils/merge';
 
 import { watchRouteChanges } from '../utils/routeWatcher';
-import { FolderDataSession } from './FolderDataSession';
+import type { FolderDataSession } from './FolderDataSession';
+import { FolderRepository, type FolderStoreChange } from './FolderRepository';
 import { parseDragPayload } from './dragPayload';
 import {
   mountHideArchivedNudge,
   shouldShowHideArchivedNudge,
   unmountHideArchivedNudge,
 } from './hideArchivedNudge';
+import { AISTUDIO_FOLDER_CONFIG } from './platformFolderConfig';
+import { AIStudioFolderStorageAdapter } from './storage/AIStudioFolderStorageAdapter';
 import type { ConversationReference, DragData, Folder, FolderData } from './types';
 
 function waitForElement<T extends Element = Element>(
@@ -212,24 +216,59 @@ export class AIStudioFolderManager {
    * for any UI built ahead of that await.
    */
   private t: (key: string) => string = createTranslator();
-  private dataSession: FolderDataSession | null = new FolderDataSession(
-    StorageKeys.FOLDER_DATA_AISTUDIO,
-    'aistudio-folders',
-    null,
-    validateFolderData,
+  /** Owns sessions, load, recovery, serialized saves, drafts, echoes and scope retry. */
+  private readonly repository = new FolderRepository(
+    AISTUDIO_FOLDER_CONFIG,
+    new AIStudioFolderStorageAdapter(),
+    {
+      onChange: (reason) => this.handleRepositoryChange(reason),
+      onRecovery: (result) => this.announceRecovery(result),
+      onExternalChange: () => {
+        if (this.folderEnabled) void this.load();
+      },
+      onAccountReleased: () => this.releaseAccountUi(),
+      isEnabled: () => this.folderEnabled,
+      onSaveFailed: () =>
+        this.showErrorNotification('Failed to save folder data. Changes may not be persisted.'),
+      // Folder membership drives which /library rows count as "archived"; re-sync the
+      // table and nudge visibility after every mutation, not just on explicit user toggles.
+      onPersistSettled: () => {
+        this.applyHideArchivedToLibraryTable();
+        this.updateHideArchivedNudgeVisibility();
+      },
+      onAccountBound: (context) => {
+        this.lastAccountContextFingerprint = this.fingerprintFor(context);
+      },
+    },
   );
-  private readonly dataSessions = new Map<string, FolderDataSession>();
-  private unresolvedData: FolderData = { folders: [], folderContents: {} };
-  private accountScopeRequest = 0;
+  private get dataSession(): FolderDataSession | null {
+    return this.repository.session;
+  }
+  private get accountScopeRequest(): number {
+    return this.repository.activation;
+  }
   private get data(): FolderData {
-    return this.dataSession?.data ?? this.unresolvedData;
+    return this.repository.data;
   }
   private set data(data: FolderData) {
-    if (this.dataSession) this.dataSession.data = data;
-    else this.unresolvedData = data;
+    this.repository.data = data;
   }
   private get canEdit(): boolean {
-    return this.dataSession?.ready === true && !this.dataSession.replacingData;
+    return this.repository.canEdit;
+  }
+  private get accountIsolationEnabled(): boolean {
+    return this.repository.accountIsolationEnabled;
+  }
+  private set accountIsolationEnabled(enabled: boolean) {
+    this.repository.setAccountIsolationFlag(enabled);
+  }
+  /** Resolved account scope for the current account. */
+  private get accountScope(): AccountScope | null {
+    return this.repository.accountScope;
+  }
+  /** Active folder data key; empty while no account is bound. */
+  private get activeStorageKey(): string {
+    return this.repository.storageKey;
   }
   private container: HTMLElement | null = null;
   private historyRoot: HTMLElement | null = null;
@@ -243,13 +282,10 @@ export class AIStudioFolderManager {
   private libraryMultiSelectHostElement: HTMLElement | null = null;
   private libraryBatchDeleteInProgress: boolean = false;
   private libraryBatchDeleteProgressElement: HTMLElement | null = null;
-  private readonly STORAGE_KEY = StorageKeys.FOLDER_DATA_AISTUDIO;
+  private readonly STORAGE_KEY = AISTUDIO_FOLDER_CONFIG.storageKey;
   private folderEnabled: boolean = true; // Whether folder feature is enabled
   private hideArchivedEnabled: boolean = false; // AI Studio-scoped — hide filed convs in /library table
   private hideArchivedNudgeShown: boolean = false; // AI Studio-scoped — nudge dismissed/enabled before
-  private accountIsolationEnabled: boolean = false; // Whether hard account isolation is enabled
-  private accountScope: AccountScope | null = null; // Resolved account scope for current account
-  private activeStorageKey: string = StorageKeys.FOLDER_DATA_AISTUDIO; // Active folder data key
   private accountContextPoller: number | null = null; // Detect account switches
   private lastAccountContextFingerprint: string | null = null; // Debounce account scope refresh
   private resolvingAccountContextFingerprint: string | null = null;
@@ -258,7 +294,7 @@ export class AIStudioFolderManager {
   private readonly SIDEBAR_WIDTH_KEY = 'gvAIStudioSidebarWidth';
   private readonly MIN_SIDEBAR_WIDTH = 240;
   private readonly MAX_SIDEBAR_WIDTH = 600;
-  private readonly UNCATEGORIZED_KEY = '__uncategorized__'; // Special key for root-level conversations
+  private readonly UNCATEGORIZED_KEY = AISTUDIO_ROOT_BUCKET_ID; // Special key for root-level conversations
   private readonly LIBRARY_LONG_PRESS_MS = 500;
   private readonly MAX_LIBRARY_BATCH_DELETE_COUNT = 50;
   private readonly LIBRARY_BATCH_DELETE_CONFIG = {
@@ -524,41 +560,6 @@ export class AIStudioFolderManager {
     return { folders: mergedFolders, folderContents: mergedContents };
   }
 
-  private async migrateLegacyFolderDataToScopedStorage(
-    session: FolderDataSession,
-    version: number,
-  ): Promise<FolderData | null> {
-    try {
-      const legacyResult = await chrome.storage.local.get(this.STORAGE_KEY);
-      const legacyData = legacyResult[this.STORAGE_KEY];
-      if (
-        this.dataSession !== session ||
-        session.loadVersion !== version ||
-        !legacyData ||
-        !validateFolderData(legacyData)
-      ) {
-        return null;
-      }
-
-      const migratedData = cloneFolderData(legacyData as FolderData);
-      session.data = migratedData;
-      session.markReady();
-      session.activeSave = this.persistDataSession(session, cloneFolderData(migratedData));
-      await session.activeSave;
-      console.log(
-        '[AIStudioFolderManager] Migrated legacy AI Studio folder data to scoped storage:',
-        session.storageKey,
-      );
-      return migratedData;
-    } catch (error) {
-      console.warn(
-        '[AIStudioFolderManager] Failed to migrate scoped AI Studio folder data:',
-        error,
-      );
-      return null;
-    }
-  }
-
   private toSyncAccountScope(scope: AccountScope | null): SyncAccountScope | undefined {
     if (!scope) return undefined;
     return {
@@ -570,6 +571,11 @@ export class AIStudioFolderManager {
 
   private buildAccountContextFingerprint(routeUserId: string | null, email: string | null): string {
     return `${routeUserId || ''}::${email || ''}`;
+  }
+
+  /** `null` while isolation is off, so any bound session satisfies the poller. */
+  private fingerprintFor(context: AccountContext | null): string | null {
+    return context ? this.buildAccountContextFingerprint(context.routeUserId, context.email) : null;
   }
 
   private async loadAccountIsolationSetting(): Promise<void> {
@@ -588,6 +594,11 @@ export class AIStudioFolderManager {
     }
   }
 
+  /**
+   * Rebind folder persistence when the account fingerprint changes. The repository
+   * owns the session swap and its retry; this keeps AI Studio's fingerprint dedupe,
+   * so a poll for the same account never closes open dialogs.
+   */
   private async refreshAccountScope(force: boolean = false): Promise<boolean> {
     const context = detectAccountContextFromDocument(window.location.href, document);
     const fingerprint = this.accountIsolationEnabled
@@ -600,60 +611,43 @@ export class AIStudioFolderManager {
     ) {
       return false;
     }
-    const request = ++this.accountScopeRequest;
     this.resolvingAccountContextFingerprint = fingerprint;
     const previous = this.dataSession;
-    previous?.deactivate();
-    if (previous && !previous.saveInProgress && !previous.replacingData) {
-      this.dataSessions.delete(previous.storageKey);
+    const refresh = this.repository.refreshAccountScope();
+    const request = this.accountScopeRequest;
+    try {
+      await refresh;
+      const session = this.dataSession;
+      // A failed resolution leaves persistence unbound; the repository retries it.
+      return request === this.accountScopeRequest && session !== null && session !== previous;
+    } finally {
+      if (request === this.accountScopeRequest) this.resolvingAccountContextFingerprint = null;
     }
-    this.dataSession = null;
-    this.unresolvedData = { folders: [], folderContents: {} };
-    this.accountScope = null;
-    this.activeStorageKey = '';
+  }
+
+  /** The previous account's data is gone from view; close everything that held it. */
+  private releaseAccountUi(): void {
     if (this.isLibraryMultiSelectMode) this.exitLibraryMultiSelectMode();
     document.querySelector('.gv-folder-confirm-dialog.gv-aistudio-confirm')?.remove();
     document.querySelector('.gv-folder-menu.gv-aistudio-folder-menu')?.remove();
     document.querySelector('.gv-library-folder-list')?.replaceChildren();
     this.render();
     this.applyHideArchivedToLibraryTable();
-    try {
-      const resolvedScope = this.accountIsolationEnabled
-        ? await accountIsolationService.resolveAccountScope({
-            pageUrl: window.location.href,
-            routeUserId: context.routeUserId,
-            email: context.email,
-          })
-        : null;
-      if (request !== this.accountScopeRequest) return false;
-      const storageKey = resolvedScope
-        ? buildScopedStorageKey(this.STORAGE_KEY, resolvedScope.accountKey)
-        : this.STORAGE_KEY;
-      const session =
-        this.dataSessions.get(storageKey) ??
-        (previous?.storageKey === storageKey
-          ? previous
-          : new FolderDataSession(
-              storageKey,
-              'aistudio-folders',
-              resolvedScope,
-              validateFolderData,
-            ));
-      this.dataSessions.set(storageKey, session);
-      session.accountScope = resolvedScope;
-      this.dataSession = session;
-      this.accountScope = resolvedScope;
-      this.activeStorageKey = storageKey;
-      this.lastAccountContextFingerprint = fingerprint;
-      session.activate();
-      if (session.ready) this.render();
-      return previous !== session;
-    } catch (error) {
-      console.error('[AIStudioFolderManager] Failed to resolve account scope:', error);
-      // Leave persistence unbound, and allow the next poll to retry resolution.
-      return false;
-    } finally {
-      if (request === this.accountScopeRequest) this.resolvingAccountContextFingerprint = null;
+  }
+
+  private handleRepositoryChange(reason: FolderStoreChange): void {
+    // `loaded`: a ready session was bound or finished loading. `data` and
+    // `availability`: a draft replacement started or settled.
+    if (reason === 'loaded' || reason === 'data' || reason === 'availability') this.render();
+  }
+
+  private announceRecovery(result: 'recovered' | 'kept' | 'lost'): void {
+    if (result === 'recovered') {
+      this.showNotification('Folder data recovered from backup', 'warning');
+    } else if (result === 'kept') {
+      this.showErrorNotification('Failed to load folder data, using cached version');
+    } else {
+      this.showErrorNotification('Failed to load folder data. All folders have been reset.');
     }
   }
 
@@ -857,154 +851,28 @@ export class AIStudioFolderManager {
   }
 
   private async load(): Promise<void> {
-    const session = this.dataSession;
-    if (!session) return;
-    // A returning account may still own a queued edit that is newer than disk.
-    if ((session.saveInProgress || session.replacingData) && session.ready) return;
-    const version = ++session.loadVersion;
-    const isCurrent = () => this.dataSession === session && session.loadVersion === version;
-    try {
-      // On Safari, restore recovery backups from the durable mirror before any
-      // recoverFromBackup() can run (localStorage may have been ITP-evicted).
-      await session.backup.ensureHydrated();
-      if (!isCurrent()) return;
-
-      // Use chrome.storage.local with account-scoped key when isolation is enabled.
-      const result = await chrome.storage.local.get(session.storageKey);
-      if (!isCurrent()) return;
-      let data = result[session.storageKey];
-
-      if (!data && session.accountScope) {
-        data = await this.migrateLegacyFolderDataToScopedStorage(session, version);
-        if (!isCurrent()) return;
-      }
-
-      if (data && validateFolderData(data)) {
-        this.data = data as FolderData;
-        // Create primary backup on successful load
-        session.backup.createPrimaryBackup(this.data);
-        session.markReady();
-      } else {
-        // Don't immediately clear data - try to recover from backup
-        console.warn(
-          '[AIStudioFolderManager] Storage returned no data, attempting recovery from backup',
-        );
-        await this.attemptDataRecovery(null, session);
-      }
-    } catch (error) {
-      if (!isCurrent()) return;
-      console.error('[AIStudioFolderManager] Load error:', error);
-      // CRITICAL: Don't clear data on error - attempt recovery from backup
-      await this.attemptDataRecovery(error, session);
-    }
+    await this.repository.loadData();
   }
 
   private async save(): Promise<boolean> {
-    const session = this.dataSession;
-    if (!session || !this.canEdit) return false;
-    try {
-      const snapshot = cloneFolderData(session.data);
-      session.loadVersion += 1;
-      session.markReady();
-      session.backup.createEmergencyBackup(snapshot);
-      if (session.saveInProgress) {
-        session.pendingSave = snapshot;
-        if (!session.pendingSaveCompletion) {
-          let resolve!: (saved: boolean) => void;
-          const promise = new Promise<boolean>((complete) => {
-            resolve = complete;
-          });
-          session.pendingSaveCompletion = { promise, resolve };
-        }
-        return session.pendingSaveCompletion.promise;
-      }
-      session.activeSave = this.persistDataSession(session, snapshot);
-      return session.activeSave;
-    } catch (error) {
-      console.error('[AIStudioFolderManager] Save error:', error);
-      this.showErrorNotification('Failed to save folder data. Changes may not be persisted.');
-      return false;
-    }
+    return this.repository.saveData();
   }
 
-  /** Keep imported/synced drafts out of live data and recovery until storage accepts them. */
+  /**
+   * Keep imported/synced drafts out of live data and recovery until storage accepts
+   * them. Prompts share the folder write so a merge lands whole or not at all.
+   */
   private async replaceData(data: FolderData, prompts?: PromptItem[]): Promise<boolean> {
     const session = this.dataSession;
-    const activation = this.accountScopeRequest;
     if (!session || !this.canEdit) return false;
-    const snapshot = cloneFolderData(data);
-    session.replacingData = true;
-    session.loadVersion += 1;
-    this.render();
     try {
-      // Preserve accepted ordinary edits rather than coalescing a draft into their tail.
-      const pending = session.pendingSaveCompletion?.promise ?? session.activeSave;
-      if (pending) await pending;
-      if (this.dataSession !== session || this.accountScopeRequest !== activation) return false;
-
-      session.activeSave = this.persistDataSession(session, snapshot, prompts);
-      const saved = await session.activeSave;
-      // An issued write belongs to its session even after leaving and returning to that account.
-      if (saved) session.data = snapshot;
-      return saved;
+      return await this.repository.replaceData(
+        data,
+        prompts ? { gvPromptItems: prompts } : undefined,
+      );
     } finally {
-      session.replacingData = false;
-      if (this.dataSession === session) {
-        this.render();
-        if (this.container) this.applyHideArchivedToLibraryTable();
-      } else if (!session.saveInProgress) {
-        this.dataSessions.delete(session.storageKey);
-      }
+      if (this.dataSession === session && this.container) this.applyHideArchivedToLibraryTable();
     }
-  }
-
-  private async persistDataSession(
-    session: FolderDataSession,
-    snapshot: FolderData,
-    prompts?: PromptItem[],
-  ): Promise<boolean> {
-    this.dataSessions.set(session.storageKey, session);
-    session.saveInProgress = true;
-    let saved = false;
-    try {
-      // Save to chrome.storage.local using active scoped key.
-      await chrome.storage.local.set({
-        [session.storageKey]: snapshot,
-        ...(prompts ? { gvPromptItems: prompts } : {}),
-      });
-
-      // Create primary backup AFTER successful save
-      session.backup.createPrimaryBackup(snapshot);
-      saved = true;
-    } catch (error) {
-      console.error('[AIStudioFolderManager] Save error:', error);
-      // A newer queued snapshot can still persist this edit; report only a final failure.
-      if (this.dataSession === session && !session.pendingSave) {
-        this.showErrorNotification('Failed to save folder data. Changes may not be persisted.');
-      }
-    } finally {
-      session.saveInProgress = false;
-      const pending = session.pendingSave;
-      const completion = session.pendingSaveCompletion;
-      session.pendingSave = null;
-      session.pendingSaveCompletion = null;
-      if (pending) {
-        session.activeSave = this.persistDataSession(session, pending);
-        void session.activeSave.then((saved) => completion?.resolve(saved));
-      } else {
-        session.activeSave = null;
-        if (this.dataSession !== session && !session.replacingData) {
-          this.dataSessions.delete(session.storageKey);
-        }
-      }
-    }
-    // Folder membership drives which /library rows count as "archived"; re-sync the
-    // table and nudge visibility after every mutation, not just on explicit user toggles.
-    if (this.dataSession === session && !session.replacingData) {
-      this.applyHideArchivedToLibraryTable();
-      this.updateHideArchivedNudgeVisibility();
-    }
-    return saved;
   }
 
   private injectUI(): void {
@@ -3443,8 +3311,7 @@ export class AIStudioFolderManager {
    * initializeFolderUI().
    */
   private destroy(): void {
-    this.dataSession?.deactivate();
-    this.accountScopeRequest += 1;
+    this.repository.suspend();
     this.resolvingAccountContextFingerprint = null;
     const cleanups = this.cleanupFns.splice(0, this.cleanupFns.length);
     for (const cleanup of cleanups) {
@@ -3521,41 +3388,6 @@ export class AIStudioFolderManager {
     try {
       document.documentElement.classList.remove('gv-aistudio-root');
     } catch {}
-  }
-
-  /**
-   * Attempt to recover data when load() fails
-   * Uses multi-layer backup system: primary > emergency > beforeUnload > in-memory
-   */
-  private async attemptDataRecovery(_error: unknown, session: FolderDataSession): Promise<void> {
-    if (this.dataSession !== session) return;
-    console.warn('[AIStudioFolderManager] Attempting data recovery after load failure');
-
-    // Step 1: Try to restore from localStorage backups (primary, emergency, beforeUnload)
-    const recovered = session.backup.recoverFromBackup();
-    if (recovered && validateFolderData(recovered)) {
-      this.data = recovered;
-      session.markReady();
-      console.warn('[AIStudioFolderManager] Data recovered from localStorage backup');
-      this.showNotification('Folder data recovered from backup', 'warning');
-      // Try to save recovered data to persistent storage
-      await this.save();
-      return;
-    }
-
-    // Step 2: Keep existing in-memory data if it exists and is valid
-    if (validateFolderData(this.data) && this.data.folders.length > 0) {
-      session.markReady();
-      console.warn('[AIStudioFolderManager] Keeping existing in-memory data after load error');
-      this.showErrorNotification('Failed to load folder data, using cached version');
-      return;
-    }
-
-    // Step 3: Last resort - initialize empty data and notify user
-    console.error('[AIStudioFolderManager] All recovery attempts failed, initializing empty data');
-    this.data = { folders: [], folderContents: {} };
-    session.markReady();
-    this.showErrorNotification('Failed to load folder data. All folders have been reset.');
   }
 
   /**

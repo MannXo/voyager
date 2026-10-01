@@ -1,6 +1,6 @@
 import type { AccountScope } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
-import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
+import { AISTUDIO_ROOT_BUCKET_ID, ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import { cloneFolderData, normalizeFolderData } from '@/features/folder/model/folderData';
 import { FOLDER_PLATFORMS, type FolderPlatform } from '@/features/folder/platforms';
 
@@ -134,4 +134,31 @@ export const GEMINI_FOLDER_CONFIG: PlatformFolderConfig = {
   recoverMissingData: false,
   retryFailedSave: true,
   checkEmptyOverwrite: true,
+};
+
+/** AI Studio copies the whole legacy bucket: its prompt URLs carry no `/u/<N>/` owner. */
+function copyLegacyFolderData(data: FolderData): FolderData {
+  return cloneFolderData(data);
+}
+
+/**
+ * AI Studio never normalized, pruned or retried a write. `normalize` would seed
+ * `sortIndex` by name and dedupe refs, and pruning would drop buckets the old code
+ * kept. A missing bucket recovers from backup, as it always has.
+ */
+export const AISTUDIO_FOLDER_CONFIG: PlatformFolderConfig = {
+  platform: 'aistudio',
+  storageKey: FOLDER_PLATFORMS.aistudio.folderStorageKey,
+  backupNamespace: 'aistudio-folders',
+  rootBucketId: AISTUDIO_ROOT_BUCKET_ID,
+  // AIStudioFolderManager's own sync listener handles these switches.
+  isolationSettingKeys: [],
+  migrateLegacyData: copyLegacyFolderData,
+  logPrefix: '[AIStudioFolderManager]',
+  debugFlag: 'gvAIStudioFolderDebug',
+  normalize: keepFolderData,
+  pruneOrphanBuckets: false,
+  recoverMissingData: true,
+  retryFailedSave: false,
+  checkEmptyOverwrite: false,
 };

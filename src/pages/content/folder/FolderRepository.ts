@@ -477,7 +477,7 @@ export class FolderRepository {
     key: string,
     snapshot: FolderData,
     companions: Record<string, unknown> | undefined,
-  ): Promise<boolean> {
+  ): Promise<boolean | void> {
     return companions
       ? this.storage.saveData(key, snapshot, companions)
       : this.storage.saveData(key, snapshot);
@@ -518,13 +518,13 @@ export class FolderRepository {
       // storage.onChanged in this same context — arm suppression so the echo
       // doesn't trigger a redundant full reload (see storageChangeHandler).
       if (this.dataSession === session) this.armStorageEchoSuppression();
-      success = await this.writeSnapshot(session.storageKey, snapshot, companions);
+      success = (await this.writeSnapshot(session.storageKey, snapshot, companions)) !== false;
 
       // Retry once if the first attempt fails (for transient errors)
       if (!success && this.config.retryFailedSave) {
         console.warn(`${this.tag} Save failed, retrying once...`);
         if (this.dataSession === session) this.armStorageEchoSuppression();
-        success = await this.writeSnapshot(session.storageKey, snapshot, companions);
+        success = (await this.writeSnapshot(session.storageKey, snapshot, companions)) !== false;
       }
 
       if (success) {

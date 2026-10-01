@@ -44,9 +44,14 @@ export interface IFolderStorageAdapter {
    * @param data Folder data to save
    * @param companions Other keys to write in the same storage call. Only adapters
    *   that write them atomically may be handed companions (see AIStudioFolderStorageAdapter).
-   * @returns true if save succeeded
+   * @returns `false` (or a rejection) if the write failed; any other resolution
+   *   means it succeeded, so an adapter may return the storage call's own promise.
    */
-  saveData(key: string, data: FolderData, companions?: Record<string, unknown>): Promise<boolean>;
+  saveData(
+    key: string,
+    data: FolderData,
+    companions?: Record<string, unknown>,
+  ): Promise<boolean | void>;
 
   /**
    * Remove folder data from storage

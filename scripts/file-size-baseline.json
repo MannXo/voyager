@@ -20,7 +20,7 @@
     "src/pages/content/echarts/__tests__/echarts.test.ts": 1649,
     "src/pages/content/echarts/index.ts": 1439,
     "src/pages/content/export/index.ts": 2847,
-    "src/pages/content/folder/aistudio.ts": 4094,
+    "src/pages/content/folder/aistudio.ts": 3926,
     "src/pages/content/folder/floatingPanel.ts": 1143,
     "src/pages/content/folder/FolderSelection.ts": 1552,
     "src/pages/content/folder/FolderStore.ts": 1087,

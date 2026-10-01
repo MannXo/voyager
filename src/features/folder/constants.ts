@@ -9,6 +9,9 @@ export const SESSION_BACKUP_TIMESTAMP_KEY = 'gvFolderBackupTimestamp';
  */
 export const ROOT_CONVERSATIONS_ID = '__root_conversations__';
 
+/** AI Studio's root-level prompt bucket in `folderContents`. Serialized key: never rename it. */
+export const AISTUDIO_ROOT_BUCKET_ID = '__uncategorized__';
+
 /**
  * Cap nesting at 2 total layers: root (depth 0) plus one subfolder level
  * (depth 1). Deeper pre-existing data keeps rendering; only new creation
