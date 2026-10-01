@@ -968,18 +968,20 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
 - **Trap:** The shared tree shows folders whose stored parents form a cycle by letting the first of
   each group in stored order stand in as a root. Removal still walked the stored parents, so with
   `a(parent: b)` and `b(parent: a)` the tree showed B as a leaf under A, yet deleting B also deleted A
-  and both conversation buckets. Imports now refuse such files, but a Drive merge of two moves made on
-  different devices, or data stored before the import check, can still hold a cycle.
-- **Rule:** Imports refuse a file whose parent links form a cycle, a folder that is its own parent
-  included (`findFolderInsideItself`), in the shared validator and in AI Studio's file reader.
-  Display and removal cut cycles at the same folders (`findCycleRoots` in
+  and both conversation buckets. A Drive merge of two moves made on different devices, or data
+  stored by an older version, can hold such a cycle, so refusing cyclic import files instead would
+  only stop those users from re-importing their own export.
+- **Rule:** Display and removal cut cycles at the same folders (`findCycleRoots` in
   `src/features/folder/model/folderData.ts`, used by `layoutFolders` and
   `getFolderAndDescendants`), and both follow the first record of a repeated id, so a delete removes
-  exactly the folders the tree shows inside the deleted one. Never rewrite the stored parents to
-  break a cycle.
+  exactly the folders the tree shows inside the deleted one. Imports accept a cyclic file and move
+  each cut folder to the root (`cutFolderCycles`, in the shared validator and AI Studio's file
+  reader), keeping every folder and bucket; repeated ids are still refused. Never rewrite stored
+  parents outside an import.
 - **Guard:** `src/pages/content/folder/__tests__/folderTreeStructure.test.ts` checks that removal
   takes what the tree shows; `src/features/folder/model/__tests__/folderData.test.ts` and
   `src/pages/content/folder/__tests__/aistudioTreeEdits.test.ts` cover removal on cycles; the import
-  refusals live in `src/features/folder/services/__tests__/FolderImportExportService.test.ts`,
+  repair and the export round trip live in
+  `src/features/folder/services/__tests__/FolderImportExportService.test.ts`,
   `src/pages/content/folder/__tests__/FolderTransferController.test.ts` and
   `src/pages/content/folder/__tests__/aistudioPersistence.test.ts`.
