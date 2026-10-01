@@ -364,6 +364,19 @@ describe('AI Studio folder tree: drag and drop', () => {
     expect(stored().folderContents.a.map((c) => c.conversationId)).toEqual(['c4', 'n2']);
   });
 
+  it('files a prompt dropped anywhere in a folder block, into the innermost folder', async () => {
+    await mount();
+    expect(tree.drop(tree.rowElement('a', 'c4'), nativeRowTransfer('n1', 'Into alpha'))).toBe(true);
+    await flush();
+    expect(stored().folderContents.a.map((c) => c.conversationId)).toEqual(['c4', 'n1']);
+
+    tree.drop(tree.rowElement('g', 'c5'), nativeRowTransfer('n2', 'Into grandchild'));
+    await flush();
+    expect(stored().folderContents.g.map((c) => c.conversationId)).toEqual(['c5', 'n2']);
+    expect(stored().folderContents.b1).toEqual([]);
+    expect(stored().folderContents.b.map((c) => c.conversationId)).toEqual(['c1', 'c2', 'c3']);
+  });
+
   it('moves a filed prompt between folders by dragging its row, keeping its record', async () => {
     await mount();
     const transfer = tree.dragRow('b', 'c2');

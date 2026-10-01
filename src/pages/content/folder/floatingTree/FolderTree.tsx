@@ -30,6 +30,8 @@ type DropEvent = DragEvent & { currentTarget: HTMLElement };
 /** Dragover, dragleave and drop handlers that file a conversation into `folderId`. */
 function dropHandlers(tree: TreeProps, folderId: string) {
   const { actions } = tree;
+  // Nested targets: the innermost one takes the drag, and its ancestors stay unlit.
+  const nested = !!tree.site?.folderBodyDrop;
   return {
     // HTML5 quirk: `dataTransfer.getData(...)` returns "" during dragover for
     // security, so we can't read the payload here — we can only inspect the
@@ -40,12 +42,18 @@ function dropHandlers(tree: TreeProps, folderId: string) {
       const types = e.dataTransfer?.types;
       if (!types || !acceptsDrag(actions, Array.from(types))) return;
       e.preventDefault();
+      if (nested) e.stopPropagation();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
       e.currentTarget.classList.add(DROP_TARGET);
     },
-    onDragLeave: (e: DropEvent) => e.currentTarget.classList.remove(DROP_TARGET),
+    onDragLeave: (e: DropEvent) => {
+      const into = e.relatedTarget;
+      if (nested && into instanceof Node && e.currentTarget.contains(into)) return;
+      e.currentTarget.classList.remove(DROP_TARGET);
+    },
     onDrop: (e: DropEvent) => {
       e.currentTarget.classList.remove(DROP_TARGET);
+      if (nested) e.stopPropagation();
       if (actions.onDrop) {
         e.preventDefault();
         e.stopPropagation();
@@ -320,7 +328,11 @@ function FolderNode({ tree, folder, depth }: FolderNodeProps) {
           />
         )}
       </div>
-      <div class={cls('folder-body')} style={expanded ? undefined : { display: 'none' }}>
+      <div
+        class={cls('folder-body')}
+        style={expanded ? undefined : { display: 'none' }}
+        {...(tree.site?.folderBodyDrop ? dropHandlers(tree, folder.id) : {})}
+      >
         {creatingChild && (
           <CreateFolderForm
             key={`create:${folder.id}`}

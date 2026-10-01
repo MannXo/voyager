@@ -271,6 +271,10 @@ export const tree = {
     menuItem('floatingPanelDeleteFolder')!.click();
   },
 
+  /** A filed row, as somewhere to drop onto. */
+  rowElement: (bucketId: string, conversationId: string): HTMLElement =>
+    conversationRow(bucketId, conversationId),
+
   dropTarget: (bucketId: string): HTMLElement =>
     bucketId === ROOT
       ? treeRoot().querySelector<HTMLElement>(part('root-drop'))!

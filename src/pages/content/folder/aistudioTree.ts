@@ -38,6 +38,7 @@ const SITE: TreeSiteOptions = {
   conversationOrder: 'stored',
   rootSection: { labelKey: 'folder_uncategorized' },
   folderMenuButton: { labelKey: 'folder_settings' },
+  folderBodyDrop: true,
 };
 
 /**

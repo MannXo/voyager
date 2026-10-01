@@ -309,3 +309,68 @@ describe('confirmFolderRemoval', () => {
     expect(onDeleteFolder).toHaveBeenCalledWith('a');
   });
 });
+
+describe('folderBodyDrop', () => {
+  function nestedData(): FolderData {
+    const nested = data();
+    nested.folders.push(folder('zc', 'Zeta child', { parentId: 'z', createdAt: 4 }));
+    nested.folderContents.zc = [conv('inner')];
+    return nested;
+  }
+  const row = (root: ParentNode, bucket: string, id: string) =>
+    root.querySelector<HTMLElement>(
+      `.${cls('conv')}[data-folder-id="${bucket}"][data-conversation-id="${id}"]`,
+    )!;
+  const lit = (root: ParentNode) =>
+    all(root, 'drop-target').map((el) =>
+      el.classList.contains(cls('folder-body'))
+        ? `body:${el.parentElement?.querySelector(`.${cls('folder-header')}`)?.getAttribute('data-folder-id')}`
+        : `header:${el.dataset.folderId}`,
+    );
+  const dragOver = (target: HTMLElement) => {
+    const over = new Event('dragover', { bubbles: true, cancelable: true, composed: true });
+    Object.defineProperty(over, 'dataTransfer', { value: transfer(nativeRow) });
+    target.dispatchEvent(over);
+    return over.defaultPrevented;
+  };
+
+  it('takes a drop anywhere in the folder block, and the innermost folder wins', () => {
+    const onDrop = vi.fn(() => true);
+    const { root } = mount({ folderBodyDrop: true }, { onDrop }, nestedData());
+
+    expect(drop(row(root, 'z', 'old'), nativeRow)).toBe(true);
+    expect(onDrop).toHaveBeenLastCalledWith(expect.anything(), 'z');
+    expect(drop(row(root, 'zc', 'inner'), nativeRow)).toBe(true);
+    expect(onDrop).toHaveBeenLastCalledWith(expect.anything(), 'zc');
+    expect(onDrop).toHaveBeenCalledTimes(2);
+  });
+
+  it('lights only the innermost target under the pointer', () => {
+    const { root } = mount({ folderBodyDrop: true }, { onDrop: () => true }, nestedData());
+    dragOver(header(root, 'zc'));
+    expect(lit(root)).toEqual(['header:zc']);
+    header(root, 'zc').dispatchEvent(new Event('dragleave', { bubbles: true }));
+    dragOver(row(root, 'zc', 'inner'));
+    expect(lit(root)).toEqual(['body:zc']);
+  });
+
+  it('keeps a same-folder drop from falling through to the parent folder', () => {
+    const onMoveConversation = vi.fn();
+    const { root } = mount({ folderBodyDrop: true }, { onMoveConversation }, nestedData());
+    drop(row(root, 'zc', 'inner'), {
+      'application/json': JSON.stringify({
+        type: 'conversation',
+        conversationId: 'inner',
+        sourceFolderId: 'zc',
+      }),
+    });
+    expect(onMoveConversation).not.toHaveBeenCalled();
+  });
+
+  it('default: only the header takes a drop', () => {
+    const onDrop = vi.fn(() => true);
+    const { root } = mount(undefined, { onDrop, acceptsDrag: () => true }, nestedData());
+    expect(drop(row(root, 'z', 'old'), nativeRow)).toBe(false);
+    expect(onDrop).not.toHaveBeenCalled();
+  });
+});

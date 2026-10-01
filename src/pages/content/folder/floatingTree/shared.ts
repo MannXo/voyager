@@ -77,6 +77,11 @@ export type TreeSiteOptions = {
   activeConversationId?: string | null;
   /** A button on each folder row that opens its menu. Default: the menu opens on right-click only. */
   folderMenuButton?: { labelKey: string };
+  /**
+   * A folder's body (its subfolders and conversations) takes drops too, so the
+   * whole folder block is a target; the innermost folder wins. Default: the header only.
+   */
+  folderBodyDrop?: boolean;
 };
 
 /** A transient view change; `null` clears the editor or menu, omitted keeps it. */
