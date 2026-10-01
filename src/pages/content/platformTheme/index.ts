@@ -32,6 +32,7 @@ import { matchesAnyPattern } from '@/features/plugins/sites/matchPattern';
 import { isNativeSurfaceUrl } from '@/features/plugins/sites/nativeSurfaces';
 import { SiteRegistry } from '@/features/plugins/sites/registry';
 import { listPluginManifests } from '@/features/plugins/sources/defaultSources';
+import { isPluginEnabled } from '@/features/plugins/storage/pluginDefaults';
 import { loadPluginState, subscribePluginState } from '@/features/plugins/storage/pluginState';
 import type { PluginManifest, SiteAdapter } from '@/features/plugins/types';
 
@@ -235,7 +236,7 @@ export function startBrandTheme(url: string = location.href, doc: Document = doc
       loadSiteOverrideForHost(host),
     ]);
     if (cancelled) return;
-    const active = manifests.filter((m) => m.theme?.brand && state[m.id]?.enabled);
+    const active = manifests.filter((m) => m.theme?.brand && isPluginEnabled(state, m.id));
     // A published site override can change the brand colour without a release.
     const adapter = resolveSiteAdapterForUrl(url, registry, override);
     applyBrandTheme(url, active, doc, customColors, adapter);

@@ -25,6 +25,10 @@ import { matchesAnyPattern } from '@/features/plugins/sites/matchPattern';
 import { SiteRegistry } from '@/features/plugins/sites/registry';
 import type { BlockedPluginUpdate } from '@/features/plugins/sources/defaultSources';
 import {
+  DEFAULT_ENABLED_PLUGIN_IDS,
+  isPluginEnabled,
+} from '@/features/plugins/storage/pluginDefaults';
+import {
   loadCollapsedPlugins,
   loadPluginState,
   loadSeenPluginVersions,
@@ -192,8 +196,9 @@ function readState(
 } {
   const enabled: EnabledMap = {};
   const settings: SettingsMap = {};
+  for (const id of DEFAULT_ENABLED_PLUGIN_IDS) enabled[id] = isPluginEnabled(state, id);
   for (const [id, entry] of Object.entries(state)) {
-    enabled[id] = entry.enabled === true;
+    enabled[id] = isPluginEnabled(state, id);
     if (entry.settings) settings[id] = { ...entry.settings };
   }
   return { enabled, settings };

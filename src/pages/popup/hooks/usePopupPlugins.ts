@@ -22,6 +22,7 @@ import {
   listPluginManifestsWithSources,
   refreshPluginManifestsWithSources,
 } from '@/features/plugins/sources/defaultSources';
+import { isPluginEnabled } from '@/features/plugins/storage/pluginDefaults';
 import {
   type PluginStateMap,
   loadPluginState,
@@ -72,7 +73,7 @@ export function usePopupPlugins({
           id: plugin.id,
           version: plugin.version,
           source: diagnosticPluginSourceFromId(pluginSourceIds[plugin.id]),
-          enabled: state?.enabled ?? false,
+          enabled: isPluginEnabled(pluginState, plugin.id),
           settingsSchema: plugin.contributes.settings,
           settings: state?.settings,
         };

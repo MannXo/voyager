@@ -95,7 +95,9 @@ export function hostCatalogFileUrl(baseUrl: string, host: string): string {
  * ENABLED plugin targets it. Gemini / AI Studio are not catalog hosts at all
  * (`isEligibleCatalogHost`), so they never produce a request. A user-imported (`local.*`) plugin
  * never counts: the catalog cannot update it, so enabling one must not make
- * Voyager contact the catalog host about that site.
+ * Voyager contact the catalog host about that site. Only an explicit
+ * `enabled: true` counts, deliberately not `isPluginEnabled`: a builtin that is
+ * on by default must not, by itself, make Voyager contact the catalog host.
  */
 export function hasEnabledPluginForUrl(
   manifests: readonly PluginManifest[],

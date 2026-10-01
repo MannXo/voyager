@@ -1,8 +1,10 @@
 import { StorageKeys } from '@/core/types/common';
+import { isPluginEnabled } from '@/features/plugins/storage/pluginDefaults';
 import type { PluginManifest } from '@/features/plugins/types';
 
 /**
- * The plugins the user turned on, from the catalog `loadCatalog` returns.
+ * The plugins that are on, from the catalog `loadCatalog` returns: the ones the
+ * user turned on, plus default-on builtins the user has not turned off.
  * Plugin enable state (storage.local) is the single source of truth; content
  * script registrations and permissions are derived from it.
  */
@@ -16,12 +18,10 @@ export async function loadEnabledPlugins(
   } catch {
     return [];
   }
-  const enabledIds = new Set<string>();
-  if (state && typeof state === 'object' && !Array.isArray(state)) {
-    for (const [id, entry] of Object.entries(state as Record<string, { enabled?: boolean }>)) {
-      if (entry && entry.enabled === true) enabledIds.add(id);
-    }
-  }
+  const entries =
+    state && typeof state === 'object' && !Array.isArray(state)
+      ? (state as Record<string, { enabled?: unknown } | undefined>)
+      : {};
   const catalog = await loadCatalog();
-  return catalog.filter((plugin) => enabledIds.has(plugin.id));
+  return catalog.filter((plugin) => isPluginEnabled(entries, plugin.id));
 }

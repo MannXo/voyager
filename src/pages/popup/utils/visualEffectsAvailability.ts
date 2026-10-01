@@ -1,4 +1,5 @@
 import { customWebsitesIncludeHost } from '@/core/utils/customWebsites';
+import { isPluginEnabled } from '@/features/plugins/storage/pluginDefaults';
 import type { PluginStateMap } from '@/features/plugins/storage/pluginState';
 
 interface VisualEffectsAvailabilityInput {
@@ -24,5 +25,5 @@ export function canUseVisualEffects({
   if (!isPluginSite) return true;
   if (!activeSiteDomain) return false;
   if (customWebsitesIncludeHost(customWebsites, activeSiteDomain)) return true;
-  return sitePluginIds.some((id) => pluginState[id]?.enabled === true);
+  return sitePluginIds.some((id) => isPluginEnabled(pluginState, id));
 }

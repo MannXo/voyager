@@ -1017,3 +1017,19 @@ stored prompt, even when an imported file carries its id`) and
   `src/pages/content/researchPack/__tests__/templates.test.ts` (`previews an imported file as plain
 text and saves only on Save`, `writes nothing when an import is cancelled, too large, or not a
 template file`, `exports only the chosen template, never the pack or other prompts`).
+
+## A default-on plugin stays on until the user turns it off, in every reader
+
+- **Trap:** `PLUGINS_STATE` records only explicit choices, and every reader used to treat a
+  missing entry as off. A default applied in one reader only leaves the popup showing a plugin
+  on while the background never registers it, or the reverse; and `setPluginSetting` wrote
+  `enabled: previous?.enabled ?? false`, so changing a setting of a never-touched default-on
+  plugin silently stored `enabled: false`.
+- **Rule:** Read enable state through `isPluginEnabled` (`features/plugins/storage/pluginDefaults.ts`):
+  an explicit boolean wins, otherwise `DEFAULT_ENABLED_PLUGIN_IDS` decides. That covers the
+  plugin host, background registration, popup readers, brand theme and setting writes. The
+  catalog-host trigger (`hostCatalogPolicy`) deliberately counts only explicit `enabled: true`,
+  so a default never makes Voyager contact the catalog host.
+- **Guard:** `src/features/plugins/storage/pluginDefaults.test.ts` (`is registered by the
+background unless the user turned it off`, `stays on when a setting changes before the user ever
+flipped it`, `counts for the popup but never makes Voyager contact the catalog host by itself`).

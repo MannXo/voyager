@@ -18,6 +18,7 @@ import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContex
 
 import { isLocalPluginId } from '../local/localPluginId';
 import type { PluginSettingValue, PluginSettings } from '../types';
+import { isPluginEnabled } from './pluginDefaults';
 import { withPluginStorageLock } from './pluginStorageLock';
 
 export interface PluginStateEntry {
@@ -219,7 +220,9 @@ export async function setPluginEnabled(id: string, enabled: boolean): Promise<vo
 
 /**
  * Persist a single setting value for a plugin (preserving enabled state + other
- * settings). Resolves false, after logging, when the value was not stored.
+ * settings). A plugin with no entry keeps its default, so changing a setting of
+ * a default-on plugin never switches it off. Resolves false, after logging, when
+ * the value was not stored.
  */
 export async function setPluginSetting(
   id: string,
@@ -231,7 +234,7 @@ export async function setPluginSetting(
     return {
       ...current,
       [id]: {
-        enabled: previous?.enabled ?? false,
+        enabled: isPluginEnabled(current, id),
         installedAt: previous?.installedAt ?? Date.now(),
         settings: { ...previous?.settings, [key]: value },
       },

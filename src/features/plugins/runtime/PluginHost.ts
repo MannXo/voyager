@@ -37,6 +37,7 @@ import { matchesAnyPattern } from '../sites/matchPattern';
 import { conflictsWithNativeSurface, isNativeSurfaceUrl } from '../sites/nativeSurfaces';
 import { SiteRegistry } from '../sites/registry';
 import { createDefaultPluginSources, listPluginManifests } from '../sources/defaultSources';
+import { isPluginEnabled } from '../storage/pluginDefaults';
 import { type PluginStateMap, loadPluginState, subscribePluginState } from '../storage/pluginState';
 import {
   type EntitlementProvider,
@@ -457,7 +458,7 @@ export class PluginHost {
   private async shouldActivate(manifest: PluginManifest, state: PluginStateMap): Promise<boolean> {
     if (!this.surfaceOn) return false;
     if (!this.targetsThisPage(manifest)) return false;
-    if (!state[manifest.id]?.enabled) return false;
+    if (!isPluginEnabled(state, manifest.id)) return false;
     const incompatibility = findIncompatibility({
       manifest,
       adapter: this.adapter,
