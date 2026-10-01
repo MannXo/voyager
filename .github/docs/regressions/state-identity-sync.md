@@ -70,16 +70,18 @@ off a ChatGPT tab`).
   onChanged event for an unchanged value or a rejected write, so dropping a prompt onto its own
   folder (or a quota failure) left suppression armed; another tab's update within 2s was ignored and
   this stale tab's next save overwrote it. Echoes also come back with object keys sorted, so
-  insertion-order JSON never equals the written snapshot.
+  insertion-order JSON never equals the written snapshot. Skipping the token for a no-op write
+  broke Firefox, which does report unchanged writes, and tokens were pruned only on events.
 - **Rule:** `FolderRepository.persistDataSession` arms a `StorageEchoTracker` token holding the
   key-sorted serialization of the snapshot it writes, for the active session only, and disarms it
   when that attempt fails or throws. The handler suppresses only an event whose `newValue` equals an
   armed token; any other event for the key reloads and clears that key's tokens, because a later
-  external write could restore their value. Writes equal to the last value seen in onChanged arm
-  nothing. Each misjudgment must degrade to a redundant reload, never a swallowed update. Reset the
+  external write could restore their value. Every write attempt arms, even a no-op, and arming
+  prunes expired tokens. Suppression is only an optimisation over the deferred reconcile below:
+  each misjudgment must degrade to a redundant reload, never a swallowed update. Reset the
   tracker when switching accounts; delayed writes for a previous session must not arm the new
   session because the listener ignores events for their old storage key.
-- **Guard:** `src/pages/content/folder/FolderStore.test.ts` ("consumes one mirror echo per write and then applies an external update" and "applies an external update when no local write has armed echo suppression"), `src/pages/content/folder/__tests__/folderStorePersistenceCharacterization.test.ts` ("storage echo and cross-tab reload"), `src/pages/content/folder/__tests__/aistudioFolderSync.test.ts` (Chrome-like storage mock: no event for unchanged or rejected writes, sorted keys), `src/pages/content/folder/storage/__tests__/StorageEchoTracker.test.ts`
+- **Guard:** `src/pages/content/folder/FolderStore.test.ts` ("consumes one mirror echo per write and then applies an external update" and "applies an external update when no local write has armed echo suppression"), `src/pages/content/folder/__tests__/folderStorePersistenceCharacterization.test.ts` ("storage echo and cross-tab reload"), `src/pages/content/folder/__tests__/aistudioFolderSync.test.ts` (Chrome-like storage mock: no event for unchanged or rejected writes, sorted keys; a Firefox-like case reports unchanged writes), `src/pages/content/folder/storage/__tests__/StorageEchoTracker.test.ts`
 
 ## External folder writes reconcile only after local work settles
 

@@ -19,16 +19,18 @@ describe('StorageEchoTracker', () => {
     expect(tracker.consume('k', { a: { c: 3, d: [{ x: 2, y: 1 }] }, b: 1 })).toBe(true);
   });
 
-  it('arms nothing for a write of the value storage already holds', () => {
+  it('arms a write of the value storage already holds, which some browsers still report', () => {
     tracker.consume('k', { a: 1 });
-    expect(tracker.arm('k', serializeStoredValue({ a: 1 }))).toBeNull();
-    expect(tracker.arm('k', serializeStoredValue({ a: 2 }))).not.toBeNull();
+    tracker.arm('k', serializeStoredValue({ a: 1 }));
+    expect(tracker.consume('k', { a: 1 })).toBe(true);
   });
 
-  it('does not treat a removed value as already stored', () => {
-    tracker.consume('k', { a: 1 });
-    tracker.consume('k', undefined);
-    expect(tracker.arm('k', serializeStoredValue({ a: 1 }))).not.toBeNull();
+  it('drops expired echoes when the next write arms, even if no event ever arrives', () => {
+    tracker.arm('k', serializeStoredValue({ a: 1 }));
+    tracker.arm('k', serializeStoredValue({ a: 1 }));
+    vi.advanceTimersByTime(2001);
+    tracker.arm('k', serializeStoredValue({ a: 1 }));
+    expect(tracker.pendingCount).toBe(1);
   });
 
   it('keeps a later write armed when an earlier write echoes', () => {

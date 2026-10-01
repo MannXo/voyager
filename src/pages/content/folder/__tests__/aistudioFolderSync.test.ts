@@ -274,6 +274,25 @@ describe('AI Studio folder sync across contexts', () => {
     });
   });
 
+  it('does not reload for an unchanged save that the browser still reports', async () => {
+    local[GLOBAL_KEY] = folderData('Mine');
+    const manager = await mount();
+    // Like Firefox: every write is reported, even one that leaves the value unchanged.
+    mockBrowser.storage.local.set.mockImplementation(async (values: Record<string, unknown>) => {
+      Object.assign(local, structuredClone(values));
+      setTimeout(() => emitStorageChange(sortedClone(values) as Record<string, unknown>, 'local'));
+    });
+    const readsAfterMount = bucketReads(GLOBAL_KEY);
+
+    manager.data.folders[0].name = 'Edited here';
+    await expect(manager.save()).resolves.toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(manager.save()).resolves.toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(bucketReads(GLOBAL_KEY)).toBe(readsAfterMount);
+  });
+
   it('ignores other buckets, other areas and a disabled folder feature', async () => {
     local[GLOBAL_KEY] = folderData('Mine');
     const manager = await mount();

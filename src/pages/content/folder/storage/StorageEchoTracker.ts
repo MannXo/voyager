@@ -24,19 +24,23 @@ export function serializeStoredValue(value: unknown): string | undefined {
 }
 
 /**
- * Tells this context's own storage writes apart from writes by other contexts.
- * An echo matches only the exact value this context wrote: chrome.storage emits
- * nothing for an unchanged or rejected write, so a bare counter would stay armed
- * and swallow the next external update.
+ * Recognises this context's own storage writes so their echo can skip a
+ * reload. An optimisation only: a missed echo costs one reload of this
+ * context's own data. An echo matches only the exact value written, since
+ * Chrome emits nothing for an unchanged or rejected write while Firefox
+ * reports unchanged ones too.
  */
 export class StorageEchoTracker {
   private echoes: StorageEcho[] = [];
-  /** Last value seen in storage.onChanged per key; unknown until an event arrives. */
-  private readonly lastSeen = new Map<string, string>();
 
-  /** Call before writing. Returns null when the write cannot produce an echo. */
+  get pendingCount(): number {
+    return this.echoes.length;
+  }
+
+  /** Call before writing. Expired echoes go now: a write Chrome never reports leaves no event. */
   arm(key: string, serialized: string | undefined): StorageEcho | null {
-    if (serialized === undefined || this.lastSeen.get(key) === serialized) return null;
+    this.echoes = this.live();
+    if (serialized === undefined) return null;
     const echo: StorageEcho = { key, serialized, armedAt: Date.now() };
     this.echoes.push(echo);
     return echo;
@@ -47,16 +51,10 @@ export class StorageEchoTracker {
     if (echo) this.echoes = this.echoes.filter((entry) => entry !== echo);
   }
 
-  /** Records a storage change for `key`; true when it is the echo of an armed write. */
+  /** True when a storage change for `key` is the echo of an armed write. */
   consume(key: string, newValue: unknown): boolean {
     const serialized = serializeStoredValue(newValue);
-    if (serialized === undefined) this.lastSeen.delete(key);
-    else this.lastSeen.set(key, serialized);
-
-    const now = Date.now();
-    const live = this.echoes.filter(
-      (echo) => now - echo.armedAt <= STORAGE_ECHO_SUPPRESS_WINDOW_MS,
-    );
+    const live = this.live();
     const index = live.findIndex((echo) => echo.key === key && echo.serialized === serialized);
     // Events arrive in write order, so earlier echoes for this key will never come.
     // On a mismatch, drop them all: a later external write could restore their value.
@@ -68,6 +66,10 @@ export class StorageEchoTracker {
   /** Forget everything, e.g. when the account binding changes. */
   reset(): void {
     this.echoes = [];
-    this.lastSeen.clear();
+  }
+
+  private live(): StorageEcho[] {
+    const now = Date.now();
+    return this.echoes.filter((echo) => now - echo.armedAt <= STORAGE_ECHO_SUPPRESS_WINDOW_MS);
   }
 }
