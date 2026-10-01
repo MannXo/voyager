@@ -520,11 +520,11 @@ export class FolderStore {
     conv: ConversationReference,
   ): void {
     if (!this.canEdit) return;
-    // The record keeps its sortIndex, and it leaves the source even when the
-    // target already holds it.
+    // The record goes after the target's last row, like a drop, and leaves the
+    // source even when the target already holds it.
     this.data = placeConversations(this.data, [{ ...conv, addedAt: Date.now() }], {
       target: targetFolderId,
-      placement: 'keep',
+      placement: 'append',
       removeFrom: { bucket: sourceFolderId },
       removeWhenPresent: true,
     }).data;

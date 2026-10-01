@@ -351,12 +351,12 @@ describe('Gemini conversation placement entry points', () => {
   });
 
   describe('moveConversationToFolder (floating panel drag)', () => {
-    it('moves the record keeping its sortIndex and fields, with a fresh addedAt', async () => {
-      const moving = ref('a', { sortIndex: 5, starred: true, lastOpenedAt: 9 });
+    it('appends the record after the target rows, keeping its fields with a fresh addedAt', async () => {
+      const moving = ref('a', { sortIndex: 0, starred: true, lastOpenedAt: 9 });
       await mount(
         data(['s', 't'], {
-          s: [moving, ref('b', { sortIndex: 0 })],
-          t: [ref('c', { sortIndex: 0 })],
+          s: [moving, ref('b', { sortIndex: 1 })],
+          t: [ref('c', { sortIndex: 0 }), ref('d', { sortIndex: 1 })],
         }),
       );
       const record = find('s', 'a')!;
@@ -364,8 +364,9 @@ describe('Gemini conversation placement entry points', () => {
       store.moveConversationToFolder('s', 't', record);
 
       expect(ids('s')).toEqual(['b']);
-      expect(ids('t')).toEqual(['c', 'a']);
-      expect(find('t', 'a')).toEqual({ ...moving, addedAt: NOW });
+      expect(ids('t')).toEqual(['c', 'd', 'a']);
+      // Its source index 0 would have tied with the target's first row.
+      expect(find('t', 'a')).toEqual({ ...moving, addedAt: NOW, sortIndex: 2 });
       expect(find('t', 'a')).not.toBe(record);
       expect(await saves()).toBe(1);
       expect(onChange).toHaveBeenCalledWith('data');
