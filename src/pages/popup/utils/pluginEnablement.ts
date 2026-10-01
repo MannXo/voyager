@@ -40,6 +40,25 @@ export function canGrantPluginSiteAccess(): boolean {
 }
 
 /**
+ * Whether the plugin already holds the optional host access it needs on the
+ * active site. An enabled plugin can still lack it: Chrome closes the popup
+ * while its permission prompt is open, after the enable was persisted. Unknown
+ * answers count as granted so a check failure never hides a working plugin.
+ */
+export async function hasPluginSiteAccess(
+  plugin: PluginManifest,
+  activeUrl: string | undefined,
+): Promise<boolean> {
+  const origins = pluginToOriginPatternsForActiveUrl(plugin, activeUrl);
+  if (!origins.length || !browser.permissions?.contains) return true;
+  try {
+    return await browser.permissions.contains({ origins });
+  } catch {
+    return true;
+  }
+}
+
+/**
  * `enabled` / `disabled`: the requested state was saved. `denied`: the user
  * refused (or the browser failed) the host-access prompt. `unsupported`: this
  * browser cannot grant or inject the access the plugin needs on this site.

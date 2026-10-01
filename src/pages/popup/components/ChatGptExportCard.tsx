@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { PluginManifest } from '@/features/plugins/types';
 import type { TranslationKey } from '@/utils/translations';
@@ -6,7 +6,7 @@ import type { TranslationKey } from '@/utils/translations';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import { openChatGptExportInTab } from '../utils/chatgptExportEntry';
-import { setPluginEnabledWithSiteAccess } from '../utils/pluginEnablement';
+import { hasPluginSiteAccess, setPluginEnabledWithSiteAccess } from '../utils/pluginEnablement';
 
 const NOTE_TONE: Readonly<Partial<Record<TranslationKey, string>>> = {
   pluginPermissionDenied: 'text-red-500',
@@ -39,13 +39,32 @@ export function ChatGptExportCard({
 }: ChatGptExportCardProps) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<TranslationKey | null>(null);
+  // Enabled without the site grant (the prompt was denied after Chrome closed
+  // the popup) cannot export; offer "Turn on" again so the grant is requested.
+  const [accessMissing, setAccessMissing] = useState(false);
+  const ready = enabled && !accessMissing;
+
+  useEffect(() => {
+    if (!enabled) {
+      setAccessMissing(false);
+      return;
+    }
+    let active = true;
+    void hasPluginSiteAccess(plugin, activeUrl).then((granted) => {
+      if (active) setAccessMissing(!granted);
+    });
+    return () => {
+      active = false;
+    };
+  }, [activeUrl, enabled, plugin]);
 
   const turnOn = async () => {
     setNote(null);
     setBusy(true);
     try {
       const outcome = await setPluginEnabledWithSiteAccess(plugin, true, activeUrl, () => {});
-      if (outcome === 'denied') setNote('pluginPermissionDenied');
+      if (outcome === 'enabled') setAccessMissing(false);
+      else if (outcome === 'denied') setNote('pluginPermissionDenied');
       else if (outcome === 'unsupported') setNote('pluginUnsupportedPlatform');
     } finally {
       setBusy(false);
@@ -84,18 +103,18 @@ export function ChatGptExportCard({
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium">{t('chatgptExportCardTitle')}</p>
             <p className="text-muted-foreground mt-1 text-xs">
-              {t(enabled ? 'chatgptExportCardOnHint' : 'chatgptExportCardOffHint')}
+              {t(ready ? 'chatgptExportCardOnHint' : 'chatgptExportCardOffHint')}
             </p>
           </div>
           <Button
             type="button"
             size="sm"
-            variant={enabled ? 'default' : 'outline'}
+            variant={ready ? 'default' : 'outline'}
             disabled={busy}
-            onClick={() => void (enabled ? exportNow() : turnOn())}
+            onClick={() => void (ready ? exportNow() : turnOn())}
             className="shrink-0"
           >
-            {t(enabled ? 'pm_export' : 'chatgptExportTurnOn')}
+            {t(ready ? 'pm_export' : 'chatgptExportTurnOn')}
           </Button>
         </div>
         {note && (

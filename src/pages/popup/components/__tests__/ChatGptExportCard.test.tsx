@@ -148,6 +148,19 @@ describe('ChatGptExportCard', () => {
     expect(statusText()).toBe('pluginPermissionDenied');
   });
 
+  it('offers to turn export on again when it is enabled without site access', async () => {
+    mocks.permissionContains.mockResolvedValue(false);
+    await renderCard({ enabled: true });
+    await flush();
+    expect(button().textContent).toBe('chatgptExportTurnOn');
+
+    await click();
+
+    expect(mocks.permissionRequest).toHaveBeenCalledOnce();
+    expect(mocks.tabsSendMessage).not.toHaveBeenCalled();
+    expect(button().textContent).toBe('pm_export');
+  });
+
   it("opens the tab's export dialog in the top frame and reports it", async () => {
     const onOpened = vi.fn();
     mocks.tabsSendMessage.mockResolvedValue({ ok: true });
