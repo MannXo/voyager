@@ -9,6 +9,7 @@ import {
   handleResearchPackApplyMessage,
 } from '../packMessages';
 import {
+  RESEARCH_PACK_UNSUPPORTED_VERSION,
   type ResearchPackStorageArea,
   createResearchPackOwner,
   isResearchPackStorageKey,
@@ -113,12 +114,30 @@ describe('research pack owner', () => {
     expect((await createResearchPackOwner({ area }).load(KEY)).items).toEqual([]);
   });
 
-  it('never overwrites a pack written by a newer build', async () => {
+  it('refuses to edit a pack written by a newer build instead of reporting success', async () => {
     const newer = { version: 2, items: [{ text: 'future' }] };
     const { area, data } = memoryArea({ [KEY]: newer });
+    const owner = createResearchPackOwner({ area });
 
-    await createResearchPackOwner({ area }).apply(KEY, { kind: 'add', draft: draft('x') });
+    await expect(owner.apply(KEY, { kind: 'add', draft: draft('x') })).rejects.toThrow(
+      RESEARCH_PACK_UNSUPPORTED_VERSION,
+    );
     expect(area.set).not.toHaveBeenCalled();
+    expect(data.get(KEY)).toEqual(newer);
+
+    const reply = await handleResearchPackApplyMessage(
+      { type: RESEARCH_PACK_APPLY_MESSAGE, payload: { key: KEY, op: { kind: 'clear' } } },
+      owner,
+    );
+    expect(reply).toEqual({ ok: false, error: RESEARCH_PACK_UNSUPPORTED_VERSION });
+
+    const client = createResearchPackClient({
+      area,
+      send: (request) => handleResearchPackApplyMessage(request, owner),
+    });
+    await expect(client.apply(KEY, { kind: 'add', draft: draft('y') })).rejects.toThrow(
+      RESEARCH_PACK_UNSUPPORTED_VERSION,
+    );
     expect(data.get(KEY)).toEqual(newer);
   });
 

@@ -64,10 +64,14 @@ export async function loadResearchPack(
   return parsePack(stored?.[key]);
 }
 
+/** The error an edit fails with when the stored pack was written by a newer build. */
+export const RESEARCH_PACK_UNSUPPORTED_VERSION = 'unsupported_version';
+
 /**
  * The single writer. Ops are applied one at a time against the freshly read
- * pack; the write is skipped when nothing changed and when the stored pack
- * was written by a newer build.
+ * pack and the write is skipped when nothing changed. A pack written by a
+ * newer build is never edited: the op fails rather than reporting a result
+ * that was not saved.
  */
 export function createResearchPackOwner(options: {
   area: ResearchPackStorageArea;
@@ -89,11 +93,10 @@ export function createResearchPackOwner(options: {
         if (!isResearchPackStorageKey(key)) throw new Error('Invalid research pack key');
         const stored = await options.area.get(key);
         const raw = stored?.[key];
+        if (isNewerPackVersion(raw)) throw new Error(RESEARCH_PACK_UNSUPPORTED_VERSION);
         const current = parsePack(raw);
         const next = applyResearchPackOp(current, op, now());
-        if (next.pack !== current && !isNewerPackVersion(raw)) {
-          await options.area.set({ [key]: next.pack });
-        }
+        if (next.pack !== current) await options.area.set({ [key]: next.pack });
         return next;
       });
     },

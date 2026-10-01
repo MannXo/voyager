@@ -6,6 +6,7 @@ import {
   createResearchPackOwner,
 } from '@/features/researchPack/services/packStore';
 import type { ResearchPack } from '@/features/researchPack/services/types';
+import { getTranslationSync } from '@/utils/i18n';
 
 import { findChatInput, insertTextIntoChatInput } from '../../chatInput';
 import { startResearchPack } from '../index';
@@ -20,8 +21,8 @@ vi.mock('../../chatInput', () => ({
 
 const KEY = StorageKeys.RESEARCH_PACK;
 
-function memoryStore() {
-  const data = new Map<string, unknown>();
+function memoryStore(initial: Record<string, unknown> = {}) {
+  const data = new Map<string, unknown>(Object.entries(initial));
   const area: ResearchPackStorageArea = {
     get: async (key) => (data.has(key) ? { [key]: data.get(key) } : {}),
     set: async (items) => {
@@ -188,6 +189,22 @@ describe('research pack on Gemini', () => {
 
     expect(stored()!.items[0]).toMatchObject({ text: 'First sentence.', excerpt: true });
     window.getSelection()!.removeAllRanges();
+  });
+
+  it('reports a failed add, not a success, when a newer build wrote the pack', async () => {
+    const host = turn('<p>Not saved.</p>');
+    const newer = { version: 2, items: [{ text: 'future' }] };
+    const { store, stored } = memoryStore({ [KEY]: newer });
+    stop = startResearchPack({ store, resolveKey: async () => KEY });
+
+    clickAdd(host);
+    await flush();
+
+    const toast = document.querySelector<HTMLElement>('.gv-rp-toast')!;
+    expect(toast.hidden).toBe(false);
+    expect(toast.textContent).toBe(getTranslationSync('researchPackSaveFailed'));
+    expect(host.querySelector<HTMLElement>(`.${ADD_BUTTON_CLASS}`)!.dataset.state).toBeUndefined();
+    expect(stored()).toEqual(newer);
   });
 
   it('removes its buttons and panel on stop and leaves the stored pack intact', async () => {
