@@ -132,6 +132,24 @@ describe('mergeMountedTurns without a turn key', () => {
     },
   );
 
+  it('files a window mounted deep in a long identical run by position', () => {
+    const known = merge(
+      [],
+      Array.from({ length: 700 }, (_, index) => ['continue', 100 * (index + 1)] as const),
+    );
+    const ids = known.map((marker) => marker.id);
+    const window = render(
+      Array.from({ length: 400 }, (_, r) => ['continue', 100 * (300 + r + 1)] as const),
+    );
+
+    const next = mergeMountedTurns(known, window, (element) => centers.get(element) ?? 0);
+
+    expect(next.map((marker) => marker.id)).toEqual(ids);
+    expect(window.map((turn) => turn.element.getAttribute('data-gv-turn-id'))).toEqual(
+      ids.slice(300),
+    );
+  });
+
   it('keeps a genuinely new repeat as a new turn after its twin', () => {
     const known = merge([], [['continue', 100]]);
 

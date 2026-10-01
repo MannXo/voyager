@@ -24,8 +24,6 @@ export const TURN_ID_ATTR = 'data-gv-turn-id';
  * cells of time and memory; past this, the run is matched greedily.
  */
 const MAX_ALIGNMENT_CELLS = 250_000;
-/** Markers with its text a turn of an over-budget run may look past. */
-const MAX_LOOKAHEAD = 32;
 
 export interface Marker {
   id: string;
@@ -232,8 +230,9 @@ function alignRun(
  * may skip only as many markers with its text as the run can spare: when the
  * run has as many turns with a text as there are markers left for it, they
  * pair in order, which no uniform shift can upset. Otherwise a turn takes the
- * nearest drift-corrected marker within a short lookahead, so the cost stays
- * linear in the run.
+ * nearest drift-corrected marker among those it may skip to, found by binary
+ * search on the remembered centres (the earliest on a tie), so the cost is
+ * the run times the log of the markers.
  */
 function alignGreedily(
   known: readonly Marker[],
@@ -262,21 +261,31 @@ function alignGreedily(
     if (!indexes) return -1;
     const first = lowerBound(indexes, cursor);
     if (first === indexes.length) return -1;
-    const spare = Math.min(indexes.length - first - sameTextAhead[r], MAX_LOOKAHEAD);
+    const last = first + Math.max(0, indexes.length - first - sameTextAhead[r]);
     const target = entry.center - drifts[r];
-    let best = indexes[first];
-    let bestDistance = Math.abs(known[best].center - target);
-    for (let k = first + 1; k <= first + spare; k++) {
-      const offset = known[indexes[k]].center - target;
-      if (offset > bestDistance) break;
-      if (Math.abs(offset) < bestDistance) {
-        best = indexes[k];
-        bestDistance = Math.abs(offset);
+    const centerAt = (k: number): number => known[indexes[k]].center;
+    // First candidate at or past the target; the one before it is the other contender.
+    const above = searchCenters(first, last + 1, (k) => centerAt(k) >= target);
+    let pick = above;
+    if (above > first) {
+      const below = centerAt(above - 1);
+      if (above > last || target - below <= centerAt(above) - target) {
+        pick = searchCenters(first, above, (k) => centerAt(k) >= below);
       }
     }
-    cursor = best + 1;
-    return best;
+    cursor = indexes[pick] + 1;
+    return indexes[pick];
   });
+}
+
+/** First position in `[low, high)` where `reached` holds, for a predicate that stays true once true. */
+function searchCenters(low: number, high: number, reached: (k: number) => boolean): number {
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (reached(mid)) high = mid;
+    else low = mid + 1;
+  }
+  return low;
 }
 
 /** First position in the ascending `values` holding a value at or above `min`. */
