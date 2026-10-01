@@ -110,7 +110,10 @@ class ChatGptFoldersView {
     this.picker = openFolderPicker(this.store.data.folders, (folderId) => {
       this.picker = null;
       const added = this.store.addConversation(folderId, conversation);
-      this.panel?.flash(t(added ? 'chatgptFoldersAdded' : 'chatgptFoldersAlreadyFiled'));
+      // The menu sits in the sidebar, so the section is where the user is looking.
+      const message = t(added ? 'chatgptFoldersAdded' : 'chatgptFoldersAlreadyFiled');
+      this.section?.flash(message);
+      this.panel?.flash(message);
     });
   }
 

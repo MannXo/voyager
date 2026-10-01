@@ -29,11 +29,16 @@ import { findHistoryAnchor } from './chatgptSidebarDom';
 
 export const FOLDER_SECTION_CLASS = 'gv-chatgpt-folder-section';
 
+/** How long a `flash` message stays, as in the floating panel. */
+const STATUS_MS = 4000;
+
 export class ChatGptFolderSection {
   readonly element: HTMLElement;
   private readonly surface: ShadowSurface;
   private readonly body: HTMLElement;
   private readonly createButton: HTMLButtonElement;
+  private readonly status: HTMLElement;
+  private statusTimer: ReturnType<typeof setTimeout> | null = null;
   private inlineEditor: InlineEditorState | null = null;
   private contextMenu: ContextMenuState | null = null;
 
@@ -67,8 +72,13 @@ export class ChatGptFolderSection {
     this.body = document.createElement('div');
     this.body.className = `${FLOATING_PANEL_CLASS}__body`;
 
+    this.status = document.createElement('div');
+    this.status.className = `${FLOATING_PANEL_CLASS}__status`;
+    this.status.setAttribute('role', 'status');
+    this.status.hidden = true;
+
     this.surface = attachShadowSurface(this.element, `${panelCss}\n${sectionCss}`);
-    this.surface.root.append(header, this.body);
+    this.surface.root.append(header, this.status, this.body);
 
     document.addEventListener('click', this.closeMenuOutside);
     this.render();
@@ -117,11 +127,27 @@ export class ChatGptFolderSection {
     this.createButton.disabled = !ready;
   }
 
+  /** Shows `message` under the header until the next one or a few seconds pass. */
+  flash(message: string): void {
+    this.clearStatus();
+    this.status.textContent = message;
+    this.status.hidden = false;
+    this.statusTimer = setTimeout(() => this.clearStatus(), STATUS_MS);
+  }
+
   destroy(): void {
+    this.clearStatus();
     document.removeEventListener('click', this.closeMenuOutside);
     renderFolderTree(this.body, null);
     this.surface.disconnect();
     this.element.remove();
+  }
+
+  private clearStatus(): void {
+    if (this.statusTimer) clearTimeout(this.statusTimer);
+    this.statusTimer = null;
+    this.status.hidden = true;
+    this.status.textContent = '';
   }
 
   private isTyping(): boolean {

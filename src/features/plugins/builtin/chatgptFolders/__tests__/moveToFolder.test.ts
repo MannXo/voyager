@@ -178,6 +178,27 @@ describe('"Move to folder" in a sidebar row menu', () => {
     }
   });
 
+  it('confirms the move in the sidebar section while the floating panel is closed', async () => {
+    const status = () =>
+      document
+        .querySelector('.gv-chatgpt-folder-section')!
+        .shadowRoot!.querySelector<HTMLElement>('[role="status"]')!;
+    expect(document.querySelector('.gv-floating-folder-panel')).toBeNull();
+    expect(status().hidden).toBe(true);
+
+    for (const expected of ['Added to folder.', 'Already in this folder.']) {
+      const menu = sidebar.openMenu(TARGET.id);
+      await nextPass();
+      menu.querySelector<HTMLElement>(ENTRY)!.click();
+      pick('Work');
+      await settle(20);
+      expect(status().hidden).toBe(false);
+      expect(status().textContent).toBe(expected);
+      // Radix unmounts a closed menu; the fixture leaves that to the test.
+      menu.closest('body > *')!.remove();
+    }
+  });
+
   it('keeps the Project route of a row inside a Project', async () => {
     sidebar.move(TARGET.id, `/g/g-p-67ab12cd34-trip/c/${TARGET.id}`);
     const menu = sidebar.openMenu(TARGET.id);
