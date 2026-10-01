@@ -546,6 +546,24 @@ describe('AI Studio folder persistence', () => {
     expect(local[key]).toEqual(folderData('Private a'));
   });
 
+  it('refuses a file that repeats a folder id', async () => {
+    const manager = await mountManager();
+    const key = manager.activeStorageKey;
+    const [first] = folderData('P').folders;
+
+    chooseImport(manager, {
+      folders: [first, { ...first, parentId: first.id }],
+      folderContents: {},
+    });
+    await vi.waitFor(() =>
+      expect(window.alert).toHaveBeenCalledWith(getTranslationSync('folder_import_invalid_format')),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(manager.data).toEqual(folderData('Private a'));
+    expect(local[key]).toEqual(folderData('Private a'));
+  });
+
   it('refuses a folder file ChatGPT exported', async () => {
     const manager = await mountManager();
     const key = manager.activeStorageKey;

@@ -1,6 +1,7 @@
 import {
   cloneFolderData,
   findInheritedFolderKey,
+  findRepeatedFolderId,
   ownBucket,
   setBucket,
 } from '@/features/folder/model/folderData';
@@ -28,7 +29,8 @@ export function readAIStudioImportFile(json: unknown): AIStudioImportFile {
     !next ||
     !Array.isArray(next.folders) ||
     typeof next.folderContents !== 'object' ||
-    (next.folderContents && findInheritedFolderKey(next.folders, next.folderContents) !== null)
+    (next.folderContents && findInheritedFolderKey(next.folders, next.folderContents) !== null) ||
+    findRepeatedFolderId(next.folders) !== null
   ) {
     return { ok: false, messageKey: 'folder_import_invalid_format' };
   }

@@ -339,6 +339,19 @@ export function findInheritedFolderKey(
 }
 
 /**
+ * The first folder id an imported file holds more than once. Two records with
+ * one id share a bucket, and one naming itself as parent would nest forever.
+ */
+export function findRepeatedFolderId(folders: readonly { id?: unknown }[]): string | null {
+  const seen = new Set<unknown>();
+  for (const id of folders.map((folder) => folder?.id)) {
+    if (seen.has(id)) return typeof id === 'string' ? id : String(id);
+    seen.add(id);
+  }
+  return null;
+}
+
+/**
  * Stores `bucket` under `id` as an own property. Plain assignment would set the
  * prototype for `__proto__` and leave the folder without a bucket, so every
  * write that rebuilds `folderContents` by id goes through here.

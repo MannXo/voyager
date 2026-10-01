@@ -364,7 +364,7 @@ describe('AI Studio import', () => {
     format: 'gemini-voyager.folders.v1',
     exportedAt: '2026-01-01T00:00:00.000Z',
     data: {
-      folders: [folder('a'), folder('new'), folder('new')],
+      folders: [folder('a'), folder('new')],
       folderContents: {
         a: [prompt('p1', { title: 'Imported p1' }), prompt('p5'), prompt('p5')],
         new: [prompt('p6')],
@@ -384,15 +384,16 @@ describe('AI Studio import', () => {
     await importText(manager, JSON.stringify(exported));
 
     expect(imported(manager)).toEqual({
-      folders: [folder('a'), folder('new'), folder('new')],
+      folders: [folder('a'), folder('new')],
       folderContents: {
         a: [prompt('p1'), prompt('p5'), prompt('p5')],
         new: [prompt('p6')],
         [ROOT]: [prompt('p4')],
       },
     });
-    // The counts are what the merge added; the file's duplicates count as they are appended.
-    expect(alertSpy).toHaveBeenCalledWith('✓ Imported 2 folders, 3 conversations');
+    // The counts are what the merge added; the file's repeated prompts count as they are
+    // appended. A file repeating a folder id is refused (aistudioPersistence.test.ts).
+    expect(alertSpy).toHaveBeenCalledWith('✓ Imported 1 folders, 3 conversations');
   });
 
   it('drafts the merge on a copy that shares nothing with live data', async () => {

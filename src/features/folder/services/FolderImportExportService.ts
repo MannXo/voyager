@@ -14,7 +14,12 @@ import {
 } from '@/core/utils/version';
 
 import { SESSION_BACKUP_KEY, SESSION_BACKUP_TIMESTAMP_KEY } from '../constants';
-import { findInheritedFolderKey, ownBucket, setBucket } from '../model/folderData';
+import {
+  findInheritedFolderKey,
+  findRepeatedFolderId,
+  ownBucket,
+  setBucket,
+} from '../model/folderData';
 import {
   type FolderExportPayload,
   type ImportOptions,
@@ -186,6 +191,18 @@ export class FolderImportExportService {
           type: ValidationErrorType.CORRUPTED_DATA,
           message: `Invalid folder id "${inherited}"`,
           details: inherited,
+        },
+      };
+    }
+
+    const repeated = findRepeatedFolderId(data.folders as Folder[]);
+    if (repeated !== null) {
+      return {
+        success: false,
+        error: {
+          type: ValidationErrorType.CORRUPTED_DATA,
+          message: `Folder id "${repeated}" appears more than once`,
+          details: repeated,
         },
       };
     }
