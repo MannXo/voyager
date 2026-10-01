@@ -58,6 +58,8 @@ export function createContinueInController(
   let stopped = false;
   let status: HandoffStatus = NOT_READY;
   let request = 0;
+  /** A click is being handled: a double click must not open a second tab. */
+  let busy = false;
 
   const say = (key: TranslationKey, target: HandoffTarget, tone?: 'ok' | 'error'): void => {
     if (!stopped) notify(formatTarget(t(key), target), tone);
@@ -77,8 +79,8 @@ export function createContinueInController(
       );
   };
 
-  const handOff = (target: HandoffTarget, markdown: string): void => {
-    void Promise.resolve()
+  const handOff = (target: HandoffTarget, markdown: string): Promise<void> =>
+    Promise.resolve()
       .then(() => deps.send({ type: HANDOFF_MESSAGES.open, target, markdown }))
       .then(openResult, () => openResult(null))
       .then((result) => {
@@ -96,9 +98,8 @@ export function createContinueInController(
         }
         say('researchPackContinueFailed', target, 'error');
       });
-  };
 
-  const copyThenOpen = (target: HandoffTarget, markdown: string): void => {
+  const copyThenOpen = (target: HandoffTarget, markdown: string): Promise<void> => {
     let copied: Promise<void>;
     try {
       // First statement of the gesture: nothing may run before this write.
@@ -106,7 +107,7 @@ export function createContinueInController(
     } catch (error) {
       copied = Promise.reject(error);
     }
-    void copied.then(
+    return copied.then(
       () =>
         Promise.resolve()
           .then(() => deps.send({ type: HANDOFF_MESSAGES.open, target }))
@@ -125,9 +126,14 @@ export function createContinueInController(
   return {
     refresh,
     continueIn(target, markdown) {
-      if (stopped) return;
-      if (status[target]) handOff(target, markdown);
-      else copyThenOpen(target, markdown);
+      if (stopped || busy) return;
+      busy = true;
+      const handled = status[target] ? handOff(target, markdown) : copyThenOpen(target, markdown);
+      void handled
+        .catch(() => undefined)
+        .finally(() => {
+          busy = false;
+        });
     },
     destroy() {
       stopped = true;

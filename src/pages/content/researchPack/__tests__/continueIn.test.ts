@@ -134,6 +134,26 @@ describe('research pack: continue in ChatGPT / Claude', () => {
     expect(writeClipboard).toHaveBeenCalledOnce();
   });
 
+  it('opens one tab for a double click, then accepts the next click', async () => {
+    status = { chatgpt: true, claude: false };
+    await startWithOneItem();
+
+    continueButton('chatgpt').click();
+    continueButton('chatgpt').click();
+    await flush();
+    expect(opens()).toHaveLength(1);
+
+    continueButton('claude').click();
+    continueButton('claude').click();
+    await flush();
+    expect(writeClipboard).toHaveBeenCalledOnce();
+    expect(opens()).toHaveLength(2);
+
+    continueButton('chatgpt').click();
+    await flush();
+    expect(opens()).toHaveLength(3);
+  });
+
   it('checks the targets again whenever the panel opens', async () => {
     await startWithOneItem();
     const statusChecks = () =>
