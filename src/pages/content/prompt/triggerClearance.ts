@@ -81,3 +81,49 @@ export function clearOfPromptTrigger(box: Box): Point {
   }
   return { x: box.x, y: box.y };
 }
+
+/**
+ * Calls `onChange` once a frame after the ball mounts, unmounts, moves, shows
+ * or hides. The Prompt Manager moves its ball next to Gemini's composer up to
+ * 350ms after load, after a default-placed surface may already have been
+ * placed. Returns the cleanup.
+ */
+export function watchPromptTrigger(onChange: () => void): () => void {
+  let frame: number | null = null;
+  const schedule = () => {
+    if (frame !== null) return;
+    frame = requestAnimationFrame(() => {
+      frame = null;
+      onChange();
+    });
+  };
+
+  let watched: HTMLElement | null = null;
+  const ballObserver = new MutationObserver(schedule);
+  const bind = () => {
+    const current = document.getElementById(PROMPT_TRIGGER_ELEMENT_ID);
+    if (current === watched) return false;
+    ballObserver.disconnect();
+    watched = current;
+    if (current) {
+      ballObserver.observe(current, {
+        attributes: true,
+        attributeFilter: ['style', 'class', 'hidden'],
+      });
+    }
+    return true;
+  };
+  // The ball is a direct child of body: only its arrival or removal matters here.
+  const mountObserver = new MutationObserver(() => {
+    if (bind()) schedule();
+  });
+  bind();
+  if (document.body) mountObserver.observe(document.body, { childList: true });
+
+  return () => {
+    mountObserver.disconnect();
+    ballObserver.disconnect();
+    if (frame !== null) cancelAnimationFrame(frame);
+    frame = null;
+  };
+}

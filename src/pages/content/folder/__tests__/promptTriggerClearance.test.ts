@@ -44,6 +44,11 @@ function placeBall(box: Box): void {
   document.body.appendChild(ball);
 }
 
+/** Lets the ball's mutation records arrive, then the frame they schedule run. */
+function nextFrame(): Promise<void> {
+  return new Promise((done) => setTimeout(() => requestAnimationFrame(() => done()), 0));
+}
+
 function overlaps(a: Box, b: Box): boolean {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
@@ -111,6 +116,40 @@ describe('floating folder surfaces stay off the Prompt Manager ball', () => {
     const fab = fabBox(mountFab());
 
     expect(overlaps(fab, ball)).toBe(false);
+  });
+
+  it('moves a default folder button off a ball that moves after the button was placed', async () => {
+    setWindowSize(967, 800);
+    placeBall(cornerBall());
+    const fab = mountFab();
+    const placed = fabBox(fab);
+    expect(overlaps(placed, cornerBall())).toBe(false);
+
+    // Prompt Manager moves its ball next to Gemini's composer after load: here,
+    // onto the spot the button took.
+    const ball = document.getElementById(PROMPT_TRIGGER_ELEMENT_ID)!;
+    const moved = { x: placed.x - 1, y: placed.y - 1, w: 46, h: 46 };
+    ball.getBoundingClientRect = () => new DOMRect(moved.x, moved.y, moved.w, moved.h);
+    ball.style.right = `${967 - moved.x - moved.w}px`;
+    await nextFrame();
+
+    const after = fabBox(fab);
+    expect(overlaps(after, moved)).toBe(false);
+    expect(insideViewport(after)).toBe(true);
+  });
+
+  it('leaves a saved folder button where it is when the ball moves', async () => {
+    setWindowSize(967, 800);
+    placeBall(cornerBall());
+    const saved = { x: 600, y: 600 };
+    const fab = mountFab(saved);
+
+    const ball = document.getElementById(PROMPT_TRIGGER_ELEMENT_ID)!;
+    ball.getBoundingClientRect = () => new DOMRect(600, 600, 46, 46);
+    ball.style.right = '321px';
+    await nextFrame();
+
+    expect([fab.style.left, fab.style.top]).toEqual(['600px', '600px']);
   });
 
   it('keeps a folder button position the user saved, even on the ball', () => {

@@ -1,6 +1,6 @@
 import { getTranslationSyncUnsafe } from '@/utils/i18n';
 
-import { clearOfPromptTrigger } from '../prompt/triggerClearance';
+import { clearOfPromptTrigger, watchPromptTrigger } from '../prompt/triggerClearance';
 
 export const FLOATING_FAB_CLASS = 'gv-floating-fab';
 
@@ -149,9 +149,18 @@ export function mountFloatingFab({
     btn.style.top = `${clamped.y}px`;
   };
   window.addEventListener('resize', onResize);
+  // The ball can mount or move after the button is placed (Gemini moves it
+  // next to the composer up to 350ms after load): a default spot follows it.
+  const stopTriggerWatch = watchPromptTrigger(() => {
+    if (userPlaced || dragState) return;
+    const next = clampPos(defaultPos());
+    btn.style.left = `${next.x}px`;
+    btn.style.top = `${next.y}px`;
+  });
   // Stash cleanup handle on the element so unmount can reliably remove it.
   (btn as HTMLElement & { __gvResizeCleanup?: () => void }).__gvResizeCleanup = () => {
     window.removeEventListener('resize', onResize);
+    stopTriggerWatch();
   };
 
   document.body.appendChild(btn);
