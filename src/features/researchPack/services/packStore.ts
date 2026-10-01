@@ -6,12 +6,18 @@
  * When the user turns account isolation on for the platform, each account gets
  * its own pack under `buildScopedStorageKey`, matching how folders behave.
  * The pack is never synced to Drive or included in backups.
+ *
+ * Writes have a single owner: the extension background applies every tab's
+ * ops through one `createResearchPackOwner` queue (see `packMessages.ts`).
+ * chrome.storage has no compare-and-set, so two tabs each doing their own
+ * read-modify-write would silently drop one tab's edit.
  */
 import { buildScopedStorageKey } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 
-import { createEmptyPack, isNewerPackVersion, parsePack } from './packModel';
-import type { ResearchPack } from './types';
+import { isNewerPackVersion, parsePack } from './packModel';
+import { type ResearchPackOp, applyResearchPackOp } from './packOps';
+import type { AddItemOutcome, ResearchPack } from './types';
 
 export interface ResearchPackStorageArea {
   get(key: string): Promise<Record<string, unknown>>;
@@ -35,27 +41,39 @@ export function isResearchPackStorageKey(key: string): boolean {
   return key === StorageKeys.RESEARCH_PACK || key.startsWith(`${StorageKeys.RESEARCH_PACK}:acct:`);
 }
 
-export interface ResearchPackUpdate<T> {
+export interface ResearchPackApplyResult {
   pack: ResearchPack;
-  result: T;
+  outcome: AddItemOutcome | null;
 }
 
+/**
+ * The pack under one storage key. The key is always passed in by the caller,
+ * bound when the user acted, never looked up later.
+ */
 export interface ResearchPackStore {
-  load(): Promise<ResearchPack>;
-  /**
-   * Read, transform and write back in one serialized step. The write is
-   * skipped when the transform returns the same pack, and when the stored pack
-   * was written by a newer build.
-   */
-  update<T>(
-    transform: (pack: ResearchPack) => ResearchPackUpdate<T>,
-  ): Promise<ResearchPackUpdate<T>>;
+  load(key: string): Promise<ResearchPack>;
+  apply(key: string, op: ResearchPackOp): Promise<ResearchPackApplyResult>;
 }
 
-export function createResearchPackStore(options: {
+export async function loadResearchPack(
+  area: ResearchPackStorageArea,
+  key: string,
+): Promise<ResearchPack> {
+  if (!isResearchPackStorageKey(key)) throw new Error('Invalid research pack key');
+  const stored = await area.get(key);
+  return parsePack(stored?.[key]);
+}
+
+/**
+ * The single writer. Ops are applied one at a time against the freshly read
+ * pack; the write is skipped when nothing changed and when the stored pack
+ * was written by a newer build.
+ */
+export function createResearchPackOwner(options: {
   area: ResearchPackStorageArea;
-  resolveKey: () => Promise<string>;
+  now?: () => number;
 }): ResearchPackStore {
+  const now = options.now ?? Date.now;
   let queue: Promise<unknown> = Promise.resolve();
 
   const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
@@ -64,26 +82,15 @@ export function createResearchPackStore(options: {
     return next;
   };
 
-  const readRaw = async (): Promise<{ key: string; raw: unknown }> => {
-    const key = await options.resolveKey();
-    const stored = await options.area.get(key);
-    return { key, raw: stored?.[key] };
-  };
-
   return {
-    async load() {
-      try {
-        const { raw } = await readRaw();
-        return parsePack(raw);
-      } catch {
-        return createEmptyPack();
-      }
-    },
-    update(transform) {
+    load: (key) => loadResearchPack(options.area, key),
+    apply(key, op) {
       return serialize(async () => {
-        const { key, raw } = await readRaw();
+        if (!isResearchPackStorageKey(key)) throw new Error('Invalid research pack key');
+        const stored = await options.area.get(key);
+        const raw = stored?.[key];
         const current = parsePack(raw);
-        const next = transform(current);
+        const next = applyResearchPackOp(current, op, now());
         if (next.pack !== current && !isNewerPackVersion(raw)) {
           await options.area.set({ [key]: next.pack });
         }

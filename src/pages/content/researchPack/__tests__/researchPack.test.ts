@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { StorageKeys } from '@/core/types/common';
 import {
   type ResearchPackStorageArea,
-  createResearchPackStore,
+  createResearchPackOwner,
 } from '@/features/researchPack/services/packStore';
 import type { ResearchPack } from '@/features/researchPack/services/types';
 
@@ -16,7 +17,7 @@ vi.mock('../../chatInput', () => ({
   insertTextIntoChatInput: vi.fn(),
 }));
 
-const KEY = 'test-pack';
+const KEY = StorageKeys.RESEARCH_PACK;
 
 function memoryStore() {
   const data = new Map<string, unknown>();
@@ -26,7 +27,7 @@ function memoryStore() {
       for (const [key, value] of Object.entries(items)) data.set(key, structuredClone(value));
     },
   };
-  const store = createResearchPackStore({ area, resolveKey: async () => KEY });
+  const store = createResearchPackOwner({ area });
   return { store, stored: () => data.get(KEY) as ResearchPack | undefined };
 }
 
@@ -103,7 +104,7 @@ describe('research pack on Gemini', () => {
   it('adds a clicked answer with its prompt and sources, and renders it in the panel', async () => {
     const host = turn('<p>Rayleigh scattering.</p><a href="https://example.com/a">Example A</a>');
     const { store, stored } = memoryStore();
-    stop = startResearchPack({ store });
+    stop = startResearchPack({ store, resolveKey: async () => KEY });
 
     const buttons = host.querySelectorAll(`.${ADD_BUTTON_CLASS}`);
     expect(buttons).toHaveLength(1);
@@ -134,7 +135,7 @@ describe('research pack on Gemini', () => {
     vi.mocked(findChatInput).mockReturnValue(composer);
     vi.mocked(insertTextIntoChatInput).mockReturnValue(true);
     const { store } = memoryStore();
-    stop = startResearchPack({ store });
+    stop = startResearchPack({ store, resolveKey: async () => KEY });
 
     clickAdd(host);
     await flush();
@@ -163,7 +164,7 @@ describe('research pack on Gemini', () => {
     async function startWithOneItem() {
       const host = turn('<p>Answer text.</p>');
       const memory = memoryStore();
-      stop = startResearchPack({ store: memory.store });
+      stop = startResearchPack({ store: memory.store, resolveKey: async () => KEY });
       clickAdd(host);
       await flush();
       return memory;
@@ -218,7 +219,7 @@ describe('research pack on Gemini', () => {
   it('adds only the selected part of an answer as an excerpt', async () => {
     const host = turn('<p id="first">First sentence.</p><p>Second sentence.</p>');
     const { store, stored } = memoryStore();
-    stop = startResearchPack({ store });
+    stop = startResearchPack({ store, resolveKey: async () => KEY });
 
     const range = document.createRange();
     range.selectNodeContents(host.querySelector('#first')!);
@@ -234,7 +235,7 @@ describe('research pack on Gemini', () => {
   it('removes its buttons and panel on stop and leaves the stored pack intact', async () => {
     const host = turn('<p>Keep me.</p>');
     const { store, stored } = memoryStore();
-    stop = startResearchPack({ store });
+    stop = startResearchPack({ store, resolveKey: async () => KEY });
     clickAdd(host);
     await flush();
 
@@ -252,7 +253,7 @@ describe('research pack on Gemini', () => {
 
   it('adds buttons to answers that stream in later', async () => {
     const { store } = memoryStore();
-    stop = startResearchPack({ store });
+    stop = startResearchPack({ store, resolveKey: async () => KEY });
 
     const host = turn('<p>Late.</p>');
     expect(host.querySelector(`.${ADD_BUTTON_CLASS}`)).toBeNull();

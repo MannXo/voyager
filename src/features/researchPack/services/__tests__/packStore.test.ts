@@ -3,20 +3,31 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildScopedStorageKey } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 
-import { addItem, setInstruction } from '../packModel';
+import {
+  RESEARCH_PACK_APPLY_MESSAGE,
+  createResearchPackClient,
+  handleResearchPackApplyMessage,
+} from '../packMessages';
 import {
   type ResearchPackStorageArea,
-  createResearchPackStore,
+  createResearchPackOwner,
   isResearchPackStorageKey,
   resolveResearchPackStorageKey,
 } from '../packStore';
 import type { ResearchPackDraftItem } from '../types';
 
+const KEY = StorageKeys.RESEARCH_PACK;
+
 function memoryArea(initial: Record<string, unknown> = {}) {
   const data = new Map(Object.entries(initial));
   const area: ResearchPackStorageArea = {
-    get: vi.fn(async (key: string) => (data.has(key) ? { [key]: data.get(key) } : {})),
+    // Yield between read and write like real storage does, so races can interleave.
+    get: vi.fn(async (key: string) => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return data.has(key) ? { [key]: structuredClone(data.get(key)) } : {};
+    }),
     set: vi.fn(async (items: Record<string, unknown>) => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
       for (const [key, value] of Object.entries(items)) data.set(key, structuredClone(value));
     }),
   };
@@ -33,57 +44,111 @@ const draft = (text: string): ResearchPackDraftItem => ({
   citations: [{ url: 'https://example.com/a', title: 'A' }],
 });
 
-describe('research pack store', () => {
+/** Two tabs, each with its own client, talking to one background owner over a fake runtime. */
+function twoTabs() {
+  const { area, data } = memoryArea();
+  const owner = createResearchPackOwner({ area, now: () => 1 });
+  const send = (request: unknown) => handleResearchPackApplyMessage(request, owner);
+  const tab = () => createResearchPackClient({ area, send });
+  return { tabA: tab(), tabB: tab(), data, area };
+}
+
+describe('research pack owner', () => {
   it('round-trips a pack through storage', async () => {
     const { area, data } = memoryArea();
-    const store = createResearchPackStore({ area, resolveKey: async () => 'k' });
+    const owner = createResearchPackOwner({ area, now: () => 7 });
 
-    await store.update((pack) => ({ pack: addItem(pack, draft('one'), 1).pack, result: null }));
-    await store.update((pack) => ({ pack: setInstruction(pack, 'Go deeper', 2), result: null }));
+    await owner.apply(KEY, { kind: 'add', draft: draft('one') });
+    await owner.apply(KEY, { kind: 'setInstruction', instruction: 'Go deeper' });
 
-    const loaded = await store.load();
+    const loaded = await owner.load(KEY);
     expect(loaded.items.map((item) => item.text)).toEqual(['one']);
     expect(loaded.items[0].citations).toEqual([{ url: 'https://example.com/a', title: 'A' }]);
     expect(loaded.instruction).toBe('Go deeper');
-    expect(data.get('k')).toEqual(loaded);
+    expect(data.get(KEY)).toEqual(loaded);
   });
 
-  it('serializes concurrent updates so none is lost', async () => {
-    const { area } = memoryArea();
-    const store = createResearchPackStore({ area, resolveKey: async () => 'k' });
+  it('keeps both items when two tabs add at the same time', async () => {
+    const { tabA, tabB } = twoTabs();
 
-    await Promise.all(
-      ['a', 'b', 'c'].map((text, index) =>
-        store.update((pack) => ({ pack: addItem(pack, draft(text), index).pack, result: null })),
-      ),
-    );
+    const [fromA, fromB] = await Promise.all([
+      tabA.apply(KEY, { kind: 'add', draft: draft('from A') }),
+      tabB.apply(KEY, { kind: 'add', draft: draft('from B') }),
+    ]);
 
-    expect((await store.load()).items.map((item) => item.text)).toEqual(['a', 'b', 'c']);
+    expect(fromA.outcome).toBe('added');
+    expect(fromB.outcome).toBe('added');
+    expect((await tabA.load(KEY)).items.map((item) => item.text)).toEqual(['from A', 'from B']);
+    // The later reply already reflects the other tab's edit.
+    expect(fromB.pack.items).toHaveLength(2);
+  });
+
+  it('keeps an instruction edit and a removal made from different tabs', async () => {
+    const { tabA, tabB } = twoTabs();
+    await tabA.apply(KEY, { kind: 'add', draft: draft('one') });
+    await tabA.apply(KEY, { kind: 'add', draft: draft('two') });
+    const [first] = (await tabA.load(KEY)).items;
+
+    await Promise.all([
+      tabA.apply(KEY, { kind: 'remove', id: first.id }),
+      tabB.apply(KEY, { kind: 'setInstruction', instruction: 'Compare' }),
+    ]);
+
+    const pack = await tabB.load(KEY);
+    expect(pack.items.map((item) => item.text)).toEqual(['two']);
+    expect(pack.instruction).toBe('Compare');
   });
 
   it('skips the write when nothing changed', async () => {
     const { area } = memoryArea();
-    const store = createResearchPackStore({ area, resolveKey: async () => 'k' });
+    const owner = createResearchPackOwner({ area });
 
-    await store.update((pack) => ({ pack, result: null }));
+    await owner.apply(KEY, { kind: 'clear' });
+    await owner.apply(KEY, { kind: 'remove', id: 'missing' });
     expect(area.set).not.toHaveBeenCalled();
   });
 
   it('reads malformed data as an empty pack instead of failing', async () => {
-    const { area } = memoryArea({ k: 'garbage' });
-    const store = createResearchPackStore({ area, resolveKey: async () => 'k' });
-
-    expect((await store.load()).items).toEqual([]);
+    const { area } = memoryArea({ [KEY]: 'garbage' });
+    expect((await createResearchPackOwner({ area }).load(KEY)).items).toEqual([]);
   });
 
   it('never overwrites a pack written by a newer build', async () => {
     const newer = { version: 2, items: [{ text: 'future' }] };
-    const { area, data } = memoryArea({ k: newer });
-    const store = createResearchPackStore({ area, resolveKey: async () => 'k' });
+    const { area, data } = memoryArea({ [KEY]: newer });
 
-    await store.update((pack) => ({ pack: addItem(pack, draft('x'), 1).pack, result: null }));
+    await createResearchPackOwner({ area }).apply(KEY, { kind: 'add', draft: draft('x') });
     expect(area.set).not.toHaveBeenCalled();
-    expect(data.get('k')).toEqual(newer);
+    expect(data.get(KEY)).toEqual(newer);
+  });
+
+  it('refuses keys and ops that are not research-pack ones', async () => {
+    const { area } = memoryArea();
+    const owner = createResearchPackOwner({ area });
+    const message = (payload: unknown) => ({ type: RESEARCH_PACK_APPLY_MESSAGE, payload });
+
+    for (const payload of [
+      { key: StorageKeys.FOLDER_DATA, op: { kind: 'clear' } },
+      { key: KEY, op: { kind: 'drop-table' } },
+      { key: KEY, op: { kind: 'move', id: 'x', delta: 0.5 } },
+      { key: KEY, op: { kind: 'add', draft: { text: 1 } } },
+      null,
+    ]) {
+      await expect(handleResearchPackApplyMessage(message(payload), owner)).resolves.toEqual({
+        ok: false,
+        error: 'invalid_payload',
+      });
+    }
+    expect(area.set).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a failed background reply as an error on the tab', async () => {
+    const { area } = memoryArea();
+    const client = createResearchPackClient({
+      area,
+      send: async () => ({ ok: false, error: 'sender_not_allowed' }),
+    });
+    await expect(client.apply(KEY, { kind: 'clear' })).rejects.toThrow('sender_not_allowed');
   });
 });
 

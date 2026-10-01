@@ -102,6 +102,7 @@ import type { TranslationKey } from '@/utils/translations';
 
 import { unregisterRegisteredContentScripts } from './contentScriptRegistration';
 import { resolveOptionalHighlightSetting } from './highlightOptionalSetting';
+import { startResearchPackOwner } from './researchPackOwner';
 import {
   canSenderPageUseSyncPlatform,
   getSenderPageUrl,
@@ -154,6 +155,7 @@ registerWatermarkDefaultMigrationOnInstall();
 const hostCatalogRefresher = new HostCatalogRefresher();
 startChatGptTemporaryHandoffBackgroundService();
 startStorageQuotaWarningBackgroundService();
+startResearchPackOwner();
 
 async function disableRetiredTabTitleUpdateSetting(): Promise<void> {
   try {

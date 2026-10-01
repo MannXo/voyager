@@ -17,18 +17,11 @@ import {
   buildResearchPackFilename,
   buildResearchPackMarkdown,
 } from '@/features/researchPack/services/markdown';
-import {
-  addItem,
-  clearItems,
-  createEmptyPack,
-  moveItem,
-  removeItem,
-  setInstruction,
-} from '@/features/researchPack/services/packModel';
+import { createResearchPackClient } from '@/features/researchPack/services/packMessages';
+import { createEmptyPack, setInstruction } from '@/features/researchPack/services/packModel';
+import type { ResearchPackOp } from '@/features/researchPack/services/packOps';
 import {
   type ResearchPackStore,
-  type ResearchPackUpdate,
-  createResearchPackStore,
   isResearchPackStorageKey,
   resolveResearchPackStorageKey,
 } from '@/features/researchPack/services/packStore';
@@ -64,18 +57,22 @@ async function resolveAccountKey(): Promise<string> {
   return scope.accountKey;
 }
 
-function createChromeLocalStore(): ResearchPackStore {
-  return createResearchPackStore({
+function resolveCurrentKey(): Promise<string> {
+  return resolveResearchPackStorageKey({
+    isIsolationEnabled: () =>
+      accountIsolationService.isIsolationEnabled({ pageUrl: window.location.href }),
+    resolveAccountKey,
+  });
+}
+
+/** Reads come straight from storage; every edit goes to the background owner. */
+function createChromeClient(): ResearchPackStore {
+  return createResearchPackClient({
     area: {
       get: (key) => chrome.storage.local.get(key),
       set: (items) => chrome.storage.local.set(items),
     },
-    resolveKey: () =>
-      resolveResearchPackStorageKey({
-        isIsolationEnabled: () =>
-          accountIsolationService.isIsolationEnabled({ pageUrl: window.location.href }),
-        resolveAccountKey,
-      }),
+    send: (request) => chrome.runtime.sendMessage(request),
   });
 }
 
@@ -86,8 +83,14 @@ const ADD_OUTCOME_MESSAGES = {
   empty: 'researchPackCaptureFailed',
 } as const satisfies Record<AddItemOutcome, Parameters<typeof getTranslationSync>[0]>;
 
-export function startResearchPack(options: { store?: ResearchPackStore } = {}): StopNativeFeature {
-  const store = options.store ?? createChromeLocalStore();
+export interface StartResearchPackOptions {
+  store?: ResearchPackStore;
+  resolveKey?: () => Promise<string>;
+}
+
+export function startResearchPack(options: StartResearchPackOptions = {}): StopNativeFeature {
+  const store = options.store ?? createChromeClient();
+  const resolveKey = options.resolveKey ?? resolveCurrentKey;
   const t = getTranslationSync;
   let stopped = false;
   let pack: ResearchPack = createEmptyPack();
@@ -107,15 +110,13 @@ export function startResearchPack(options: { store?: ResearchPackStore } = {}): 
     panel.notify(t('researchPackSaveFailed'), 'error');
   };
 
-  const apply = async <T>(
-    transform: (current: ResearchPack) => ResearchPackUpdate<T>,
-  ): Promise<T | null> => {
+  const apply = async (op: ResearchPackOp): Promise<{ outcome: AddItemOutcome | null } | null> => {
     try {
-      const update = await store.update(transform);
+      const update = await store.apply(await resolveKey(), op);
       if (stopped) return null;
       pack = update.pack;
       panel.render(pack, markdown());
-      return update.result;
+      return { outcome: update.outcome };
     } catch (error) {
       reportError(error);
       return null;
@@ -123,24 +124,17 @@ export function startResearchPack(options: { store?: ResearchPackStore } = {}): 
   };
 
   const refresh = async (): Promise<void> => {
-    const next = await store.load();
+    const next = await store.load(await resolveKey());
     if (stopped) return;
     pack = next;
     panel.render(pack, markdown());
   };
 
   const panel = createResearchPackPanel(t, {
-    onMove: (id, delta) =>
-      void apply((current) => ({ pack: moveItem(current, id, delta, Date.now()), result: null })),
-    onRemove: (id) =>
-      void apply((current) => ({ pack: removeItem(current, id, Date.now()), result: null })),
-    onInstructionChange: (instruction) =>
-      apply((current) => ({
-        pack: setInstruction(current, instruction, Date.now()),
-        result: null,
-      })),
-    onClear: () =>
-      void apply((current) => ({ pack: clearItems(current, Date.now()), result: null })),
+    onMove: (id, delta) => void apply({ kind: 'move', id, delta }),
+    onRemove: (id) => void apply({ kind: 'remove', id }),
+    onInstructionChange: (instruction) => apply({ kind: 'setInstruction', instruction }),
+    onClear: () => void apply({ kind: 'clear' }),
     onCopy: () => {
       void navigator.clipboard
         .writeText(exportMarkdown())
@@ -189,11 +183,8 @@ export function startResearchPack(options: { store?: ResearchPackStore } = {}): 
       panel.notify(t('researchPackCaptureFailed'), 'error');
       return;
     }
-    const outcome = await apply((current) => {
-      const next = addItem(current, draft, Date.now());
-      return { pack: next.pack, result: next.outcome };
-    });
-    if (outcome === null || stopped) return;
+    const outcome = (await apply({ kind: 'add', draft }))?.outcome;
+    if (!outcome || stopped) return;
     panel.notify(t(ADD_OUTCOME_MESSAGES[outcome]), outcome === 'added' ? 'ok' : 'error');
     if (outcome === 'added') {
       button.dataset.state = 'added';
