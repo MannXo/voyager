@@ -832,3 +832,23 @@ a browser without the Navigation API`),
   `src/features/researchPack/services/__tests__/handoff.test.ts` (`cannot be taken once its tab
 has left the new-chat page`, `stores nothing and reports every target unready without
 storage.session`) and `src/pages/background/__tests__/researchPackHandoffWiring.test.ts`.
+
+## A research pack template file can only add new prompts
+
+- **Trap:** Templates are prompts tagged `research-pack` in `gvPromptItems`, and their file is the
+  prompts export format. The prompt library's own import (`PromptImportExportService.importFromPayload`)
+  matches stored prompts by id first and lets a newer `updatedAt` overwrite text and name, so a
+  shared template file sent through it could rewrite a prompt the user already has. A template
+  shown as HTML, or a file read before its size is checked, would also trust the file.
+- **Rule:** The pack panel's import checks `file.size` before reading, accepts only the prompts
+  format object with at most 50 entries, reads only entries tagged as templates, and rejects the
+  whole file if any template's name or text breaks a limit or carries control characters. It keeps
+  only name and text, shows them with `textContent` in a preview, and writes nothing until Save.
+  Saving gives each template a new id and skips any whose text or name the library already has,
+  re-checked against the library at write time; existing prompts are written back exactly as
+  stored. Export writes only the chosen template, never pack items, sources or other prompts.
+- **Guard:** `src/features/researchPack/services/__tests__/templates.test.ts` (`never edits a
+stored prompt, even when an imported file carries its id`) and
+  `src/pages/content/researchPack/__tests__/templates.test.ts` (`previews an imported file as plain
+text and saves only on Save`, `writes nothing when an import is cancelled, too large, or not a
+template file`, `exports only the chosen template, never the pack or other prompts`).
