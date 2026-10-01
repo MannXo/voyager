@@ -28,7 +28,7 @@
     "src/pages/content/fork/index.ts": 1398,
     "src/pages/content/mermaid/index.ts": 1120,
     "src/pages/content/prompt/__tests__/slashPrompt.test.ts": 1949,
-    "src/pages/content/prompt/index.ts": 2630,
+    "src/pages/content/prompt/index.ts": 2620,
     "src/pages/content/prompt/slashPrompt.ts": 1955,
     "src/pages/content/quoteReply/index.ts": 1195,
     "src/pages/content/sidebarAutoHide/index.ts": 1066,

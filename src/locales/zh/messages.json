@@ -214,6 +214,10 @@
     "message": "已删除",
     "description": "删除提示"
   },
+  "pm_save_failed": {
+    "message": "无法保存更改，已撤销。",
+    "description": "Prompt Manager notice: a change could not be saved and was rolled back"
+  },
   "pm_edit": {
     "message": "编辑",
     "description": "编辑 prompt"

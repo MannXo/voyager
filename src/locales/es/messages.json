@@ -214,6 +214,10 @@
     "message": "Eliminado",
     "description": "Deleted notice"
   },
+  "pm_save_failed": {
+    "message": "No se pudo guardar el cambio, así que se ha deshecho.",
+    "description": "Prompt Manager notice: a change could not be saved and was rolled back"
+  },
   "pm_edit": {
     "message": "Editar",
     "description": "Edit prompt"

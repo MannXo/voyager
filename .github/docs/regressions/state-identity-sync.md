@@ -353,6 +353,9 @@ off a ChatGPT tab`).
   owner's list. While its ops are in flight it holds storage echoes back (they can be older than
   what it shows); when the last op settles it re-reads storage if a write failed or another
   writer's change came in meanwhile, and drops that read if the user acted again during it.
+  A failed change is rolled back with the `pm_save_failed` notice; "Deleted" waits for the
+  owner's reply. A tab sends its next op only after the previous reply, so the owner applies one
+  tab's ops in the order the user made them without trusting the transport's delivery order.
   The queue lives in the service worker's memory. If the worker restarts, queued ops are dropped,
   and an op that was written but whose reply was lost reads as failed in the tab, which then
   re-reads storage. There is no exactly-once guarantee: do not retry an op on failure without
@@ -369,7 +372,9 @@ off a ChatGPT tab`).
   `src/pages/content/prompt/__tests__/promptLibraryInterleaving.test.ts` (`keeps a Prompt Manager
 edit and a template saved in another tab`, `keeps edits that two Prompt Manager tabs make to
 different prompts`), `src/pages/content/prompt/__tests__/promptLibraryState.test.ts` (`holds back
-echoes while its ops are in flight, then shows what the owner wrote`),
+echoes while its ops are in flight, then shows what the owner wrote`, `sends a tab's ops one at a
+time, so a late message cannot reorder them`),
+  `src/pages/content/prompt/__tests__/promptManagerWriteNotices.test.ts`,
   `src/features/researchPack/services/__tests__/templates.test.ts` (`keeps both templates when two
 tabs save at the same moment`), `src/pages/background/__tests__/promptDriveMerge.test.ts` and
   `src/pages/popup/hooks/__tests__/usePromptDataTransfer.test.tsx` (`keeps a template saved on a

@@ -214,6 +214,10 @@
     "message": "Excluído",
     "description": "Deleted notice"
   },
+  "pm_save_failed": {
+    "message": "Não foi possível salvar a alteração, então ela foi desfeita.",
+    "description": "Prompt Manager notice: a change could not be saved and was rolled back"
+  },
   "pm_edit": {
     "message": "Editar",
     "description": "Edit prompt"

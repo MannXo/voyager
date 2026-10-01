@@ -258,17 +258,6 @@ function createI18n() {
   };
 }
 
-function uid(): string {
-  // FNV-1a-ish hash over timestamp + rand
-  const seed = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0).toString(36);
-}
-
 /**
  * Storage adapter - uses chrome.storage.local for cross-domain data sharing
  * Falls back to localStorage if chrome.storage is unavailable
@@ -1026,9 +1015,8 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
       read: () => readStorage<PromptItem[]>(STORAGE_KEYS.items, []),
       apply: createRuntimePromptLibraryClient().apply,
       readLegacy: () => localStorage.getItem(STORAGE_KEYS.items),
-      // A failed write just shows the stored library again; there is no error notice for it.
       onReconcile: (reason) => showLibrary(reason === 'changed'),
-      makeId: uid,
+      onWriteFailed: () => setNotice(i18n.t('pm_save_failed') || "Couldn't save", 'err'),
     });
     await library.load();
     let open = false;
@@ -1760,10 +1748,12 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
         confirmLabel: i18n.t('pm_delete') || 'Delete',
         cancelLabel: i18n.t('pm_cancel') || 'Cancel',
         onConfirm: () => {
-          library.remove(it.id);
+          // Shown removed at once; "Deleted" waits for the owner, a failure says so instead.
+          void library.remove(it.id).then((removed) => {
+            if (removed) setNotice(i18n.t('pm_deleted') || 'Deleted', 'ok');
+          });
           renderTags();
           renderList();
-          setNotice(i18n.t('pm_deleted') || 'Deleted', 'ok');
         },
       });
     }

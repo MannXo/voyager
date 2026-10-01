@@ -214,6 +214,10 @@
     "message": "삭제됨",
     "description": "Deleted notice"
   },
+  "pm_save_failed": {
+    "message": "변경 사항을 저장하지 못해 되돌렸습니다.",
+    "description": "Prompt Manager notice: a change could not be saved and was rolled back"
+  },
   "pm_edit": {
     "message": "편집",
     "description": "Edit prompt"

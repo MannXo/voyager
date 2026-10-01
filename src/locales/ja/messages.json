@@ -214,6 +214,10 @@
     "message": "削除しました",
     "description": "Deleted notice"
   },
+  "pm_save_failed": {
+    "message": "変更を保存できなかったため、元に戻しました。",
+    "description": "Prompt Manager notice: a change could not be saved and was rolled back"
+  },
   "pm_edit": {
     "message": "編集",
     "description": "Edit prompt"

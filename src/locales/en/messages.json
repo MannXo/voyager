@@ -214,6 +214,10 @@
     "message": "Deleted",
     "description": "Deleted notice"
   },
+  "pm_save_failed": {
+    "message": "Couldn't save your change. It was undone.",
+    "description": "Prompt Manager notice: a change could not be saved and was rolled back"
+  },
   "pm_edit": {
     "message": "Edit",
     "description": "Edit prompt"

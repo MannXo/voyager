@@ -214,6 +214,10 @@
     "message": "Supprimé",
     "description": "Deleted notice"
   },
+  "pm_save_failed": {
+    "message": "Impossible d'enregistrer la modification. Elle a été annulée.",
+    "description": "Prompt Manager notice: a change could not be saved and was rolled back"
+  },
   "pm_edit": {
     "message": "Éditer",
     "description": "Edit prompt"

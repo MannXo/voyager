@@ -214,6 +214,10 @@
     "message": "تم الحذف",
     "description": "Deleted notice"
   },
+  "pm_save_failed": {
+    "message": "تعذّر حفظ التغيير، فتم التراجع عنه.",
+    "description": "Prompt Manager notice: a change could not be saved and was rolled back"
+  },
   "pm_edit": {
     "message": "تعديل",
     "description": "Edit prompt"

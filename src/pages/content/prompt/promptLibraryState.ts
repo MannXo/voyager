@@ -11,6 +11,11 @@
  * may be older than the panel's copy. When the last op settles, the panel takes
  * the owner's list, or re-reads storage if a write failed or another writer's
  * change arrived meanwhile.
+ *
+ * Ops leave one at a time, each after the previous one's reply, so the owner
+ * applies a tab's ops in the order the user made them even if the transport
+ * would deliver two messages out of order. The panel is already showing them,
+ * so the wait is not visible.
  */
 import type { PromptItem } from '@/core/types/sync';
 import {
@@ -43,6 +48,8 @@ export interface PromptLibraryStateDeps {
    * change came in, `failed` when a write failed and the stored library is shown.
    */
   onReconcile?: (reason: 'changed' | 'failed') => void;
+  /** One or more changes were not saved and the panel was rolled back; called once per settle. */
+  onWriteFailed?: () => void;
   now?: () => number;
   makeId?: () => string;
 }
@@ -58,7 +65,8 @@ export interface PromptLibraryState {
   add(draft: PromptDraft): Promise<PromptAddOutcome>;
   /** Changes a prompt in place unless another prompt has the same text. */
   edit(id: string, draft: PromptDraft): Promise<PromptEditOutcome>;
-  remove(id: string): void;
+  /** Resolves true once the owner has removed it, false if the delete failed. */
+  remove(id: string): Promise<boolean>;
   togglePin(id: string): void;
   /** Takes the order a drag or key move produced. */
   reorder(next: PromptItem[]): void;
@@ -77,6 +85,17 @@ function sameText(a: string, b: string): boolean {
 
 const sameList = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 
+/** A new prompt's id: an FNV-1a-ish hash over the time and a random part. */
+function promptId(): string {
+  const seed = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+
 /** A legacy localStorage value worth seeding: a list of prompt records. */
 export function parseLegacyPromptLibrary(raw: string | null): unknown[] | null {
   if (raw === null) return null;
@@ -93,7 +112,7 @@ export function parseLegacyPromptLibrary(raw: string | null): unknown[] | null {
 
 export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLibraryState {
   const now = deps.now ?? Date.now;
-  const makeId = deps.makeId ?? (() => `${now()}`);
+  const makeId = deps.makeId ?? promptId;
   let items: PromptItem[] = [];
 
   let issued = 0;
@@ -101,6 +120,8 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
   /** The owner's list from the newest op that succeeded since the last settle. */
   let newest: { seq: number; items: PromptItem[] } | null = null;
   let failed = false;
+  /** The reply to the last op sent; the next op leaves after it. */
+  let lastReply: Promise<unknown> = Promise.resolve();
   /** The last storage echo held back while ops were in flight. */
   let heldEcho: unknown[] | null = null;
 
@@ -118,6 +139,7 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
     newest = null;
     failed = false;
     heldEcho = null;
+    if (reason === 'failed') deps.onWriteFailed?.();
     if (!mustRead) {
       adopt(result.items, reason);
       return;
@@ -141,8 +163,10 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
     const seq = ++issued;
     pending += 1;
     let result: PromptLibraryResult | null = null;
+    const reply = lastReply.then(() => deps.apply(op));
+    lastReply = reply.catch(() => undefined);
     try {
-      result = await deps.apply(op);
+      result = await reply;
       if (!newest || seq > newest.seq) newest = { seq, items: result.items as PromptItem[] };
     } catch {
       failed = true;
@@ -189,8 +213,8 @@ export function createPromptLibraryState(deps: PromptLibraryStateDeps): PromptLi
         ? 'saved'
         : 'missing';
     },
-    remove(id) {
-      void send({ kind: 'delete', id });
+    async remove(id) {
+      return (await send({ kind: 'delete', id })) !== null;
     },
     togglePin(id) {
       const item = items.find((x) => x.id === id);

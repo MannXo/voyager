@@ -44,8 +44,10 @@ async function tab(initial: unknown, legacy: string | null = null) {
   const gates = new Map<number, Promise<void>>();
   let readGate: Promise<void> | null = null;
   const lost = new Set<number>();
+  const deliveries = new Map<number, Promise<void>>();
   const sent: PromptLibraryOp[] = [];
   const onReconcile = vi.fn();
+  const onWriteFailed = vi.fn();
   let clock = 100;
   let id = 0;
   const state = createPromptLibraryState({
@@ -59,7 +61,7 @@ async function tab(initial: unknown, legacy: string | null = null) {
     apply: async (op) => {
       const index = sent.length;
       sent.push(structuredClone(op));
-      // Ops reach the owner in the order sent; only the reply is held.
+      await deliveries.get(index);
       const result = owner.apply(structuredClone(op));
       await gates.get(index);
       if (!lost.has(index)) return result;
@@ -68,6 +70,7 @@ async function tab(initial: unknown, legacy: string | null = null) {
     },
     readLegacy: () => legacy,
     onReconcile,
+    onWriteFailed,
     now: () => clock++,
     makeId: () => `new-${++id}`,
   });
@@ -76,6 +79,7 @@ async function tab(initial: unknown, legacy: string | null = null) {
     state,
     sent,
     onReconcile,
+    onWriteFailed,
     stored: () => stored,
     /** Another writer changes the library behind this tab's back. */
     setStored: (value: unknown) => {
@@ -92,6 +96,12 @@ async function tab(initial: unknown, legacy: string | null = null) {
     holdRead: () => {
       let release!: () => void;
       readGate = new Promise<void>((resolve) => (release = resolve));
+      return release;
+    },
+    /** Holds the op sent `later` ops from now on its way to the owner. */
+    delay: (later = 0) => {
+      let release!: () => void;
+      deliveries.set(sent.length + later, new Promise<void>((resolve) => (release = resolve)));
       return release;
     },
     /** The op sent `later` ops from now is written, but its reply is lost. */
@@ -223,7 +233,7 @@ describe('Prompt Manager library state', () => {
   });
 
   it('rolls back to the stored library when a write fails, and keeps working', async () => {
-    const { state, stored, failNext, onReconcile } = await tab([
+    const { state, stored, failNext, onReconcile, onWriteFailed } = await tab([
       prompt('a', 'A'),
       prompt('b', 'B'),
     ]);
@@ -234,14 +244,42 @@ describe('Prompt Manager library state', () => {
     await flush();
     expect(state.items).toEqual([prompt('a', 'A'), prompt('b', 'B')]);
     expect(onReconcile).toHaveBeenCalledWith('failed');
+    expect(onWriteFailed).toHaveBeenCalledTimes(1);
 
     failNext();
     await expect(state.add({ name: 'C', text: 'C', tags: [] })).resolves.toBe('failed');
     expect(state.items).toEqual([prompt('a', 'A'), prompt('b', 'B')]);
+    expect(onWriteFailed).toHaveBeenCalledTimes(2);
 
-    state.remove('a');
-    await flush();
+    failNext();
+    await expect(state.remove('a')).resolves.toBe(false);
+    expect(state.items).toEqual([prompt('a', 'A'), prompt('b', 'B')]);
+    expect(onWriteFailed).toHaveBeenCalledTimes(3);
+
+    await expect(state.remove('a')).resolves.toBe(true);
     expect(stored()).toEqual([prompt('b', 'B')]);
+    expect(state.items).toEqual(stored());
+    expect(onWriteFailed).toHaveBeenCalledTimes(3);
+  });
+
+  it("sends a tab's ops one at a time, so a late message cannot reorder them", async () => {
+    const { state, stored, sent, delay } = await tab([
+      prompt('a', 'A'),
+      prompt('b', 'B'),
+      prompt('c', 'C'),
+    ]);
+    // The first drop's message is slow to arrive; the second must not overtake it.
+    const deliverFirst = delay();
+
+    state.reorder([state.items[2], state.items[0], state.items[1]]);
+    state.reorder([state.items[1], state.items[0], state.items[2]]);
+    await flush();
+    expect(sent).toHaveLength(1);
+
+    deliverFirst();
+    await flush();
+    expect(sent).toHaveLength(2);
+    expect(stored()).toEqual([prompt('a', 'A'), prompt('c', 'C'), prompt('b', 'B')]);
     expect(state.items).toEqual(stored());
   });
 
