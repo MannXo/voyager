@@ -287,8 +287,10 @@ off a ChatGPT tab`).
 
 - **Trap:** Research Pack cached a scope that failed to resolve as settled, so after storage
   recovered no scan or Add tried again, and a failed first load left the panel locked with no way
-  out.
+  out. Retry then sat in a closed panel whose launcher hid itself for an empty pack.
 - **Rule:** Fail closed, but not for good. A user action (Add, Retry) resolves a failed scope
   again; a failed load shows an error with Retry, and editing stays blocked until a snapshot
-  renders. Scans do not retry, so a broken setting is not hammered on every DOM change.
+  renders. The launcher stays on screen with an error badge while that lasts, so Retry is always
+  reachable. Scans do not retry, so a broken setting is not hammered on every DOM change. Tests
+  click through the visible path, because jsdom clicks hidden buttons too.
 - **Guard:** `src/pages/content/researchPack/__tests__/researchPackRecovery.test.ts`.

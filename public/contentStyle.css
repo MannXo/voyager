@@ -14912,6 +14912,14 @@ html[data-gv-scheme='dark'] .gv-rp-root {
   outline-offset: 2px;
 }
 
+/* The pack could not be read: the badge flags it and the launcher stays reachable for Retry. */
+.gv-rp-launcher[data-state='error'] .gv-rp-launcher-count {
+  background: var(--gv-rp-error);
+  /* Light on the light theme's deep red, dark on the dark theme's pale red. */
+  color: var(--gv-rp-bg);
+  font-weight: 700;
+}
+
 .gv-rp-toast {
   position: fixed;
   inset-block-end: 140px;

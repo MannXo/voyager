@@ -33,7 +33,8 @@ export interface ResearchPackPanel {
    * `replaceInstruction` is set, which the first snapshot of a scope uses so
    * one account's text never stays on screen for another. `locked` disables
    * every edit and action while a scope has no snapshot yet; `loadFailed` also
-   * says so and offers Retry.
+   * says so and offers Retry, and keeps the launcher on screen with an error
+   * badge so the panel can always be reopened to retry.
    */
   render: (
     pack: ResearchPack,
@@ -114,6 +115,7 @@ export function createResearchPackPanel(
   loadError.hidden = true;
   loadError.setAttribute('role', 'alert');
   const loadErrorText = el('p', 'gv-rp-load-error-text');
+  loadErrorText.id = 'gv-rp-load-error-text';
   const retryButton = el('button', 'gv-rp-btn');
   retryButton.type = 'button';
   loadError.append(loadErrorText, retryButton);
@@ -158,6 +160,7 @@ export function createResearchPackPanel(
 
   const confirmSurfaces = createPromptRowSurfaces();
   let currentPack: ResearchPack | null = null;
+  let loadFailed = false;
   let instructionTimer: ReturnType<typeof setTimeout> | null = null;
   let savesInFlight = 0;
   let statusTimer: ReturnType<typeof setTimeout> | null = null;
@@ -182,8 +185,17 @@ export function createResearchPackPanel(
 
   const syncLauncher = (): void => {
     const itemCount = currentPack?.items.length ?? 0;
-    launcherCount.textContent = String(itemCount);
-    launcher.hidden = itemCount === 0 || !panel.hidden;
+    // A failed load leaves nothing to count, so the badge shows the failure instead.
+    launcherCount.textContent = loadFailed ? '!' : String(itemCount);
+    launcher.hidden = !panel.hidden || (itemCount === 0 && !loadFailed);
+    launcher.title = loadFailed ? t('researchPackLoadFailed') : t('researchPackOpen');
+    if (loadFailed) {
+      launcher.dataset.state = 'error';
+      launcher.setAttribute('aria-describedby', loadErrorText.id);
+    } else {
+      delete launcher.dataset.state;
+      launcher.removeAttribute('aria-describedby');
+    }
   };
 
   const open = (): void => {
@@ -255,7 +267,6 @@ export function createResearchPackPanel(
 
   const relabel = (): void => {
     launcher.setAttribute('aria-label', t('researchPackOpen'));
-    launcher.title = t('researchPackOpen');
     launcherLabel.textContent = t('researchPackShortTitle');
     panel.setAttribute('aria-label', t('researchPackTitle'));
     title.textContent = t('researchPackTitle');
@@ -275,6 +286,7 @@ export function createResearchPackPanel(
     if (currentPack) {
       count.textContent = format(t('researchPackItemCount'), { count: currentPack.items.length });
     }
+    syncLauncher();
   };
 
   const render = (
@@ -282,7 +294,7 @@ export function createResearchPackPanel(
     markdown: string,
     options: { replaceInstruction?: boolean; locked?: boolean; loadFailed?: boolean } = {},
   ): void => {
-    const loadFailed = options.loadFailed === true;
+    loadFailed = options.loadFailed === true;
     const locked = loadFailed || options.locked === true;
     loadError.hidden = !loadFailed;
     currentPack = pack;

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildScopedStorageKey } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
+import { createEmptyPack } from '@/features/researchPack/services/packModel';
 import type { ResearchPackStore } from '@/features/researchPack/services/packStore';
 
 import { startResearchPack } from '../index';
@@ -23,6 +24,15 @@ const retryButton = () => loadError().querySelector<HTMLButtonElement>('button')
 const instructionBox = () => document.querySelector<HTMLTextAreaElement>('#gv-rp-instruction')!;
 const footerButtons = () =>
   Array.from(document.querySelectorAll<HTMLButtonElement>('.gv-rp-actions button'));
+const launcher = () => document.querySelector<HTMLButtonElement>('.gv-rp-launcher')!;
+const closeButton = () => document.querySelector<HTMLButtonElement>('.gv-rp-close')!;
+const isShown = (element: HTMLElement): boolean => element.closest('[hidden]') === null;
+
+/** Click as a user can: only what is on screen. */
+function press(element: HTMLElement): void {
+  expect(isShown(element), `${element.className} is on screen`).toBe(true);
+  element.click();
+}
 
 describe('research pack recovery', () => {
   let stop: (() => void) | null = null;
@@ -59,7 +69,7 @@ describe('research pack recovery', () => {
         resolveKey: failingOnce(),
       });
       await flush();
-      expect(loadError().hidden).toBe(false);
+      expect(launcher().dataset.state).toBe('error');
 
       clickAdd(host);
       await flush();
@@ -68,25 +78,35 @@ describe('research pack recovery', () => {
         'Added after storage recovered.',
       ]);
       expect(shownItems()).toEqual(['Added after storage recovered.']);
-      expect(loadError().hidden).toBe(true);
+      expect(isShown(loadError())).toBe(false);
+      expect(launcher().dataset.state).toBeUndefined();
     });
 
-    it('resolves it again from the Retry button', async () => {
-      const shared = sharedStorage({ [GLOBAL]: packOf('stored item') });
+    it('keeps the launcher on screen and resolves it again from Retry', async () => {
+      const shared = sharedStorage({ [GLOBAL]: { ...createEmptyPack(), instruction: 'Keep' } });
       stop = startResearchPack({
         pageUrl: geminiPageUrl,
         store: shared.store,
         resolveKey: failingOnce(),
       });
       await flush();
-      expect(shownItems()).toEqual([]);
 
-      retryButton().click();
+      // Nothing is in the pack, yet the launcher stays to show the failure.
+      expect(launcher().dataset.state).toBe('error');
+      press(launcher());
+      expect(isShown(loadError())).toBe(true);
+      // Closing the panel keeps the way back in.
+      press(closeButton());
+      press(launcher());
+      press(retryButton());
       await flush();
 
-      expect(shownItems()).toEqual(['stored item']);
-      expect(loadError().hidden).toBe(true);
+      expect(isShown(loadError())).toBe(false);
       expect(instructionBox().disabled).toBe(false);
+      expect(instructionBox().value).toBe('Keep');
+      // Recovered and still empty: the launcher goes back to showing only with items.
+      press(closeButton());
+      expect(isShown(launcher())).toBe(false);
     });
   });
 
@@ -106,21 +126,26 @@ describe('research pack recovery', () => {
     stop = startResearchPack({ pageUrl: geminiPageUrl, store, resolveKey: async () => GLOBAL });
     await flush();
 
-    expect(loadError().hidden).toBe(false);
+    expect(launcher().dataset.state).toBe('error');
+    press(launcher());
+    expect(isShown(loadError())).toBe(true);
     expect(instructionBox().disabled).toBe(true);
     expect(footerButtons().every((button) => button.disabled)).toBe(true);
 
-    retryButton().click();
+    press(retryButton());
     await flush();
-    expect(loadError().hidden).toBe(false);
+    expect(isShown(loadError())).toBe(true);
     expect(instructionBox().disabled).toBe(true);
 
-    retryButton().click();
+    press(retryButton());
     await flush();
-    expect(loadError().hidden).toBe(true);
+    expect(isShown(loadError())).toBe(false);
     expect(shownItems()).toEqual(['stored item']);
     expect(instructionBox().disabled).toBe(false);
     expect(instructionBox().value).toBe('Keep');
+    press(closeButton());
+    expect(isShown(launcher())).toBe(true);
+    expect(launcher().dataset.state).toBeUndefined();
   });
 
   describe('when the pack is removed', () => {
