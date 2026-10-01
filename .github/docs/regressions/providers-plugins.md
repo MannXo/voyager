@@ -547,16 +547,23 @@ say`), `src/pages/content/platformTheme/__tests__/platformTheme.test.ts`.
 
 - **Trap:** The AI-reply preview read the installed record when the reply was checked, and Import
   ran later. Another popup could install, edit or remove the same id in between, so Import replaced
-  content the preview never mentioned (no "replaces vX" warning, or a stale one).
+  content the preview never mentioned (no "replaces vX" warning, or a stale one). The reply also
+  stays editable while the import runs: acting on its outcome re-checked the previous reply (the
+  old render's closure) under a fresh generation, so its preview replaced the edited reply's
+  cleared state, and a success wiped the edit.
 - **Rule:** The preview keeps `localPluginRecordSnapshot` of the install (null when none), and the
   import passes it as `expectedInstalled`. `saveLocalPluginRecord` compares it under the
   plugin-storage lock and throws `LocalPluginChangedError` on any difference, writing nothing;
   `importLocalPlugin` returns `changedSinceReview` and the popup re-checks the reply and asks for a
-  new review. Hand imports pass no snapshot and keep plain replace semantics.
+  new review. Hand imports pass no snapshot and keep plain replace semantics. The composer captures
+  the check generation when Import starts and drops the outcome if any edit or check bumped it since
+  (a refusal is cleared; a finished import is still reported).
 - **Guard:** `src/features/plugins/local/localPluginMutations.test.ts`
   (`importing a reviewed manifest over the install it was reviewed against`),
   `src/pages/popup/components/__tests__/LocalPluginComposer.test.tsx`
-  (`does not overwrite a plugin installed after the preview; it asks for a new review`).
+  (`does not overwrite a plugin installed after the preview; it asks for a new review`,
+  `drops a changed-record import result once the reply was edited while it ran`,
+  `keeps a reply edited while a successful import ran`).
 
 ## The plugin preview reads inline styles as CSS does and shows them whole
 

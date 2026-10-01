@@ -96,7 +96,8 @@ export function LocalPluginComposer({
     setChangedSinceReview(false);
   };
 
-  const checkReply = async (): Promise<void> => {
+  /** Check the reply on screen; false when an edit or a newer check superseded it. */
+  const checkReply = async (): Promise<boolean> => {
     const run = (checkRun.current += 1);
     local.clearResult();
     setChangedSinceReview(false);
@@ -110,20 +111,29 @@ export function LocalPluginComposer({
         issues: [{ path: '', message: error instanceof Error ? error.message : String(error) }],
       };
     }
-    if (run !== checkRun.current) return;
+    if (run !== checkRun.current) return false;
     setChecked(outcome);
     setChecking(false);
+    return true;
   };
 
   const importPreviewed = async (): Promise<void> => {
     if (!checked?.ok) return;
+    // Every edit or check bumps the run. If the reply changed while the import
+    // ran, this outcome belongs to a reply no longer on screen: leave the new
+    // one alone. A refusal wrote nothing, so it is not shown under the new reply
+    // either; a finished import is still reported.
+    const run = checkRun.current;
     const outcome = await local.importManifest(checked.raw, checked.installed);
+    if (run !== checkRun.current) {
+      if (!outcome.ok) local.clearResult();
+      return;
+    }
     if (outcome.ok) {
       changeReply('');
     } else if (outcome.changedSinceReview) {
       // Nothing was written: refresh the preview against what is installed now.
-      await checkReply();
-      setChangedSinceReview(true);
+      if (await checkReply()) setChangedSinceReview(true);
     }
   };
 
