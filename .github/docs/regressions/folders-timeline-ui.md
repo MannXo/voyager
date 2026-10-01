@@ -617,7 +617,8 @@ drop, or hover layout.
 - **Rule:** Every literal key the folder UI translates exists in all 10 locales, and each caller
   fills its placeholders with `.replace('{name}', value)`. Do not rely on `|| 'fallback'` after
   `t()`. A message that wraps a value, such as a folder name, takes it as a placeholder so each
-  locale can place it.
+  locale can place it. Pass user or error text through a function replacer,
+  `.replace('{folder}', () => name)`: a string replacement expands `$&` and `$'` inside a name.
 - **Guard:** `src/pages/content/folder/__tests__/folderMessages.test.ts` (`exist in the English
 locale for every literal key the folder UI translates`, `confirms library drops in words`,
   `reports import results and failures with their values filled in`).

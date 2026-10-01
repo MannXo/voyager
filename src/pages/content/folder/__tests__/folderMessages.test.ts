@@ -182,7 +182,16 @@ describe('AI Studio folder messages', () => {
     await dropOn(document.querySelector('.gv-library-root-item')!, 'p1');
     expect(manager.showNotification).toHaveBeenLastCalledWith('Saved to Uncategorized', 'info');
 
-    for (const [message] of vi.mocked(manager.showNotification).mock.calls) {
+    // `$` sequences in a folder name are not replacement patterns.
+    manager.data.folders[0].name = "Cost $& Benefit $'";
+    await showLibraryZone(manager);
+    await dropOn(document.querySelector('.gv-library-folder-item[data-folder-id="b"]')!, 'p2');
+    expect(manager.showNotification).toHaveBeenLastCalledWith(
+      'Added to "Cost $& Benefit $\'"',
+      'info',
+    );
+
+    for (const [message] of vi.mocked(manager.showNotification).mock.calls.slice(0, 2)) {
       expectRendered(message);
     }
   });

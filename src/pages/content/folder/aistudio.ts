@@ -2785,7 +2785,7 @@ export class AIStudioFolderManager {
           const saved = await this.save();
           if (!saved || this.accountScopeRequest !== scopeRequest) return;
           this.showNotification(
-            this.t('conversation_added_to_folder').replace('{folder}', folder.name),
+            this.t('conversation_added_to_folder').replace('{folder}', () => folder.name),
             'info',
           );
         });
@@ -2981,7 +2981,7 @@ export class AIStudioFolderManager {
           );
         } catch (error) {
           if (this.dataSession !== session || this.accountScopeRequest !== scopeRequest) return;
-          alert(this.t('folder_import_error').replace('{error}', String(error)));
+          alert(this.t('folder_import_error').replace('{error}', () => String(error)));
         }
       },
       { once: true },
