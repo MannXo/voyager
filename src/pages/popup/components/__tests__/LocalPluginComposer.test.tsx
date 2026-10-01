@@ -349,6 +349,32 @@ describe('describe a change → prompt → pasted reply → preview → import',
     expect(button(container, 'localPluginDescribeCheck').disabled).toBe(false);
   });
 
+  it('does not let Cancel race a pending import into bringing the preview back', async () => {
+    await openComposer();
+    await checkReply(fenced(AUTHORED));
+    memory[StorageKeys.PLUGIN_LOCAL_MANIFESTS] = {
+      'local.me.narrow': {
+        manifest: { ...AUTHORED, id: 'local.me.narrow', version: '0.5.0' },
+        importedAt: 1,
+        updatedAt: 1,
+      },
+    };
+
+    const release = holdStorageReads();
+    await act(async () => button(container, 'localPluginDescribeImport').click());
+    const cancel = button(container, 'localPluginsCancel');
+    expect(cancel.disabled).toBe(true);
+    await act(async () => cancel.click());
+    await act(async () => release());
+    await flush();
+    await flush();
+
+    // The import was refused, so the preview is refreshed and asks for a new review.
+    expect(container.textContent).toContain('localPluginChangedSinceReview');
+    await act(async () => button(container, 'localPluginsCancel').click());
+    expect(container.querySelector('[data-testid="local-plugin-preview"]')).toBeNull();
+  });
+
   it('keeps a reply edited while a successful import ran', async () => {
     await openComposer();
     await checkReply(fenced(AUTHORED));

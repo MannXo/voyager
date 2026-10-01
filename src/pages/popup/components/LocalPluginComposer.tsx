@@ -117,6 +117,14 @@ export function LocalPluginComposer({
     return true;
   };
 
+  /** Close the preview; like an edit, it starts a new run so no pending result reopens it. */
+  const dismissPreview = (): void => {
+    checkRun.current += 1;
+    setChecked(null);
+    setDetails(false);
+    setChangedSinceReview(false);
+  };
+
   const importPreviewed = async (): Promise<void> => {
     if (!checked?.ok) return;
     // Every edit or check bumps the run. If the reply changed while the import
@@ -314,7 +322,7 @@ export function LocalPluginComposer({
           {details && <LocalPluginInspection manifest={checked.manifest} t={t} />}
           <p className="text-muted-foreground text-[11px]">{t('localPluginPreviewLandsOff')}</p>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => setChecked(null)}>
+            <Button variant="outline" size="sm" disabled={local.busy} onClick={dismissPreview}>
               {t('localPluginsCancel')}
             </Button>
             <Button size="sm" disabled={local.busy} onClick={() => void importPreviewed()}>

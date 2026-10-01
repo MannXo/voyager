@@ -557,13 +557,15 @@ say`), `src/pages/content/platformTheme/__tests__/platformTheme.test.ts`.
   `importLocalPlugin` returns `changedSinceReview` and the popup re-checks the reply and asks for a
   new review. Hand imports pass no snapshot and keep plain replace semantics. The composer captures
   the check generation when Import starts and drops the outcome if any edit or check bumped it since
-  (a refusal is cleared; a finished import is still reported).
+  (a refusal is cleared; a finished import is still reported). Cancel is disabled while the import
+  runs and also starts a new run, so a pending refusal cannot reopen a dismissed preview.
 - **Guard:** `src/features/plugins/local/localPluginMutations.test.ts`
   (`importing a reviewed manifest over the install it was reviewed against`),
   `src/pages/popup/components/__tests__/LocalPluginComposer.test.tsx`
   (`does not overwrite a plugin installed after the preview; it asks for a new review`,
   `drops a changed-record import result once the reply was edited while it ran`,
-  `keeps a reply edited while a successful import ran`).
+  `keeps a reply edited while a successful import ran`,
+  `does not let Cancel race a pending import into bringing the preview back`).
 
 ## The plugin preview reads inline styles as CSS does and shows them whole
 
