@@ -222,3 +222,28 @@ off a ChatGPT tab`).
   or Edge listing id goes into the allowlist in `docs/public/oauth/callback/relay.js`; the Cloud
   Console keeps the single relay URI.
 - **Guard:** `src/core/services/__tests__/googleOAuthWebFlow.test.ts`.
+
+## A per-tab write queue does not serialize writes across tabs
+
+- **Trap:** Two Gemini tabs adding to the Research Pack at the same moment kept only one item. Each
+  tab serialized its own read-modify-write of the whole pack, but `chrome.storage` has no
+  compare-and-set, so tab B wrote back the pack it read before tab A's write landed.
+- **Rule:** Shared, user-edited storage values that several tabs change go through one writer.
+  Research Pack tabs send ops (`gv.researchPack.apply`) to the background owner in
+  `src/pages/background/researchPackOwner.ts`, which applies them in order against the freshly read
+  pack. A queue inside a content script only orders that tab's own writes.
+- **Guard:** `src/features/researchPack/services/__tests__/packStore.test.ts`
+  (`keeps both items when two tabs add at the same time`).
+
+## Bind account-scoped writes to the scope at action time
+
+- **Trap:** Research Pack resolved its storage key when a queued op finally ran, so an answer added
+  under one account could be written to another after an account or isolation switch, and the panel
+  kept exporting the old global pack after isolation turned on. `isIsolationEnabled` also reads a
+  storage failure as "off", which falls back to the shared global pack.
+- **Rule:** Resolve an account-scoped key from a context snapshot taken when the user acts, hide the
+  old scope's content on a switch, drop async results for a scope that is no longer shown, and fail
+  closed (no read, no write) when the isolation setting cannot be read.
+- **Guard:** `src/pages/content/researchPack/__tests__/researchPackScope.test.ts` and
+  `src/pages/content/researchPack/__tests__/scope.test.ts`
+  (`fails closed when the isolation setting cannot be read`).

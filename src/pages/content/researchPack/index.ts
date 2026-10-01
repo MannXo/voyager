@@ -7,10 +7,7 @@
  * read only on an "Add to pack" click, and insertion fills the composer
  * without sending.
  */
-import {
-  accountIsolationService,
-  detectAccountContextFromDocument,
-} from '@/core/services/AccountIsolationService';
+import { accountIsolationService } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
 import {
@@ -23,7 +20,6 @@ import type { ResearchPackOp } from '@/features/researchPack/services/packOps';
 import {
   type ResearchPackStore,
   isResearchPackStorageKey,
-  resolveResearchPackStorageKey,
 } from '@/features/researchPack/services/packStore';
 import type { AddItemOutcome, ResearchPack } from '@/features/researchPack/services/types';
 import { getTranslationSync } from '@/utils/i18n';
@@ -31,6 +27,13 @@ import { getTranslationSync } from '@/utils/i18n';
 import { findChatInput, insertTextIntoChatInput } from '../chatInput';
 import type { StopNativeFeature } from '../featureLifecycle';
 import { createResearchPackPanel } from './panel';
+import {
+  type ResearchPackScopeContext,
+  createResearchPackKeyResolver,
+  isDifferentAccount,
+  isIsolationSettingChange,
+  readScopeContext,
+} from './scope';
 import {
   ADD_BUTTON_CLASS,
   ensureAddButtons,
@@ -47,21 +50,10 @@ export function isResearchPackEnabledValue(value: unknown): boolean {
   return value === true;
 }
 
-async function resolveAccountKey(): Promise<string> {
-  const context = detectAccountContextFromDocument(window.location.href, document);
-  const scope = await accountIsolationService.resolveAccountScope({
-    pageUrl: window.location.href,
-    routeUserId: context.routeUserId,
-    email: context.email,
-  });
-  return scope.accountKey;
-}
-
-function resolveCurrentKey(): Promise<string> {
-  return resolveResearchPackStorageKey({
-    isIsolationEnabled: () =>
-      accountIsolationService.isIsolationEnabled({ pageUrl: window.location.href }),
-    resolveAccountKey,
+function createChromeKeyResolver(): (context: ResearchPackScopeContext) => Promise<string> {
+  return createResearchPackKeyResolver({
+    getSync: (keys) => chrome.storage.sync.get(keys),
+    resolveAccountScope: (hints) => accountIsolationService.resolveAccountScope(hints),
   });
 }
 
@@ -85,12 +77,22 @@ const ADD_OUTCOME_MESSAGES = {
 
 export interface StartResearchPackOptions {
   store?: ResearchPackStore;
-  resolveKey?: () => Promise<string>;
+  /** Storage key for an account context; rejects when the scope cannot be known. */
+  resolveKey?: (context: ResearchPackScopeContext) => Promise<string>;
+}
+
+/**
+ * The pack scope an action is bound to. The key is resolved from the context
+ * captured at bind time, so later account switches cannot redirect it.
+ */
+interface BoundScope {
+  readonly context: ResearchPackScopeContext;
+  readonly key: Promise<string>;
 }
 
 export function startResearchPack(options: StartResearchPackOptions = {}): StopNativeFeature {
   const store = options.store ?? createChromeClient();
-  const resolveKey = options.resolveKey ?? resolveCurrentKey;
+  const resolveKey = options.resolveKey ?? createChromeKeyResolver();
   const t = getTranslationSync;
   let stopped = false;
   let pack: ResearchPack = createEmptyPack();
@@ -110,12 +112,28 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     panel.notify(t('researchPackSaveFailed'), 'error');
   };
 
-  const apply = async (op: ResearchPackOp): Promise<{ outcome: AddItemOutcome | null } | null> => {
+  const bind = (context: ResearchPackScopeContext): BoundScope => {
+    const key = resolveKey(context);
+    key.catch(() => undefined);
+    return { context, key };
+  };
+  let scope = bind(readScopeContext());
+  // Results for a scope that is no longer shown are dropped, not rendered.
+  const isCurrent = (bound: BoundScope): boolean => !stopped && bound === scope;
+
+  const show = (next: ResearchPack, replaceInstruction = false): void => {
+    pack = next;
+    panel.render(pack, markdown(), { replaceInstruction });
+  };
+
+  /** Apply `op` to the pack of `bound`, whichever scope is on screen by the time it lands. */
+  const applyIn = async (
+    bound: BoundScope,
+    op: ResearchPackOp,
+  ): Promise<{ outcome: AddItemOutcome | null } | null> => {
     try {
-      const update = await store.apply(await resolveKey(), op);
-      if (stopped) return null;
-      pack = update.pack;
-      panel.render(pack, markdown());
+      const update = await store.apply(await bound.key, op);
+      if (isCurrent(bound)) show(update.pack);
       return { outcome: update.outcome };
     } catch (error) {
       reportError(error);
@@ -123,25 +141,68 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     }
   };
 
-  const refresh = async (): Promise<void> => {
-    const next = await store.load(await resolveKey());
-    if (stopped) return;
-    pack = next;
-    panel.render(pack, markdown());
+  /** Load the pack for `bound`. An unresolvable scope stays empty: no read, no write. */
+  const loadScope = async (bound: BoundScope, replaceInstruction: boolean): Promise<void> => {
+    try {
+      const loaded = await store.load(await bound.key);
+      if (isCurrent(bound)) show(loaded, replaceInstruction);
+    } catch {
+      // Fail closed and quietly: the panel stays empty, and the next user
+      // action on this scope reports the failure.
+    }
+  };
+
+  /**
+   * Rebind to the page's current account or isolation setting. Unsaved typing
+   * goes to the scope it was typed in, the old content is hidden at once, and
+   * the new scope's pack loads in its place.
+   */
+  const switchScope = (): void => {
+    const previous = scope;
+    const pending = panel.takePendingInstruction();
+    if (pending !== null) void applyIn(previous, { kind: 'setInstruction', instruction: pending });
+    scope = bind(readScopeContext());
+    show(createEmptyPack(), true);
+    void loadScope(scope, true);
+  };
+
+  /** The scope for something the user does now; rebinds first if the page changed accounts. */
+  const scopeForAction = (): { bound: BoundScope; switched: boolean } => {
+    if (!isDifferentAccount(scope.context, readScopeContext())) {
+      return { bound: scope, switched: false };
+    }
+    switchScope();
+    return { bound: scope, switched: true };
+  };
+
+  /** Panel edits and exports act on what is on screen; after a switch they stop and say so. */
+  const panelScope = (): BoundScope | null => {
+    const { bound, switched } = scopeForAction();
+    if (!switched) return bound;
+    panel.notify(t('researchPackScopeChanged'), 'error');
+    return null;
+  };
+
+  const applyFromPanel = (op: ResearchPackOp): void => {
+    const bound = panelScope();
+    if (bound) void applyIn(bound, op);
   };
 
   const panel = createResearchPackPanel(t, {
-    onMove: (id, delta) => void apply({ kind: 'move', id, delta }),
-    onRemove: (id) => void apply({ kind: 'remove', id }),
-    onInstructionChange: (instruction) => apply({ kind: 'setInstruction', instruction }),
-    onClear: () => void apply({ kind: 'clear' }),
+    onMove: (id, delta) => applyFromPanel({ kind: 'move', id, delta }),
+    onRemove: (id) => applyFromPanel({ kind: 'remove', id }),
+    // The text belongs to the pack on screen, so it is saved there.
+    onInstructionChange: (instruction) => applyIn(scope, { kind: 'setInstruction', instruction }),
+    onClear: () => applyFromPanel({ kind: 'clear' }),
     onCopy: () => {
+      if (!panelScope()) return;
       void navigator.clipboard
         .writeText(exportMarkdown())
         .then(() => panel.notify(t('researchPackCopied')))
         .catch(() => panel.notify(t('researchPackCopyFailed'), 'error'));
     },
     onDownload: () => {
+      if (!panelScope()) return;
       const url = URL.createObjectURL(
         new Blob([exportMarkdown()], { type: 'text/markdown;charset=utf-8' }),
       );
@@ -161,6 +222,7 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     },
     onInsert: () => {
       // Fill the composer only. The user reviews the pack and sends it.
+      if (!panelScope()) return;
       const input = findChatInput();
       if (!input || !insertTextIntoChatInput(exportMarkdown(), input)) {
         panel.notify(t('researchPackNoComposer'), 'error');
@@ -183,7 +245,8 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
       panel.notify(t('researchPackCaptureFailed'), 'error');
       return;
     }
-    const outcome = (await apply({ kind: 'add', draft }))?.outcome;
+    // The answer belongs to the page as it is now, so a switched scope is the right one.
+    const outcome = (await applyIn(scopeForAction().bound, { kind: 'add', draft }))?.outcome;
     if (!outcome || stopped) return;
     panel.notify(t(ADD_OUTCOME_MESSAGES[outcome]), outcome === 'added' ? 'ok' : 'error');
     if (outcome === 'added') {
@@ -204,6 +267,8 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
 
   const scan = (): void => {
     if (stopped) return;
+    // In-app navigation can move the page to another /u/<index>/ account.
+    if (isDifferentAccount(scope.context, readScopeContext())) switchScope();
     ensureAddButtons(document, addButtonOptions);
   };
 
@@ -230,7 +295,10 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     areaName: string,
   ): void => {
     if (areaName === 'local' && Object.keys(changes).some(isResearchPackStorageKey)) {
-      void refresh().catch(reportError);
+      void loadScope(scope, false);
+    }
+    if (isIsolationSettingChange(changes, areaName, window.location.href)) {
+      switchScope();
     }
     if ((areaName === 'sync' || areaName === 'local') && changes[StorageKeys.LANGUAGE]) {
       addButtonOptions.label = t('researchPackAdd');
@@ -240,11 +308,11 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
   };
 
   document.body.appendChild(panel.root);
-  panel.render(pack, markdown());
+  show(pack, true);
   scan();
   observer.observe(document.body, { childList: true, subtree: true });
   chrome.storage.onChanged.addListener(onStorageChanged);
-  void refresh().catch(reportError);
+  void loadScope(scope, true);
 
   return () => {
     if (stopped) return;

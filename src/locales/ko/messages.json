@@ -3305,5 +3305,9 @@
   "researchPackNoComposer": {
     "message": "이 페이지에서 입력창을 찾을 수 없습니다",
     "description": "Research pack: no composer found"
+  },
+  "researchPackScopeChanged": {
+    "message": "계정이 바뀌어 이 계정의 팩을 표시하고 있습니다. 확인한 뒤 다시 시도하세요.",
+    "description": "Research pack: the page switched accounts, so the panel now shows that account's pack and the action was not run"
   }
 }

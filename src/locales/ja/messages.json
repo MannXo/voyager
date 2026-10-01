@@ -3305,5 +3305,9 @@
   "researchPackNoComposer": {
     "message": "このページに入力欄が見つかりません",
     "description": "Research pack: no composer found"
+  },
+  "researchPackScopeChanged": {
+    "message": "アカウントが切り替わったため、このアカウントのパックを表示しています。確認してからもう一度お試しください。",
+    "description": "Research pack: the page switched accounts, so the panel now shows that account's pack and the action was not run"
   }
 }

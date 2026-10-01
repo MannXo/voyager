@@ -26,7 +26,16 @@ export interface ResearchPackPanelActions {
 
 export interface ResearchPackPanel {
   readonly root: HTMLElement;
-  render: (pack: ResearchPack, markdown: string) => void;
+  /**
+   * Show `pack`. The instruction box keeps what the user is typing unless
+   * `replaceInstruction` is set, which a scope switch uses so one account's
+   * text never stays on screen for another.
+   */
+  render: (
+    pack: ResearchPack,
+    markdown: string,
+    options?: { replaceInstruction?: boolean },
+  ) => void;
   open: () => void;
   close: () => void;
   isOpen: () => boolean;
@@ -35,6 +44,8 @@ export interface ResearchPackPanel {
    * stored pack, so a click right after typing never loses the last edit.
    */
   instructionDraft: () => string;
+  /** Cancel the debounced save and return its text, or null when none is pending. */
+  takePendingInstruction: () => string | null;
   /** Feedback in the panel's status line, or as a toast by the launcher while closed. */
   notify: (message: string, tone?: 'ok' | 'error') => void;
   /** Re-read every label after a language change. */
@@ -252,7 +263,11 @@ export function createResearchPackPanel(
     }
   };
 
-  const render = (pack: ResearchPack, markdown: string): void => {
+  const render = (
+    pack: ResearchPack,
+    markdown: string,
+    options: { replaceInstruction?: boolean } = {},
+  ): void => {
     currentPack = pack;
     count.textContent = format(t('researchPackItemCount'), { count: pack.items.length });
     const hasItems = pack.items.length > 0;
@@ -262,9 +277,8 @@ export function createResearchPackPanel(
     );
     // Never replace text the user is typing or that is still being saved.
     if (
-      document.activeElement !== instruction &&
-      instructionTimer === null &&
-      savesInFlight === 0
+      options.replaceInstruction ||
+      (document.activeElement !== instruction && instructionTimer === null && savesInFlight === 0)
     ) {
       instruction.value = pack.instruction;
     }
@@ -337,6 +351,12 @@ export function createResearchPackPanel(
     close,
     isOpen: () => !panel.hidden,
     instructionDraft: () => instruction.value,
+    takePendingInstruction: () => {
+      if (instructionTimer === null) return null;
+      clearTimeout(instructionTimer);
+      instructionTimer = null;
+      return instruction.value;
+    },
     notify,
     relabel,
     destroy: () => {
