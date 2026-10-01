@@ -109,7 +109,7 @@ export class FolderTransferController {
       if (!this.isCurrent(context)) return false;
       if (!result.success) {
         this.host.notify(
-          t('folder_import_error').replace('{error}', String(result.error)),
+          t('folder_import_error').replace('{error}', () => String(result.error)),
           'error',
         );
         return false;
@@ -138,7 +138,10 @@ export class FolderTransferController {
     } catch (error) {
       console.error('[FolderTransfer] Import failed:', error);
       if (this.isCurrent(context)) {
-        this.host.notify(t('folder_import_error').replace('{error}', String(error)), 'error');
+        this.host.notify(
+          t('folder_import_error').replace('{error}', () => String(error)),
+          'error',
+        );
       }
       return false;
     } finally {
@@ -162,7 +165,10 @@ export class FolderTransferController {
       this.debug('Folders exported successfully');
     } catch (error) {
       console.error('[FolderTransfer] Export error:', error);
-      this.host.notify(t('folder_import_error').replace('{error}', String(error)), 'error');
+      this.host.notify(
+        t('folder_import_error').replace('{error}', () => String(error)),
+        'error',
+      );
     } finally {
       // Always release the lock
       this.exportInProgress = false;
@@ -388,12 +394,18 @@ export class FolderTransferController {
         this.host.notify(t('uploadSuccess'), 'success');
       } else {
         const errorMsg = response?.error || 'Unknown error';
-        this.host.notify(t('syncError').replace('{error}', errorMsg), 'error');
+        this.host.notify(
+          t('syncError').replace('{error}', () => errorMsg),
+          'error',
+        );
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       console.error('[FolderTransfer] Cloud upload failed:', error);
-      this.host.notify(t('syncError').replace('{error}', errorMsg), 'error');
+      this.host.notify(
+        t('syncError').replace('{error}', () => errorMsg),
+        'error',
+      );
     }
   }
 
@@ -435,7 +447,10 @@ export class FolderTransferController {
       if (!this.isCurrent(context)) return;
       if (!response?.ok) {
         const errorMsg = response?.error || 'Download failed';
-        this.host.notify(t('syncError').replace('{error}', errorMsg), 'error');
+        this.host.notify(
+          t('syncError').replace('{error}', () => errorMsg),
+          'error',
+        );
         return;
       }
 
@@ -548,7 +563,10 @@ export class FolderTransferController {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       console.error('[FolderTransfer] Cloud sync failed:', error);
       if (this.isCurrent(context)) {
-        this.host.notify(t('syncError').replace('{error}', errorMsg), 'error');
+        this.host.notify(
+          t('syncError').replace('{error}', () => errorMsg),
+          'error',
+        );
       }
     }
   }

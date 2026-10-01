@@ -3643,13 +3643,19 @@ export class AIStudioFolderManager {
         this.showNotification(this.t('uploadSuccess'), 'info');
       } else {
         const errorMsg = response?.error || 'Unknown error';
-        this.showNotification(this.t('syncError').replace('{error}', errorMsg), 'error');
+        this.showNotification(
+          this.t('syncError').replace('{error}', () => errorMsg),
+          'error',
+        );
       }
     } catch (error) {
       if (this.dataSession !== session || this.accountScopeRequest !== scopeRequest) return;
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       console.error('[AIStudioFolderManager] Cloud upload failed:', error);
-      this.showNotification(this.t('syncError').replace('{error}', errorMsg), 'error');
+      this.showNotification(
+        this.t('syncError').replace('{error}', () => errorMsg),
+        'error',
+      );
     }
   }
 
@@ -3687,7 +3693,10 @@ export class AIStudioFolderManager {
       if (this.dataSession !== session || this.accountScopeRequest !== scopeRequest) return;
       if (!response?.ok) {
         const errorMsg = response?.error || 'Download failed';
-        this.showNotification(this.t('syncError').replace('{error}', errorMsg), 'error');
+        this.showNotification(
+          this.t('syncError').replace('{error}', () => errorMsg),
+          'error',
+        );
         return;
       }
 
@@ -3739,7 +3748,10 @@ export class AIStudioFolderManager {
       if (this.dataSession !== session || this.accountScopeRequest !== scopeRequest) return;
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       console.error('[AIStudioFolderManager] Cloud sync failed:', error);
-      this.showNotification(this.t('syncError').replace('{error}', errorMsg), 'error');
+      this.showNotification(
+        this.t('syncError').replace('{error}', () => errorMsg),
+        'error',
+      );
     }
   }
 

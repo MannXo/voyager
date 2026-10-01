@@ -220,5 +220,9 @@ describe('AI Studio folder messages', () => {
     const failure = alertSpy.mock.lastCall?.[0];
     expect(failure).toMatch(/^✗ Import failed: SyntaxError/);
     for (const [message] of alertSpy.mock.calls) expectRendered(message);
+
+    // The parser quotes the bad input; `$&` in it is not a replacement pattern.
+    await importText(manager, '$& oops');
+    expect(alertSpy.mock.lastCall?.[0]).toContain('$& oops');
   });
 });
