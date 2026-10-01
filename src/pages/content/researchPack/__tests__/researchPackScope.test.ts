@@ -149,6 +149,39 @@ describe('research pack account scope', () => {
     expect(shownItems()).toEqual(['A item']);
   });
 
+  it('keeps a newer add on screen when an older load of the same scope lands after it', async () => {
+    const shared = sharedStorage();
+    // Each load reads storage at once but answers only when released, like a slow
+    // storage read that was issued before the add was saved.
+    const releases: Array<() => void> = [];
+    const store: ResearchPackStore = {
+      load: async (key) => {
+        const snapshot = await shared.store.load(key);
+        await new Promise<void>((resolve) => releases.push(resolve));
+        return snapshot;
+      },
+      apply: (key, op) => shared.store.apply(key, op),
+    };
+    const writeText = vi.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const host = turn('<p>Fresh answer.</p>');
+    stop = startResearchPack({ pageUrl: geminiPageUrl, store, resolveKey: async () => GLOBAL });
+    await flush();
+
+    clickAdd(host);
+    await flush();
+    expect(shared.at(GLOBAL)).toHaveLength(1);
+    expect(shownItems()).toHaveLength(1);
+
+    for (const release of releases.splice(0)) release();
+    await flush();
+
+    expect(shownItems()).toHaveLength(1);
+    // Copy is the second footer button (Insert, Copy, Download, Clear).
+    document.querySelectorAll<HTMLButtonElement>('.gv-rp-actions button')[1].click();
+    expect(writeText.mock.calls[0][0]).toContain('Fresh answer.');
+  });
+
   it('writes an answer to the account it was added under, even if the page switches first', async () => {
     const shared = sharedStorage();
     const resolveKey = vi.fn(async (context: ResearchPackScopeContext) => {

@@ -125,6 +125,24 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
   // Results for a scope that is no longer shown are dropped, not rendered.
   const isCurrent = (bound: BoundScope): boolean => !stopped && bound === scope;
 
+  // Within one scope, a load or apply that started earlier than the one on
+  // screen holds older data (a load read before an add was saved), so it is
+  // dropped. Every write fires a storage change and a fresh load, so the
+  // newest request always carries the latest pack.
+  let requestCount = 0;
+  let shownRequest = 0;
+  const nextRequest = (): number => (requestCount += 1);
+  const showIfLatest = (
+    bound: BoundScope,
+    request: number,
+    next: ResearchPack,
+    replaceInstruction = false,
+  ): void => {
+    if (!isCurrent(bound) || request < shownRequest) return;
+    shownRequest = request;
+    show(next, replaceInstruction);
+  };
+
   const show = (next: ResearchPack, replaceInstruction = false): void => {
     pack = next;
     panel.render(pack, markdown(), { replaceInstruction });
@@ -135,9 +153,10 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
     bound: BoundScope,
     op: ResearchPackOp,
   ): Promise<{ outcome: AddItemOutcome | null } | null> => {
+    const request = nextRequest();
     try {
       const update = await store.apply(await bound.key, op);
-      if (isCurrent(bound)) show(update.pack);
+      showIfLatest(bound, request, update.pack);
       return { outcome: update.outcome };
     } catch (error) {
       reportError(error);
@@ -147,9 +166,10 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
 
   /** Load the pack for `bound`. An unresolvable scope stays empty: no read, no write. */
   const loadScope = async (bound: BoundScope, replaceInstruction: boolean): Promise<void> => {
+    const request = nextRequest();
     try {
       const loaded = await store.load(await bound.key);
-      if (isCurrent(bound)) show(loaded, replaceInstruction);
+      showIfLatest(bound, request, loaded, replaceInstruction);
     } catch {
       // Fail closed and quietly: the panel stays empty, and the next user
       // action on this scope reports the failure.
