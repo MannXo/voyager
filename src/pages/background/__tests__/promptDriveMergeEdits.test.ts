@@ -7,6 +7,7 @@ import {
   type PromptLibraryArea,
   createPromptLibraryOwner,
 } from '@/features/prompt/library/promptLibraryOwner';
+import { sortPinnedFirst } from '@/pages/content/prompt/promptPinning';
 
 import { mergeCloudPrompts, mergeCloudPromptsForUpload } from '../promptDriveMerge';
 
@@ -28,6 +29,13 @@ function device(initial: PromptItem[]) {
     /** Edits a prompt as Prompt Manager does: the change carries the edit time. */
     edit: (id: string, text: string, at: number) =>
       owner.apply({ kind: 'update', id, changes: { text, updatedAt: at } }),
+    /** Pins or unpins as Prompt Manager does, bumping the edit time with it. */
+    pin: (id: string, pinned: boolean, at: number) =>
+      owner.apply({
+        kind: 'update',
+        id,
+        changes: { pinnedAt: pinned ? at : null, updatedAt: at },
+      }),
     pull: (drive: unknown) => mergeCloudPrompts(owner, drive),
     /** Merges Drive into the library, then returns the Drive file the push uploads. */
     push: async (drive: unknown) =>
@@ -146,5 +154,69 @@ describe('prompt edit times through the prompts-only Drive merges', () => {
     await a.pull(drive);
 
     expect(textOf(a.stored(), 'p')).toBe(textOf(b.stored(), 'p'));
+  });
+});
+
+describe('prompt pins through the prompts-only Drive merges', () => {
+  const library = (): PromptItem[] => [
+    { id: 'a', text: 'A', tags: [], createdAt: 1 },
+    { id: 'b', text: 'B', tags: [], createdAt: 2 },
+  ];
+  const pinOf = (items: PromptItem[], id: string) => items.find((item) => item.id === id)?.pinnedAt;
+
+  it('brings a pin and then an unpin made on another device in on a pull', async () => {
+    const laptop = device(library());
+    const desktop = device(library());
+    let drive = await laptop.push(null);
+
+    await laptop.pin('b', true, 20);
+    drive = await laptop.push(drive);
+    await desktop.pull(drive);
+    expect(pinOf(desktop.stored(), 'b')).toBe(20);
+    expect(sortPinnedFirst(desktop.stored()).map((item) => item.id)).toEqual(['b', 'a']);
+
+    await laptop.pin('b', false, 30);
+    drive = await laptop.push(drive);
+    await desktop.pull(drive);
+    expect(desktop.stored().find((item) => item.id === 'b')).toEqual({
+      id: 'b',
+      text: 'B',
+      tags: [],
+      createdAt: 2,
+      updatedAt: 30,
+    });
+  });
+
+  it('takes a newer unpin from Drive on a push, and uploads a newer local pin', async () => {
+    const laptop = device(library());
+    const desktop = device(library());
+    let drive = await laptop.push(null);
+
+    await desktop.pin('a', true, 10);
+    await laptop.pin('a', true, 15);
+    await laptop.pin('a', false, 20);
+    drive = await laptop.push(drive);
+    drive = await desktop.push(drive);
+    expect(pinOf(desktop.stored(), 'a')).toBeUndefined();
+    expect(pinOf(drive.items, 'a')).toBeUndefined();
+
+    await desktop.pin('b', true, 40);
+    drive = await desktop.push(drive);
+    expect(pinOf(drive.items, 'b')).toBe(40);
+    await laptop.pull(drive);
+    expect(pinOf(laptop.stored(), 'b')).toBe(40);
+  });
+
+  it('keeps a newer local pin over an older unpinned copy', async () => {
+    const local = device(library());
+    await local.pin('a', true, 50);
+
+    await local.pull(
+      PromptImportExportService.exportToPayload([
+        { id: 'a', text: 'A', tags: [], createdAt: 1, updatedAt: 40 },
+      ]),
+    );
+
+    expect(pinOf(local.stored(), 'a')).toBe(50);
   });
 });
