@@ -1254,6 +1254,14 @@
     "message": "잠시만 기다려 주세요…",
     "description": "ChatGPT 대화 DOM 수집 중 배너 설명"
   },
+  "export_reading_conversation_title": {
+    "message": "대화를 읽는 중…",
+    "description": "Progress title while ChatGPT export reads the whole conversation by scrolling it"
+  },
+  "export_reading_conversation_turns": {
+    "message": "읽은 턴: {count}",
+    "description": "Progress detail while ChatGPT export reads the conversation; {count} is the number of turns read so far"
+  },
   "keyboardShortcuts": {
     "message": "키보드 단축키",
     "description": "Keyboard shortcuts section title"

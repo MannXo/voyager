@@ -4,11 +4,11 @@ import {
 } from '@/features/export/services/DOMContentExtractor';
 import type { SiteAdapter } from '@/features/plugins/types';
 
+import { prepareChatGptExportWithProgress } from '../../chatgptCrawlProgress';
 import { TURN_ITEM_SELECTOR, resolveVisibleConversationRoot } from '../chatgptThread';
 import {
   buildChatGptExportTurns,
   collectChatGptTurnContainers,
-  prepareChatGptExport,
   resolveChatGptExportRoles,
 } from '../chatgptThreadExport';
 import type { ExportPlatformAdapter } from './contract';
@@ -253,7 +253,7 @@ export function buildChatGptAdapter(site: SiteAdapter): ExportPlatformAdapter {
     extractFormula: chatgptExtractFormula,
     extractCodeBlock,
     extractInlineFormula: chatgptExtractInlineFormula,
-    prepareConversation: prepareChatGptExport,
+    prepareConversation: (options) => prepareChatGptExportWithProgress(options),
     collectTurnContainers: collectChatGptTurnContainers,
     buildTurnsForSelection: buildChatGptExportTurns,
     resolveSelectionRoles: resolveChatGptExportRoles,

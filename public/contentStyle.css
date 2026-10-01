@@ -9049,6 +9049,49 @@ html[data-gv-scheme='dark'] .gv-export-progress-desc {
   color: #aebfd2;
 }
 
+/* ChatGPT thread crawl: the export progress pill plus a Cancel button. */
+.gv-export-crawl-progress {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 12px;
+  z-index: 2147483645;
+}
+
+.gv-export-crawl-progress .gv-export-progress-card {
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    'spinner title cancel'
+    'spinner desc cancel';
+}
+
+.gv-export-crawl-cancel {
+  grid-area: cancel;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  border-radius: 999px;
+  background: transparent;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.gv-export-crawl-cancel:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+
+html[data-gv-scheme='dark'] .gv-export-crawl-cancel {
+  border-color: rgba(148, 163, 184, 0.35);
+  color: #e5ecf5;
+}
+
+html[data-gv-scheme='dark'] .gv-export-crawl-cancel:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 @keyframes gv-export-progress-spin {
   from {
     transform: rotate(0);

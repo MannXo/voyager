@@ -1254,6 +1254,14 @@
     "message": "Aguarde…",
     "description": "Descrição do banner durante a coleta do DOM da conversa do ChatGPT"
   },
+  "export_reading_conversation_title": {
+    "message": "Lendo a conversa…",
+    "description": "Progress title while ChatGPT export reads the whole conversation by scrolling it"
+  },
+  "export_reading_conversation_turns": {
+    "message": "Turnos lidos: {count}",
+    "description": "Progress detail while ChatGPT export reads the conversation; {count} is the number of turns read so far"
+  },
   "keyboardShortcuts": {
     "message": "Atalhos de Teclado",
     "description": "Keyboard shortcuts section title"

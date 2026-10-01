@@ -1214,6 +1214,14 @@
     "message": "請稍候…",
     "description": "ChatGPT 對話 DOM 收集期間橫幅的描述"
   },
+  "export_reading_conversation_title": {
+    "message": "正在讀取對話…",
+    "description": "Progress title while ChatGPT export reads the whole conversation by scrolling it"
+  },
+  "export_reading_conversation_turns": {
+    "message": "已讀取 {count} 輪",
+    "description": "Progress detail while ChatGPT export reads the conversation; {count} is the number of turns read so far"
+  },
   "keyboardShortcuts": {
     "message": "鍵盤快速鍵",
     "description": "鍵盤快速鍵區段標題"

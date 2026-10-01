@@ -1254,6 +1254,14 @@
     "message": "しばらくお待ちください…",
     "description": "ChatGPT の会話 DOM 収集中のバナー説明"
   },
+  "export_reading_conversation_title": {
+    "message": "会話を読み込んでいます…",
+    "description": "Progress title while ChatGPT export reads the whole conversation by scrolling it"
+  },
+  "export_reading_conversation_turns": {
+    "message": "読み込んだターン：{count}",
+    "description": "Progress detail while ChatGPT export reads the conversation; {count} is the number of turns read so far"
+  },
   "keyboardShortcuts": {
     "message": "キーボードショートカット",
     "description": "Keyboard shortcuts section title"

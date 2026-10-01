@@ -346,6 +346,47 @@ while an active plugin has domOps`).
   `offers nothing to select when the crawl cannot prove the thread complete`,
   `restores the scroll position when the crawl fails`).
 
+## ChatGPT crawl reads only windows rendered for its scroll position
+
+- **Trap:** Stable keys and scroll range do not prove the virtual list rendered for the current
+  position. A remount slower than the settle interval left the reader's window mounted after the
+  scroll to the top, and the walk read it as the start; a list that stopped rendering exported a
+  suffix as the whole thread.
+- **Rule:** A window counts only once its items cover the visible part of the box ChatGPT sizes to
+  the whole list (the item's ancestor directly under the selection target) and hold still; a
+  timeout throws `chatgpt_export_thread_unsettled`. The start also needs the spinner gone and the
+  first item at the box's top, the end the last item at its bottom.
+- **Guard:** `src/pages/content/export/adapter/__tests__/chatgptThreadExport.test.ts`
+  (`fails instead of reading a stale window that never moves to the scroll position`,
+  `waits for a window that renders later than it would otherwise count as settled`).
+
+## ChatGPT crawl never mixes conversation branches
+
+- **Trap:** A regenerated reply or a branch switch keeps the turn key (the prompt's message id), so
+  skipping keys already read could keep one branch's answer and append another branch's later
+  turns, and a snapshot read before the switch stayed exportable.
+- **Rule:** Record each item's message ids (`data-chatgpt-search-message-ids` and the reply's
+  `data-chatgpt-selection-message-id`). An item seen again with other ids fails the crawl with
+  `chatgpt_export_thread_changed`, and a mounted item that differs from the snapshot drops it. A
+  switch on an item that is unmounted at export time is not detected.
+- **Guard:** `src/pages/content/export/adapter/__tests__/chatgptThreadExport.test.ts`
+  (`fails when a branch switch changes a turn it already read, rather than mixing branches`,
+  `drops the crawl once a mounted turn switches branch after it was read`).
+
+## ChatGPT export publishes only its latest, uncancelled crawl
+
+- **Trap:** Restoring the scroll position cannot be cancelled, so a preparation cancelled meanwhile,
+  or superseded by a newer one on the same route, could publish its crawl over the newer attempt
+  and leave stale content exportable after the newer one failed.
+- **Rule:** The crawl rechecks cancellation after restoring, and only the latest preparation
+  publishes. The crawl's progress pill (`gv-export-crawl-progress`) aborts only the crawl, so
+  Cancel restores the scroll and the export ends quietly with no file and no warning.
+- **Guard:** `src/pages/content/export/adapter/__tests__/chatgptThreadExport.test.ts`
+  (`does not let a superseded preparation publish over a newer one that failed`,
+  `does not publish a preparation cancelled while it restores the scroll position`);
+  `src/pages/content/export/__tests__/chatgptCrawlProgress.test.ts`
+  (`cancels from its button: restores the scroll, keeps nothing and rejects quietly`).
+
 ## ChatGPT export entry point only where a conversation can exist
 
 - **Trap:** The ChatGPT export plugin matches the whole origin, and the persistent toolbar was

@@ -1254,6 +1254,14 @@
     "message": "Пожалуйста, подождите…",
     "description": "Описание баннера во время сбора DOM диалога ChatGPT"
   },
+  "export_reading_conversation_title": {
+    "message": "Чтение беседы…",
+    "description": "Progress title while ChatGPT export reads the whole conversation by scrolling it"
+  },
+  "export_reading_conversation_turns": {
+    "message": "Прочитано: {count}",
+    "description": "Progress detail while ChatGPT export reads the conversation; {count} is the number of turns read so far"
+  },
   "keyboardShortcuts": {
     "message": "Горячие клавиши",
     "description": "Keyboard shortcuts section title"
