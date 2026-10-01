@@ -9,6 +9,7 @@ import {
 } from '@/features/researchPack/services/packMessages';
 import { createResearchPackOwner } from '@/features/researchPack/services/packStore';
 
+import { startResearchPackHandoff } from './researchPackHandoff';
 import { getSenderPageUrl, isAllowedSyncContentSender } from './runtimeMessageRouting';
 
 /**
@@ -39,4 +40,7 @@ export function startResearchPackOwner(): void {
     void handleResearchPackApplyMessage(message, owner).then(sendResponse);
     return true;
   });
+
+  // "Continue in ChatGPT / Claude" carries the pack to another site's new chat.
+  startResearchPackHandoff(isAllowedResearchPackSender);
 }
