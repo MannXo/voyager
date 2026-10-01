@@ -598,3 +598,18 @@ drop, or hover layout.
   Read a row's title only when the row matches a stored reference.
 - **Guard:** `src/pages/content/folder/__tests__/nativeTitleSyncScale.test.ts` checks the id shapes
   that must still match and bounds URL parses on a 1,500-row sidebar.
+
+## Hide-archived membership checks must not scan every stored conversation per row
+
+- **Trap:** With hide-archived on, every sidebar row asked `FolderStore.isConversationInFolders`,
+  which scanned all stored conversations with two regex replaces and a URL substring test each. A
+  refresh or a page of older chats cost rows x stored conversations: 73ms at 1000 x 1000 and 285ms
+  at 2000 x 2000 (#1040). Folder data is edited in place (`push`, `conv.url = ...`), so an
+  index keyed only on object identity would go stale.
+- **Rule:** Look membership up through `createConversationMembershipLookup`: build the index once
+  per task, rebuild when any folder array or its length changes, and drop it at the next microtask.
+  Keep the original match rules exact: direct id, id without `c_`, or a stored URL containing an id
+  longer than 8 characters.
+- **Guard:** `src/pages/content/folder/conversationMembership.test.ts` (parity with the original
+  scan, `indexes once for a batch of rows instead of once per row`,
+  `sees conversations added in place during the same task`).

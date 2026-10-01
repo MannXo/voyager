@@ -23,7 +23,7 @@
     "src/pages/content/folder/aistudio.ts": 4145,
     "src/pages/content/folder/floatingPanel.ts": 1160,
     "src/pages/content/folder/FolderSelection.ts": 1558,
-    "src/pages/content/folder/FolderStore.ts": 1685,
+    "src/pages/content/folder/FolderStore.ts": 1663,
     "src/pages/content/folder/FolderTreeView.ts": 1646,
     "src/pages/content/folder/manager.ts": 1029,
     "src/pages/content/folder/NativeConversationMenus.ts": 1111,

@@ -22,6 +22,7 @@ import {
 import { TimestampService } from '../timestamp/TimestampService';
 import { historyTimestampStore } from '../timestamp/historyTimestamps';
 import { FolderDataSession, cloneFolderData } from './FolderDataSession';
+import { createConversationMembershipLookup } from './conversationMembership';
 import { applyNativeTitle, indexConversationsByRouteId } from './conversationTitleSync';
 import {
   extractConversationIdFromElement,
@@ -99,6 +100,7 @@ export class FolderStore {
     validateFolderData,
   );
   private readonly dataSessions = new Map<string, FolderDataSession>();
+  private readonly conversationMembership = createConversationMembershipLookup();
   private unresolvedData: FolderData = { folders: [], folderContents: {} };
   private accountScopeRequest = 0;
   private accountScopeRetry: number | null = null;
@@ -1556,31 +1558,7 @@ export class FolderStore {
   }
 
   isConversationInFolders(conversationId: string): boolean {
-    // Check if conversation exists in any folder
-    for (const folderId in this.data.folderContents) {
-      const conversations = this.data.folderContents[folderId];
-      if (
-        conversations.some((c) => {
-          // Direct ID match
-          if (c.conversationId === conversationId) return true;
-
-          // Robustness fallback: check if one ID contains the other (e.g. c_ prefix mismatch)
-          // or if URL contains the ID (common if one is hex and other is full ID)
-          const cleanId = conversationId.replace(/^c_/, '');
-          const cleanStoredId = c.conversationId.replace(/^c_/, '');
-
-          if (cleanId && cleanId === cleanStoredId) return true;
-
-          // Check if URL contains the hex ID
-          if (cleanId && cleanId.length > 8 && c.url.includes(cleanId)) return true;
-
-          return false;
-        })
-      ) {
-        return true;
-      }
-    }
-    return false;
+    return this.conversationMembership(this.data.folderContents).has(conversationId);
   }
 
   private generateId(): string {
