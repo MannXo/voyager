@@ -60,7 +60,7 @@ describe('background runtime message routing', () => {
 
   it('routes plugin messages through the serialized sync and the single catalog refresher', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/pages/background/index.ts'), 'utf8');
-    expect(source).toContain('handlePluginRuntimeMessage(message, {');
+    expect(source).toContain('handlePluginRuntimeMessage(message, sender, {');
     expect(source).toContain('syncContentScripts: syncPluginContentScripts');
     expect(source).toContain('hostCatalogRefresher.refresh(host, { force })');
     expect(source.match(/new HostCatalogRefresher\(/g)?.length).toBe(1);

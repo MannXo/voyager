@@ -185,21 +185,24 @@ export async function restorePluginState(
  * Read-modify-write the state map under the plugin-storage lock. A failed read
  * or write is logged and writes nothing.
  */
+/** Locked read-modify-write of the state map; false when it was not written. */
 async function updatePluginState(
   label: string,
   context: Record<string, unknown>,
   update: (current: PluginStateMap) => PluginStateMap,
-): Promise<void> {
+): Promise<boolean> {
   const local = localArea();
-  if (!local) return;
+  if (!local) return false;
   try {
     await withPluginStorageLock(async () => {
       await local.set({ [KEY]: update(await readPluginStateStrict(local)) });
     });
+    return true;
   } catch (error) {
     if (!isExtensionContextInvalidatedError(error)) {
       logger.warn(`${label} failed`, { ...context, error: String(error) });
     }
+    return false;
   }
 }
 
@@ -209,13 +212,16 @@ export async function setPluginEnabled(id: string, enabled: boolean): Promise<vo
   );
 }
 
-/** Persist a single setting value for a plugin (preserving enabled state + other settings). */
+/**
+ * Persist a single setting value for a plugin (preserving enabled state + other
+ * settings). Resolves false, after logging, when the value was not stored.
+ */
 export async function setPluginSetting(
   id: string,
   key: string,
   value: PluginSettingValue,
-): Promise<void> {
-  await updatePluginState('setPluginSetting', { id, key }, (current) => {
+): Promise<boolean> {
+  return updatePluginState('setPluginSetting', { id, key }, (current) => {
     const previous = current[id];
     return {
       ...current,

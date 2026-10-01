@@ -12,7 +12,7 @@ import { logger } from '@/core/services/LoggerService';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
 
 import { PLUGIN_SET_SETTING_MESSAGE } from '../runtime/messages';
-import type { PluginSettingValue } from '../types';
+import type { PluginManifest, PluginSettingValue, SettingField } from '../types';
 
 export interface PluginSettingRequest {
   readonly id: string;
@@ -42,20 +42,54 @@ export function parsePluginSettingRequest(payload: unknown): PluginSettingReques
   return valid ? { id, key, value } : null;
 }
 
-/** Ask the background to persist one plugin setting. Failures are logged, not thrown. */
+function fitsField(field: SettingField, value: PluginSettingValue): boolean {
+  switch (field.type) {
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'number':
+      return (
+        typeof value === 'number' &&
+        (field.min === undefined || value >= field.min) &&
+        (field.max === undefined || value <= field.max)
+      );
+    case 'select':
+      return typeof value === 'string' && (field.options ?? []).some((o) => o.value === value);
+    default:
+      return typeof value === 'string';
+  }
+}
+
+/** True when `manifest` declares `request.key` as a setting `request.value` fits. */
+export function isDeclaredPluginSetting(
+  manifest: PluginManifest,
+  request: PluginSettingRequest,
+): boolean {
+  const fields = manifest.contributes.settings ?? {};
+  if (!Object.prototype.hasOwnProperty.call(fields, request.key)) return false;
+  return fitsField(fields[request.key], request.value);
+}
+
+/**
+ * Ask the background to persist one plugin setting. Resolves false, after
+ * logging, when the background refused or failed to store it; never throws.
+ */
 export async function requestPluginSetting(
   id: string,
   key: string,
   value: PluginSettingValue,
-): Promise<void> {
+): Promise<boolean> {
   try {
-    await chrome.runtime.sendMessage({
+    const response: unknown = await chrome.runtime.sendMessage({
       type: PLUGIN_SET_SETTING_MESSAGE,
       payload: { id, key, value },
     });
+    const ok = (response as { ok?: unknown } | undefined)?.ok === true;
+    if (!ok) logger.warn('requestPluginSetting was not stored', { id, key, response });
+    return ok;
   } catch (error) {
     if (!isExtensionContextInvalidatedError(error)) {
       logger.warn('requestPluginSetting failed', { id, key, error: String(error) });
     }
+    return false;
   }
 }

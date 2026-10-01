@@ -1983,7 +1983,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
 
-      const pluginResponse = handlePluginRuntimeMessage(message, {
+      const pluginResponse = handlePluginRuntimeMessage(message, sender, {
         syncContentScripts: syncPluginContentScripts,
         refreshCatalog: (host, force) => hostCatalogRefresher.refresh(host, { force }),
       });

@@ -532,3 +532,16 @@ say`), `src/pages/content/platformTheme/__tests__/platformTheme.test.ts`.
   `setPluginEnabledWithSiteAccess` reports `changed`, which the popup explains.
 - **Guard:** `src/pages/popup/utils/__tests__/pluginEnablement.test.ts`
   (`refuses when the same id was re-imported with other content while the enable was pending`).
+
+## A content-script setting write must be ours, declared and reported
+
+- **Trap:** `gv.plugins.setSetting` stored any id/key/value from any sender, and the shared state
+  writer swallowed storage errors, so the handler answered `ok: true` for a write that never
+  happened and accepted keys no plugin declares.
+- **Rule:** The background stores a setting only from our extension's content script in a tab the
+  plugin's `matches` cover, only for a key in the plugin's `contributes.settings` with a value of
+  that field's type (range/options included), and answers `untrusted_sender`, `invalid_payload` or
+  `write_failed` otherwise. `setPluginSetting` resolves false when nothing was stored.
+- **Guard:** `src/pages/background/__tests__/pluginRuntimeMessages.test.ts`
+  (`refuses a sender that is …`, `rejects a setting the plugin does not declare that way`,
+  `reports a failed storage write instead of ok`).

@@ -8,20 +8,57 @@ import {
   PLUGIN_CONTENT_SCRIPT_SYNC_MESSAGE,
   PLUGIN_SET_SETTING_MESSAGE,
 } from '@/features/plugins/runtime/messages';
-import { parsePluginSettingRequest } from '@/features/plugins/storage/pluginSettingRequest';
+import { matchesAnyPattern } from '@/features/plugins/sites/matchPattern';
+import { listPluginManifests } from '@/features/plugins/sources/defaultSources';
+import {
+  type PluginSettingRequest,
+  isDeclaredPluginSetting,
+  parsePluginSettingRequest,
+} from '@/features/plugins/storage/pluginSettingRequest';
 import { setPluginSetting } from '@/features/plugins/storage/pluginState';
+import type { PluginManifest } from '@/features/plugins/types';
+
+import { getSenderPageUrl } from './runtimeMessageRouting';
 
 export interface PluginRuntimeMessageDeps {
   /** The serialized dynamic content-script registration sync. */
   syncContentScripts(): Promise<void>;
   /** The single remote catalog refresher. */
   refreshCatalog(host: string, force: boolean): Promise<unknown>;
+  /** The plugin the catalog serves for `pageUrl` under `id`; defaults to every source. */
+  findPluginManifest?(id: string, pageUrl: string): Promise<PluginManifest | undefined>;
 }
 
 const INVALID_PAYLOAD = { ok: false, error: 'invalid_payload' } as const;
+const UNTRUSTED_SENDER = { ok: false, error: 'untrusted_sender' } as const;
+const WRITE_FAILED = { ok: false, error: 'write_failed' } as const;
+
+async function findListedManifest(id: string, pageUrl: string) {
+  return (await listPluginManifests(undefined, { url: pageUrl })).find((m) => m.id === id);
+}
+
+/**
+ * Store one setting for a content script of ours running in a tab the plugin
+ * targets, and only a key the plugin declares, with a value of that type.
+ */
+async function setSettingFromContent(
+  request: PluginSettingRequest,
+  sender: chrome.runtime.MessageSender,
+  deps: PluginRuntimeMessageDeps,
+): Promise<unknown> {
+  const pageUrl = getSenderPageUrl(sender);
+  if (sender.id !== chrome.runtime.id || !sender.tab || !pageUrl) return UNTRUSTED_SENDER;
+  const manifest = await (deps.findPluginManifest ?? findListedManifest)(request.id, pageUrl);
+  if (!manifest || !isDeclaredPluginSetting(manifest, request)) return INVALID_PAYLOAD;
+  const frameUrls = [pageUrl, sender.url].filter((url): url is string => Boolean(url));
+  if (!frameUrls.some((url) => matchesAnyPattern(url, manifest.matches))) return UNTRUSTED_SENDER;
+  const stored = await setPluginSetting(request.id, request.key, request.value);
+  return stored ? { ok: true } : WRITE_FAILED;
+}
 
 export function handlePluginRuntimeMessage(
   message: unknown,
+  sender: chrome.runtime.MessageSender,
   deps: PluginRuntimeMessageDeps,
 ): Promise<unknown> | null {
   if (typeof message !== 'object' || message === null) return null;
@@ -40,7 +77,7 @@ export function handlePluginRuntimeMessage(
     // script's own write could not be serialized with a local-plugin import.
     const request = parsePluginSettingRequest(payload);
     if (!request) return Promise.resolve(INVALID_PAYLOAD);
-    return setPluginSetting(request.id, request.key, request.value).then(() => ({ ok: true }));
+    return setSettingFromContent(request, sender, deps);
   }
   return null;
 }
