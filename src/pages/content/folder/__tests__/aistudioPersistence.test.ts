@@ -167,13 +167,13 @@ function createFolder(name: string): void {
   input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 }
 
-function chooseImport(manager: Manager, data: FolderData): void {
+function chooseImport(manager: Manager, data: FolderData, marks: object = {}): void {
   const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
   manager.handleImport();
   const input = click.mock.contexts.at(-1) as HTMLInputElement;
   expect(input).toBeInstanceOf(HTMLInputElement);
   Object.defineProperty(input, 'files', {
-    value: [{ text: async () => JSON.stringify({ data }) }],
+    value: [{ text: async () => JSON.stringify({ ...marks, data }) }],
   });
   input.dispatchEvent(new Event('change'));
 }
@@ -505,6 +505,36 @@ describe('AI Studio folder persistence', () => {
     expect(manager.data).toEqual(original);
     expect(local[manager.activeStorageKey]).toEqual(original);
     expect(local.gvPromptItems).toEqual([]);
+  });
+
+  it('refuses a folder file ChatGPT exported', async () => {
+    const manager = await mountManager();
+    const key = manager.activeStorageKey;
+    const chatgpt: FolderData = {
+      folders: [
+        { id: 'f', name: 'Trips', parentId: null, isExpanded: true, createdAt: 1, updatedAt: 1 },
+      ],
+      folderContents: {
+        f: [
+          {
+            conversationId: 'chatgpt:conv:abc',
+            title: 'Trip plan',
+            url: 'https://chatgpt.com/c/abc',
+            addedAt: 1,
+          },
+        ],
+      },
+    };
+
+    chooseImport(manager, chatgpt, { platform: 'chatgpt' });
+    await vi.waitFor(() =>
+      expect(window.alert).toHaveBeenCalledWith(getTranslationSync('folder_import_wrong_site')),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(manager.data).toEqual(folderData('Private a'));
+    expect(local[key]).toEqual(folderData('Private a'));
+    expect(document.querySelector('.gv-folder-list')?.textContent).not.toContain('Trips');
   });
 
   it('finishes accepted ordinary writes but abandons an unissued import after A → B → A', async () => {

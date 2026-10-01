@@ -55,16 +55,18 @@ off a ChatGPT tab`).
   (`chatgpt:conv:<id>`) across `/c/`, `/g/g-p-*/c/` and `/g/g-*/c/`. Import is merge-only and
   rejects the whole file if it is marked for another site or any entry, root bucket included, is
   not a ChatGPT conversation whose id matches its URL. ChatGPT marks its export with `platform`,
-  and the Gemini importer refuses any marked file. `FolderPlatform` stays Gemini/AI Studio until
-  ChatGPT gets Drive sync.
+  and the Gemini and AI Studio importers refuse any marked file. `FolderPlatform` stays Gemini/AI
+  Studio until ChatGPT gets Drive sync.
 - **Guard:** `src/features/plugins/builtin/chatgptFolders/__tests__/ChatGptFolderStore.test.ts`
   (`writes only the ChatGPT bucket, whatever Gemini and the legacy switch hold`),
   `src/features/plugins/builtin/chatgptFolders/__tests__/activate.test.ts`
   (`files the open conversation and writes only its own keys`),
   `src/features/plugins/builtin/chatgptFolders/__tests__/transfer.test.ts`,
-  `src/features/plugins/builtin/chatgptFolders/chatgptIdentity.test.ts` and
+  `src/features/plugins/builtin/chatgptFolders/chatgptIdentity.test.ts`,
   `src/pages/content/folder/__tests__/FolderTransferController.test.ts`
-  (`refuses to %s a folder file ChatGPT exported`).
+  (`refuses to %s a folder file ChatGPT exported`) and
+  `src/pages/content/folder/__tests__/aistudioPersistence.test.ts`
+  (`refuses a folder file ChatGPT exported`).
 
 ## onMessage listeners must not return true unconditionally
 

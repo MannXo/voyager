@@ -4,6 +4,27 @@ import type { ImportResult } from '@/features/folder/types/import-export';
 
 import type { FolderData } from './types';
 
+export type AIStudioImportFile =
+  | { ok: true; data: FolderData }
+  | { ok: false; messageKey: 'folder_import_wrong_site' | 'folder_import_invalid_format' };
+
+/**
+ * Read the folders from a parsed AI Studio folder file (`{ data }` or the bare
+ * data). A file another site marked as its own, as ChatGPT marks its exports,
+ * holds conversations AI Studio cannot open, so it is refused whatever its shape.
+ */
+export function readAIStudioImportFile(json: unknown): AIStudioImportFile {
+  if (FolderImportExportService.exportedPlatform(json) !== null) {
+    return { ok: false, messageKey: 'folder_import_wrong_site' };
+  }
+  const file = json && typeof json === 'object' ? (json as { data?: unknown }) : null;
+  const next = (file && (file.data || file)) as FolderData | null;
+  if (!next || !Array.isArray(next.folders) || typeof next.folderContents !== 'object') {
+    return { ok: false, messageKey: 'folder_import_invalid_format' };
+  }
+  return { ok: true, data: next };
+}
+
 /**
  * Merge an imported AI Studio file into a copy of the current data: imported
  * folders are appended, and only their buckets are read, so the file's

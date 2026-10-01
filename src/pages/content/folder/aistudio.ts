@@ -21,7 +21,7 @@ import {
 import { watchRouteChanges } from '../utils/routeWatcher';
 import type { FolderDataSession } from './FolderDataSession';
 import { FolderRepository, type FolderStoreChange } from './FolderRepository';
-import { mergeAIStudioImport } from './aistudioImport';
+import { mergeAIStudioImport, readAIStudioImportFile } from './aistudioImport';
 import {
   createInlineFolderEditor,
   createInlineMaterialIcon,
@@ -2964,13 +2964,12 @@ export class AIStudioFolderManager {
         try {
           const text = await f.text();
           if (this.dataSession !== session || this.accountScopeRequest !== scopeRequest) return;
-          const json = JSON.parse(text);
-          const next = (json && (json.data || json)) as FolderData;
-          if (!next || !Array.isArray(next.folders) || typeof next.folderContents !== 'object') {
-            alert(this.t('folder_import_invalid_format') || 'Invalid file format');
+          const file = readAIStudioImportFile(JSON.parse(text));
+          if (!file.ok) {
+            alert(this.t(file.messageKey) || 'Invalid file format');
             return;
           }
-          const merge = mergeAIStudioImport(this.data, next);
+          const merge = mergeAIStudioImport(this.data, file.data);
           const saved = await this.replaceData(merge.data);
           if (this.dataSession !== session || this.accountScopeRequest !== scopeRequest) return;
           if (!saved) return;
