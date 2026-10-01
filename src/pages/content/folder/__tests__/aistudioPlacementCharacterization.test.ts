@@ -346,6 +346,23 @@ describe('AI Studio import', () => {
     );
   });
 
+  it('drafts the merge on a copy that shares nothing with live data', async () => {
+    const manager = createManager({
+      folders: [folder('a')],
+      folderContents: { a: [prompt('p1')] },
+    });
+    manager.replaceData = vi.fn().mockResolvedValue(true);
+    const live = manager.data;
+    await importText(
+      manager,
+      JSON.stringify({ folders: [folder('a')], folderContents: { a: [prompt('p2')] } }),
+    );
+    const draft = imported(manager);
+    expect(draft.folders[0]).not.toBe(live.folders[0]);
+    expect(draft.folderContents.a[0]).not.toBe(live.folderContents.a[0]);
+    expect(live.folderContents.a).toEqual([prompt('p1')]);
+  });
+
   it('accepts bare folder data without the export envelope', async () => {
     const manager = createManager({ folders: [], folderContents: {} });
     manager.replaceData = vi.fn().mockResolvedValue(true);
