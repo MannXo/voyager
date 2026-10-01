@@ -224,9 +224,11 @@ export class TurnNavigator {
   private observe(): void {
     if (!document.body || this.observing) return;
     this.observing = true;
-    // A host may show or hide a whole thread without touching its turns.
+    // A host may show or hide a whole thread without touching its turns, or edit
+    // a prompt's text node in place; streamed reply text is outside every turn.
     const options: MutationObserverInit = {
       childList: true,
+      characterData: true,
       subtree: true,
       attributes: true,
       attributeOldValue: true,

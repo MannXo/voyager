@@ -412,6 +412,18 @@ describe('ChatGPT timeline', () => {
     expect(dots()[0].getAttribute('aria-pressed')).toBe('true');
   });
 
+  it('updates the dot when only the text node of a prompt changes', async () => {
+    const item = exchange('Hello');
+    await mount();
+
+    (bubble(item).firstChild as Text).data = 'Hello edited';
+    await settle();
+    expect(labels()).toEqual(['Hello edited']);
+
+    await longPress(dots()[0]);
+    expect(starred('chatgpt:conv:first')).toEqual(['Hello edited']);
+  });
+
   it('rebuilds for the next conversation, Projects routes included', async () => {
     exchange('Old conversation');
     await mount();
