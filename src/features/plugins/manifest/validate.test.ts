@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { validateManifest } from './validate';
+import { validateManifest, validateStyleCss } from './validate';
 
 const valid = {
   id: 'voyager.test',
@@ -234,26 +234,33 @@ describe('validateManifest', () => {
     }
   });
 
-  it('rejects executable schemes in URL-bearing setAttribute operations', () => {
-    for (const [name, value] of [
-      ['href', ' javascript:alert(1)'],
-      ['SRC', 'DATA:text/html,evil'],
-      ['formAction', ' vbscript:msgbox(1)'],
-      ['xlink:href', 'javascript:alert(1)'],
+  it('rejects setAttribute names outside the allowlist', () => {
+    for (const name of [
+      'href',
+      'SRC',
+      'srcdoc',
+      'formAction',
+      'xlink:href',
+      'data',
+      'class',
+      'id',
+      'target',
+      'Style',
+      ' data-gv-x',
     ]) {
       const result = validateManifest({
         ...valid,
         contributes: {
-          domOps: [{ op: 'setAttribute', target: 'a', name, value }],
+          domOps: [{ op: 'setAttribute', target: 'a', name, value: '#local' }],
         },
       });
-      expect(result.success).toBe(false);
+      expect(result.success, name).toBe(false);
       if (result.success) continue;
-      expect(result.error.some((e) => e.path === 'contributes.domOps[0].value')).toBe(true);
+      expect(result.error.some((e) => e.path === 'contributes.domOps[0].name')).toBe(true);
     }
   });
 
-  it('allows local style URLs and non-executable local attributes', () => {
+  it('allows local style URLs and allowlisted attributes', () => {
     const result = validateManifest({
       ...valid,
       contributes: {
@@ -263,21 +270,14 @@ describe('validateManifest', () => {
             target: 'body',
             styles: { background: 'url(/assets/background.png)' },
           },
-          { op: 'setAttribute', target: 'a', name: 'href', value: '#local-section' },
+          { op: 'setAttribute', target: 'a', name: 'data-gv-section', value: 'local' },
+          { op: 'setAttribute', target: 'a', name: 'aria-label', value: 'Section' },
+          { op: 'setAttribute', target: 'a', name: 'title', value: 'Section' },
+          { op: 'setAttribute', target: 'a', name: 'style', value: '--gv-gap: 4px' },
         ],
       },
     });
 
-    expect(result.success).toBe(true);
-  });
-
-  it('still allows normal setAttribute', () => {
-    const result = validateManifest({
-      ...valid,
-      contributes: {
-        domOps: [{ op: 'setAttribute', target: 'a', name: 'target', value: '_blank' }],
-      },
-    });
     expect(result.success).toBe(true);
   });
 
@@ -301,6 +301,203 @@ describe('validateManifest', () => {
       expect(result.success).toBe(false);
       if (result.success) continue;
       expect(result.error.some((e) => e.path === 'theme.brand')).toBe(true);
+    }
+  });
+});
+
+describe('validateManifest remote-resource checks on rendered values', () => {
+  const withSetting = (defaultValue: string, contributes: Record<string, unknown>) => ({
+    ...valid,
+    contributes: {
+      settings: { bg: { type: 'string', label: 'Background', default: defaultValue } },
+      ...contributes,
+    },
+  });
+
+  it('rejects a setting default that renders an external url() into CSS', () => {
+    const result = validateManifest(
+      withSetting('url(https://tracker.example/p.png)', {
+        styles: [{ css: 'body{background:{{bg}}}' }],
+      }),
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.some((e) => e.path === 'contributes.styles[0].css')).toBe(true);
+  });
+
+  it('rejects a setting default that renders @import into CSS', () => {
+    const result = validateManifest(
+      withSetting('@import "https://evil.example/x.css";', { styles: [{ css: '{{bg}}' }] }),
+    );
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a setting default that renders an external url() into setStyle', () => {
+    const result = validateManifest(
+      withSetting('url(//tracker.example/p.png)', {
+        domOps: [{ op: 'setStyle', target: 'body', styles: { background: '{{bg}}' } }],
+      }),
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.some((e) => e.path === 'contributes.domOps[0].styles.background')).toBe(
+      true,
+    );
+  });
+
+  it('rejects a setting default that renders an external URL string into a style attribute', () => {
+    const result = validateManifest(
+      withSetting('--u:"https://tracker.example/p.png"', {
+        domOps: [{ op: 'setAttribute', target: 'body', name: 'style', value: '{{bg}}' }],
+      }),
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.some((e) => e.path === 'contributes.domOps[0].value')).toBe(true);
+  });
+
+  it('reports a rendered-default issue at the raw domOps index', () => {
+    const result = validateManifest(
+      withSetting('url(https://tracker.example/p.png)', {
+        domOps: [
+          { op: 'bogus', target: 'body' },
+          { op: 'setStyle', target: 'body', styles: { background: '{{bg}}' } },
+        ],
+      }),
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.some((e) => e.path === 'contributes.domOps[1].styles.background')).toBe(
+      true,
+    );
+  });
+
+  it('keeps accepting self-contained setting defaults', () => {
+    const result = validateManifest(
+      withSetting('#fafafa', {
+        styles: [{ css: 'body{background:{{bg}}}' }],
+        domOps: [{ op: 'setStyle', target: 'body', styles: { '--gv-bg': '{{bg}}' } }],
+      }),
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it('sees through CSS escapes and comments', () => {
+    for (const css of [
+      'body{background:\\75 rl(https://t.example/p.gif)}',
+      'body{background:u\\rl(https://t.example/p.gif)}',
+      '@\\69mport "https://evil.example/x.css";',
+      'body{background:url(/**/https://t.example/p.gif)}',
+      // An escaped backslash must not swallow the next escape.
+      'body{background:url("\\\\\\\\evil.example/p.gif")}',
+      // `/*` is plain text inside url(): the URL is //*@evil.example/…
+      'body{background:url(//*@evil.example/*/p.gif)}',
+      // The URL parser drops tabs and resolves http:host against an https page.
+      'body{background:url("ht\\9 tps://t.example/p.gif")}',
+      'body{background:url(http:t.example/p.gif)}',
+    ]) {
+      const result = validateManifest({ ...valid, contributes: { styles: [{ css }] } });
+      expect(result.success, css).toBe(false);
+    }
+  });
+
+  it('rejects external strings inside image-set()', () => {
+    for (const css of [
+      'body{background-image:image-set("https://t.example/a.png" 1x)}',
+      "body{background-image:-webkit-image-set('//t.example/a.png' 1x)}",
+      'body{background-image:image-set(url(data:x) 1x, "https://t.example/a.png" 2x)}',
+    ]) {
+      const result = validateManifest({ ...valid, contributes: { styles: [{ css }] } });
+      expect(result.success, css).toBe(false);
+    }
+  });
+
+  it('keeps accepting SVG data URIs whose markup contains http namespaces', () => {
+    const css =
+      'body{background:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\'/>")}';
+    const result = validateManifest({ ...valid, contributes: { styles: [{ css }] } });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects any string that starts with an external URL, wherever it sits', () => {
+    for (const css of [
+      // The URL string comes first and reaches image-set() through var().
+      ':root{--u:"https://t.example/a.png"} body{background-image:image-set(var(--u) 1x)}',
+      'body{--w:"//t.example/a.png"}',
+      'body{content:"\\68 ttps://t.example/a.png"}',
+      '@property --u{syntax:"*";inherits:false;initial-value:" https://t.example/a.png"}',
+      // An escaped quote does not end the first string.
+      'a{--x:"\\""} b{--u:"https://t.example/a.png"}',
+      // A hex escape swallows one newline, so the first string is still open.
+      'a{--x:"\\41\n"} b{--u:"https://t.example/a.png"}',
+      // A quote inside an unquoted url( is read differently by the browser: fail closed.
+      "a{background:url(x'y)} b{background-image:image-set('https://t.example/a.png' 1x)} '",
+    ]) {
+      const result = validateManifest({ ...valid, contributes: { styles: [{ css }] } });
+      expect(result.success, css).toBe(false);
+    }
+  });
+
+  it('keeps accepting quoted local and data strings', () => {
+    for (const css of [
+      'body{background-image:image-set("a.png" 1x, "/b.png" 2x)}',
+      'body{font-family:"Inter", sans-serif}',
+      "body::after{content:'http'}",
+      'body{background:url(a.png)}/* "https://t.example" */',
+    ]) {
+      const result = validateManifest({ ...valid, contributes: { styles: [{ css }] } });
+      expect(result.success, css).toBe(true);
+    }
+  });
+
+  it('rejects a setStyle custom property holding an external URL string', () => {
+    // A plugin sheet could read it with -webkit-image-set(var(--w) 1x).
+    const result = validateManifest({
+      ...valid,
+      contributes: {
+        styles: [{ css: 'body{background-image:-webkit-image-set(var(--w) 1x)}' }],
+        domOps: [
+          { op: 'setStyle', target: 'body', styles: { '--w': '"https://t.example/a.png"' } },
+        ],
+      },
+    });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.some((e) => e.path === 'contributes.domOps[0].styles.--w')).toBe(true);
+  });
+
+  it('rejects external URLs in style and allowlisted attribute values', () => {
+    for (const [name, value] of [
+      ['style', 'background:url(https://tracker.example/p.png)'],
+      ['style', '--u:"https://tracker.example/p.png"'],
+      ['data-src', 'https://tracker.example/p.png'],
+      ['aria-label', '\\\\tracker.example/p'],
+    ]) {
+      const result = validateManifest({
+        ...valid,
+        contributes: { domOps: [{ op: 'setAttribute', target: 'img', name, value }] },
+      });
+      expect(result.success, `${name}=${value}`).toBe(false);
+      if (result.success) continue;
+      expect(result.error.some((e) => e.path === 'contributes.domOps[0].value')).toBe(true);
+    }
+  });
+
+  it('checks pathological stylesheets in linear time', () => {
+    // Just under MAX_STYLE_LENGTH, so the length check does not short-circuit.
+    const size = 199_000;
+    for (const css of [
+      '/*a'.repeat(size / 3),
+      'image-set('.repeat(size / 10),
+      `url(${' '.repeat(size)}`,
+      '\\"'.repeat(size / 2),
+      `"${'\t'.repeat(size)}`,
+      'h\tt'.repeat(size / 3),
+    ]) {
+      const started = performance.now();
+      const issues = validateStyleCss(css, 'css');
+      expect(performance.now() - started, css.slice(0, 12)).toBeLessThan(200);
+      expect(issues.some((issue) => issue.message.startsWith('exceeds'))).toBe(false);
     }
   });
 });

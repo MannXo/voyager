@@ -28,7 +28,12 @@ For architecture or distribution changes, read `src/features/plugins/README.md` 
 - Every injected class is `gv-` prefixed; plugin-scoped classes are
   `gv-plugin-<site>-<id>`. Nothing leaks to the host page unscoped.
 - No remote resources in CSS: no `@import`, no `http(s)://` or protocol-relative
-  `url()`. `data:` URIs are fine. `validateStyleCss` rejects the rest.
+  `url()`, and no string that starts with one (`image-set("https://…")`,
+  `--u:"//…"`), in the sheet, a `setStyle` value or a `style` attribute.
+  `data:` URIs are fine. `validateStyleCss` rejects the rest.
+- `setAttribute` names are an allowlist: `data-*`, `aria-*`, `title`, `role`,
+  `lang`, `dir`, `hidden`, `tabindex`, `draggable`, `spellcheck`, `translate`,
+  `style`. Values may not contain an external URL. Use `addClass` for classes.
 - Prefer a semantic key over a raw selector:
   `{ "kind": "semantic", "key": "userTurn" }`. Raw selectors are for what the
   vocabulary cannot name, and they are the first thing to break on a redesign.

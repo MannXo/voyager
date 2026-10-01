@@ -133,8 +133,9 @@ An official plugin is authored as files under its platform's directory:
 Manifests may keep tiny CSS inline with `{ "css": "..." }`, but the preferred
 authoring shape is `{ "file": "style.css" }` next to `plugin.json`. The bundled
 source and the published catalog file both resolve that CSS to inline text,
-reject remote-resource loads (`@import`, external `url()`), and normalize it
-before the runtime sees it. For
+reject remote-resource loads (`@import`, an external `url()` / `src()`, or any
+string that starts with an external URL, which `image-set()` or `var()` could
+fetch), and normalize it before the runtime sees it. For
 user settings, `{{settingKey}}` tokens can be used in CSS text or in
 `setAttribute` / `setStyle` DOM op values; a common pattern is for CSS files to
 use a normal custom property and for a `setStyle` op to set that variable from a
@@ -145,7 +146,13 @@ to use the site adapter's stable selector for one of the nine semantic keys in
 `sites/semanticKeys.ts`; a `site.json` may not invent a key outside that
 vocabulary. Supported ops: `addClass`,
 `setAttribute`, `setStyle`, `hide`, plus `native` (below). All are reversible.
-Classes must be `gv-` prefixed (content-script rule).
+Classes must be `gv-` prefixed (content-script rule). `setAttribute` names are an
+exact-match allowlist: `data-*`, `aria-*`, `title`, `role`, `lang`, `dir`,
+`hidden`, `tabindex`, `draggable`, `spellcheck`, `translate` and `style`; URL,
+`on*`, `class` and `id` attributes are refused because a selector can reach any
+page element. `setStyle` values and `style` attributes follow the CSS rule
+above, and attribute values may not contain an external URL. All of this is
+checked again after `{{setting}}` substitution (`manifest/sinkGuards.ts`).
 
 ## Primitives (`verbs/`) and the `native` op
 

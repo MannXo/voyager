@@ -224,23 +224,23 @@ describe('DeclarativeEngine', () => {
   });
 
   it('setAttribute restores the original (removing when previously absent)', () => {
-    document.body.innerHTML = '<a class="lnk" href="#a">x</a><a class="lnk2">y</a>';
+    document.body.innerHTML = '<a class="lnk" title="a">x</a><a class="lnk2">y</a>';
     const engine = new DeclarativeEngine({ doc: document });
     engine.mount(
       makeManifest({
         domOps: [
-          { op: 'setAttribute', target: cssRef('.lnk'), name: 'href', value: '#changed' },
-          { op: 'setAttribute', target: cssRef('.lnk2'), name: 'target', value: '_blank' },
+          { op: 'setAttribute', target: cssRef('.lnk'), name: 'title', value: 'changed' },
+          { op: 'setAttribute', target: cssRef('.lnk2'), name: 'data-gv-mode', value: 'wide' },
         ],
       }),
     );
 
-    expect(document.querySelector('.lnk')?.getAttribute('href')).toBe('#changed');
-    expect(document.querySelector('.lnk2')?.getAttribute('target')).toBe('_blank');
+    expect(document.querySelector('.lnk')?.getAttribute('title')).toBe('changed');
+    expect(document.querySelector('.lnk2')?.getAttribute('data-gv-mode')).toBe('wide');
 
     engine.unmount('test.plugin');
-    expect(document.querySelector('.lnk')?.getAttribute('href')).toBe('#a');
-    expect(document.querySelector('.lnk2')?.hasAttribute('target')).toBe(false);
+    expect(document.querySelector('.lnk')?.getAttribute('title')).toBe('a');
+    expect(document.querySelector('.lnk2')?.hasAttribute('data-gv-mode')).toBe(false);
   });
 
   it('setStyle restores the original inline value', () => {
@@ -371,32 +371,40 @@ describe('DeclarativeEngine', () => {
   });
 
   it('layers a shared attribute: unmounting the top restores the other plugin, then the original', () => {
-    document.body.innerHTML = '<a class="lnk" href="#orig">x</a>';
+    document.body.innerHTML = '<a class="lnk" data-gv-mode="orig">x</a>';
     const engine = new DeclarativeEngine({ doc: document });
     engine.mount(
       makeManifest(
-        { domOps: [{ op: 'setAttribute', target: cssRef('.lnk'), name: 'href', value: '#a' }] },
+        {
+          domOps: [
+            { op: 'setAttribute', target: cssRef('.lnk'), name: 'data-gv-mode', value: 'a' },
+          ],
+        },
         'plugin.a',
       ),
     );
     engine.mount(
       makeManifest(
-        { domOps: [{ op: 'setAttribute', target: cssRef('.lnk'), name: 'href', value: '#b' }] },
+        {
+          domOps: [
+            { op: 'setAttribute', target: cssRef('.lnk'), name: 'data-gv-mode', value: 'b' },
+          ],
+        },
         'plugin.b',
       ),
     );
 
     const lnk = document.querySelector('.lnk');
     // Last writer wins.
-    expect(lnk?.getAttribute('href')).toBe('#b');
+    expect(lnk?.getAttribute('data-gv-mode')).toBe('b');
 
     engine.unmount('plugin.b');
     // Falls back to the still-active plugin A — NOT the captured original.
-    expect(lnk?.getAttribute('href')).toBe('#a');
+    expect(lnk?.getAttribute('data-gv-mode')).toBe('a');
 
     engine.unmount('plugin.a');
     // Last release restores the true pre-plugin original.
-    expect(lnk?.getAttribute('href')).toBe('#orig');
+    expect(lnk?.getAttribute('data-gv-mode')).toBe('orig');
   });
 
   it('layers a shared inline style across plugins', () => {
@@ -484,5 +492,92 @@ describe('DeclarativeEngine', () => {
     expect(el.classList.contains('gv-plugin-added')).toBe(false);
     expect(el.getAttribute('data-orig')).toBe('yes');
     expect(el.style.color).toBe('blue');
+  });
+});
+
+describe('DeclarativeEngine rendered-value guards', () => {
+  const settings = { bg: { type: 'string' as const, label: 'Background', default: '#fff' } };
+
+  it('withholds CSS whose stored setting value would fetch a remote resource', () => {
+    const engine = new DeclarativeEngine({ doc: document });
+    engine.mount(makeManifest({ settings, styles: [{ css: 'body{background:{{bg}}}' }] }), {
+      bg: 'url(https://tracker.example/p.png)',
+    });
+    expect(document.getElementById('gv-plugin-style-test.plugin')).toBeNull();
+
+    engine.updateSettings('test.plugin', { bg: '#fafafa' });
+    expect(document.getElementById('gv-plugin-style-test.plugin')?.textContent).toContain(
+      'background:#fafafa',
+    );
+
+    engine.updateSettings('test.plugin', { bg: 'url(//tracker.example/p.png)' });
+    expect(document.getElementById('gv-plugin-style-test.plugin')?.textContent).toBe('');
+  });
+
+  it('skips a setStyle value whose stored setting would fetch a remote resource', () => {
+    document.body.innerHTML = '<div class="box"></div>';
+    const engine = new DeclarativeEngine({ doc: document });
+    engine.mount(
+      makeManifest({
+        settings,
+        domOps: [
+          {
+            op: 'setStyle',
+            target: cssRef('.box'),
+            styles: { background: '{{bg}}', color: 'red' },
+          },
+        ],
+      }),
+      { bg: 'url(https://tracker.example/p.png)' },
+    );
+    const box = document.querySelector<HTMLElement>('.box');
+    expect(box?.style.getPropertyValue('background')).toBe('');
+    expect(box?.style.getPropertyValue('color')).toBe('red');
+  });
+
+  it('skips a style attribute or custom property whose stored setting holds an external URL string', () => {
+    // A sheet reading image-set(var(--u) 1x) would fetch it, so the string may not land anywhere.
+    document.body.innerHTML = '<div class="box"></div>';
+    const engine = new DeclarativeEngine({ doc: document });
+    engine.mount(
+      makeManifest({
+        settings,
+        styles: [{ css: 'body{background-image:-webkit-image-set(var(--w) 1x)}' }],
+        domOps: [
+          { op: 'setStyle', target: cssRef('.box'), styles: { '--w': '{{bg}}' } },
+          { op: 'setAttribute', target: cssRef('.box'), name: 'style', value: '--u:{{bg}}' },
+        ],
+      }),
+      { bg: '"https://tracker.example/a.png"' },
+    );
+    const box = document.querySelector<HTMLElement>('.box');
+    expect(box?.style.getPropertyValue('--w')).toBe('');
+    expect(box?.hasAttribute('style')).toBe(false);
+  });
+
+  it('writes only allowlisted attribute names', () => {
+    document.body.innerHTML =
+      '<link class="sheet" rel="stylesheet" href="/local.css"><iframe class="frame"></iframe>' +
+      '<svg><image class="img"></image></svg><div class="box"></div>';
+    const engine = new DeclarativeEngine({ doc: document });
+    engine.mount(
+      makeManifest({
+        domOps: [
+          { op: 'setAttribute', target: cssRef('.sheet'), name: 'href', value: '/other.css' },
+          { op: 'setAttribute', target: cssRef('.frame'), name: 'srcdoc', value: '<b>x</b>' },
+          { op: 'setAttribute', target: cssRef('.img'), name: 'xlink:href', value: 'a.png' },
+          { op: 'setAttribute', target: cssRef('.box'), name: 'class', value: 'x' },
+          { op: 'setAttribute', target: cssRef('.box'), name: 'data-gv-wrap', value: 'true' },
+          { op: 'setAttribute', target: cssRef('.box'), name: 'aria-hidden', value: 'true' },
+        ],
+      }),
+    );
+    expect(document.querySelector('.sheet')?.getAttribute('href')).toBe('/local.css');
+    expect(document.querySelector('.frame')?.hasAttribute('srcdoc')).toBe(false);
+    expect(document.querySelector('.img')?.hasAttribute('xlink:href')).toBe(false);
+    const box = document.querySelector('.box');
+    expect(box?.getAttribute('class')).toBe('box');
+    expect(box?.getAttribute('data-gv-wrap')).toBe('true');
+    expect(box?.getAttribute('aria-hidden')).toBe('true');
   });
 });

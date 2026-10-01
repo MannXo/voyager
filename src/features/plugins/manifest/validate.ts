@@ -9,7 +9,7 @@
  */
 import type { Result } from '@/core/types/common';
 
-import { MAX_DOM_OPS, MAX_STYLE_LENGTH, PLUGIN_MANIFEST_FORMAT } from '../constants';
+import { MAX_DOM_OPS, PLUGIN_MANIFEST_FORMAT } from '../constants';
 import type {
   DomOperation,
   LocalizedSettingField,
@@ -25,6 +25,13 @@ import type {
   StyleContribution,
 } from '../types';
 import { PRIMITIVE_NAME_PATTERN } from '../verbs/contracts';
+import {
+  attributeIssue,
+  attributeNameIssue,
+  renderSettingTemplate,
+  styleSheetIssue,
+  styleValueIssue,
+} from './sinkGuards';
 
 const SETTING_TYPES = ['boolean', 'number', 'string', 'color', 'select'] as const;
 
@@ -158,46 +165,9 @@ function normalizeI18n(raw: unknown): Readonly<Record<string, PluginLocalization
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-/**
- * Reject CSS that can fetch remote resources — `@import` and external `url()`
- * (http(s):// or protocol-relative //). A declarative plugin is meant to be
- * self-contained data; remote fetches enable tracking/exfiltration and defeat
- * the "no remotely-hosted code/resources" posture. `data:` URIs stay allowed.
- */
-function cssHasExternalUrl(css: string): boolean {
-  return /url\(\s*['"]?\s*(?:https?:)?\/\//i.test(css);
-}
-
-function cssHasRemoteResource(css: string): boolean {
-  return /@import\b/i.test(css) || cssHasExternalUrl(css);
-}
-
 export function validateStyleCss(css: string, path: string): ManifestIssue[] {
-  const issues: ManifestIssue[] = [];
-  if (css.length > MAX_STYLE_LENGTH) {
-    issues.push({ path, message: `exceeds ${MAX_STYLE_LENGTH} chars` });
-  }
-  if (cssHasRemoteResource(css)) {
-    issues.push({
-      path,
-      message: 'must not use @import or external url() (remote-resource fetch)',
-    });
-  }
-  return issues;
-}
-
-/** Event-handler attributes (`onclick`, `onload`, …) inject executable code. */
-function isEventHandlerAttribute(name: string): boolean {
-  return /^on/i.test(name);
-}
-
-const URL_ATTRIBUTES = new Set(['href', 'src', 'action', 'formaction', 'xlink:href']);
-
-function hasExecutableAttributeUrl(name: string, value: string): boolean {
-  return (
-    URL_ATTRIBUTES.has(name.trim().toLowerCase()) &&
-    /^(?:javascript|data|vbscript):/i.test(value.trim())
-  );
+  const issue = styleSheetIssue(css);
+  return issue ? [{ path, message: issue }] : [];
 }
 
 function normalizeSelector(
@@ -306,19 +276,17 @@ function normalizeOp(raw: unknown, path: string, issues: ManifestIssue[]): DomOp
         });
         return null;
       }
-      if (isEventHandlerAttribute(raw.name)) {
-        issues.push({
-          path: `${path}.name`,
-          message: 'event-handler attributes (on*) are not allowed',
-        });
-        return null;
-      }
-      if (hasExecutableAttributeUrl(raw.name, raw.value)) {
-        issues.push({
-          path: `${path}.value`,
-          message: 'executable or data URLs are not allowed for URL attributes',
-        });
-        return null;
+      {
+        const nameIssue = attributeNameIssue(raw.name);
+        if (nameIssue) {
+          issues.push({ path: `${path}.name`, message: nameIssue });
+          return null;
+        }
+        const valueIssue = attributeIssue(raw.name, raw.value);
+        if (valueIssue) {
+          issues.push({ path: `${path}.value`, message: valueIssue });
+          return null;
+        }
       }
       return { op: 'setAttribute', target, name: raw.name, value: raw.value };
     case 'setStyle': {
@@ -332,11 +300,9 @@ function normalizeOp(raw: unknown, path: string, issues: ManifestIssue[]): DomOp
           issues.push({ path: `${path}.styles.${prop}`, message: 'value must be a string' });
           return null;
         }
-        if (cssHasExternalUrl(value)) {
-          issues.push({
-            path: `${path}.styles.${prop}`,
-            message: 'must not use an external url() (remote-resource fetch)',
-          });
+        const valueIssue = styleValueIssue(value);
+        if (valueIssue) {
+          issues.push({ path: `${path}.styles.${prop}`, message: valueIssue });
           return null;
         }
         styles[prop] = value;
@@ -358,46 +324,6 @@ function normalizeContributions(raw: unknown, issues: ManifestIssue[]): PluginCo
     domOps?: DomOperation[];
     settings?: SettingsSchema;
   } = {};
-
-  if (raw.styles !== undefined) {
-    if (!Array.isArray(raw.styles)) {
-      issues.push({ path: 'contributes.styles', message: 'must be an array' });
-    } else {
-      const styles: StyleContribution[] = [];
-      raw.styles.forEach((entry, index) => {
-        if (!isRecord(entry) || !isString(entry.css)) {
-          issues.push({ path: `contributes.styles[${index}].css`, message: 'required string' });
-          return;
-        }
-        const cssIssues = validateStyleCss(entry.css, `contributes.styles[${index}].css`);
-        if (cssIssues.length > 0) {
-          issues.push(...cssIssues);
-          return;
-        }
-        styles.push({
-          css: entry.css,
-          ...(isString(entry.source) ? { source: entry.source } : {}),
-        });
-      });
-      result.styles = styles;
-    }
-  }
-
-  if (raw.domOps !== undefined) {
-    if (!Array.isArray(raw.domOps)) {
-      issues.push({ path: 'contributes.domOps', message: 'must be an array' });
-    } else {
-      if (raw.domOps.length > MAX_DOM_OPS) {
-        issues.push({ path: 'contributes.domOps', message: `exceeds max of ${MAX_DOM_OPS}` });
-      }
-      const ops: DomOperation[] = [];
-      raw.domOps.slice(0, MAX_DOM_OPS).forEach((rawOp, index) => {
-        const op = normalizeOp(rawOp, `contributes.domOps[${index}]`, issues);
-        if (op) ops.push(op);
-      });
-      result.domOps = ops;
-    }
-  }
 
   if (raw.settings !== undefined) {
     if (!isRecord(raw.settings)) {
@@ -454,7 +380,86 @@ function normalizeContributions(raw: unknown, issues: ManifestIssue[]): PluginCo
     }
   }
 
+  // `{{setting}}` defaults are substituted after the literal checks, so a
+  // default can smuggle in what the literal text may not contain. Each sink is
+  // also checked rendered with the defaults; the engine repeats this for stored
+  // values before every write.
+  const schema = result.settings;
+  const renderDefaults = (value: string): string => renderSettingTemplate(value, schema, {});
+
+  if (raw.styles !== undefined) {
+    if (!Array.isArray(raw.styles)) {
+      issues.push({ path: 'contributes.styles', message: 'must be an array' });
+    } else {
+      const styles: StyleContribution[] = [];
+      raw.styles.forEach((entry, index) => {
+        if (!isRecord(entry) || !isString(entry.css)) {
+          issues.push({ path: `contributes.styles[${index}].css`, message: 'required string' });
+          return;
+        }
+        const cssIssues = validateStyleCss(entry.css, `contributes.styles[${index}].css`);
+        if (cssIssues.length > 0) {
+          issues.push(...cssIssues);
+          return;
+        }
+        const renderedIssue = styleSheetIssue(renderDefaults(entry.css));
+        if (renderedIssue) {
+          issues.push({ path: `contributes.styles[${index}].css`, message: renderedIssue });
+          return;
+        }
+        styles.push({
+          css: entry.css,
+          ...(isString(entry.source) ? { source: entry.source } : {}),
+        });
+      });
+      result.styles = styles;
+    }
+  }
+
+  if (raw.domOps !== undefined) {
+    if (!Array.isArray(raw.domOps)) {
+      issues.push({ path: 'contributes.domOps', message: 'must be an array' });
+    } else {
+      if (raw.domOps.length > MAX_DOM_OPS) {
+        issues.push({ path: 'contributes.domOps', message: `exceeds max of ${MAX_DOM_OPS}` });
+      }
+      const ops: DomOperation[] = [];
+      raw.domOps.slice(0, MAX_DOM_OPS).forEach((rawOp, index) => {
+        const path = `contributes.domOps[${index}]`;
+        const op = normalizeOp(rawOp, path, issues);
+        if (op && renderedOpIsSafe(op, renderDefaults, path, issues)) ops.push(op);
+      });
+      result.domOps = ops;
+    }
+  }
+
   return result;
+}
+
+/** Check an op's templated values rendered with the setting defaults. */
+function renderedOpIsSafe(
+  op: DomOperation,
+  render: (value: string) => string,
+  path: string,
+  issues: ManifestIssue[],
+): boolean {
+  if (op.op === 'setAttribute') {
+    const issue = attributeIssue(op.name, render(op.value));
+    if (issue) issues.push({ path: `${path}.value`, message: issue });
+    return issue === null;
+  }
+  if (op.op === 'setStyle') {
+    let safe = true;
+    for (const [prop, value] of Object.entries(op.styles)) {
+      const issue = styleValueIssue(render(value));
+      if (issue) {
+        issues.push({ path: `${path}.styles.${prop}`, message: issue });
+        safe = false;
+      }
+    }
+    return safe;
+  }
+  return true;
 }
 
 function normalizeStringList(

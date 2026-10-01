@@ -302,6 +302,31 @@ while an active plugin has domOps`).
   `src/features/plugins/verbs/turnNavigator.test.ts`
   (`validates selectors, the id pattern and the rail side`).
 
+## Declarative plugin output is checked after `{{setting}}` substitution
+
+- **Trap:** The validator checked only the literal manifest text, then the engine substituted
+  setting values from the manifest `default`, `chrome.storage` or a Drive restore into CSS,
+  `setStyle` and `setAttribute`. `default: "url(https://tracker/x.png)"` with `background:{{bg}}`
+  passed and fetched remotely. The literal regex also missed CSS escapes (`\75 rl(`, `@\69mport`),
+  `/*` that is plain text inside `url(…)`, and URLs the URL parser rewrites (`\\host`, `http:host`,
+  tabs in the scheme). Per-sink checks also missed composition: `:root{--u:"https://…"}` before
+  `image-set(var(--u) 1x)`, or a `setStyle` / `style`-attribute `--w:"https://…"` read by the plugin
+  sheet. And an attribute blocklist let any selector reach `<link rel=stylesheet href>`,
+  `<base href>`, SVG `<image href>` or `<iframe srcdoc>`, which all fetch.
+- **Rule:** Check the rendered value at every sink with `manifest/sinkGuards.ts`: the validator
+  renders styles and DOM ops with their defaults, and `declarativeEngine.ts` re-checks before each
+  write, withholding the whole stylesheet or skipping the attribute or style value. No CSS sink
+  (sheet, `setStyle` value, `style` attribute) may hold any string token that starts with an
+  external URL, whatever precedes it, so `var()` cannot carry one between sinks. Attribute names are
+  an exact-match allowlist (`data-*`, `aria-*`, a few inert globals, `style`), and allowed values may
+  not contain an external URL (`attr()` can read them). Scan like the CSS tokenizer and the URL
+  parser, in linear time, and fail closed on doubt. Any new sink or templated field goes through the
+  same guard.
+- **Guard:** `src/features/plugins/manifest/validate.test.ts`
+  (`validateManifest remote-resource checks on rendered values`),
+  `src/features/plugins/runtime/declarativeEngine.test.ts`
+  (`DeclarativeEngine rendered-value guards`).
+
 ## Plugin content-script registration must unregister only registered ids
 
 - **Trap:** The plugin sync batched the plugin, embedded-frame and Claude-usage script ids into
