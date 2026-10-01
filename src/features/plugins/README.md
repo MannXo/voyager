@@ -183,6 +183,30 @@ A user can run a declarative plugin they wrote without publishing it:
    ones do (D7). **Export** downloads the stored manifest with CSS inlined;
    **Remove** deletes it with its enable state and settings.
 
+**Describe a change in one sentence.** The same panel can write the manifest
+with any AI the user already uses, while Voyager itself stays offline:
+
+- `local/pluginAuthoringPrompt.ts` turns the sentence and a chosen site (the
+  active tab's when supported) into a self-contained prompt: the request, the
+  site's `matches`, the contract derived from the gate's own exports (`OP_KINDS`,
+  `REQUIRED_STRINGS`, the attribute allowlist), the site's semantic anchors, a
+  minimal example, and "reply with exactly one ```json block". Its tests run the
+  embedded example and every op template through `validateLocalManifest` for
+  every site, so the prompt cannot drift from the gate.
+- The user copies the prompt and sends it themselves. Voyager never sends it,
+  opens or deep-links an AI page, reads one back, or makes a request.
+- `local/pluginReply.ts` takes the pasted reply (bounded, linear fence scan;
+  one ```json or unlabeled block, or bare JSON; zero or several blocks are
+  refused by name) through `readLocalPluginFiles` and the gate without
+  installing it. The popup closes while the user is in their AI tab, so this
+  step works on its own in a fresh popup.
+- `local/pluginPreview.ts` describes the result in plain terms (sites, each
+  change, warnings for hidden content, raw selectors, a replaced version, a
+  site other than the one the prompt was written for, and a `theme` or `native`
+  op the prompt asked the AI to leave out). **Import** hands the exact previewed
+  object to `importLocalPlugin`, so it lands disabled and follows the re-import
+  rules above.
+
 The gate (`local/validateLocalManifest.ts`) is the remote catalog's gate plus
 local-only rules, never a weaker one: `validateManifest` with the CSS and
 rendered-sink guards, `tier: "declarative"` only, `native` ops only for primitives
