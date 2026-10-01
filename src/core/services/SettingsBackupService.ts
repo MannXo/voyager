@@ -2,6 +2,7 @@ import { type StorageKey, StorageKeys } from '@/core/types/common';
 import { DEFAULT_HIGHLIGHT_COLOR_PALETTE } from '@/core/types/highlight';
 import type { SettingsExportPayload } from '@/core/types/sync';
 import { EXTENSION_VERSION } from '@/core/utils/version';
+import { WATERMARK_STORAGE_KEYS } from '@/core/utils/watermarkSettings';
 
 export type BackupableSyncSettings = Record<string, unknown>;
 export type SettingsRestoreMode = 'merge' | 'overwrite';
@@ -507,6 +508,12 @@ export async function restoreBackupableSyncSettings(
   mode: SettingsRestoreMode = 'overwrite',
 ): Promise<BackupableSyncSettings> {
   const filtered = filterBackupableSyncSettings(settings);
+  // A backup without a watermark choice exports null. Restoring it must not
+  // erase a saved choice, such as the one kept for installs that relied on the
+  // old enabled default.
+  for (const key of WATERMARK_STORAGE_KEYS) {
+    if (typeof filtered[key] !== 'boolean') delete filtered[key];
+  }
   if (Object.keys(filtered).length === 0) {
     return filtered;
   }

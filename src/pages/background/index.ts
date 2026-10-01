@@ -105,6 +105,7 @@ import {
   isAllowedSyncContentSender,
   isHandledBackgroundRuntimeMessage,
 } from './runtimeMessageRouting';
+import { registerWatermarkDefaultMigrationOnInstall } from './watermarkDefaultMigration';
 import { injectWatermarkInterceptorIntoOpenTabs } from './watermarkOpenTabs';
 
 const CUSTOM_CONTENT_SCRIPT_ID = 'gv-custom-content-script';
@@ -142,6 +143,7 @@ const responseCompleteNotificationTargets = new Map<
 let nativeOpenConversationPort: ReturnType<typeof browser.runtime.connectNative> | null = null;
 const remoteAnnouncementService = startRemoteAnnouncementBackgroundService();
 registerWelcomePageOnInstall();
+registerWatermarkDefaultMigrationOnInstall();
 // Remote plugin catalog: the only network writer. Content scripts and the popup
 // only ever ask; this decides (interval, switch, backoff, single flight).
 const hostCatalogRefresher = new HostCatalogRefresher();

@@ -132,3 +132,20 @@ native media handoffs.
   manifest loads the interceptor first in `MAIN` world. A live Safari check must also confirm that
   the bridge is installed and enabled and that the downloaded image has full-size pixel dimensions,
   not merely that a PNG file exists.
+
+## Changing the watermark default must not flip untouched existing installs
+
+- **Trap:** Turning watermark removal off by default would also turn it off for existing users who
+  never saved a watermark choice. Their storage has no split key and no legacy key, which is
+  indistinguishable from a fresh install, so the new default silently changed their behavior after
+  an update. A settings backup exported without a choice also carries `null` for the three keys, and
+  restoring it erased a saved choice.
+- **Rule:** On `runtime.onInstalled` with reason `update` from a release at or before
+  `LAST_VERSION_WITH_WATERMARK_REMOVAL_ON_BY_DEFAULT` (or with no readable previous version), save
+  both split keys as `true` only when no watermark key holds a boolean. The saved keys are the
+  one-time marker, so fresh installs and later updates stay on the off default. Settings restore
+  skips non-boolean watermark values so a backup without a choice cannot erase one.
+- **Guard:** `src/pages/background/__tests__/watermarkDefaultMigration.test.ts` covers updated,
+  fresh, later-release, saved-preference, rerun, and unknown-version installs.
+  `src/core/services/__tests__/SettingsBackupService.test.ts`
+  (`keeps a saved watermark choice when %s-restoring a backup without one`) covers restore.

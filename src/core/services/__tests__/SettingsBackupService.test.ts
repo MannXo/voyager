@@ -105,6 +105,62 @@ describe('SettingsBackupService', () => {
     expect(resolveWatermarkSettings(payload.data)).toEqual({ download: true, preview: true });
   });
 
+  it.each(['merge', 'overwrite'] as const)(
+    'keeps a saved watermark choice when %s-restoring a backup without one',
+    async (mode) => {
+      const unsetDevice = {
+        get: vi
+          .fn()
+          .mockImplementation(async (defaults: Record<string, unknown>) => ({ ...defaults })),
+        set: vi.fn(),
+      };
+      const payload = await exportBackupableSyncSettings(unsetDevice);
+      expect(payload.data[StorageKeys.WATERMARK_DOWNLOAD_ENABLED]).toBeNull();
+
+      const state: Record<string, unknown> = {
+        [StorageKeys.WATERMARK_DOWNLOAD_ENABLED]: true,
+        [StorageKeys.WATERMARK_PREVIEW_ENABLED]: true,
+      };
+      const savedDevice = {
+        get: vi.fn().mockImplementation(async (defaults: Record<string, unknown>) => ({
+          ...defaults,
+          ...state,
+        })),
+        set: vi.fn().mockImplementation(async (items: Record<string, unknown>) => {
+          Object.assign(state, items);
+        }),
+      };
+      await restoreBackupableSyncSettings(payload.data, savedDevice, mode);
+
+      expect(resolveWatermarkSettings(state)).toEqual({ download: true, preview: true });
+      expect(state[StorageKeys.CHAT_WIDTH]).toBe(70);
+    },
+  );
+
+  it('restores an explicit watermark choice from a backup', async () => {
+    const state: Record<string, unknown> = {
+      [StorageKeys.WATERMARK_DOWNLOAD_ENABLED]: true,
+      [StorageKeys.WATERMARK_PREVIEW_ENABLED]: true,
+    };
+    const storageArea = {
+      get: vi.fn(),
+      set: vi.fn().mockImplementation(async (items: Record<string, unknown>) => {
+        Object.assign(state, items);
+      }),
+    };
+
+    await restoreBackupableSyncSettings(
+      {
+        [StorageKeys.WATERMARK_REMOVER_ENABLED]: null,
+        [StorageKeys.WATERMARK_DOWNLOAD_ENABLED]: false,
+        [StorageKeys.WATERMARK_PREVIEW_ENABLED]: false,
+      },
+      storageArea,
+    );
+
+    expect(resolveWatermarkSettings(state)).toEqual({ download: false, preview: false });
+  });
+
   it('restores only whitelisted settings keys', async () => {
     const storageArea = {
       get: vi.fn(),

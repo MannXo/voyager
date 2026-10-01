@@ -11,8 +11,9 @@
  *     old default of true for existing partially configured installations.
  *   - Otherwise, the legacy key controls both: legacy=true → both on (preserves
  *     pre-split behavior); legacy=false → both off.
- *   - No saved preference (new install or untouched existing install): both off.
- *     Users can opt in to either path from the popup.
+ *   - No saved preference: both off. Users can opt in to either path from the
+ *     popup. Installs updated from a release with the old on default get both
+ *     split keys saved as true (see `watermarkDefaultMigration.ts`).
  */
 
 export interface WatermarkSettings {
@@ -27,6 +28,17 @@ export const WATERMARK_STORAGE_KEYS = [
 ] as const;
 
 export const WATERMARK_DEFAULT: WatermarkSettings = { download: false, preview: false };
+
+/**
+ * Whether the record holds a saved watermark choice. Without one,
+ * `resolveWatermarkSettings` falls back to `WATERMARK_DEFAULT`.
+ */
+export function hasSavedWatermarkPreference(
+  record: Record<string, unknown> | null | undefined,
+): boolean {
+  if (!record) return false;
+  return WATERMARK_STORAGE_KEYS.some((key) => typeof record[key] === 'boolean');
+}
 
 export function resolveWatermarkSettings(
   record: Record<string, unknown> | null | undefined,
