@@ -8,6 +8,8 @@ import {
   chatgptCollectTurnContainers,
   isChatGptResponseGenerating,
 } from '@/pages/content/export/adapter/chatgpt';
+import { hasRenderedThread } from '@/pages/content/export/adapter/chatgptThread';
+import { readChatGptThreadTurns } from '@/pages/content/export/adapter/chatgptThreadExport';
 import { resolveExportAdapter } from '@/pages/content/export/adapter/platformAdapters';
 import { watchRouteChanges } from '@/pages/content/utils/routeWatcher';
 import { getCurrentLanguage } from '@/utils/i18n';
@@ -83,6 +85,8 @@ export async function collectTemporaryChatTurns(
   expectedUrl = location.href,
 ): Promise<ChatTurn[]> {
   DOMContentExtractor.setExportAdapter(resolveExportAdapter());
+  // The current thread is virtualized: read it whole with the export's crawl.
+  if (hasRenderedThread()) return readChatGptThreadTurns({ signal, expectedUrl });
   const snapshot = chatgptCollectTurnContainers();
   if (isChatGptResponseGenerating() || snapshot.at(-1)?.role === 'user') {
     throw new Error('chatgpt_export_response_still_generating');

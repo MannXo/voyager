@@ -7,6 +7,7 @@ import {
   buildChatGptExportTurns,
   collectChatGptTurnContainers,
   prepareChatGptExport,
+  readChatGptThreadTurns,
   resetChatGptThreadSnapshot,
   resolveChatGptExportRoles,
 } from '../chatgptThreadExport';
@@ -555,6 +556,60 @@ describe('ChatGPT selection export on the live thread', () => {
     const roles = await resolveChatGptExportRoles(new Set(['turn-02:u', 'turn-02:a']));
 
     expect(Object.fromEntries(roles)).toEqual({ 'turn-02:u': 'user', 'turn-02:a': 'assistant' });
+  });
+});
+
+describe('readChatGptThreadTurns', () => {
+  it('reads the whole thread as export turns', async () => {
+    mountThreadFixture({ turns: makeTurns(6) });
+
+    const turns = await readChatGptThreadTurns({ timing: FAST });
+
+    expect(turns.map((turn) => [turn.user, turn.assistant])).toEqual(
+      makeTurns(6).map((turn) => [turn.user, turn.assistant]),
+    );
+    expect(turns[5]?.assistantContent?.html).toContain('Answer 6');
+  });
+
+  it('refuses a thread whose last prompt has no reply yet', async () => {
+    mountThreadFixture({
+      turns: [...makeTurns(2), { key: 'turn-03', height: 400, user: 'Unanswered prompt' }],
+    });
+
+    await expect(readChatGptThreadTurns({ timing: FAST })).rejects.toThrow(
+      'chatgpt_export_response_still_generating',
+    );
+  });
+
+  it('fails when a turn it read changes before the crawl returns', async () => {
+    const turns = makeTurns(4);
+    const fixture = mountThreadFixture({ turns });
+    const onProgress = (count: number) => {
+      if (count === turns.length) {
+        fixture.replaceTurn('turn-04', { replyId: 'turn-04-b', assistant: 'Answer 4, branch 2' });
+      }
+    };
+
+    await expect(readChatGptThreadTurns({ timing: FAST, onProgress })).rejects.toThrow(
+      'chatgpt_export_conversation_changed',
+    );
+  });
+
+  it('fails when a turn it read switches branch mid-crawl and is never revisited', async () => {
+    const fixture = mountThreadFixture({ turns: makeTurns(20, 300), overscan: 0 });
+    let switched = '';
+    const onProgress = (count: number) => {
+      if (switched || count !== 5) return;
+      const read = new Set(makeTurns(count).map((turn) => turn.key));
+      const tail = makeTurns(count).at(-1)?.key;
+      switched = fixture.mountedKeys().find((key) => read.has(key) && key !== tail) ?? '';
+      if (switched) fixture.replaceTurn(switched, { replyId: `${switched}-b` });
+    };
+
+    await expect(readChatGptThreadTurns({ timing: FAST, onProgress })).rejects.toThrow(
+      'chatgpt_export_conversation_changed',
+    );
+    expect(switched).not.toBe('');
   });
 });
 

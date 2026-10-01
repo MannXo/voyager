@@ -15,6 +15,7 @@ import {
   findAssistantReply,
   findUserBubble,
   hasRenderedThread,
+  isChatGptThreadGenerating,
   mountedTurnItems,
   readTurnKey,
   resolveVisibleConversationRoot,
@@ -192,10 +193,15 @@ export async function buildChatGptExportTurns(
 ): Promise<ChatTurn[]> {
   if (!snapshot) return buildChatGptTurnsForSelection(selectedIds, options);
   assertActive(options);
+  return turnsFromMessages(
+    crawledMessages(selectedIds).filter((message) => selectedIds.has(message.id)),
+  );
+}
+
+function turnsFromMessages(messages: readonly ChatGptThreadMessage[]): ChatTurn[] {
   const turns: ChatTurn[] = [];
   const byKey = new Map<string, ChatTurn>();
-  for (const message of crawledMessages(selectedIds)) {
-    if (!selectedIds.has(message.id)) continue;
+  for (const message of messages) {
     let turn = byKey.get(message.turnKey);
     if (!turn) {
       turn = { user: '', assistant: '', starred: false, omitEmptySections: true };
@@ -225,4 +231,29 @@ export async function resolveChatGptExportRoles(
     if (selectedIds.has(message.id)) roles.set(message.id, message.role);
   }
   return roles;
+}
+
+/**
+ * Read the whole current thread as export turns, for a caller that takes the
+ * entire conversation at once (the temporary-chat handoff). Throws when the
+ * crawl cannot prove it complete, when the last prompt has no reply yet, or
+ * when the thread changed by the time the crawl returned.
+ */
+export async function readChatGptThreadTurns(
+  options: ChatGptCrawlOptions = {},
+): Promise<ChatTurn[]> {
+  const versions = watchThreadVersions();
+  try {
+    const messages = await crawlChatGptThread(options);
+    if (messages.at(-1)?.role === 'user') {
+      throw new Error('chatgpt_export_response_still_generating');
+    }
+    versions.adopt(messages);
+    if (isChatGptThreadGenerating(resolveVisibleConversationRoot(document)) || versions.changed()) {
+      throw new Error('chatgpt_export_conversation_changed');
+    }
+    return turnsFromMessages(messages);
+  } finally {
+    versions.stop();
+  }
 }
