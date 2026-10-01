@@ -286,6 +286,7 @@ export function PluginManager({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [deniedId, setDeniedId] = useState<string | null>(null);
   const [unsupportedId, setUnsupportedId] = useState<string | null>(null);
+  const [changedId, setChangedId] = useState<string | null>(null);
   const [missingPermissionIds, setMissingPermissionIds] = useState<Set<string>>(new Set());
   const [catalogSettings, setCatalogSettings] = useState<PluginCatalogSettings>(
     DEFAULT_PLUGIN_CATALOG_SETTINGS,
@@ -463,11 +464,13 @@ export function PluginManager({
     async (plugin: PluginManifest, next: boolean) => {
       setDeniedId(null);
       setUnsupportedId(null);
+      setChangedId(null);
       const outcome = await setPluginEnabledWithSiteAccess(plugin, next, activeUrl, (enabled) =>
         setEnabledMap((prev) => ({ ...prev, [plugin.id]: enabled })),
       );
       if (outcome === 'denied') setDeniedId(plugin.id);
       else if (outcome === 'unsupported') setUnsupportedId(plugin.id);
+      else if (outcome === 'changed') setChangedId(plugin.id);
     },
     [activeUrl],
   );
@@ -851,6 +854,12 @@ export function PluginManager({
                   {unsupportedId === plugin.id && (
                     <p className="mt-1 text-[11px] text-red-500">
                       {t('pluginUnsupportedPlatform')}
+                    </p>
+                  )}
+
+                  {changedId === plugin.id && (
+                    <p className="mt-1 text-[11px] text-red-500">
+                      {t('localPluginChangedBeforeEnable')}
                     </p>
                   )}
                 </div>

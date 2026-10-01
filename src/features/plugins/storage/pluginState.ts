@@ -101,13 +101,20 @@ export async function readPluginStateStrict(
   return sanitizePluginState(result?.[KEY]);
 }
 
+/** The state map with one plugin switched on or off, keeping its settings. */
+export function withPluginEnabled(
+  state: PluginStateMap,
+  id: string,
+  enabled: boolean,
+  now: number,
+): PluginStateMap {
+  const previous = state[id];
+  return { ...state, [id]: { ...previous, enabled, installedAt: previous?.installedAt ?? now } };
+}
+
 /** The state map with one plugin switched off, keeping its settings. */
 export function withPluginDisabled(state: PluginStateMap, id: string, now: number): PluginStateMap {
-  const previous = state[id];
-  return {
-    ...state,
-    [id]: { ...previous, enabled: false, installedAt: previous?.installedAt ?? now },
-  };
+  return withPluginEnabled(state, id, false, now);
 }
 
 export async function loadPluginState(): Promise<PluginStateMap> {
@@ -197,13 +204,9 @@ async function updatePluginState(
 }
 
 export async function setPluginEnabled(id: string, enabled: boolean): Promise<void> {
-  await updatePluginState('setPluginEnabled', { id }, (current) => {
-    const previous = current[id];
-    return {
-      ...current,
-      [id]: { ...previous, enabled, installedAt: previous?.installedAt ?? Date.now() },
-    };
-  });
+  await updatePluginState('setPluginEnabled', { id }, (current) =>
+    withPluginEnabled(current, id, enabled, Date.now()),
+  );
 }
 
 /** Persist a single setting value for a plugin (preserving enabled state + other settings). */

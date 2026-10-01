@@ -2717,6 +2717,10 @@
     "message": "현재 버전의 Voyager는 이 플러그인을 더 이상 허용하지 않아 실행되지 않습니다:",
     "description": "Popup plugin page: a stored local plugin fails this build's checks; issues follow"
   },
+  "localPluginChangedBeforeEnable": {
+    "message": "켜는 도중 이 플러그인을 다시 가져와서 꺼진 상태로 유지됩니다. 새 버전을 확인한 뒤 다시 켜 주세요.",
+    "description": "A local plugin was re-imported while the user was enabling it, so it was not enabled"
+  },
   "localPluginInspectSites": {
     "message": "사이트",
     "description": "Inspect view: sites the plugin runs on"

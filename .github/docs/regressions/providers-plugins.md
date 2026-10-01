@@ -519,3 +519,16 @@ say`), `src/pages/content/platformTheme/__tests__/platformTheme.test.ts`.
   was restored.
 - **Guard:** `src/pages/popup/components/__tests__/CloudSyncSettingsRestore.test.tsx`
   (`names the restored and the failed parts when a later write fails`).
+
+## An enable started before a re-import must not switch on the new content
+
+- **Trap:** The popup's enable awaited `permissions.contains` (or the permission prompt) and then
+  enabled the plugin by id. If another popup re-imported the same id meanwhile, the atomic publish
+  stored the new content disabled, and the old enable switched that unreviewed content on. The
+  version alone cannot tell them apart: a re-import can keep the version and change the CSS.
+- **Rule:** Enabling a `local.*` plugin goes through `enableLocalPluginIfUnchanged`
+  (`local/localPluginStore.ts`), which, under the plugin-storage lock, re-validates the stored
+  record and enables only if it equals the manifest the user saw; otherwise it writes nothing and
+  `setPluginEnabledWithSiteAccess` reports `changed`, which the popup explains.
+- **Guard:** `src/pages/popup/utils/__tests__/pluginEnablement.test.ts`
+  (`refuses when the same id was re-imported with other content while the enable was pending`).

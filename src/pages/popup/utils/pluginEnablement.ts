@@ -5,6 +5,8 @@ import {
   supportsDynamicContentScriptRegistration,
   supportsOptionalHostPermissions,
 } from '@/core/utils/browser';
+import { isLocalPluginId } from '@/features/plugins/local/localPluginId';
+import { enableLocalPluginIfUnchanged } from '@/features/plugins/local/localPluginStore';
 import { PLUGIN_CONTENT_SCRIPT_SYNC_MESSAGE } from '@/features/plugins/runtime/messages';
 import { pluginToOriginPatternsForActiveUrl } from '@/features/plugins/runtime/siteRegistration';
 import { setPluginEnabled } from '@/features/plugins/storage/pluginState';
@@ -62,8 +64,20 @@ export async function hasPluginSiteAccess(
  * `enabled` / `disabled`: the requested state was saved. `denied`: the user
  * refused (or the browser failed) the host-access prompt. `unsupported`: this
  * browser cannot grant or inject the access the plugin needs on this site.
+ * `changed`: a local plugin's content changed (re-imported elsewhere) after the
+ * user saw it, so it stays off until they review the new content.
  */
-export type PluginToggleOutcome = 'enabled' | 'disabled' | 'denied' | 'unsupported';
+export type PluginToggleOutcome = 'enabled' | 'disabled' | 'denied' | 'unsupported' | 'changed';
+
+/**
+ * Persist the enable state. A local plugin is switched on only while its
+ * stored content is still the manifest the user saw; false when refused.
+ */
+async function persistEnabled(plugin: PluginManifest, enabled: boolean): Promise<boolean> {
+  if (enabled && isLocalPluginId(plugin.id)) return enableLocalPluginIfUnchanged(plugin);
+  await setPluginEnabled(plugin.id, enabled);
+  return true;
+}
 
 /**
  * Turn a plugin on or off from a popup gesture, requesting the optional host
@@ -97,7 +111,10 @@ export async function setPluginEnabledWithSiteAccess(
             // successful grant can be completed by the background even if
             // the popup is closed before permissions.request resolves.
             onEnabledChange(true);
-            await setPluginEnabled(plugin.id, true);
+            if (!(await persistEnabled(plugin, true))) {
+              onEnabledChange(false);
+              return 'changed';
+            }
             const granted = await browser.permissions.request({ origins });
             if (!granted) {
               onEnabledChange(false);
@@ -122,6 +139,9 @@ export async function setPluginEnabledWithSiteAccess(
     }
   }
   onEnabledChange(next);
-  await setPluginEnabled(plugin.id, next);
+  if (!(await persistEnabled(plugin, next))) {
+    onEnabledChange(false);
+    return 'changed';
+  }
   return next ? 'enabled' : 'disabled';
 }

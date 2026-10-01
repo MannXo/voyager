@@ -2717,6 +2717,10 @@
     "message": "Cette version de Voyager n'accepte plus cette extension ; elle ne s'exécutera pas :",
     "description": "Popup plugin page: a stored local plugin fails this build's checks; issues follow"
   },
+  "localPluginChangedBeforeEnable": {
+    "message": "Ce plugin a été réimporté pendant son activation : il reste désactivé. Vérifiez la nouvelle version, puis réactivez-le.",
+    "description": "A local plugin was re-imported while the user was enabling it, so it was not enabled"
+  },
   "localPluginInspectSites": {
     "message": "Sites",
     "description": "Inspect view: sites the plugin runs on"

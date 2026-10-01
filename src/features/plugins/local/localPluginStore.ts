@@ -27,9 +27,12 @@ import {
   type PluginStateEntry,
   readPluginStateStrict,
   withPluginDisabled,
+  withPluginEnabled,
 } from '../storage/pluginState';
 import { withPluginStorageLock } from '../storage/pluginStorageLock';
+import type { PluginManifest } from '../types';
 import { isLocalPluginId } from './localPluginId';
+import { validateLocalManifest } from './validateLocalManifest';
 
 export interface LocalPluginRecord {
   /** Raw manifest as imported, CSS inlined; validated again on every read. */
@@ -154,6 +157,43 @@ export async function removeLocalPluginRecord(id: string): Promise<void> {
     delete nextState[id];
     await local.set({ [KEY]: next, [StorageKeys.PLUGINS_STATE]: nextState });
   });
+}
+
+/**
+ * Switch a local plugin on only while its stored content is exactly the
+ * manifest the user reviewed (`seen`, as `LocalPluginSource` listed it). A
+ * re-import in another popup between that review and this write publishes the
+ * new content disabled; an enable started before it must not switch the new
+ * content on, and a version check would miss a same-version edit. Returns
+ * false, writing nothing, when the content changed or is gone, or storage
+ * failed.
+ */
+export async function enableLocalPluginIfUnchanged(
+  seen: PluginManifest,
+  now: number = Date.now(),
+): Promise<boolean> {
+  const local = localArea();
+  if (!local) return false;
+  try {
+    return await withPluginStorageLock(async () => {
+      const record = sanitizeLocalPluginRecords(await readStoredMapStrict(local))[seen.id];
+      const current = record ? validateLocalManifest(record.manifest) : null;
+      if (!current?.success || JSON.stringify(current.data.manifest) !== JSON.stringify(seen)) {
+        logger.warn('Local plugin changed since it was reviewed; not enabling', { id: seen.id });
+        return false;
+      }
+      const state = await readPluginStateStrict(local);
+      await local.set({
+        [StorageKeys.PLUGINS_STATE]: withPluginEnabled(state, seen.id, true, now),
+      });
+      return true;
+    });
+  } catch (error) {
+    if (!isExtensionContextInvalidatedError(error)) {
+      logger.warn('enableLocalPluginIfUnchanged failed', { id: seen.id, error: String(error) });
+    }
+    return false;
+  }
 }
 
 /** Subscribe to imports, updates and removals of local plugins. */

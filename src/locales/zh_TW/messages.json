@@ -2717,6 +2717,10 @@
     "message": "目前版本的 Voyager 不再接受此外掛，因此它不會執行：",
     "description": "Popup plugin page: a stored local plugin fails this build's checks; issues follow"
   },
+  "localPluginChangedBeforeEnable": {
+    "message": "開啟過程中這個外掛被重新匯入了，所以它維持關閉。請先檢查新版本，再重新開啟。",
+    "description": "A local plugin was re-imported while the user was enabling it, so it was not enabled"
+  },
   "localPluginInspectSites": {
     "message": "網站",
     "description": "Inspect view: sites the plugin runs on"
