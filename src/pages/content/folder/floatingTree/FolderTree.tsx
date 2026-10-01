@@ -14,6 +14,7 @@ import { IconButton, InlineForm } from './controls';
 import {
   type ConversationDragData,
   type TreeProps,
+  acceptsDrag,
   canCreateChildAtDepth,
   cls,
   getFolderChildren,
@@ -23,6 +24,51 @@ import {
 
 const DROP_TARGET = cls('drop-target');
 const DRAGGING = cls('conv--dragging');
+
+type DropEvent = DragEvent & { currentTarget: HTMLElement };
+
+/** Dragover, dragleave and drop handlers that file a conversation into `folderId`. */
+function dropHandlers(tree: TreeProps, folderId: string) {
+  const { actions } = tree;
+  return {
+    // HTML5 quirk: `dataTransfer.getData(...)` returns "" during dragover for
+    // security, so we can't read the payload here — we can only inspect the
+    // MIME-type list via `dataTransfer.types`. If our payload type is present
+    // we accept the drop *visually*, and the drop handler re-reads and validates
+    // the full payload (including rejecting same-folder drops).
+    onDragOver: (e: DropEvent) => {
+      const types = e.dataTransfer?.types;
+      if (!types || !acceptsDrag(actions, Array.from(types))) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      e.currentTarget.classList.add(DROP_TARGET);
+    },
+    onDragLeave: (e: DropEvent) => e.currentTarget.classList.remove(DROP_TARGET),
+    onDrop: (e: DropEvent) => {
+      e.currentTarget.classList.remove(DROP_TARGET);
+      if (actions.onDrop) {
+        e.preventDefault();
+        e.stopPropagation();
+        actions.onDrop(e, folderId);
+        return;
+      }
+      const payload = readConversationDragData(e);
+      if (!payload || payload.sourceFolderId === folderId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      actions.onMoveConversation?.(payload.conversationId, payload.sourceFolderId, folderId);
+    },
+  };
+}
+
+function orderConversations(
+  tree: TreeProps,
+  conversations: readonly ConversationReference[],
+): readonly ConversationReference[] {
+  return tree.site?.conversationOrder === 'stored'
+    ? conversations
+    : sortConversationsByPriority(conversations, tree.conversationSortMode);
+}
 
 function EmptyState() {
   return (
@@ -71,9 +117,11 @@ type ConversationRowProps = {
 function ConversationRow({ tree, conv, folderId, depth }: ConversationRowProps) {
   const untitled = t('floatingPanelUntitled');
   const remove = () => tree.actions.onRemoveConversation?.(folderId, conv.conversationId);
+  const active =
+    !!tree.site?.activeConversationId && tree.site.activeConversationId === conv.conversationId;
   return (
     <div
-      class={cls('conv')}
+      class={active ? `${cls('conv')} ${cls('conv--active')}` : cls('conv')}
       style={{ paddingInlineStart: `${24 + depth * 12}px` }}
       data-folder-id={folderId}
       data-conversation-id={conv.conversationId}
@@ -97,6 +145,7 @@ function ConversationRow({ tree, conv, folderId, depth }: ConversationRowProps) 
         type="button"
         class={cls('conv-title')}
         title={conv.title || ''}
+        aria-current={active ? 'page' : undefined}
         onClick={(e) => {
           e.stopPropagation();
           tree.actions.onNavigate?.(conv);
@@ -137,7 +186,7 @@ function FolderNode({ tree, folder, depth }: FolderNodeProps) {
   const { data, inlineEditor, apply, actions } = tree;
   const expanded = tree.isExpanded(folder);
   const childConversations = ownBucket(data.folderContents, folder.id) ?? [];
-  const childFolders = getFolderChildren(data, folder.id);
+  const childFolders = getFolderChildren(data, folder.id, tree.site?.folderOrder);
   const renaming = inlineEditor?.mode === 'rename' && inlineEditor.folderId === folder.id;
   const creatingChild = inlineEditor?.mode === 'create' && inlineEditor.parentId === folder.id;
   const toggle = () => apply({ expand: { folderId: folder.id, expanded: !expanded } });
@@ -151,27 +200,7 @@ function FolderNode({ tree, folder, depth }: FolderNodeProps) {
     toggle();
   };
 
-  // HTML5 quirk: `dataTransfer.getData(...)` returns "" during dragover for
-  // security, so we can't read the payload here — we can only inspect the
-  // MIME-type list via `dataTransfer.types`. If our payload type is present
-  // we accept the drop *visually*, and the drop handler re-reads and validates
-  // the full payload (including rejecting same-folder drops).
-  const onDragOver = (e: DragEvent & { currentTarget: HTMLElement }) => {
-    const types = e.dataTransfer?.types;
-    if (!types || !Array.from(types).includes('application/json')) return;
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-    e.currentTarget.classList.add(DROP_TARGET);
-  };
-
-  const onDrop = (e: DragEvent & { currentTarget: HTMLElement }) => {
-    e.currentTarget.classList.remove(DROP_TARGET);
-    const payload = readConversationDragData(e);
-    if (!payload || payload.sourceFolderId === folder.id) return;
-    e.preventDefault();
-    e.stopPropagation();
-    actions.onMoveConversation?.(payload.conversationId, payload.sourceFolderId, folder.id);
-  };
+  const menuButton = tree.site?.folderMenuButton;
 
   return (
     // Depth is exposed as a custom property so the body's ::before tree-guide
@@ -200,9 +229,7 @@ function FolderNode({ tree, folder, depth }: FolderNodeProps) {
             },
           });
         }}
-        onDragOver={onDragOver}
-        onDragLeave={(e) => e.currentTarget.classList.remove(DROP_TARGET)}
-        onDrop={onDrop}
+        {...dropHandlers(tree, folder.id)}
       >
         <button
           type="button"
@@ -272,6 +299,26 @@ function FolderNode({ tree, folder, depth }: FolderNodeProps) {
             aria-hidden="true"
           />
         )}
+        {menuButton && (
+          <IconButton
+            modifier="menu"
+            labelKey={menuButton.labelKey}
+            text="⋮"
+            onClick={(e) => {
+              e.stopPropagation();
+              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              apply({
+                inlineEditor: null,
+                contextMenu: {
+                  folderId: folder.id,
+                  x: rect.left,
+                  y: rect.bottom,
+                  confirmingDelete: false,
+                },
+              });
+            }}
+          />
+        )}
       </div>
       <div class={cls('folder-body')} style={expanded ? undefined : { display: 'none' }}>
         {creatingChild && (
@@ -285,7 +332,7 @@ function FolderNode({ tree, folder, depth }: FolderNodeProps) {
         {childFolders.map((child) => (
           <FolderNode key={child.id} tree={tree} folder={child} depth={depth + 1} />
         ))}
-        {sortConversationsByPriority(childConversations, tree.conversationSortMode).map((conv) => (
+        {orderConversations(tree, childConversations).map((conv) => (
           <ConversationRow
             key={conv.conversationId}
             tree={tree}
@@ -299,17 +346,58 @@ function FolderNode({ tree, folder, depth }: FolderNodeProps) {
   );
 }
 
+/** Root conversations under a heading after the folders, behind a drop target that always shows. */
+function RootSection({ tree, labelKey }: { tree: TreeProps; labelKey: string }) {
+  const { rootBucketId } = tree;
+  const conversations = ownBucket(tree.data.folderContents, rootBucketId) ?? [];
+  return (
+    <>
+      <div
+        class={cls('root-drop')}
+        data-folder-id={rootBucketId}
+        {...dropHandlers(tree, rootBucketId)}
+      />
+      {conversations.length > 0 && (
+        <div class={cls('root-section')}>
+          <div
+            class={cls('root-section-title')}
+            data-folder-id={rootBucketId}
+            {...dropHandlers(tree, rootBucketId)}
+          >
+            {t(labelKey)}
+          </div>
+          {orderConversations(tree, conversations).map((conv) => (
+            <ConversationRow
+              key={`${rootBucketId}:${conv.conversationId}`}
+              tree={tree}
+              conv={conv}
+              folderId={rootBucketId}
+              depth={-1}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 export function FolderTree(tree: TreeProps) {
-  const { data, inlineEditor, rootBucketId } = tree;
+  const { data, inlineEditor, rootBucketId, site } = tree;
   const creatingRoot = inlineEditor?.mode === 'create' && inlineEditor.parentId === null;
   const rootConversations = ownBucket(data.folderContents, rootBucketId) ?? [];
+  const rootSection = site?.rootSection;
 
   if (
     data.folders.length === 0 &&
     rootConversations.length === 0 &&
     inlineEditor?.mode !== 'create'
   ) {
-    return <EmptyState />;
+    return (
+      <>
+        <EmptyState />
+        {rootSection && <RootSection tree={tree} labelKey={rootSection.labelKey} />}
+      </>
+    );
   }
 
   return (
@@ -323,18 +411,20 @@ export function FolderTree(tree: TreeProps) {
         />
       )}
       {/* Like the sidebar: conversations filed at the root come first. */}
-      {sortConversationsByPriority(rootConversations, tree.conversationSortMode).map((conv) => (
-        <ConversationRow
-          key={`${rootBucketId}:${conv.conversationId}`}
-          tree={tree}
-          conv={conv}
-          folderId={rootBucketId}
-          depth={-1}
-        />
-      ))}
-      {getFolderChildren(data, null).map((folder) => (
+      {!rootSection &&
+        orderConversations(tree, rootConversations).map((conv) => (
+          <ConversationRow
+            key={`${rootBucketId}:${conv.conversationId}`}
+            tree={tree}
+            conv={conv}
+            folderId={rootBucketId}
+            depth={-1}
+          />
+        ))}
+      {getFolderChildren(data, null, site?.folderOrder).map((folder) => (
         <FolderNode key={folder.id} tree={tree} folder={folder} depth={0} />
       ))}
+      {rootSection && <RootSection tree={tree} labelKey={rootSection.labelKey} />}
       <ContextMenu {...tree} />
     </>
   );

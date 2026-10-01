@@ -102,29 +102,33 @@ export function ContextMenu({ data, contextMenu, actions, apply }: TreeProps) {
           apply({ contextMenu: null, inlineEditor: { mode: 'rename', folderId: folder.id } });
         }}
       />
-      <div class={cls('color-section')}>
-        <div class={cls('color-title')}>{t('floatingPanelColor')}</div>
-        <div class={cls('color-swatches')}>
-          {FOLDER_COLORS.map((color) => (
-            <button
-              key={color.id}
-              type="button"
-              class={
-                activeColor === color.id
-                  ? `${cls('color-swatch')} ${cls('color-swatch--active')}`
-                  : cls('color-swatch')
-              }
-              style={{ backgroundColor: getFolderColor(color.id, dark) }}
-              aria-label={t(color.nameKey)}
-              title={t(color.nameKey)}
-              onClick={(e) => {
-                e.stopPropagation();
-                apply({ contextMenu: null }, () => actions.onSetFolderColor?.(folder.id, color.id));
-              }}
-            />
-          ))}
+      {actions.onSetFolderColor && (
+        <div class={cls('color-section')}>
+          <div class={cls('color-title')}>{t('floatingPanelColor')}</div>
+          <div class={cls('color-swatches')}>
+            {FOLDER_COLORS.map((color) => (
+              <button
+                key={color.id}
+                type="button"
+                class={
+                  activeColor === color.id
+                    ? `${cls('color-swatch')} ${cls('color-swatch--active')}`
+                    : cls('color-swatch')
+                }
+                style={{ backgroundColor: getFolderColor(color.id, dark) }}
+                aria-label={t(color.nameKey)}
+                title={t(color.nameKey)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  apply({ contextMenu: null }, () =>
+                    actions.onSetFolderColor?.(folder.id, color.id),
+                  );
+                }}
+              />
+            ))}
+          </div>
         </div>
-      </div>
+      )}
       <div class={cls('menu-divider')} />
       <MenuButton
         labelKey="floatingPanelDeleteFolder"

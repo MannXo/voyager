@@ -47,6 +47,31 @@ export type TreeActions = {
   onSetFolderColor?: (folderId: string, color: string) => void;
   /** Files the open conversation into a folder; the folder menu offers it only when set. */
   onAddCurrentConversation?: (folderId: string) => void;
+  /**
+   * Takes every drop on a folder or root drop target in place of the tree's own
+   * move, including drags the tree's payload check refuses, such as a native
+   * row with no source folder. Returns whether it used the drop.
+   */
+  onDrop?: (e: DragEvent, folderId: string) => boolean;
+  /** With `onDrop`: the drags to accept at dragover, from `dataTransfer.types`. */
+  acceptsDrag?: (types: readonly string[]) => boolean;
+};
+
+/** Ways a site's tree differs from the floating panel's; each is off by default. */
+export type TreeSiteOptions = {
+  /** `created`: pinned first, then oldest first. Default: pinned, then sortIndex, then name. */
+  folderOrder?: 'created';
+  /** `stored`: a folder's conversations in stored order. Default: starred first, then the sort mode. */
+  conversationOrder?: 'stored';
+  /**
+   * Root conversations go under this heading after the folders, and a root drop
+   * target stays even with no folders. Default: root conversations first, unlabelled.
+   */
+  rootSection?: { labelKey: string };
+  /** Marks the rows of the conversation the page has open. */
+  activeConversationId?: string | null;
+  /** A button on each folder row that opens its menu. Default: the menu opens on right-click only. */
+  folderMenuButton?: { labelKey: string };
 };
 
 /** A transient view change; `null` clears the editor or menu, omitted keeps it. */
@@ -67,6 +92,7 @@ export type TreeProps = {
   isExpanded: (folder: Folder) => boolean;
   /** Applies `change`, runs `effect`, then re-renders the tree. */
   apply: (change: TreeChange, effect?: () => void) => void;
+  site?: TreeSiteOptions;
 };
 
 export type ConversationDragData = {
@@ -75,8 +101,26 @@ export type ConversationDragData = {
   sourceFolderId: string;
 };
 
-export function getFolderChildren(data: FolderData, parentId: string | null): Folder[] {
-  return sortFolders(data.folders.filter((folder) => folder.parentId === parentId));
+/** Pinned first, then oldest first. */
+export function sortFoldersByCreation(folders: readonly Folder[]): Folder[] {
+  return [...folders].sort(
+    (a, b) => Number(!!b.pinned) - Number(!!a.pinned) || a.createdAt - b.createdAt,
+  );
+}
+
+export function getFolderChildren(
+  data: FolderData,
+  parentId: string | null,
+  order?: TreeSiteOptions['folderOrder'],
+): Folder[] {
+  const children = data.folders.filter((folder) => folder.parentId === parentId);
+  return order === 'created' ? sortFoldersByCreation(children) : sortFolders(children);
+}
+
+/** Which drags a drop target accepts at dragover, when the payload cannot be read yet. */
+export function acceptsDrag(actions: TreeActions, types: readonly string[]): boolean {
+  if (actions.onDrop && actions.acceptsDrag) return actions.acceptsDrag(types);
+  return types.includes('application/json');
 }
 
 export function canCreateChildAtDepth(depth: number): boolean {

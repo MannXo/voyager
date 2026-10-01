@@ -260,7 +260,7 @@ describe('floating panel context menu', () => {
     const handle = mountPanel();
     contextMenu(folderHeader(panelRoot(handle), 'folder-a'));
 
-    click(part(handle, 'color-title'));
+    click(part(handle, 'menu-divider'));
     expect(queryPart(handle, 'context-menu')).not.toBeNull();
 
     click(document.body);

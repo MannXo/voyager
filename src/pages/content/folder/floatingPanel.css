@@ -1162,3 +1162,59 @@
   background: rgba(95, 99, 104, 0.1);
   color: var(--gv-floating-folder-panel__text-muted);
 }
+
+/* ─── Site options (TreeSiteOptions) ───────────────────────────────────── */
+/* The open conversation. Prefixed with the scheme host so it outranks the
+ * scheme-specific row hover above. */
+:host([data-gv-scheme]) .gv-floating-folder-panel__conv--active,
+:host([data-gv-scheme]) .gv-floating-folder-panel__conv--active:hover {
+  background: var(--gv-floating-folder-panel__surface-active);
+  color: var(--gv-floating-folder-panel__accent);
+}
+
+.gv-floating-folder-panel__conv--active .gv-floating-folder-panel__conv-title {
+  font-weight: 500;
+}
+
+.gv-floating-folder-panel__folder-header .gv-floating-folder-panel__icon-button--menu {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 8px;
+  font-size: 16px;
+  opacity: 0;
+}
+
+.gv-floating-folder-panel__folder-header:hover .gv-floating-folder-panel__icon-button--menu,
+.gv-floating-folder-panel__folder-header:focus-within .gv-floating-folder-panel__icon-button--menu {
+  opacity: 1;
+}
+
+/* Drop here to file a conversation at the root; present even with no folders. */
+.gv-floating-folder-panel__root-drop {
+  min-height: 24px;
+  margin: 6px 6px 0;
+  border: 1px dashed var(--gv-floating-folder-panel__outline);
+  border-radius: 8px;
+}
+
+.gv-floating-folder-panel__root-drop.gv-floating-folder-panel__drop-target {
+  border-color: var(--gv-floating-folder-panel__accent);
+  box-shadow: none;
+}
+
+.gv-floating-folder-panel__root-section {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--gv-floating-folder-panel__outline-subtle);
+}
+
+.gv-floating-folder-panel__root-section-title {
+  padding: 4px 8px;
+  padding-inline-start: 12px;
+  border-radius: 8px;
+  color: var(--gv-floating-folder-panel__text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+}

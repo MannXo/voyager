@@ -8,6 +8,7 @@ import {
   type InlineEditorState,
   type TreeActions,
   type TreeChange,
+  type TreeSiteOptions,
   cls,
 } from './shared';
 
@@ -22,6 +23,7 @@ export type FolderTreeOptions = {
   rootBucketId: string;
   conversationSortMode: ConversationSortMode;
   actions: TreeActions;
+  site?: TreeSiteOptions;
 };
 
 export type FolderTreeController = {
@@ -31,6 +33,8 @@ export type FolderTreeController = {
   update: (data: FolderData, conversationSortMode?: ConversationSortMode) => void;
   /** Replaces account data and discards transient edits. */
   reset: (data: FolderData, conversationSortMode?: ConversationSortMode) => void;
+  /** Changes site options, such as the open conversation, and re-renders. */
+  setSite: (site: TreeSiteOptions) => void;
   /** Unmounts the tree and removes its document listener; the caller removes `body`. */
   destroy: () => void;
 };
@@ -47,7 +51,9 @@ export function mountFolderTree({
   rootBucketId,
   conversationSortMode,
   actions,
+  site,
 }: FolderTreeOptions): FolderTreeController {
+  let currentSite = site;
   let currentData = data;
   let currentConversationSortMode = conversationSortMode;
   let inlineEditor: InlineEditorState | null = null;
@@ -86,6 +92,7 @@ export function mountFolderTree({
       contextMenu,
       isExpanded,
       apply,
+      site: currentSite,
     });
   };
 
@@ -110,6 +117,10 @@ export function mountFolderTree({
 
   return {
     apply,
+    setSite: (next) => {
+      currentSite = next;
+      render();
+    },
     reset: (next, nextConversationSortMode) => {
       currentData = next;
       if (nextConversationSortMode) currentConversationSortMode = nextConversationSortMode;
