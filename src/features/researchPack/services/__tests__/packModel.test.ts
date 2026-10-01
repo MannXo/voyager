@@ -149,6 +149,16 @@ describe('research pack model', () => {
     expect(parsePack({ version: 2, items: [good.items[0]] }).items).toEqual([]);
   });
 
+  it('reads the revision, and a pack stored without one as revision 0', () => {
+    const good = packWith(['a']);
+    expect(parsePack({ ...good, revision: 7 }).revision).toBe(7);
+    const { revision: _omitted, ...legacy } = { ...good, revision: 3 };
+    expect(parsePack(legacy).revision).toBe(0);
+    for (const revision of [-1, 1.5, '4', Number.NaN]) {
+      expect(parsePack({ ...good, revision }).revision, String(revision)).toBe(0);
+    }
+  });
+
   it('keeps only http(s) source URLs, on add and on load', () => {
     for (const sourceUrl of [
       'javascript:alert(1)',

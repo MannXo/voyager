@@ -69,6 +69,41 @@ describe('research pack owner', () => {
     expect(data.get(KEY)).toEqual(loaded);
   });
 
+  it('bumps the revision on every write it makes, and only then', async () => {
+    const { area, data } = memoryArea();
+    const owner = createResearchPackOwner({ area });
+
+    const first = await owner.apply(KEY, { kind: 'add', draft: draft('one') });
+    const second = await owner.apply(KEY, { kind: 'add', draft: draft('two') });
+    const duplicate = await owner.apply(KEY, { kind: 'add', draft: draft('two') });
+
+    expect([first.pack.revision, second.pack.revision, duplicate.pack.revision]).toEqual([1, 2, 2]);
+    expect((data.get(KEY) as { revision: number }).revision).toBe(2);
+  });
+
+  it('continues from revision 0 for a pack stored before revisions existed', async () => {
+    const { area } = memoryArea();
+    const owner = createResearchPackOwner({ area });
+    await owner.apply(KEY, { kind: 'add', draft: draft('old') });
+    const { revision: _omitted, ...legacy } = await owner.load(KEY);
+    const { area: legacyArea } = memoryArea({ [KEY]: legacy });
+
+    const next = await createResearchPackOwner({ area: legacyArea }).apply(KEY, {
+      kind: 'add',
+      draft: draft('new'),
+    });
+    expect(next.pack.revision).toBe(1);
+    expect(next.pack.items.map((item) => item.text)).toEqual(['old', 'new']);
+  });
+
+  it('hands the revision through to the tab', async () => {
+    const { tabA } = twoTabs();
+    await tabA.apply(KEY, { kind: 'add', draft: draft('one') });
+    const reply = await tabA.apply(KEY, { kind: 'setInstruction', instruction: 'Go' });
+    expect(reply.pack.revision).toBe(2);
+    expect((await tabA.load(KEY)).revision).toBe(2);
+  });
+
   it('keeps both items when two tabs add at the same time', async () => {
     const { tabA, tabB } = twoTabs();
 

@@ -69,7 +69,8 @@ export const RESEARCH_PACK_UNSUPPORTED_VERSION = 'unsupported_version';
 
 /**
  * The single writer. Ops are applied one at a time against the freshly read
- * pack and the write is skipped when nothing changed. A pack written by a
+ * pack; each write bumps its revision, and the write is skipped when nothing
+ * changed. A pack written by a
  * newer build is never edited: the op fails rather than reporting a result
  * that was not saved.
  */
@@ -96,8 +97,10 @@ export function createResearchPackOwner(options: {
         if (isNewerPackVersion(raw)) throw new Error(RESEARCH_PACK_UNSUPPORTED_VERSION);
         const current = parsePack(raw);
         const next = applyResearchPackOp(current, op, now());
-        if (next.pack !== current) await options.area.set({ [key]: next.pack });
-        return next;
+        if (next.pack === current) return next;
+        const pack = { ...next.pack, revision: current.revision + 1 };
+        await options.area.set({ [key]: pack });
+        return { pack, outcome: next.outcome };
       });
     },
   };

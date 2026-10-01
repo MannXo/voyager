@@ -106,6 +106,7 @@ describe('research pack markdown', () => {
     // Shaped like a tampered or foreign storage entry, bypassing addItem.
     const tampered: ResearchPack = {
       version: 1,
+      revision: 0,
       instruction: '',
       updatedAt: 0,
       items: [

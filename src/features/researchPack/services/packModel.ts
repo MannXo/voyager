@@ -19,7 +19,13 @@ import {
 const TRUNCATION_MARK = '\n\n…[truncated]';
 
 export function createEmptyPack(now = 0): ResearchPack {
-  return { version: RESEARCH_PACK_VERSION, instruction: '', items: [], updatedAt: now };
+  return {
+    version: RESEARCH_PACK_VERSION,
+    revision: 0,
+    instruction: '',
+    items: [],
+    updatedAt: now,
+  };
 }
 
 function clip(value: string, max: number): string {
@@ -163,8 +169,11 @@ export function parsePack(value: unknown): ResearchPack {
     items.push(item);
     if (items.length >= RESEARCH_PACK_LIMITS.maxItems) break;
   }
+  const revision = value.revision;
   return {
     version: RESEARCH_PACK_VERSION,
+    revision:
+      Number.isSafeInteger(revision) && (revision as number) >= 0 ? (revision as number) : 0,
     instruction: clip(readString(value.instruction), RESEARCH_PACK_LIMITS.maxInstructionChars),
     items,
     updatedAt: typeof value.updatedAt === 'number' ? value.updatedAt : 0,
