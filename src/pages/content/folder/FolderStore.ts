@@ -22,6 +22,7 @@ import {
 import { TimestampService } from '../timestamp/TimestampService';
 import { historyTimestampStore } from '../timestamp/historyTimestamps';
 import { FolderDataSession, cloneFolderData } from './FolderDataSession';
+import { applyNativeTitle, indexConversationsByRouteId } from './conversationTitleSync';
 import {
   extractConversationIdFromElement,
   extractNativeConversationId,
@@ -782,46 +783,33 @@ export class FolderStore {
 
   private applyConversationTitleUpdate(conversationId: string, newTitle: string): boolean {
     if (!this.canEdit) return false;
-    const title = newTitle.trim();
-    if (!title) return false;
-
-    let updated = false;
-    const updatedAt = Date.now();
-
-    for (const folderId in this.data.folderContents) {
-      const conversations = this.data.folderContents[folderId];
-      for (const conv of conversations) {
-        if (conv.customTitle) continue;
-        if (!this.isSameConversation(conversationId, conv)) continue;
-        if (conv.title === title) continue;
-
-        conv.title = title;
-        conv.updatedAt = updatedAt;
-        updated = true;
-        this.debug(`Updated title for conversation ${conversationId} in folder ${folderId}`);
-      }
-    }
-
-    return updated;
+    const matches = Object.values(this.data.folderContents)
+      .flat()
+      .filter((conv) => this.isSameConversation(conversationId, conv));
+    return applyNativeTitle(matches, newTitle, Date.now());
   }
 
   async syncConversationTitlesFromNative(): Promise<void> {
     if (this.nativeTitleSyncInProgress) return;
-    if (!this.hasStoredConversations()) return;
+    if (!this.hasStoredConversations() || !this.canEdit) return;
 
     this.nativeTitleSyncInProgress = true;
     try {
       let updated = false;
+      // One index per pass keeps this O(rows + stored); see indexConversationsByRouteId.
+      const index = indexConversationsByRouteId(this.data.folderContents);
       const conversations = getNativeConversationElements(this.options.getContext().sidebar);
 
       for (const convEl of Array.from(conversations)) {
         const element = convEl as HTMLElement;
         const conversationId =
           extractNativeConversationId(element) || extractConversationIdFromElement(element);
+        const matches = index.get(normalizeConversationId(conversationId) ?? '');
+        if (!matches) continue;
         const title = extractNativeConversationTitle(element);
-        if (!conversationId || !title) continue;
+        if (!title) continue;
 
-        updated = this.applyConversationTitleUpdate(conversationId, title) || updated;
+        updated = applyNativeTitle(matches, title, Date.now()) || updated;
       }
 
       if (!updated) return;
@@ -1599,6 +1587,7 @@ export class FolderStore {
     return `folder_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
+  // indexConversationsByRouteId mirrors these keys for whole-sidebar passes; change both together.
   private isSameConversation(targetId: string, conversation: ConversationReference): boolean {
     const normalizedTarget = normalizeConversationId(targetId);
     if (!normalizedTarget) return false;

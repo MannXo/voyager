@@ -585,3 +585,16 @@ drop, or hover layout.
   when a record is relevant.
 - **Guard:** `src/pages/content/quoteReply/__tests__/renderedQuotes.test.ts`
   (`does not measure layout while unrelated rows stream into the page`).
+
+## Native title sync must not match every sidebar row against every stored conversation
+
+- **Trap:** Paginating a long Gemini sidebar still froze with folders in use (#1040). Each appended
+  page touches conversation rows, so the debounced native title sync rescans the sidebar. For
+  every row it ran `isSameConversation` against every stored folder reference, and that check
+  parses the stored URL with `new URL()`. With 3,000 rows and 500 stored conversations, one pass
+  parsed 1.5 million URLs and took about 0.9 s in jsdom, repeated after every page.
+- **Rule:** A pass over native rows looks up stored references through an index built once per
+  pass (`indexConversationsByRouteId`). Keep that index's keys identical to `isSameConversation`.
+  Read a row's title only when the row matches a stored reference.
+- **Guard:** `src/pages/content/folder/__tests__/nativeTitleSyncScale.test.ts` checks the id shapes
+  that must still match and bounds URL parses on a 1,500-row sidebar.
