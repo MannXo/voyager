@@ -454,9 +454,14 @@ devices: the pusher sets Drive, a puller keeps its own order`).
   (`src/core/utils/promptRevision.ts`) decides the winner for the import and for the full restore
   (`mergePromptsWithStats`): the later edit wins, and a tie goes to the greater
   `[text, name, pinnedAt]` so every device keeps the same copy, with a missing name sorting low.
-  The winning copy brings its text, name (when it has one), `pinnedAt` (absent unpins) and edit
-  time; tags still union. Pinning must keep bumping `updatedAt`, or a pin loses to the older
-  copy. An added prompt keeps the times it came with.
+  The winning copy brings its text, name (when it has one), `pinnedAt` (when it has the key) and
+  edit time; tags still union. Every unpin writes `pinnedAt: null`, and a winner's `null` unpins.
+  An absent `pinnedAt` means "no pin information" and keeps the local pin: 1.9.0 and earlier drop
+  the field on every unpinned prompt and stamp their merge time as `updatedAt`, so treating
+  absence as an unpin let one pull from an older device unpin everything. Those versions read
+  `null` as unpinned (`isPinned` checks for a number; no validator looks at the field). Do not
+  strip `null` in a parser or serializer. Pinning must keep bumping `updatedAt`, or a pin loses
+  to the older copy. An added prompt keeps the times it came with.
 - **Guard:** `src/pages/background/__tests__/promptDriveMergeEdits.test.ts` (`keeps an edit made
 elsewhere after this device merged an unchanged copy`, `changes nothing when the same Drive file
 is merged again`, the pin and unpin round trips), `src/utils/mergePrompts.test.ts` and
