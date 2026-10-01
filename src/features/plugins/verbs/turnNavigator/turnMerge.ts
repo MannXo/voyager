@@ -24,6 +24,8 @@ export const TURN_ID_ATTR = 'data-gv-turn-id';
  * cells of time and memory; past this, the run is matched greedily.
  */
 const MAX_ALIGNMENT_CELLS = 250_000;
+/** Markers with its text a turn of an over-budget run may look past. */
+const MAX_LOOKAHEAD = 32;
 
 export interface Marker {
   id: string;
@@ -224,10 +226,12 @@ function alignRun(
 }
 
 /**
- * A run too long to align exactly: each turn, in order, takes the nearest
- * remaining marker with its text after drift correction. Known centres grow
- * with the index, so a scan stops once they pass the best distance, and the
- * cost stays near linear in the run and the markers.
+ * A run too long to align exactly, matched in one ordered pass. Each turn
+ * may skip only as many markers with its text as the run can spare: when the
+ * run has as many turns with a text as there are markers left for it, they
+ * pair in order, which no uniform shift can upset. Otherwise a turn takes the
+ * nearest drift-corrected marker within a short lookahead, so the cost stays
+ * linear in the run.
  */
 function alignGreedily(
   known: readonly Marker[],
@@ -242,15 +246,25 @@ function alignGreedily(
     if (indexes) indexes.push(j);
     else indexesByHash.set(known[j].hash, [j]);
   }
+  // Turns from here to the end of the run sharing each turn's text.
+  const sameTextAhead = new Array<number>(run.length);
+  const seen = new Map<string, number>();
+  for (let r = run.length - 1; r >= 0; r--) {
+    const count = (seen.get(run[r].hash) ?? 0) + 1;
+    seen.set(run[r].hash, count);
+    sameTextAhead[r] = count;
+  }
   let cursor = lo;
   return run.map((entry, r) => {
     const indexes = indexesByHash.get(entry.hash);
     if (!indexes) return -1;
-    let k = lowerBound(indexes, cursor);
+    const first = lowerBound(indexes, cursor);
+    if (first === indexes.length) return -1;
+    const spare = Math.min(indexes.length - first - sameTextAhead[r], MAX_LOOKAHEAD);
     const target = entry.center - drifts[r];
-    let best = -1;
-    let bestDistance = Infinity;
-    for (; k < indexes.length; k++) {
+    let best = indexes[first];
+    let bestDistance = Math.abs(known[best].center - target);
+    for (let k = first + 1; k <= first + spare; k++) {
       const offset = known[indexes[k]].center - target;
       if (offset > bestDistance) break;
       if (Math.abs(offset) < bestDistance) {
@@ -258,7 +272,7 @@ function alignGreedily(
         bestDistance = Math.abs(offset);
       }
     }
-    if (best !== -1) cursor = best + 1;
+    cursor = best + 1;
     return best;
   });
 }

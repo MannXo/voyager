@@ -83,6 +83,55 @@ describe('mergeMountedTurns without a turn key', () => {
     expect(next.map((marker) => marker.id)).toEqual(ids);
   });
 
+  it('keeps every turn of a long identical run after a uniform shift with no anchor', () => {
+    const turns = Array.from(
+      { length: 500 },
+      (_, index) => ['continue', 100 * (index + 1)] as const,
+    );
+    const known = merge([], turns);
+    const ids = known.map((marker) => marker.id);
+
+    const next = merge(
+      known,
+      turns.map(([summary, center]) => [summary, center + 100] as const),
+    );
+
+    expect(next.map((marker) => marker.id)).toEqual(ids);
+  });
+
+  it.each([5_000, 4_999, 3_000])(
+    'reads a bounded number of remembered positions for %i identical turns against 5000',
+    (mountedCount) => {
+      const known = merge(
+        [],
+        Array.from({ length: 5_000 }, () => ['continue', 0] as const),
+      );
+      let reads = 0;
+      for (const marker of known) {
+        let center = marker.center;
+        Object.defineProperty(marker, 'center', {
+          configurable: true,
+          get: () => {
+            reads += 1;
+            return center;
+          },
+          set: (value: number) => {
+            center = value;
+          },
+        });
+      }
+
+      const next = merge(
+        known,
+        Array.from({ length: mountedCount }, () => ['continue', 100] as const),
+      );
+
+      expect(reads).toBeLessThan(50 * known.length);
+      // Every mounted turn is one of the remembered ones.
+      expect(next).toHaveLength(known.length);
+    },
+  );
+
   it('keeps a genuinely new repeat as a new turn after its twin', () => {
     const known = merge([], [['continue', 100]]);
 

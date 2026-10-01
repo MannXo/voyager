@@ -67,14 +67,19 @@ and turn ids`).
   the same text, a hash only one marker carries), then aligns each run of uncertain turns between
   two certain matches with the markers between them: most matches first, then the smallest
   distance after the nearer anchor's drift. That alignment costs run x markers in time and memory,
-  so past 250k cells a run is matched greedily in order, and repeat ids (`~n`) are handed out
-  without rescanning earlier ones. ChatGPT keeps one `[data-turn-id-container]` item per
+  so past 250k cells a run is matched in one ordered pass: while a text has no more markers left
+  than turns left in the run, they pair by index, which no uniform shift can upset; otherwise a
+  turn may look past at most 32 markers, and no more than the run can spare. (A nearest-centre
+  scan per turn was quadratic on equal centres, and after an anchorless +100px shift it matched
+  the first turn to the second marker and made the last one a new dot.) Repeat ids (`~n`) are
+  handed out without rescanning earlier ones. ChatGPT keeps one `[data-turn-id-container]` item per
   turn mounted, so it names that attribute as `turnKey` and uses snapshot mode (see the route
   switch entry): duplicate items fold by id, preferring the copy with a mounted message, and an
   element holding other items or several turns (a `*-root` wrapper) is never a turn. `turnKey`
   has `sinceEngine` 1.5.0, so a manifest setting it needs `engine >=1.5.0`.
 - **Guard:** `src/features/plugins/verbs/turnNavigator/turnMerge.test.ts` (`re-matches a long run
-of repeats after a shift, past the alignment budget`),
+of repeats after a shift, past the alignment budget`, `keeps every turn of a long identical run
+after a uniform shift with no anchor`, `reads a bounded number of remembered positions`),
   `src/features/plugins/builtin/chatgptTimeline.test.ts` (`keeps repeated identical prompts
 apart`, `folds a turn ChatGPT briefly renders twice`, `follows a turn whose list id ChatGPT
 renames`, `updates the dot when a prompt is edited in place`, `does not treat a wrapper around
