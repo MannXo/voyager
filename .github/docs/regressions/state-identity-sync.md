@@ -248,26 +248,30 @@ off a ChatGPT tab`).
   `src/pages/content/researchPack/__tests__/scope.test.ts`
   (`fails closed when the isolation setting cannot be read`).
 
-## An email that appears after binding can name another account
+## Any context change that maps to another key is one scope switch
 
-- **Trap:** At startup Gemini shows `/u/0/` before the account email. `resolveAccountScope` then
-  keys the page by the route alias, which can still point at the account that last used `/u/0/`, so
-  Research Pack bound account A's pack and kept reading and writing it after B's email appeared.
-  Comparing contexts treated a null email as "unknown", never as a change.
-- **Rule:** When a scope bound without an email sees one for the same route, resolve the new context
-  once. A different key switches to that pack; the same key only records the email on the bound
-  scope, so the panel, its typing and in-flight loads are not reset. An action taken while the check
-  runs uses the context with the email.
+- **Trap:** Research Pack special-cased each way a page changes account (route change, a late
+  email, isolation toggle), and every round of patches left another race. At startup a reused
+  `/u/0/` route can still alias the account that last used it, so the pack bound account A while
+  the page belonged to B. A pending A→B check was then reused when the email became C, and the
+  new pack's first load overwrote what the user typed while it was pending.
+- **Rule:** Derive one identity from everything the key depends on (platform, route, email,
+  isolation setting). Resolve each new identity in a check tagged with it, and drop the check if
+  the identity moves on. Only a different resolved key switches the pack. On a switch, save
+  pending typing to the old key, then clear and lock the panel until the new pack's first
+  snapshot. Add uses the key for the page at click time and waits for its check if one is running.
 - **Guard:** `src/pages/content/researchPack/__tests__/researchPackScope.test.ts`
   (`when the account email shows up after the scope was bound`).
 
-## Same-scope async results can arrive out of order
+## Order snapshots of shared state by a revision from its writer
 
-- **Trap:** A Research Pack load that read storage before an add was saved could return after the
-  add's result and put the old pack back on screen, so Copy, Download and Insert exported it without
-  the new item. Checking only that a result belongs to the current scope does not catch this.
-- **Rule:** Number loads and applies when they start and render a result only if no later request
-  has rendered. Every write fires `storage.onChanged` and a fresh load, so the newest request
-  carries the latest pack.
+- **Trap:** Research Pack tabs ordered results by when their own requests started. That does not
+  order the data: a load started by one write's storage event could read before a second write
+  landed, then render after it and bring back the older pack, which Copy and Insert then exported.
+- **Rule:** The single writer stamps every write with a monotonic `revision`; a tab renders a
+  snapshot of the pack on screen only if its revision is at least the displayed one. Storage events
+  carry the written value, so they need no reload. A removed pack resets the displayed revision.
 - **Guard:** `src/pages/content/researchPack/__tests__/researchPackScope.test.ts`
-  (`keeps a newer add on screen when an older load of the same scope lands after it`).
+  (`never puts an older snapshot back after a newer add has rendered`) and
+  `src/features/researchPack/services/__tests__/packStore.test.ts`
+  (`bumps the revision on every write it makes, and only then`).
