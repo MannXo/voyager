@@ -45,8 +45,29 @@ function folders(...names: string[]): FolderData {
       updatedAt: 1,
       sortIndex,
     })),
-    folderContents: Object.fromEntries(names.map((name) => [name, []])),
+    folderContents: Object.fromEntries(
+      names.map((name, index) => [
+        name,
+        index === 0
+          ? [
+              {
+                conversationId: 'c1',
+                title: 'One',
+                url: 'https://gemini.google.com/app/c1',
+                addedAt: 1,
+              },
+            ]
+          : [],
+      ]),
+    ),
   };
+}
+
+/** Both tabs' changes must reach memory and storage. */
+function expectMerged(data: FolderData | undefined, openedAt?: number): void {
+  expect(names(data)).toEqual(['Alpha', 'From another tab']);
+  expect(data?.folders[0].isExpanded).toBe(false);
+  if (openedAt !== undefined) expect(data?.folderContents.Alpha[0].lastOpenedAt).toBe(openedAt);
 }
 
 function names(data: FolderData | undefined): string[] {
@@ -156,7 +177,52 @@ describe('FolderStore reconciles external writes after local work settles', () =
     expect(stored?.folders[0].isExpanded).toBe(false);
   });
 
-  it('does not let a read already in flight revert a later debounced edit', async () => {
+  it('merges another tab write with edits still waiting on the debounce', async () => {
+    vi.advanceTimersByTime(5000);
+    store.toggleFolder('Alpha');
+    store.markConversationAsRecentlyOpened('c1');
+    const openedAt = store.data.folderContents.Alpha[0].lastOpenedAt;
+    expect(openedAt).toBeGreaterThan(0);
+    writeFromElsewhere(folders('Alpha', 'From another tab'));
+
+    await vi.advanceTimersByTimeAsync(350);
+
+    expectMerged(store.data, openedAt);
+    expectMerged(stored, openedAt);
+  });
+
+  it('keeps another tab collapse when only a timestamp is debounced here', async () => {
+    vi.advanceTimersByTime(5000);
+    store.markConversationAsRecentlyOpened('c1');
+    const openedAt = store.data.folderContents.Alpha[0].lastOpenedAt;
+    const remote = folders('Alpha', 'From another tab');
+    remote.folders[0].isExpanded = false;
+    writeFromElsewhere(remote);
+
+    await vi.advanceTimersByTimeAsync(350);
+
+    expectMerged(store.data, openedAt);
+    expectMerged(stored, openedAt);
+  });
+
+  it('merges a debounced toggle made after an earlier toggle was saved', async () => {
+    store.toggleFolder('Alpha'); // collapsed, then saved
+    await vi.advanceTimersByTimeAsync(350);
+    emit(stored);
+    store.toggleFolder('Alpha'); // expanded again, still debounced
+    const remote = folders('Alpha', 'From another tab');
+    remote.folders[0].isExpanded = false; // the other tab saw the saved collapse
+    writeFromElsewhere(remote);
+
+    await vi.advanceTimersByTimeAsync(350);
+
+    for (const data of [store.data, stored]) {
+      expect(names(data)).toEqual(['Alpha', 'From another tab']);
+      expect(data?.folders[0].isExpanded).toBe(true);
+    }
+  });
+
+  it('merges a debounced edit made while the reload read was in flight', async () => {
     const read = deferred<FolderData | null>();
     vi.mocked(adapter.loadData).mockImplementationOnce(() => read.promise);
     writeFromElsewhere(folders('Alpha', 'From another tab'));
@@ -165,8 +231,7 @@ describe('FolderStore reconciles external writes after local work settles', () =
     read.resolve(structuredClone(stored ?? null));
     await vi.advanceTimersByTimeAsync(350);
 
-    expect(store.data.folders[0].isExpanded).toBe(false);
-    expect(stored?.folders[0].isExpanded).toBe(false);
-    expect(store.data).toEqual(stored);
+    expectMerged(store.data);
+    expectMerged(stored);
   });
 });

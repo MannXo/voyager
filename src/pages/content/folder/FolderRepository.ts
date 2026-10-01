@@ -10,6 +10,7 @@ import {
 import { cloneFolderData, validateFolderData } from '@/features/folder/model/folderData';
 
 import { FolderDataSession } from './FolderDataSession';
+import { mergeDebouncedEdits } from './debouncedEditMerge';
 import { GEMINI_FOLDER_CONFIG, type PlatformFolderConfig } from './platformFolderConfig';
 import type { IFolderStorageAdapter } from './storage/FolderStorageAdapter';
 import {
@@ -255,7 +256,12 @@ export class FolderRepository {
 
       if (loadedData && validateFolderData(loadedData)) {
         // Validate and repair data integrity
-        this.data = this.config.normalize(loadedData);
+        const fresh = this.config.normalize(loadedData);
+        const base = session.baseline;
+        session.baseline = cloneFolderData(fresh);
+        // Edits still waiting on the debounce were made after `base`; keep them.
+        if (this.saveDebounceTimer !== null && base) mergeDebouncedEdits(fresh, this.data, base);
+        this.data = fresh;
 
         // Clean up orphaned folderContents (folders that no longer exist)
         if (this.config.pruneOrphanBuckets) {
@@ -378,11 +384,12 @@ export class FolderRepository {
     this.hooks.onRecovery('lost');
   }
 
+  /**
+   * Debounce a save. Only for edits that `mergeDebouncedEdits` can carry onto a
+   * reload: expand/collapse and conversation timestamps.
+   */
   scheduleSaveData(): void {
-    const session = this.dataSession;
-    if (!session || !this.canEdit) return;
-    // A pending edit supersedes any storage read already in flight for this session.
-    session.loadVersion += 1;
+    if (!this.canEdit) return;
     if (this.saveDebounceTimer !== null) {
       window.clearTimeout(this.saveDebounceTimer);
     }
@@ -393,14 +400,12 @@ export class FolderRepository {
   }
 
   /**
-   * Reload after another context's write once nothing local is newer than disk:
-   * debounced edits are saved first and queued writes drain, so the reload
-   * neither reverts a local edit nor is skipped while a write is pending.
+   * Reload after another context's write once no write is in flight, so the
+   * reload is not skipped. Debounced edits are merged onto the fresh data.
    */
   private tryReconcile(): void {
     const session = this.dataSession;
     if (!this.reconcilePending || this.destroyed || !session) return;
-    this.flushPendingSaveData();
     if (session.saveInProgress || session.replacingData) return; // resumed when they settle
     this.reconcilePending = false;
     this.hooks.onExternalChange();
@@ -439,6 +444,7 @@ export class FolderRepository {
       saved = await session.activeSave;
       // An issued write still belongs to this session if the user has since left it.
       if (saved) session.data = snapshot;
+      if (saved) session.baseline = cloneFolderData(snapshot);
       return saved;
     } finally {
       session.replacingData = false;
@@ -457,6 +463,7 @@ export class FolderRepository {
     try {
       this.data = this.config.normalize(this.data);
       const snapshot = cloneFolderData(session.data);
+      session.baseline = snapshot;
       // A mutation supersedes any storage read already in flight for this session.
       session.loadVersion += 1;
       session.markReady();

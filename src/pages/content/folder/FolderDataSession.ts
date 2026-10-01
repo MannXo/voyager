@@ -12,6 +12,8 @@ export class FolderDataSession {
   activeSave: Promise<boolean> | null = null;
   replacingData = false;
   pendingSave: FolderData | null = null;
+  /** What this context last read from or wrote to storage: the base for merging debounced edits. */
+  baseline: FolderData | null = null;
   pendingSaveCompletion: {
     promise: Promise<boolean>;
     resolve: (saved: boolean) => void;

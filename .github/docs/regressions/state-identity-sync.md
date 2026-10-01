@@ -88,16 +88,17 @@ off a ChatGPT tab`).
 - **Trap:** The storage listener reloaded immediately. During a pending write or draft
   replacement `loadData` returned early, so another tab's write was dropped and this tab's next
   save overwrote it. With a 300ms debounced edit pending, the reload replaced memory with disk and
-  the timer then persisted the reverted state; a debounced edit also did not invalidate a read
-  already in flight.
+  the timer then persisted the reverted state. Flushing the debounce before reloading instead let
+  an automatic edit (last-opened on navigation, activity timestamps) overwrite another tab's folder.
 - **Rule:** An unsuppressed event for the active bucket only marks `FolderRepository` as needing a
-  reconcile. `tryReconcile()` flushes the debounce, waits while a write or replacement is in
-  flight (persist and `replaceData` resume it), then calls the owner's reload hook. Echo
-  suppression is only an optimisation: a wrongly unsuppressed echo costs one reload of this tab's
-  own data. `scheduleSaveData` bumps `loadVersion` like `saveData`. Limit: whole-snapshot
-  last-writer-wins remains for an external write that lands while a local edit is debounced or
-  already queued; that edit is saved over it. Keeping both needs replaying local ops onto fresh
-  data.
+  reconcile. `tryReconcile()` waits while a write or replacement is in flight (persist and
+  `replaceData` resume it), then calls the owner's reload hook. Every load merges edits still
+  waiting on the debounce onto the fresh data with `mergeDebouncedEdits`, against
+  `session.baseline` (what this tab last read or wrote), so debounced edits may only touch
+  expand/collapse and conversation timestamps. Echo suppression is only an optimisation: a wrongly
+  unsuppressed echo costs one reload of this tab's own data. Limit: an immediate save issued while
+  the reload read is in flight, or a snapshot already queued behind an in-flight write, is still
+  whole-snapshot last-writer-wins.
 - **Guard:** `src/pages/content/folder/__tests__/folderStoreReconcile.test.ts`, `src/pages/content/folder/__tests__/aistudioFolderSync.test.ts` ("applies another tab write that lands while its own write is pending")
 
 ## AI Studio external folder reloads must reapply library archive classes
