@@ -33,6 +33,22 @@ describe('prompts import boundaries', () => {
     ]);
   });
 
+  it('matches a body to the earliest prompt holding it after an edit moved it there', () => {
+    const library = [prompt('a'), prompt('b')];
+    const incoming = [
+      // `a` now holds b's body too, and comes first in the library.
+      prompt('a', { text: 'Body of b', updatedAt: 5 }),
+      prompt('z', { text: 'BODY OF B', tags: ['tag'] }),
+    ];
+
+    const { items } = mergeImportedPrompts(structuredClone(library), incoming);
+
+    expect(items.map((item) => [item.id, item.tags])).toEqual([
+      ['a', ['tag']],
+      ['b', []],
+    ]);
+  });
+
   it('keeps adding after a stored prompt that the incoming list names twice', () => {
     const library = [prompt('a'), prompt('b')];
     const incoming = [prompt('a'), prompt('x'), prompt('b'), prompt('a'), prompt('y')];
