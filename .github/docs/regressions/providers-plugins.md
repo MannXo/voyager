@@ -331,12 +331,15 @@ while an active plugin has domOps`).
   down keeping the last recorded item mounted in every window and extracts each item while it is
   mounted (`<turn key>:u` / `:a`). Any unproven start, gap, or missing bottom, or a reply still
   generating, fails the crawl: the selection list is then empty and the existing warning shows.
-  The reader's scroll position is restored either way. An uncrawled live thread also lists
-  nothing. The two entries above cover only the earlier `[data-turn-id-container]` DOM, which
+  The reader's scroll position is restored either way. The scroller is the nearest ancestor
+  styled to scroll, whether or not it overflows yet: a first page that fits the viewport made the
+  crawl scroll the window and silently start at the first loaded turn. An uncrawled live thread
+  also lists nothing. The two entries above cover only the earlier `[data-turn-id-container]` DOM, which
   keeps its own path.
 - **Guard:** `src/pages/content/export/adapter/__tests__/chatgptThreadExport.test.ts`
   (`reads every turn of a virtualized thread that unmounts items while scrolling`,
   `loads paginated history before reading, so the first turn is the conversation start`,
+  `keeps scrolling the thread when it overflows only once older history loads`,
   `reads the visible page, not a cached conversation ChatGPT keeps hidden before it`,
   `fails when every scroll skips past the recorded turns, rather than leaving a gap`,
   `fails instead of starting mid-thread when older history never finishes loading`,

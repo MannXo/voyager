@@ -93,6 +93,24 @@ describe('crawlChatGptThread', () => {
     expect(messages.map((message) => message.id)).toEqual(ids(turns));
   });
 
+  it.each([
+    ['over several pages', 3],
+    ['in one page', 7],
+  ])(
+    'keeps scrolling the thread when it overflows only once older history loads (%s)',
+    async (_label, pageSize) => {
+      const turns = makeTurns(16, 100);
+      const fixture = mountThreadFixture({ turns, initiallyLoaded: 9, pageSize, overscan: 0 });
+      expect(fixture.range()).toBe(0);
+      vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+
+      const messages = await crawlChatGptThread({ timing: FAST });
+
+      expect(fixture.loadedCount()).toBe(turns.length);
+      expect(messages.map((message) => message.id)).toEqual(ids(turns));
+    },
+  );
+
   it('crosses a turn taller than several viewports without losing its neighbours', async () => {
     const turns = makeTurns(5).map((turn, index) =>
       index === 2 ? { ...turn, height: 9000 } : turn,

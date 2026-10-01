@@ -17,19 +17,20 @@ export interface ScrollView {
 
 const SCROLLABLE_OVERFLOW = /(auto|scroll|overlay)/;
 
-/** The nearest ancestor of `element` that scrolls vertically, else null (the window). */
+/**
+ * The nearest ancestor of `element` styled to scroll vertically, else null
+ * (the window). It need not overflow yet: a thread whose first page fits the
+ * viewport overflows only once older history loads, and the crawl must keep
+ * scrolling that same box (measured live: the only such ancestor of an item is
+ * `[data-app-action-timeline-scroll]`).
+ */
 export function findScrollContainer(element: Element): HTMLElement | null {
   for (
     let node = element.parentElement;
     node && node !== document.body;
     node = node.parentElement
   ) {
-    if (
-      SCROLLABLE_OVERFLOW.test(getComputedStyle(node).overflowY) &&
-      node.scrollHeight > node.clientHeight
-    ) {
-      return node;
-    }
+    if (SCROLLABLE_OVERFLOW.test(getComputedStyle(node).overflowY)) return node;
   }
   return null;
 }
