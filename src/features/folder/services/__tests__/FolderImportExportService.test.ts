@@ -276,3 +276,17 @@ describe('FolderImportExportService.validatePayload folderContents entries (L10)
     }
   });
 });
+
+describe('FolderImportExportService.validatePayload inherited object keys', () => {
+  it.each([
+    ['a folder id', '{"folders":[{"id":"__proto__","name":"P"}],"folderContents":{}}'],
+    ['a folder id', '{"folders":[{"id":"constructor","name":"C"}],"folderContents":{}}'],
+    ['a bucket key', '{"folders":[],"folderContents":{"__proto__":[]}}'],
+  ])('rejects %s that every object inherits', (_kind, data) => {
+    const payload = JSON.parse(
+      `{"format":"gemini-voyager.folders.v1","exportedAt":"1970-01-01T00:00:00.000Z","version":"1.0.0","data":${data}}`,
+    );
+    const result = FolderImportExportService.validatePayload(payload);
+    expect(result.success).toBe(false);
+  });
+});

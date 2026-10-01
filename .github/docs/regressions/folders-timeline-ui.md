@@ -17,6 +17,27 @@ drop, or hover layout.
   (`highlights an initially active legacy row from its stored conversation URL` and
   `uses the URL route id for legacy conversations in account-isolated links and navigation`).
 
+## A folder id must never be a key every object inherits
+
+- **Trap:** An imported folder with id `__proto__` and empty `folderContents` passed validation.
+  `normalizeFolderData` tested `!folderContents[folder.id]`, which reads `Object.prototype` and is
+  truthy, so the folder was saved with no array bucket; assigning one would only have set the
+  prototype. The floating tree's sorter then threw on every load, so the panel stayed broken.
+- **Rule:** Imports refuse a folder id or bucket key that is an inherited object key
+  (`findInheritedFolderKey` in `src/features/folder/model/folderData.ts`), in the shared validator
+  (Gemini, ChatGPT) and in `readAIStudioImportFile`. Stored data keeps loading: the normalizer
+  requires an own array bucket and writes it with `defineProperty`, normalizer and clone leave a
+  non-array orphan bucket as stored, and the floating tree reads buckets through `ownBucket`.
+- **Guard:** `src/features/folder/model/__tests__/folderData.test.ts`
+  (`gives folders named after inherited object keys real buckets of their own`),
+  `src/features/folder/services/__tests__/FolderImportExportService.test.ts`
+  (`rejects %s that every object inherits`),
+  `src/features/plugins/builtin/chatgptFolders/__tests__/activate.test.ts`
+  (`opens over stored folders named after inherited object keys`), and the
+  `refuses a folder whose id every object inherits` cases in
+  `src/pages/content/folder/__tests__/FolderTransferController.test.ts` and
+  `src/pages/content/folder/__tests__/aistudioPersistence.test.ts`.
+
 ## Explicit native deletion must resolve identity at action time and wait for Gemini to settle
 
 - **Trap:** Deleting the currently open conversation from Gemini's top menu left a dead folder

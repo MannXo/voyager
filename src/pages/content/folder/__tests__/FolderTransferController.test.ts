@@ -143,6 +143,21 @@ describe('folder transfer commands', () => {
     },
   );
 
+  it('refuses a folder whose id every object inherits', async () => {
+    const h = harness(importedData());
+    const text = JSON.stringify(
+      FolderImportExportService.exportToPayload({
+        folders: [{ ...importedData().folders[0], id: '__proto__' }],
+        folderContents: {},
+      }),
+    );
+
+    expect(await h.transfer.import({ text }, 'merge')).toBe(false);
+
+    expect(h.session.data).toEqual(importedData());
+    expect(h.applyData).not.toHaveBeenCalled();
+  });
+
   it('cancels an overwrite without changing the current data or backup', async () => {
     const h = harness(importedData());
     vi.spyOn(window, 'confirm').mockReturnValue(false);

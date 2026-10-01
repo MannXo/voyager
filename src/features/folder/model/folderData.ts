@@ -241,8 +241,10 @@ export function normalizeFolderData(data: FolderData): FolderData {
   const originalFolders = data.folders ?? [];
   const folderContents = { ...data.folderContents };
   for (const folder of originalFolders) {
-    if (!folderContents[folder.id]) {
-      folderContents[folder.id] = [];
+    // Own and array-valued: `folderContents.__proto__` or `.constructor` is
+    // always truthy, and assigning `__proto__` would set the prototype.
+    if (!Object.hasOwn(folderContents, folder.id) || !Array.isArray(folderContents[folder.id])) {
+      setOwnBucket(folderContents, folder.id, []);
       changed = true;
     }
   }
@@ -273,6 +275,8 @@ export function normalizeFolderData(data: FolderData): FolderData {
   });
 
   for (const [folderId, conversations] of Object.entries(folderContents)) {
+    // A malformed orphan bucket is kept as stored, not read.
+    if (!Array.isArray(conversations)) continue;
     const seen = new Set<string>();
     let normalized = conversations.filter((conversation) => {
       if (seen.has(conversation.conversationId)) return false;
@@ -292,7 +296,7 @@ export function normalizeFolderData(data: FolderData): FolderData {
       const sortIndex = missingIndices.get(conversation);
       return sortIndex == null ? conversation : { ...conversation, sortIndex };
     });
-    folderContents[folderId] = normalized;
+    setOwnBucket(folderContents, folderId, normalized);
     changed = true;
   }
   return changed ? { ...data, folders, folderContents } : data;
@@ -305,7 +309,39 @@ export function validateFolderData(data: unknown): boolean {
   return Array.isArray(d.folders) && typeof d.folderContents === 'object';
 }
 
-/** Copy folders and conversation references so a snapshot cannot alias live data. */
+/**
+ * Whether `id` names a property every plain object inherits (`__proto__`,
+ * `constructor`, `toString`…). No folder id or bucket key may be one: reading
+ * it finds the inherited value, and assigning `__proto__` sets the prototype.
+ */
+export function isInheritedObjectKey(id: string): boolean {
+  return id in Object.prototype;
+}
+
+/** The first folder id or bucket key in an imported file that is an inherited object key. */
+export function findInheritedFolderKey(
+  folders: readonly { id?: unknown }[],
+  folderContents: object,
+): string | null {
+  const keys = [...folders.map((folder) => folder.id), ...Object.keys(folderContents)];
+  const found = keys.find((key) => typeof key === 'string' && isInheritedObjectKey(key));
+  return typeof found === 'string' ? found : null;
+}
+
+/** Stores `bucket` as an own property, even under `__proto__`. */
+function setOwnBucket(
+  contents: FolderData['folderContents'],
+  id: string,
+  bucket: ConversationReference[],
+): void {
+  Object.defineProperty(contents, id, {
+    value: bucket,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  });
+}
+
 /**
  * The bucket stored under `id` itself. Ids from a drag payload are page-readable
  * data, so an inherited key (`__proto__`, `constructor`) is never a bucket.
@@ -319,12 +355,15 @@ export function ownBucket(
   return Array.isArray(bucket) ? bucket : undefined;
 }
 
+/** Copy folders and conversation references so a snapshot cannot alias live data. */
 export function cloneFolderData(data: FolderData): FolderData {
   const folders = data.folders.map((folder) => ({ ...folder }));
   const folderContents = Object.fromEntries(
     Object.entries(data.folderContents || {}).map(([folderId, conversations]) => [
       folderId,
-      conversations.map((conversation) => ({ ...conversation })),
+      Array.isArray(conversations)
+        ? conversations.map((conversation) => ({ ...conversation }))
+        : conversations,
     ]),
   );
   return { folders, folderContents };

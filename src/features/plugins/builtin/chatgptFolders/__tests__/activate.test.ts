@@ -231,6 +231,27 @@ describe('ChatGPT folders plugin', () => {
     expect(filed()).toHaveLength(1);
   });
 
+  it('opens over stored folders named after inherited object keys', async () => {
+    memory.values.local.set(StorageKeys.CHATGPT_FOLDER_PANEL, { open: true });
+    memory.values.local.set(
+      StorageKeys.FOLDER_DATA_CHATGPT,
+      JSON.parse(
+        '{"folders":[' +
+          '{"id":"__proto__","name":"Proto","parentId":null,"isExpanded":true,"createdAt":1,"updatedAt":1},' +
+          '{"id":"constructor","name":"Ctor","parentId":null,"isExpanded":true,"createdAt":1,"updatedAt":1}],' +
+          '"folderContents":{}}',
+      ),
+    );
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await activate();
+
+    const text = shadow().textContent ?? '';
+    expect(text).toContain('Proto');
+    expect(text).toContain('Ctor');
+    expect(errors).not.toHaveBeenCalled();
+  });
+
   it('reopens the panel the user left open', async () => {
     memory.values.local.set(StorageKeys.CHATGPT_FOLDER_PANEL, { open: true });
     await activate();

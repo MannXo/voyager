@@ -54,6 +54,18 @@ describe('ChatGPT folder transfer', () => {
     );
   });
 
+  it('rejects a folder whose id every object inherits', async () => {
+    const payload = JSON.parse(
+      JSON.stringify(
+        exportChatGptFolders({ folders: [folder('__proto__', 'P')], folderContents: {} }),
+      ),
+    );
+    expect(await importChatGptFolders(payload, EMPTY)).toMatchObject({
+      ok: false,
+      reason: 'invalid',
+    });
+  });
+
   it('rejects a file marked for another site', async () => {
     const payload = { ...exportChatGptFolders(CHATGPT_DATA), platform: 'gemini' };
     expect(await importChatGptFolders(payload, EMPTY)).toEqual({ ok: false, reason: 'wrong-site' });

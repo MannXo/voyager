@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { ConversationReference, Folder, FolderData } from '@/core/types/folder';
 
 import {
+  cloneFolderData,
   getFolderAndDescendants,
   getFolderDepth,
   moveFolder,
@@ -313,6 +314,31 @@ describe('folder data conversation order', () => {
 });
 
 describe('folder data integrity', () => {
+  it('gives folders named after inherited object keys real buckets of their own', () => {
+    // Stored data comes back through JSON, which makes `__proto__` an own key.
+    const stored = JSON.parse(
+      '{"folders":[' +
+        '{"id":"__proto__","name":"P","parentId":null,"isExpanded":true,"createdAt":1,"updatedAt":1,"sortIndex":0},' +
+        '{"id":"constructor","name":"C","parentId":null,"isExpanded":true,"createdAt":1,"updatedAt":1,"sortIndex":1}],' +
+        '"folderContents":{"orphan":"garbage"}}',
+    ) as FolderData;
+
+    const result = normalizeFolderData(stored);
+
+    for (const id of ['__proto__', 'constructor']) {
+      expect(Object.hasOwn(result.folderContents, id)).toBe(true);
+      expect(result.folderContents[id]).toEqual([]);
+    }
+    expect(Object.getPrototypeOf(result.folderContents)).toBe(Object.prototype);
+    expect(JSON.parse(JSON.stringify(result.folderContents))).toEqual(
+      JSON.parse('{"orphan":"garbage","__proto__":[],"constructor":[]}'),
+    );
+    expect(normalizeFolderData(JSON.parse(JSON.stringify(result)))).toEqual(
+      JSON.parse(JSON.stringify(result)),
+    );
+    expect(cloneFolderData(result).folderContents.orphan).toBe('garbage');
+  });
+
   it('fills missing containers and initializes empty folder buckets', () => {
     expect(normalizeFolderData({} as FolderData)).toEqual({ folders: [], folderContents: {} });
     const data = freezeData({ folders: [folder('empty')], folderContents: {} });

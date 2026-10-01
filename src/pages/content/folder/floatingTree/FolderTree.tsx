@@ -1,7 +1,11 @@
 /** @jsxImportSource preact */
 import { render } from 'preact';
 
-import { getFolderDepth, sortConversationsByPriority } from '@/features/folder/model/folderData';
+import {
+  getFolderDepth,
+  ownBucket,
+  sortConversationsByPriority,
+} from '@/features/folder/model/folderData';
 
 import { getFolderColor, isDarkMode } from '../folderColors';
 import type { ConversationReference, Folder } from '../types';
@@ -132,7 +136,7 @@ type FolderNodeProps = { tree: TreeProps; folder: Folder; depth: number };
 function FolderNode({ tree, folder, depth }: FolderNodeProps) {
   const { data, inlineEditor, apply, actions } = tree;
   const expanded = tree.isExpanded(folder);
-  const childConversations = data.folderContents[folder.id] ?? [];
+  const childConversations = ownBucket(data.folderContents, folder.id) ?? [];
   const childFolders = getFolderChildren(data, folder.id);
   const renaming = inlineEditor?.mode === 'rename' && inlineEditor.folderId === folder.id;
   const creatingChild = inlineEditor?.mode === 'create' && inlineEditor.parentId === folder.id;
@@ -298,7 +302,7 @@ function FolderNode({ tree, folder, depth }: FolderNodeProps) {
 export function FolderTree(tree: TreeProps) {
   const { data, inlineEditor, rootBucketId } = tree;
   const creatingRoot = inlineEditor?.mode === 'create' && inlineEditor.parentId === null;
-  const rootConversations = data.folderContents[rootBucketId] ?? [];
+  const rootConversations = ownBucket(data.folderContents, rootBucketId) ?? [];
 
   if (
     data.folders.length === 0 &&

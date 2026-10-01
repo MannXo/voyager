@@ -14,6 +14,7 @@ import {
 } from '@/core/utils/version';
 
 import { SESSION_BACKUP_KEY, SESSION_BACKUP_TIMESTAMP_KEY } from '../constants';
+import { findInheritedFolderKey } from '../model/folderData';
 import {
   type FolderExportPayload,
   type ImportOptions,
@@ -173,6 +174,20 @@ export class FolderImportExportService {
           },
         };
       }
+    }
+
+    // An id such as `__proto__` cannot hold a bucket in a plain object, so the
+    // folder would be saved without one and break every later render.
+    const inherited = findInheritedFolderKey(data.folders as Folder[], data.folderContents);
+    if (inherited !== null) {
+      return {
+        success: false,
+        error: {
+          type: ValidationErrorType.CORRUPTED_DATA,
+          message: `Invalid folder id "${inherited}"`,
+          details: inherited,
+        },
+      };
     }
 
     // Per-entry validation of folderContents — lenient: malformed conversation

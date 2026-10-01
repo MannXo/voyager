@@ -1,4 +1,4 @@
-import { cloneFolderData } from '@/features/folder/model/folderData';
+import { cloneFolderData, findInheritedFolderKey } from '@/features/folder/model/folderData';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
 import type { ImportResult } from '@/features/folder/types/import-export';
 
@@ -19,7 +19,12 @@ export function readAIStudioImportFile(json: unknown): AIStudioImportFile {
   }
   const file = json && typeof json === 'object' ? (json as { data?: unknown }) : null;
   const next = (file && (file.data || file)) as FolderData | null;
-  if (!next || !Array.isArray(next.folders) || typeof next.folderContents !== 'object') {
+  if (
+    !next ||
+    !Array.isArray(next.folders) ||
+    typeof next.folderContents !== 'object' ||
+    (next.folderContents && findInheritedFolderKey(next.folders, next.folderContents) !== null)
+  ) {
     return { ok: false, messageKey: 'folder_import_invalid_format' };
   }
   return { ok: true, data: next };
