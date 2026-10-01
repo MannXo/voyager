@@ -29,10 +29,13 @@ export function createInlineFolderEditor(
   wrapperTag: 'div' | 'span',
   wrapperClassName: typeof CREATE_DRAFT_CLASS | typeof RENAME_DRAFT_CLASS,
   inputClassName: string,
-  inputOptions: { placeholder?: string; value?: string } = {},
+  inputOptions: { placeholder?: string; value?: string; folderId?: string | null } = {},
 ): InlineFolderEditor {
   const wrapper = document.createElement(wrapperTag);
   wrapper.className = wrapperClassName;
+  // The folder renamed, or the parent of a new subfolder. Recorded, not read from
+  // the DOM: a collapsed parent has no content box, so its draft sits after it.
+  if (inputOptions.folderId) wrapper.dataset.draftFolderId = inputOptions.folderId;
 
   const input = document.createElement('input');
   input.type = 'text';
@@ -76,7 +79,7 @@ export function detachInlineDrafts(list: HTMLElement): () => void {
     return {
       wrapper,
       input,
-      folderId: wrapper.closest<HTMLElement>('[data-folder-id]')?.dataset.folderId ?? null,
+      folderId: wrapper.dataset.draftFolderId ?? null,
       focused: input !== null && document.activeElement === input,
       start: input?.selectionStart ?? null,
       end: input?.selectionEnd ?? null,

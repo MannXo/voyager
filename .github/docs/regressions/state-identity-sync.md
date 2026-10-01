@@ -121,7 +121,8 @@ off a ChatGPT tab`).
 - **Rule:** `render()` detaches every open editor with `detachInlineDrafts` and puts the same
   nodes back beside their folders with text, focus and selection. A rename whose folder, or a
   new-subfolder draft whose parent, is gone is dropped (the save re-checks the parent too), and
-  `releaseAccountUi` discards drafts. Editors resolve their folder and header when
+  `releaseAccountUi` discards drafts. Drafts record their folder id when opened: a collapsed
+  parent has no content box, so the DOM position does not identify it. Editors resolve their folder and header when
   saving or cancelling, and remove themselves before re-rendering. Gemini's
   `FolderTreeView.render()` still closes inline editors on every rebuild.
 - **Guard:** `src/pages/content/folder/__tests__/aistudioFolderSync.test.ts` ("AI Studio inline folder drafts across reloads")

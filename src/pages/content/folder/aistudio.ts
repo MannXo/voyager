@@ -1417,6 +1417,7 @@ export class AIStudioFolderManager {
       cancelBtn,
     } = createInlineFolderEditor(this.t, 'div', 'gv-folder-inline-input', 'gv-folder-name-input', {
       placeholder: this.t('folder_name_prompt'),
+      folderId: parentId,
     });
 
     const cancel = () => {
@@ -1512,6 +1513,7 @@ export class AIStudioFolderManager {
       'gv-folder-rename-input',
       {
         value: folder.name,
+        folderId,
       },
     );
 

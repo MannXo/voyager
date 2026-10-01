@@ -399,6 +399,23 @@ describe('AI Studio inline folder drafts across reloads', () => {
     expect(document.querySelector('.gv-folder-inline-input')).toBeNull();
   });
 
+  it('keeps a new-subfolder draft beside its collapsed parent, and drops it with the parent', async () => {
+    const collapsed = twoFolders('Mine', 'Other');
+    collapsed.folders[0].isExpanded = false;
+    local[GLOBAL_KEY] = collapsed;
+    const manager = await mount();
+    manager.createFolder('Mine');
+    const draft = document.querySelector('.gv-folder-inline-input');
+
+    writeFromElsewhere({ [GLOBAL_KEY]: { ...collapsed, folders: [...collapsed.folders] } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector('[data-folder-id="Mine"]')?.nextElementSibling).toBe(draft);
+
+    writeFromElsewhere({ [GLOBAL_KEY]: folderData('Other') });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(document.querySelector('.gv-folder-inline-input')).toBeNull();
+  });
+
   it('keeps a new-folder draft and a rename open at the same time', async () => {
     local[GLOBAL_KEY] = folderData('Mine');
     const manager = await mount();
