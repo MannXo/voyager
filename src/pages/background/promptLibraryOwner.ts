@@ -20,12 +20,13 @@ export const promptLibraryOwner = createPromptLibraryOwner({
 
 /**
  * An extension page such as the popup, or this extension's content script in
- * a tab's top frame. Prompt Manager runs on custom sites too, so the page's
- * host is not checked; a content script can already write the key itself.
+ * a top frame. Prompt Manager runs on custom sites too, so the page's host is
+ * not checked; a content script can already write the key itself. Firefox
+ * without tab access leaves `tab` out, and Safari leaves `frameId` out.
  */
 export function isAllowedPromptLibrarySender(sender: chrome.runtime.MessageSender): boolean {
   if (isTrustedExtensionPageSender(sender)) return true;
-  if (sender.id !== chrome.runtime.id || !sender.tab) return false;
+  if (sender.id !== chrome.runtime.id) return false;
   return sender.frameId === undefined || sender.frameId === 0;
 }
 

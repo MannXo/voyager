@@ -28,15 +28,27 @@ describe('prompt library background owner', () => {
     expect(
       isAllowedPromptLibrarySender({ id: 'voyager-test', tab: { id: 1 } as chrome.tabs.Tab }),
     ).toBe(true);
+    // Firefox without tab access reports only the frame.
+    expect(
+      isAllowedPromptLibrarySender({
+        id: 'voyager-test',
+        url: 'https://gemini.google.com/app',
+        frameId: 0,
+      }),
+    ).toBe(true);
   });
 
-  it('refuses other extensions, subframes, and senders that are neither a page nor a tab', () => {
+  it('refuses other extensions and subframes', () => {
     const tab = { id: 1, url: 'https://gemini.google.com/app' } as chrome.tabs.Tab;
     expect(isAllowedPromptLibrarySender({ id: 'other-ext', tab, frameId: 0 })).toBe(false);
     expect(isAllowedPromptLibrarySender({ id: 'voyager-test', tab, frameId: 2 })).toBe(false);
-    expect(isAllowedPromptLibrarySender({ id: 'voyager-test', url: 'https://evil.example/' })).toBe(
-      false,
-    );
+    expect(
+      isAllowedPromptLibrarySender({
+        id: 'voyager-test',
+        url: 'https://ads.example/frame',
+        frameId: 3,
+      }),
+    ).toBe(false);
     expect(
       isAllowedPromptLibrarySender({
         id: 'other-ext',
