@@ -1,4 +1,5 @@
 import { nativeHealthReporter } from '../nativeHealth';
+import { hasRenderedConversationContent } from '../nativeHealth/pageEvidence';
 
 const CHAT_INPUT_SELECTORS = [
   '[data-testid="chat-input"][contenteditable="true"]',
@@ -173,9 +174,11 @@ export function findChatInput(options: FindChatInputOptions = {}): HTMLElement |
 }
 
 /**
- * A prompt insertion that finds no composer is the probe. The verdict accepts a hidden composer
- * (input collapse can shrink it), so only a missing one counts. Other hosts never start the
- * reporter, so their insertions report nothing.
+ * A prompt insertion that finds no composer is the probe. A miss counts only on a conversation
+ * that has rendered, because the composer is attached late while the app loads and a new chat
+ * offers no evidence of a loaded app that is independent of the composer. The verdict accepts a
+ * hidden composer (input collapse can shrink it), so only a missing one counts. Other hosts never
+ * start the reporter, so their insertions report nothing.
  */
 function noteComposer(found: boolean): void {
   if (found) {
@@ -183,8 +186,9 @@ function noteComposer(found: boolean): void {
     return;
   }
   nativeHealthReporter.reportMissing('composer', {
-    route: 'app',
+    route: 'conversation',
     recheck: () => findChatInput({ requireVisible: false }) !== null,
+    expected: () => hasRenderedConversationContent(),
   });
 }
 

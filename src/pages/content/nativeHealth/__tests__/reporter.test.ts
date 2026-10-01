@@ -224,7 +224,7 @@ describe('NativeHealthReporter', () => {
 
   it('stops cleanly: timers, entries and the popup listener all go', () => {
     reporter.reportMissing('timeline', missingTurns());
-    reporter.reportMissing('composer', { route: 'app', recheck: () => false });
+    reporter.reportMissing('composer', { route: 'conversation', recheck: () => false });
     vi.advanceTimersByTime(GRACE_MS);
     reporter.reportMissing('timeline', missingTurns());
     const listener = lastMessageListener();

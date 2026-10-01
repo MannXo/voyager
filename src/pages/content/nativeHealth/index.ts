@@ -17,10 +17,9 @@ export { NATIVE_HEALTH_GRACE_MS };
 /**
  * Where the anchor is expected:
  * - `conversation`: an open conversation (`/app/<id>`, `/gem/<gem>/<id>`);
- * - `app`: a conversation or a new chat;
  * - `any`: any Gemini page; the probe's `expected` check decides.
  */
-export type NativeHealthRouteRequirement = 'conversation' | 'app' | 'any';
+export type NativeHealthRouteRequirement = 'conversation' | 'any';
 
 export interface MissingAnchorProbe {
   readonly route: NativeHealthRouteRequirement;
@@ -39,7 +38,6 @@ function routeMatches(
   route: NativeHealthRoute,
 ): boolean {
   if (requirement === 'any') return true;
-  if (requirement === 'app') return route !== 'other';
   return route === 'conversation';
 }
 

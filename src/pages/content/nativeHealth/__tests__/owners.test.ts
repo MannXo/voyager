@@ -209,10 +209,16 @@ describe('composer', () => {
     expect(featuresAfterGrace()).toEqual([]);
   });
 
-  it('applies on a new chat too, where Gemini always shows the composer', () => {
+  it('does not count a miss while the conversation is still loading', () => {
+    document.body.innerHTML = '<main></main>';
+    insertTextIntoChatInput('prompt');
+    expect(featuresAfterGrace()).toEqual([]);
+  });
+
+  it('does not count a miss on a new chat, which has no independent evidence of a loaded app', () => {
     history.replaceState(null, '', '/app');
     document.body.innerHTML = '<main></main>';
     insertTextIntoChatInput('prompt');
-    expect(featuresAfterGrace()).toEqual(['composer:broken']);
+    expect(featuresAfterGrace()).toEqual([]);
   });
 });

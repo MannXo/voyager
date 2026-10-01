@@ -682,10 +682,12 @@ drop, or hover layout.
   (`conversation` probes never on a new chat). The verdict runs after the grace period, waits while
   the tab is hidden and re-runs the owner's own check. It then requires anchor-independent
   evidence: rendered text in `main` (outside buttons, the composer and Voyager UI) for turn
-  anchors, and an open sidebar in sidebar mode for folders. Any found result, owner teardown or
-  route change clears the entry. Probes reuse the owner's existing detection result and never add
-  an observer.
+  anchors and the composer, and an open sidebar in sidebar mode for folders. A new chat has no such
+  evidence, so the composer is never judged there. Any found result or owner teardown clears the
+  entry, and entries and pending probes belong to the pathname (with `/u/<index>/`) they were
+  reported on. Probes reuse the owner's existing detection result and never add an observer.
 - **Guard:** `src/pages/content/nativeHealth/__tests__/reporter.test.ts` (`never alarms on a new
 chat`, `never alarms on a conversation route that has not rendered content`, `postpones the
 verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/owners.test.ts`
-  (`does not count a collapsed sidebar as breakage`, `does not probe while chat width is off`).
+  (`does not count a collapsed sidebar as breakage`, `does not probe while chat width is off`,
+  `does not count a miss while the conversation is still loading`).
