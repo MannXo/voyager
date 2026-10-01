@@ -937,9 +937,30 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
   and shadow, because the attribute selector is more specific than `:host` regardless of order, so
   the inline tree turned into a white floating card in light mode only.
 - **Rule:** Reset every host property under both `:host` and `:host([data-gv-scheme])`, each
-  declaration `!important` so page CSS reaching the light-DOM host cannot restyle it either. Keep
-  the context menu inside the tree's shadow root; it escapes the nav's `overflow` through
-  `position: fixed`, and Voyager must not give the nav or its folder container a containing block
-  (`transform`, `filter`, `will-change`, `contain`, `perspective`), which would clip it.
+  declaration `!important` so page CSS reaching the light-DOM host cannot restyle it either. The
+  context menu does not live in this host: it renders in the body-level popover layer described in
+  the next note.
 - **Guard:** `src/pages/content/folder/__tests__/floatingPanelHostCss.test.ts`
   (`AI Studio sidebar tree host stylesheet`).
+
+## A transformed or clipping ancestor captures a `position: fixed` popover
+
+- **Trap:** AI Studio's folder tree sits inside the nav, and its context menu used
+  `position: fixed` to escape the nav's `overflow`. That escape holds only while no ancestor
+  establishes a containing block for fixed boxes. Once the nav or any wrapper carries `transform`,
+  `filter`, `backdrop-filter`, `perspective`, `contain` or a matching `will-change`, as page layouts
+  and animations do without notice, the menu is placed relative to that ancestor and clipped by its
+  `overflow`: menus on lower folders lost their right half or ran past the window's bottom edge.
+- **Rule:** A popover owned by a tree mounted inside page layout renders in a separate shadow host
+  appended to `document.body` (`mountPopoverLayer` in
+  `src/pages/content/folder/floatingTree/popoverLayer.ts`, opted into through the tree controller's
+  `popoverLayer`). The layer host is a 0×0 fixed box that takes no clicks, resets every property that
+  would make it a containing block, carries the shadow-surface key guard marker and the mirrored
+  scheme and direction, counts as inside for outside-click handling, and is removed with the tree.
+  Trees whose own host is already a body-level fixed panel (Gemini and ChatGPT floating panels) keep
+  the menu in the tree. After a menu renders, the controller shifts it by a measured delta to stay
+  inside the viewport, so the fit also holds in a container that offsets fixed boxes.
+- **Guard:** `src/pages/content/folder/__tests__/folderTreePopoverLayer.test.ts` (`folder menu in a
+popover layer` and `folder menu near the edge of the viewport`) and
+  `src/pages/content/folder/__tests__/floatingPanelHostCss.test.ts`
+  (`keeps the host from becoming the containing block of the fixed menu`).
