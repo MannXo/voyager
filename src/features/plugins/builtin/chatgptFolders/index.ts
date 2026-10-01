@@ -24,7 +24,7 @@ import { ChatGptHideFiled, HIDE_FILED_SETTING } from './chatgptHideFiled';
 import { ChatGptMoveMenu, MOVE_ENTRY_ATTR } from './chatgptMoveMenu';
 import { openChatGptConversation, readCurrentConversation } from './chatgptPage';
 import { ChatGptSidebarWatcher } from './chatgptSidebarWatcher';
-import { syncSidebarTitles } from './chatgptTitleSync';
+import { ChatGptTitleSync } from './chatgptTitleSync';
 import { CHATGPT_FOLDER_CONFIG } from './config';
 import { BOOKMARK_ADD_PATH, DOWNLOAD_PATH, UPLOAD_PATH } from './icons';
 import { type ChatGptFolderPanelPrefs, loadPanelPrefs, savePanelPrefs } from './panelPrefs';
@@ -281,9 +281,10 @@ export async function activateChatGptFolders(
     canFile: () => store.ready,
     onMove: (conversation) => view.pickFolderFor(conversation),
   });
+  const titles = new ChatGptTitleSync(store);
   sidebar.onChange((nav) => {
     view.placeSection(nav);
-    syncSidebarTitles(store, nav);
+    titles.sync(nav);
     if (moveMenu.check(nav)) sidebar.schedule();
   });
   scope.effect(() => store.subscribe(() => sidebar.schedule()), 'chatgpt-folders:sidebar-sync');

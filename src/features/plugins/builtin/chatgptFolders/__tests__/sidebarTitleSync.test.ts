@@ -175,6 +175,31 @@ describe('ChatGPT sidebar title sync', () => {
     });
   });
 
+  it('settles when another tab saves a title this sidebar still shows differently', async () => {
+    store([reference(FILED)]);
+    await activate();
+    const before = folderWrites();
+
+    // Another tab, whose sidebar shows a newer title, saves it.
+    const fromOtherTab = structuredClone(
+      memory.values.local.get(StorageKeys.FOLDER_DATA_CHATGPT),
+    ) as FolderData;
+    fromOtherTab.folderContents.f1[0].title = 'Newer title in another tab';
+    memory.external('local', StorageKeys.FOLDER_DATA_CHATGPT, fromOtherTab);
+    await nextPass();
+    await nextPass();
+
+    // This tab's stale row must not answer with a write the other tab would undo.
+    expect(folderWrites()).toBe(before);
+    expect(stored()[0].title).toBe('Newer title in another tab');
+
+    // A rename this tab sees is still saved.
+    sidebar.rename(FILED.id, 'Renamed here');
+    await nextPass();
+    expect(stored()[0].title).toBe('Renamed here');
+    expect(folderWrites()).toBe(before + 1);
+  });
+
   it('stops following the sidebar when turned off', async () => {
     store([reference(FILED)]);
     await activate();

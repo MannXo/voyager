@@ -883,3 +883,14 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
   `is reachable with the arrow keys and opens the picker with Enter`,
   `reaches a menu whose content renders after its trigger opens`,
   `stops waiting for a menu that never renders`).
+
+## ChatGPT title sync writes only titles this tab saw change
+
+- **Trap:** Every save from another tab reloads the ChatGPT folder store, and the reload schedules a
+  sidebar pass. Two tabs whose sidebars cached different titles for one filed conversation each
+  wrote their own title back on that pass. Each write reloaded the other tab, so they overwrote
+  each other with no sidebar change in between.
+- **Rule:** `ChatGptTitleSync` remembers the title it last read from each filed row and writes a
+  title only when the row shows something new to this tab. A reload alone never writes.
+- **Guard:** `src/features/plugins/builtin/chatgptFolders/__tests__/sidebarTitleSync.test.ts`
+  (`settles when another tab saves a title this sidebar still shows differently`).
