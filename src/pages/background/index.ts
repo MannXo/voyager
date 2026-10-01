@@ -93,6 +93,7 @@ import { getTranslation } from '@/utils/i18n';
 import type { TranslationKey } from '@/utils/translations';
 
 import { unregisterRegisteredContentScripts } from './contentScriptRegistration';
+import { loadEnabledPlugins } from './enabledPlugins';
 import { resolveOptionalHighlightSetting } from './highlightOptionalSetting';
 import { handlePluginRuntimeMessage } from './pluginRuntimeMessages';
 import { mergeCloudPrompts, mergeCloudPromptsForUpload } from './promptDriveMerge';
@@ -106,6 +107,7 @@ import {
   isTrustedSyncMessageSender,
   parseSyncPlatform,
 } from './runtimeMessageRouting';
+import { syncShadowKeyGuardRegistration } from './shadowKeyGuardRegistration';
 import { registerWatermarkDefaultMigrationOnInstall } from './watermarkDefaultMigration';
 import { injectWatermarkInterceptorIntoOpenTabs } from './watermarkOpenTabs';
 
@@ -984,36 +986,6 @@ async function doSyncCustomContentScripts(domains?: string[]): Promise<void> {
 }
 
 /**
- * Plugin ecosystem — dynamic content-script registration.
- *
- * Mirrors syncCustomContentScripts: derive the origins of currently-ENABLED
- * plugins, keep only those the user has already granted host permission
- * for, and (re)register the content script for them. The content script runs
- * `startPluginHost()`, which mounts the enabled plugin on the page.
- *
- * Plugin enable-state is the single source of truth (storage.local); permissions
- * and registrations are derived from it.
- */
-async function getEnabledPluginOrigins(): Promise<string[]> {
-  let state: unknown = {};
-  try {
-    const stored = await chrome.storage.local.get({ [StorageKeys.PLUGINS_STATE]: {} });
-    state = stored?.[StorageKeys.PLUGINS_STATE];
-  } catch {
-    return [];
-  }
-  const enabledIds = new Set<string>();
-  if (state && typeof state === 'object' && !Array.isArray(state)) {
-    for (const [id, entry] of Object.entries(state as Record<string, { enabled?: boolean }>)) {
-      if (entry && entry.enabled === true) enabledIds.add(id);
-    }
-  }
-  const catalog = await loadPluginCatalog();
-  const enabledPlugins = catalog.filter((plugin) => enabledIds.has(plugin.id));
-  return pluginsToOriginPatterns(enabledPlugins);
-}
-
-/**
  * A live Voyager content script answers this ping. Orphaned scripts (extension
  * updated/reloaded underneath the page) have an invalidated runtime and cannot
  * respond, so they correctly read as "not injected".
@@ -1098,14 +1070,34 @@ function syncPluginContentScripts(): Promise<void> {
   return next;
 }
 
+/**
+ * Plugin ecosystem — dynamic content-script registration.
+ *
+ * Mirrors syncCustomContentScripts: derive the origins of currently-ENABLED
+ * plugins, keep only those the user has already granted host permission
+ * for, and (re)register the content script for them. The content script runs
+ * `startPluginHost()`, which mounts the enabled plugin on the page.
+ *
+ * Plugin enable-state is the single source of truth (storage.local); permissions
+ * and registrations are derived from it.
+ */
 async function doSyncPluginContentScripts(): Promise<void> {
   if (!chrome.scripting?.registerContentScripts) return;
+
+  const enabledPlugins = await loadEnabledPlugins(loadPluginCatalog);
+  // Own registration call and failure path: the guard never blocks the plugin host.
+  await syncShadowKeyGuardRegistration({
+    scripting: chrome.scripting,
+    manifest: chrome.runtime.getManifest(),
+    enabledPlugins,
+    filterGranted: filterGrantedOrigins,
+    toResource: isFirefox() ? toRelativeExtensionPath : (path) => path,
+  });
 
   const manifestContentScript = chrome.runtime.getManifest().content_scripts?.[0];
   if (!manifestContentScript) return;
 
-  const origins = await getEnabledPluginOrigins();
-  const grantedMatches = await filterGrantedOrigins(origins);
+  const grantedMatches = await filterGrantedOrigins(pluginsToOriginPatterns(enabledPlugins));
 
   await unregisterRegisteredContentScripts(chrome.scripting, [
     PLUGIN_CONTENT_SCRIPT_ID,
