@@ -521,31 +521,14 @@ export class FolderStore {
     conv: ConversationReference,
   ): void {
     if (!this.canEdit) return;
-    // Remove from source folder
-    if (this.data.folderContents[sourceFolderId]) {
-      this.data.folderContents[sourceFolderId] = this.data.folderContents[sourceFolderId].filter(
-        (c) => c.conversationId !== conv.conversationId,
-      );
-    }
-
-    // Add to target folder
-    if (!this.data.folderContents[targetFolderId]) {
-      this.data.folderContents[targetFolderId] = [];
-    }
-
-    // Check if conversation already exists in target folder
-    const existingIndex = this.data.folderContents[targetFolderId].findIndex(
-      (c) => c.conversationId === conv.conversationId,
-    );
-
-    if (existingIndex === -1) {
-      // Add with updated timestamp
-      this.data.folderContents[targetFolderId].push({
-        ...conv,
-        addedAt: Date.now(),
-      });
-    }
-
+    // The record keeps its sortIndex, and it leaves the source even when the
+    // target already holds it.
+    this.data = placeConversations(this.data, [{ ...conv, addedAt: Date.now() }], {
+      target: targetFolderId,
+      placement: 'keep',
+      removeFrom: { bucket: sourceFolderId },
+      removeWhenPresent: true,
+    }).data;
     this.saveData();
     this.options.onChange('data');
   }
