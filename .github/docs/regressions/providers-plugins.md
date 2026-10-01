@@ -67,13 +67,18 @@ and turn ids`).
   the same text, a hash only one marker carries), then aligns each run of uncertain turns between
   two certain matches with the markers between them: most matches first, then the smallest
   distance after the nearer anchor's drift. That alignment costs run x markers in time and memory,
-  so past 250k cells a run is matched in one ordered pass: while a text has no more markers left
-  than turns left in the run, they pair by index, which no uniform shift can upset; otherwise a
-  turn takes the nearest marker among those the run can spare, by binary search on the
-  remembered centres (earliest on a tie). (A nearest-centre scan per turn was quadratic on equal
-  centres, and after an anchorless +100px shift it matched the first turn to the second marker
-  and made the last one a new dot. A fixed 32-marker lookahead misfiled a window mounted deep in
-  a long run.) Repeat ids (`~n`) are handed out without rescanning earlier ones. ChatGPT keeps
+  so past 250k cells a run is matched in one ordered pass over the markers and the run, all texts
+  together: a turn may skip a marker only while that marker's text has more markers left than
+  turns left, so it never jumps past a marker another turn still needs, and a text without spare
+  markers pairs in order, which no uniform shift can upset. Among the markers it may reach, a turn
+  takes the nearest by position, by binary search on running-max centres (earliest on a tie), so
+  a stale centre out of DOM order cannot attract it. (A nearest-centre scan per turn was quadratic
+  on equal centres, and after an anchorless +100px shift it matched the first turn to the second
+  marker and made the last one a new dot. A fixed 32-marker lookahead misfiled a window mounted
+  deep in a long run. Reserving markers per text let a turn skip other texts' markers, so a
+  missing turn before a long run left phantom dots; a search on raw centres could pick a
+  far-off out-of-order marker.)
+  Repeat ids (`~n`) are handed out without rescanning earlier ones. ChatGPT keeps
   one `[data-turn-id-container]` item per turn mounted, so it names that attribute as `turnKey` and uses snapshot mode (see the route
   switch entry): duplicate items fold by id, preferring the copy with a mounted message, and an
   element holding other items or several turns (a `*-root` wrapper) is never a turn. `turnKey`
@@ -81,7 +86,10 @@ and turn ids`).
 - **Guard:** `src/features/plugins/verbs/turnNavigator/turnMerge.test.ts` (`re-matches a long run
 of repeats after a shift, past the alignment budget`, `keeps every turn of a long identical run
 after a uniform shift with no anchor`, `reads a bounded number of remembered positions`, `files a
-window mounted deep in a long identical run by position`),
+window mounted deep in a long identical run by position`, `keeps other texts in place when a
+long mixed run remounts shifted without one turn`, `files a deep window by position past a stale
+remembered centre mid-run`, `does not file a turn under a far-off remembered centre that is out of
+order`),
   `src/features/plugins/builtin/chatgptTimeline.test.ts` (`keeps repeated identical prompts
 apart`, `folds a turn ChatGPT briefly renders twice`, `follows a turn whose list id ChatGPT
 renames`, `updates the dot when a prompt is edited in place`, `does not treat a wrapper around

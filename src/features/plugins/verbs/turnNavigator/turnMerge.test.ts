@@ -150,6 +150,72 @@ describe('mergeMountedTurns without a turn key', () => {
     );
   });
 
+  it('keeps other texts in place when a long mixed run remounts shifted without one turn', () => {
+    const turns: Array<readonly [string, number]> = [
+      ['A', 100],
+      ['B', 200],
+      ['B', 300],
+      ['A', 400],
+      ...Array.from({ length: 1_000 }, (_, index) => ['C', 500 + 100 * index] as const),
+    ];
+    const known = merge([], turns);
+    const ids = known.map((marker) => marker.id);
+    // The second A is not mounted; everything else moved down 300px.
+    const window = render(
+      turns.filter((_, index) => index !== 3).map(([text, center]) => [text, center + 300]),
+    );
+
+    const next = mergeMountedTurns(known, window, (element) => centers.get(element) ?? 0);
+
+    expect(next.map((marker) => marker.id)).toEqual(ids);
+    expect(window.map((turn) => turn.element.getAttribute('data-gv-turn-id'))).toEqual(
+      ids.filter((_, index) => index !== 3),
+    );
+  });
+
+  it('files a deep window by position past a stale remembered centre mid-run', () => {
+    const known = merge(
+      [],
+      Array.from(
+        { length: 700 },
+        // A turn measured before its neighbours were re-measured lags behind them.
+        (_, index) => ['continue', index === 350 ? 0 : 100 * (index + 1)] as const,
+      ),
+    );
+    const ids = known.map((marker) => marker.id);
+    const window = render(
+      Array.from({ length: 400 }, (_, r) => ['continue', 100 * (300 + r + 1)] as const),
+    );
+
+    mergeMountedTurns(known, window, (element) => centers.get(element) ?? 0);
+
+    expect(window.map((turn) => turn.element.getAttribute('data-gv-turn-id'))).toEqual(
+      ids.slice(300),
+    );
+  });
+
+  it('does not file a turn under a far-off remembered centre that is out of order', () => {
+    const known = merge(
+      [],
+      Array.from(
+        { length: 700 },
+        (_, index) =>
+          ['continue', index === 0 ? 0 : index === 1 ? 1_000 : 100 * (index - 1)] as const,
+      ),
+    );
+    const ids = known.map((marker) => marker.id);
+    const window = render(
+      Array.from({ length: 400 }, (_, r) => ['continue', 150 + 100 * r] as const),
+    );
+
+    const next = mergeMountedTurns(known, window, (element) => centers.get(element) ?? 0);
+
+    expect(next).toHaveLength(700);
+    const filed = window.map((turn) => ids.indexOf(turn.element.getAttribute('data-gv-turn-id')!));
+    expect(filed[0]).not.toBe(1);
+    expect(filed.every((index, r) => index >= 0 && (r === 0 || index > filed[r - 1]))).toBe(true);
+  });
+
   it('keeps a genuinely new repeat as a new turn after its twin', () => {
     const known = merge([], [['continue', 100]]);
 

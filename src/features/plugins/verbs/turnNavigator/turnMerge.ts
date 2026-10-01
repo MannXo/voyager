@@ -170,7 +170,7 @@ function alignRun(
   let anyCandidate = false;
   for (let j = lo; j < hi && !anyCandidate; j++) anyCandidate = hashes.has(known[j].hash);
   if (!anyCandidate) return result;
-  if ((m + 1) * (n + 1) > MAX_ALIGNMENT_CELLS) return alignGreedily(known, run, lo, hi, drifts);
+  if ((m + 1) * (n + 1) > MAX_ALIGNMENT_CELLS) return alignInOrder(known, run, lo, hi, drifts);
 
   // best[i][j]: most matches, then least distance, for run[i..] vs known[lo+j..hi).
   const width = n + 1;
@@ -228,55 +228,92 @@ function alignRun(
 }
 
 /**
- * A run too long to align exactly, matched in one ordered pass. Each turn
- * may skip only as many markers with its text as the run can spare: when the
- * run has as many turns with a text as there are markers left for it, they
- * pair in order, which no uniform shift can upset. Otherwise a turn takes the
- * nearest drift-corrected marker among those it may skip to, found by binary
- * search on the remembered centres (the earliest on a tie), so the cost is
- * the run times the log of the markers.
+ * A run too long to align exactly, matched in one ordered pass over the
+ * markers and the run together, all texts at once.
+ *
+ * A text's slack is how many of its markers ahead could go unmatched: its
+ * markers left minus its turns left. A turn may skip a marker only while
+ * that marker's text has slack, so it never jumps past a marker another turn
+ * of the run still needs; a text with no slack pairs in order, which no
+ * uniform shift can upset. Among the markers with its text it may reach, a
+ * turn takes the nearest by position (earliest on a tie), searched on
+ * running-max centres: a stale centre that lags behind re-measured
+ * neighbours keeps the estimates sorted, as in `computeMarkerCenters`.
+ *
+ * The reachable bound only moves forward, so finding it is linear overall;
+ * each turn adds a binary search. Cost: (run + markers) x log(markers).
  */
-function alignGreedily(
+function alignInOrder(
   known: readonly Marker[],
   run: readonly MountedEntry[],
   lo: number,
   hi: number,
   drifts: readonly number[],
 ): number[] {
+  const estimate = new Float64Array(hi - lo);
+  let highest = -Infinity;
   const indexesByHash = new Map<string, number[]>();
+  const markersLeft = new Map<string, number>();
   for (let j = lo; j < hi; j++) {
-    const indexes = indexesByHash.get(known[j].hash);
+    highest = Math.max(highest, known[j].center);
+    estimate[j - lo] = highest;
+    const { hash } = known[j];
+    const indexes = indexesByHash.get(hash);
     if (indexes) indexes.push(j);
-    else indexesByHash.set(known[j].hash, [j]);
+    else indexesByHash.set(hash, [j]);
+    markersLeft.set(hash, (markersLeft.get(hash) ?? 0) + 1);
   }
-  // Turns from here to the end of the run sharing each turn's text.
-  const sameTextAhead = new Array<number>(run.length);
-  const seen = new Map<string, number>();
-  for (let r = run.length - 1; r >= 0; r--) {
-    const count = (seen.get(run[r].hash) ?? 0) + 1;
-    seen.set(run[r].hash, count);
-    sameTextAhead[r] = count;
-  }
-  let cursor = lo;
+  const turnsLeft = new Map<string, number>();
+  for (const entry of run) turnsLeft.set(entry.hash, (turnsLeft.get(entry.hash) ?? 0) + 1);
+  const slack = (hash: string): number => (markersLeft.get(hash) ?? 0) - (turnsLeft.get(hash) ?? 0);
+
+  // Markers [next, reach) may all be skipped; known[reach] may not.
+  let next = lo;
+  let reach = lo;
+  const skippable = new Map<string, number>();
+  const extendReach = (): void => {
+    while (reach < hi) {
+      const { hash } = known[reach];
+      const count = (skippable.get(hash) ?? 0) + 1;
+      if (count > slack(hash)) return;
+      skippable.set(hash, count);
+      reach++;
+    }
+  };
+  const passMarkersBefore = (end: number): void => {
+    for (; next < end; next++) {
+      const { hash } = known[next];
+      markersLeft.set(hash, markersLeft.get(hash)! - 1);
+      if (next < reach) skippable.set(hash, skippable.get(hash)! - 1);
+    }
+    if (reach < next) reach = next;
+  };
+
   return run.map((entry, r) => {
+    extendReach();
     const indexes = indexesByHash.get(entry.hash);
-    if (!indexes) return -1;
-    const first = lowerBound(indexes, cursor);
-    if (first === indexes.length) return -1;
-    const last = first + Math.max(0, indexes.length - first - sameTextAhead[r]);
-    const target = entry.center - drifts[r];
-    const centerAt = (k: number): number => known[indexes[k]].center;
-    // First candidate at or past the target; the one before it is the other contender.
-    const above = searchCenters(first, last + 1, (k) => centerAt(k) >= target);
-    let pick = above;
-    if (above > first) {
-      const below = centerAt(above - 1);
-      if (above > last || target - below <= centerAt(above) - target) {
-        pick = searchCenters(first, above, (k) => centerAt(k) >= below);
+    let pick = -1;
+    if (indexes) {
+      const from = lowerBound(indexes, next);
+      const to = lowerBound(indexes, reach + 1);
+      if (from < to) {
+        const target = entry.center - drifts[r];
+        const at = (k: number): number => estimate[indexes[k] - lo];
+        // First candidate at or past the target; the one before it is the other contender.
+        const above = searchCenters(from, to, (k) => at(k) >= target);
+        let k = above;
+        if (above > from) {
+          const below = at(above - 1);
+          if (above === to || target - below <= at(above) - target) {
+            k = searchCenters(from, above, (candidate) => at(candidate) >= below);
+          }
+        }
+        pick = indexes[k];
       }
     }
-    cursor = indexes[pick] + 1;
-    return indexes[pick];
+    turnsLeft.set(entry.hash, turnsLeft.get(entry.hash)! - 1);
+    if (pick !== -1) passMarkersBefore(pick + 1);
+    return pick;
   });
 }
 
