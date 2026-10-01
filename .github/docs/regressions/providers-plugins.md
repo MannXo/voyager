@@ -845,8 +845,8 @@ storage.session`) and `src/pages/background/__tests__/researchPackHandoffWiring.
   whole file if any template's name or text breaks a limit or carries control characters. It keeps
   only name and text, shows them with `textContent` in a preview, and writes nothing until Save.
   Saving gives each template a new id and skips any whose text or name the library already has,
-  re-checked against the library at write time; existing prompts are written back exactly as
-  stored. Export writes only the chosen template, never pack items, sources or other prompts.
+  re-checked by the prompt library's background owner against the library at write time; existing
+  prompts are written back exactly as stored. Export writes only the chosen template, never pack items, sources or other prompts.
 - **Guard:** `src/features/researchPack/services/__tests__/templates.test.ts` (`never edits a
 stored prompt, even when an imported file carries its id`) and
   `src/pages/content/researchPack/__tests__/templates.test.ts` (`previews an imported file as plain
