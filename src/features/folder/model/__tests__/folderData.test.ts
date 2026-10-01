@@ -117,6 +117,7 @@ describe('folder data movement', () => {
     { id: 'pinned', parent: 'target' },
     { id: 'ancestor', parent: 'ancestor' },
     { id: 'ancestor', parent: 'child' },
+    { id: 'ancestor', parent: 'grandchild' },
     { id: 'missing', parent: 'target' },
     { id: 'ancestor', parent: null },
   ])('leaves input intact when moving $id to $parent is rejected', ({ id, parent }) => {
@@ -126,6 +127,7 @@ describe('folder data movement', () => {
         folder('target', null, 1),
         folder('ancestor', null, 2),
         folder('child', 'ancestor'),
+        folder('grandchild', 'child'),
       ],
       folderContents: { ancestor: [conversation('keep')] },
     });
