@@ -471,6 +471,7 @@ export class AIStudioFolderManager {
 
     // Set up storage change listener (always needed to respond to setting changes)
     this.setupStorageListener();
+    this.repository.watchStorage(); // Else a stale tab's next save overwrites other writers.
 
     // Keep account-scoped data aligned with current AI Studio account.
     this.setupAccountContextPoller();
@@ -636,8 +637,7 @@ export class AIStudioFolderManager {
   }
 
   private handleRepositoryChange(reason: FolderStoreChange): void {
-    // `loaded`: a ready session was bound or finished loading. `data` and
-    // `availability`: a draft replacement started or settled.
+    // loaded: a ready session bound or loaded. data/availability: a draft started or settled.
     if (reason === 'loaded' || reason === 'data' || reason === 'availability') this.render();
   }
 
