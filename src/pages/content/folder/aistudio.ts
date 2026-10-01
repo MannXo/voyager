@@ -1678,15 +1678,21 @@ export class AIStudioFolderManager {
 
   /**
    * Place a dropped prompt in one bucket (null: Uncategorized) and take it out
-   * of every other bucket: an AI Studio prompt lives in one place. A record the
-   * target already holds is kept, and no sortIndex is added because AI Studio
-   * renders array order. Returns false when the drop carries no prompt.
+   * of every other bucket: an AI Studio prompt lives in one place. A stored
+   * prompt moves with its whole record (rename, open time and all); the drag
+   * payload builds one only for a prompt no bucket holds yet. No sortIndex is
+   * added because AI Studio renders array order. Returns false when the drop
+   * carries no prompt.
    */
   private placeDroppedPrompt(event: DragEvent, targetFolderId: string | null): boolean {
     const data = this.parseDragDataFromEvent(event);
     if (!data || data.type !== 'conversation' || !data.conversationId) return false;
-    const record: ConversationReference = {
-      conversationId: data.conversationId,
+    const conversationId = data.conversationId;
+    const stored = Object.values(this.data.folderContents)
+      .flat()
+      .find((conversation) => conversation.conversationId === conversationId);
+    const record: ConversationReference = stored ?? {
+      conversationId,
       title: normalizeText(data.title) || this.t('conversation_untitled'),
       url: data.url || '',
       addedAt: now(),

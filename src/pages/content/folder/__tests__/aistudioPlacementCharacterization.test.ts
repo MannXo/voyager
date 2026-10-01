@@ -170,12 +170,8 @@ describe.each(dropTargets)('AI Studio $name', ({ drop }) => {
       [ROOT]: ['p4'],
       orphan: [],
     });
-    expect(manager.data.folderContents.b[1]).toEqual({
-      conversationId: 'p1',
-      title: 'New name',
-      url: '',
-      addedAt: NOW,
-    });
+    // The stored record moves as stored; the payload title is not applied.
+    expect(manager.data.folderContents.b[1]).toEqual(prompt('p1'));
     expect(manager.save).toHaveBeenCalledTimes(1);
   });
 
@@ -198,8 +194,9 @@ describe.each(dropTargets)('AI Studio $name', ({ drop }) => {
     expect(manager.data.folderContents.a[0]).toEqual(prompt('p1'));
   });
 
-  it('moves a prompt to the root bucket, rebuilding it from the payload', async () => {
+  it('moves a prompt to the root bucket with its stored record', async () => {
     const manager = createManager(initial);
+    const stored = manager.data.folderContents.b[0];
     await drop(manager, null, {
       type: 'conversation',
       conversationId: 'p3',
@@ -214,11 +211,25 @@ describe.each(dropTargets)('AI Studio $name', ({ drop }) => {
       [ROOT]: ['p4', 'p1', 'p3'],
       orphan: ['p1'],
     });
-    // The stored rename and open time do not travel with the move.
-    expect(manager.data.folderContents[ROOT][2]).toEqual({
-      conversationId: 'p3',
+    // The rename and open time travel with the move.
+    expect(manager.data.folderContents[ROOT][2]).toEqual(
+      prompt('p3', { customTitle: true, title: 'Renamed', lastOpenedAt: 5 }),
+    );
+    expect(manager.data.folderContents[ROOT][2]).not.toBe(stored);
+  });
+
+  it('builds the record from the payload only for a prompt no bucket holds', async () => {
+    const manager = createManager(initial);
+    await drop(manager, 'a', {
+      type: 'conversation',
+      conversationId: 'p9',
+      title: '  ',
+      url: '/prompts/p9',
+    });
+    expect(manager.data.folderContents.a[2]).toEqual({
+      conversationId: 'p9',
       title: 'Untitled',
-      url: '/prompts/p3',
+      url: '/prompts/p9',
       addedAt: NOW,
     });
   });
