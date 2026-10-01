@@ -43,6 +43,7 @@ import browser from 'webextension-polyfill';
 import { StorageKeys } from '@/core/types/common';
 
 import { watchRouteChanges } from '../utils/routeWatcher';
+import { GEMS_NAV_ENTRY_SELECTOR, gemsAnchorMayBeDisturbed } from './anchorGuard';
 import { injectPinButtons, listenPinnedChanges } from './pinToggle';
 
 /** Single gem as we cache and render it. Keep this small — chrome.storage. */
@@ -105,6 +106,8 @@ let storageListener:
   | null = null;
 let injectedList: HTMLElement | null = null;
 let injectedToggle: HTMLElement | null = null;
+// The native Gems entry the list was last placed after.
+let anchoredEntry: HTMLElement | null = null;
 let currentCount = 0;
 let currentCache: GemCacheEnvelope = { items: [], cachedAt: 0 };
 let currentMru: GemMruEntry[] = [];
@@ -599,9 +602,7 @@ function teardownScrapeObserver(): void {
 function findGemsNavEntry(): HTMLElement | null {
   const overflow = document.querySelector('[data-test-id="overflow-container"]');
   if (!overflow) return null;
-  const entries = Array.from(
-    overflow.querySelectorAll('[data-test-id="gems-side-nav-entry-button"]'),
-  );
+  const entries = Array.from(overflow.querySelectorAll(GEMS_NAV_ENTRY_SELECTOR));
   for (const el of entries) {
     if (!(el instanceof HTMLElement)) continue;
     if (el.getBoundingClientRect().height > 0) return el;
@@ -684,13 +685,11 @@ function visibleGems(): GemMetadata[] {
 }
 
 /** Mount / re-mount the chevron on the current Gems nav entry. */
-function ensureExpandToggle(): void {
+function ensureExpandToggle(entry: HTMLElement): void {
   if (currentCount <= 0 || visibleGems().length === 0) {
     removeExpandToggle();
     return;
   }
-  const entry = findGemsNavEntry();
-  if (!entry) return;
 
   // Already attached to the *current* entry element? No-op.
   if (injectedToggle && injectedToggle.parentElement === entry) {
@@ -735,13 +734,12 @@ function buildItem(gem: GemMetadata): HTMLElement {
 }
 
 /** Insert / refresh / remove the list based on current state. */
-function renderSection(): void {
+function renderSection(gemsEntry: HTMLElement | null = findGemsNavEntry()): void {
   if (currentCount <= 0) {
     cleanupSection();
     return;
   }
 
-  const gemsEntry = findGemsNavEntry();
   if (!gemsEntry || !gemsEntry.parentElement) {
     // No anchor yet — try again on the next mutation.
     return;
@@ -761,7 +759,8 @@ function renderSection(): void {
     gemsEntry.insertAdjacentElement('afterend', fresh);
   }
   injectedList = fresh;
-  ensureExpandToggle();
+  anchoredEntry = gemsEntry;
+  ensureExpandToggle(gemsEntry);
 }
 
 function cleanupSection(): void {
@@ -769,6 +768,7 @@ function cleanupSection(): void {
     injectedList.remove();
     injectedList = null;
   }
+  anchoredEntry = null;
   removeExpandToggle();
 }
 
@@ -782,8 +782,8 @@ function scheduleEnforce(): void {
 
 /**
  * Make sure our list sits immediately after the *current* Gems nav entry,
- * and that the chevron is mounted on that entry. Cheap no-op when already
- * correct, so it's safe to call on every MutationObserver tick.
+ * and that the chevron is mounted on that entry. Reads layout to pick the
+ * visible entry, so the observer calls it only when the anchor may have moved.
  */
 function enforcePosition(): void {
   if (currentCount <= 0) return;
@@ -791,7 +791,7 @@ function enforcePosition(): void {
   if (!gemsEntry || !gemsEntry.parentElement) return;
 
   if (!injectedList || !injectedList.isConnected) {
-    renderSection();
+    renderSection(gemsEntry);
     return;
   }
 
@@ -800,9 +800,10 @@ function enforcePosition(): void {
   if (!inRightParent || !immediatelyAfter) {
     gemsEntry.insertAdjacentElement('afterend', injectedList);
   }
+  anchoredEntry = gemsEntry;
 
   // Always re-check the chevron — entry might have been swapped under us.
-  ensureExpandToggle();
+  ensureExpandToggle(gemsEntry);
 }
 
 function setupPositionEnforcer(): void {
@@ -823,7 +824,14 @@ function setupPositionEnforcer(): void {
     positionRetryTimer = null;
   }
   positionObserver?.disconnect();
-  positionObserver = new MutationObserver(() => scheduleEnforce());
+  positionObserver = new MutationObserver((mutations) => {
+    // Gemini streams conversation rows into this subtree; only re-run the
+    // layout-reading lookup when the anchor itself may have moved (#1040).
+    const anchor = { entry: anchoredEntry, list: injectedList, toggle: injectedToggle };
+    if (!gemsAnchorMayBeDisturbed(mutations, anchor)) return;
+    if (!injectedList && visibleGems().length === 0) return;
+    scheduleEnforce();
+  });
   positionObserver.observe(overflow, { childList: true, subtree: true });
   scheduleEnforce();
 }

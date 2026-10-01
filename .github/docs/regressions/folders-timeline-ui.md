@@ -613,3 +613,18 @@ drop, or hover layout.
 - **Guard:** `src/pages/content/folder/conversationMembership.test.ts` (parity with the original
   scan, `indexes once for a batch of rows instead of once per row`,
   `sees conversations added in place during the same task`).
+
+## The Gems sidebar enforcer must not look up the visible entry on every sidebar row
+
+- **Trap:** Gems Sidebar (on by default) observes the whole sidebar overflow container to keep its
+  list after Gemini's Gems entry. Every frame that added a conversation row ran two sidebar-wide
+  `querySelectorAll` lookups and two `getBoundingClientRect()` reads to pick the visible entry, so
+  loading older chats forced layout for each row (#1040). With no gems to show it did the same work
+  only to remove nothing.
+- **Rule:** Keep the anchored entry. Re-run the layout-reading lookup only when the anchor may have
+  moved: the entry, list or chevron is detached or out of place, or an added node is or contains a
+  Gems entry. Skip enforcement entirely when there is no list and nothing to show. Pass the entry
+  found by one lookup to the chevron instead of looking it up again.
+- **Guard:** `src/pages/content/gemsSidebar/__tests__/positionEnforcer.test.ts`
+  (`does not read layout while conversation rows stream into the sidebar`,
+  `follows Gemini when it re-renders the Gems entry`).
