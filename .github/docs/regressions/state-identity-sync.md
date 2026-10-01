@@ -455,7 +455,7 @@ devices: the pusher sets Drive, a puller keeps its own order`).
   clock, and `applyPromptLibraryOp` takes no time argument. `isNewerPromptCopy`
   (`src/core/utils/promptRevision.ts`) decides the winner for the import and for the full restore
   (`mergePromptsWithStats`): the later edit wins, and a tie goes to the greater
-  `[text, name, pinnedAt]` so every device keeps the same copy, with a missing name sorting low.
+  `[text, name, pinnedAt]` so devices normally keep the same copy, with a missing name sorting low.
   The winning copy brings its text, name (when it has one), `pinnedAt` (when it has the key) and
   edit time; tags still union. Every unpin writes `pinnedAt: null`, and a winner's `null` unpins.
   An absent `pinnedAt` means "no pin information" and keeps the local pin: 1.9.0 and earlier drop
