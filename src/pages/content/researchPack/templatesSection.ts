@@ -135,19 +135,20 @@ export function createTemplatesSection(deps: TemplatesSectionDeps): TemplatesSec
     templates.find((template) => template.id === select.value) ?? null;
 
   /**
-   * The chosen template, if it fits a template's limits. Any prompt tagged in
-   * Prompt Manager is a template, and Prompt Manager has no length limit, so
-   * an oversized one is refused here instead of being clipped into the
-   * instruction or exported as a file the import would reject.
+   * The template with this id as it is listed now, reduced to the checked
+   * name and text that Use and Export hand on. Any prompt tagged in Prompt
+   * Manager is a template, and Prompt Manager has no length limit, so one that
+   * breaks a limit is refused here instead of being clipped into the
+   * instruction or exported as a file the import would reject. The checked
+   * text is what is used: stored padding could otherwise pass the trimmed
+   * check and still crowd the body out of the clipped instruction.
    */
-  const selectedWithinLimits = (): ResearchPackTemplate | null => {
-    const template = selected();
-    if (!template || locked) return null;
-    if (!checkTemplateDraft(template.name, template.text)) {
-      deps.notify(t('researchPackTemplateInvalid'), 'error');
-      return null;
-    }
-    return template;
+  const checkedTemplate = (id: string): TemplateDraft | null => {
+    const template = templates.find((entry) => entry.id === id);
+    if (!template || locked || stopped) return null;
+    const draft = checkTemplateDraft(template.name, template.text);
+    if (!draft) deps.notify(t('researchPackTemplateInvalid'), 'error');
+    return draft;
   };
 
   const syncControls = (): void => {
@@ -261,10 +262,11 @@ export function createTemplatesSection(deps: TemplatesSectionDeps): TemplatesSec
   };
 
   const applyTemplate = (): void => {
-    const template = selectedWithinLimits();
+    const id = select.value;
+    const template = checkedTemplate(id);
     if (!template) return;
     const typed = deps.instruction().trim();
-    if (!typed || typed === template.text.trim()) {
+    if (!typed || typed === template.text) {
       deps.applyInstruction(template.text);
       return;
     }
@@ -274,9 +276,9 @@ export function createTemplatesSection(deps: TemplatesSectionDeps): TemplatesSec
       confirmLabel: t('researchPackTemplateReplace'),
       cancelLabel: t('pm_cancel'),
       onConfirm: () => {
-        // The template may have been deleted while the confirm was open.
-        const current = templates.find((entry) => entry.id === template.id);
-        if (!stopped && !locked && current) deps.applyInstruction(current.text);
+        // The template may have been edited or deleted while the confirm was open.
+        const current = checkedTemplate(id);
+        if (current) deps.applyInstruction(current.text);
       },
     });
   };
@@ -341,7 +343,7 @@ export function createTemplatesSection(deps: TemplatesSectionDeps): TemplatesSec
   select.addEventListener('change', syncControls);
   useButton.addEventListener('click', applyTemplate);
   exportButton.addEventListener('click', () => {
-    const template = selectedWithinLimits();
+    const template = checkedTemplate(select.value);
     if (!template) return;
     const at = now();
     deps.download(buildTemplateFilename(at), buildTemplateFile(template, at));

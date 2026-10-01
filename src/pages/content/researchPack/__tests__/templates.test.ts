@@ -36,6 +36,8 @@ function promptLibrary(initial: unknown[] = []) {
   return {
     library,
     prompts: () => data.get(PROMPTS) as Array<Record<string, unknown>>,
+    /** Replace the library from outside, as Prompt Manager would. */
+    replace: (items: unknown[]) => data.set(PROMPTS, structuredClone(items)),
     writes: () => writes,
   };
 }
@@ -148,6 +150,35 @@ describe('research pack templates in the panel', () => {
     expect(instructionBox().value).toBe('');
     expect(shared.instruction(KEY)).toBe('');
     expect(createObjectURL).not.toHaveBeenCalled();
+    expect($('.gv-rp-toast').hidden).toBe(false);
+  });
+
+  it('fills the instruction with the checked text, not padding that would crowd it out', async () => {
+    const padded = `${' '.repeat(RESEARCH_PACK_TEMPLATE_LIMITS.maxTextChars)}\r\nReal body\r\n`;
+    const shared = await start([{ id: 'a', name: 'Padded', text: padded, tags: [TAG] }]);
+
+    pick('a');
+    $<HTMLButtonElement>('.gv-rp-template-use').click();
+    await flush();
+
+    expect(instructionBox().value).toBe('Real body');
+    expect(shared.instruction(KEY)).toBe('Real body');
+  });
+
+  it('checks the template again when a confirm opened before it changed is answered', async () => {
+    const lib = await start([{ id: 'a', name: 'Review', text: 'Compare.', tags: [TAG] }]);
+    typeInstruction('Typed first');
+    pick('a');
+    $<HTMLButtonElement>('.gv-rp-template-use').click();
+
+    const long = 'x'.repeat(RESEARCH_PACK_TEMPLATE_LIMITS.maxTextChars + 1);
+    lib.replace([{ id: 'a', name: 'Review', text: long, tags: [TAG] }]);
+    emitStorageChange({ [PROMPTS]: { newValue: lib.prompts() } }, 'local');
+    await flush();
+    $<HTMLButtonElement>('.gv-pm-confirm-yes').click();
+    await flush();
+
+    expect(instructionBox().value).toBe('Typed first');
     expect($('.gv-rp-toast').hidden).toBe(false);
   });
 

@@ -247,7 +247,7 @@ export function createTemplateLibrary(options: {
  * file must never carry an id a recipient may already hold.
  */
 export function buildTemplateFile(
-  template: ResearchPackTemplate,
+  template: TemplateDraft,
   now: number,
   makeId: () => string = newPromptId,
 ): string {

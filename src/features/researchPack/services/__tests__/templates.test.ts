@@ -120,7 +120,7 @@ describe('research pack template files', () => {
 
   it('writes one template in the prompts format that the popup import also accepts', () => {
     const content = buildTemplateFile(
-      { id: 'p9', name: 'Review', text: 'Compare the sources.' },
+      { name: 'Review', text: 'Compare the sources.' },
       Date.UTC(2026, 9, 1),
       () => 'fresh-id',
     );
@@ -168,7 +168,7 @@ describe('research pack template files', () => {
     });
     try {
       const file = buildTemplateFile(
-        { id: 'p9', name: 'Review', text: 'Compare the sources.' },
+        { name: 'Review', text: 'Compare the sources.' },
         Date.UTC(2026, 9, 1),
       );
       const payload = PromptImportExportService.validatePayload(JSON.parse(file));
