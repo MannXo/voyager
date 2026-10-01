@@ -698,21 +698,32 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
 
 - **Trap:** Five Gemini paths and three AI Studio drop handlers each copied the logic to add or
   move a conversation, and the copies drifted. The multi-select drop threw a TypeError when its
-  source bucket was missing, after pushing into the target, so the drop was neither saved nor
-  rendered. A single drop stored `url: undefined` and accepted a payload without an id. Folding the
-  copies into one rule would silently change behavior users see. Native "Move to folder" puts the
-  conversation at the top, while drops append and the floating panel keeps the stored index. Gemini
-  lets a conversation sit in several folders, while AI Studio moves a prompt out of every other
-  bucket. A move from the floating panel removes the source copy even when the target already
-  holds the conversation; a folder-row drop keeps it.
-- **Rule:** Every add or move that does not target a position goes through
-  `placeConversations`; a positioned drop (reorder, also across folders) goes through
-  `reorderConversations`, where the moved record replaces a copy the target held. The caller
-  builds records, guards folder existence and decides save, notify and nudge; the core only places.
-  Change a policy by changing that caller's `placement`, `removeFrom` or `removeWhenPresent`
-  options, not by editing the core for one caller. AI Studio uses `placement: 'keep'` because its records have no
-  `sortIndex`; `append` or `top` would seed one. Placement dedupes by exact `conversationId`;
-  matching any other spelling is `folderConversationIdentity.ts`'s job and a separate decision.
+  source bucket was missing, so the drop was neither saved nor rendered. The floating panel kept the
+  source `sortIndex`, which could tie with a target row. Placement deduped by exact id, so a legacy
+  `c_` or `conv_*` row gained a second row for the same conversation. AI Studio rebuilt a moved
+  prompt from the drag payload and lost its rename and open time. Folding the remaining policy
+  differences into one rule would still change behavior users see.
+- **Rule:** Every add or move that does not target a position goes through `placeConversations`;
+  a positioned drop (reorder, also across folders) goes through `reorderConversations`, where the
+  moved record replaces a copy the target held. The caller builds records, guards folder existence
+  and decides save, notify and nudge; the core only places. Change a policy through that caller's
+  `placement`, `removeFrom`, `removeWhenPresent` or `keysOf` options, not by editing the core for
+  one caller.
+  - Gemini callers pass `keysOf: conversationKeys`, so a conversation the target holds under any
+    spelling is not placed again. Stored rows, existing duplicates included, are never merged or
+    rewritten, and removal from a source matches the incoming record's exact id.
+  - AI Studio uses exact ids and `placement: 'keep'`, because its records have no `sortIndex`;
+    `append` or `top` would seed one. A stored prompt moves with its whole record; the payload
+    builds one only for a prompt no bucket holds.
+  - Known platform differences that are kept on purpose:
+    - Gemini lets a conversation sit in several folders; AI Studio moves a prompt out of every
+      other bucket.
+    - When the target already holds the conversation, a folder-row drop keeps the source copy,
+      while the floating panel and AI Studio remove it.
+    - Native "Move to folder" puts the conversation at the top; normalization seeds missing
+      indices by recency first, so a seeded row can tie with a shifted one.
+    - Only native "Move to folder" checks that the folder still exists. Drops can create a bucket
+      for a deleted folder: Gemini prunes it on the next load, and AI Studio keeps it.
 - **Guard:** `src/pages/content/folder/__tests__/conversationPlacementCharacterization.test.ts`,
   `src/pages/content/folder/__tests__/aistudioPlacementCharacterization.test.ts` and
   `src/features/folder/model/__tests__/placeConversations.test.ts`.
