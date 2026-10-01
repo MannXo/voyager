@@ -102,6 +102,13 @@ describe('ChatGPT folders sidebar guide', () => {
     expect(bubble()).toBeNull();
   });
 
+  it('still shows while the floating panel is kept open', async () => {
+    memory.values.local.set(StorageKeys.CHATGPT_FOLDER_PANEL, { open: true });
+    await activate();
+    expect(document.querySelector('.gv-floating-folder-panel[role="dialog"]')).not.toBeNull();
+    expect(bubble()).not.toBeNull();
+  });
+
   it('waits for the section instead of showing without it', async () => {
     const recents = sidebar.sidebar.querySelector(RECENTS)!;
     const parent = recents.parentElement!;

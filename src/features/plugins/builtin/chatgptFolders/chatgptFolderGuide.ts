@@ -10,6 +10,7 @@
 import { detectRTL } from '@/core/utils/rtl';
 import type { PluginScope } from '@/features/plugins/runtime/pluginScope';
 import { type CoachmarkResult, hasSeenCoachmark, showCoachmark } from '@/pages/content/coachmark';
+import { FLOATING_PANEL_CLASS } from '@/pages/content/folder/floatingTree/shared';
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
 import { FOLDER_PICKER_CLASS } from './chatgptFolderPicker';
@@ -30,10 +31,16 @@ const OVERLAY_SELECTOR = [
   '.gv-folder-confirm-dialog',
 ].join(',');
 
+/**
+ * Neither blocks the guide: the guide itself, and the floating folder panel, a
+ * non-modal `role="dialog"` that users may keep open across visits.
+ */
+const NOT_OVERLAYS = `.gv-coach, .${FLOATING_PANEL_CLASS}`;
+
 /** Whether a menu or dialog is open on the page. Reads only. */
 export function hasOpenOverlay(doc: Document = document): boolean {
   for (const element of doc.querySelectorAll<HTMLElement>(OVERLAY_SELECTOR)) {
-    if (element.closest('.gv-coach')) continue;
+    if (element.closest(NOT_OVERLAYS)) continue;
     if (element.hidden || element.closest('[aria-hidden="true"], [data-state="closed"]')) continue;
     return true;
   }
