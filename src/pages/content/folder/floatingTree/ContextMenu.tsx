@@ -135,7 +135,16 @@ export function ContextMenu({ data, contextMenu, actions, apply }: TreeProps) {
         extraClass={DANGER}
         onClick={(e) => {
           e.stopPropagation();
-          apply({ contextMenu: { ...contextMenu, confirmingDelete: true } });
+          const confirm = actions.confirmFolderRemoval;
+          if (!confirm) {
+            apply({ contextMenu: { ...contextMenu, confirmingDelete: true } });
+            return;
+          }
+          // The effect runs before the menu unmounts, so the item still has a rect.
+          const anchor = e.currentTarget as HTMLElement;
+          apply({ contextMenu: null }, () =>
+            confirm(anchor, () => actions.onDeleteFolder?.(folder.id)),
+          );
         }}
       />
     </div>

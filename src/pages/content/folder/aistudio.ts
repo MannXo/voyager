@@ -877,8 +877,8 @@ export class AIStudioFolderManager {
       onDeleteFolder: (folderId) => edit((data) => deleteFolderTree(data, folderId)),
       onRemoveConversation: (folderId, conversationId) =>
         edit((data) => removeConversation(data, folderId, conversationId)),
-      confirmConversationRemoval: (title, anchor, onConfirm) =>
-        this.dialogs.confirmConversationRemoval(title, anchor, onConfirm),
+      confirmFolderRemoval: this.dialogs.confirmFolderRemoval,
+      confirmConversationRemoval: this.dialogs.confirmConversationRemoval,
       onToggleStar: (folderId, conversationId) =>
         edit((data) => toggleConversationStar(data, folderId, conversationId)),
       onToggleFolderPinned: (folderId) => edit((data) => toggleFolderPinned(data, folderId)),

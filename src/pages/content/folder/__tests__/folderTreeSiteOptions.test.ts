@@ -268,3 +268,44 @@ describe('folder colour', () => {
     expect(q(coloured.root, 'color-section')).not.toBeNull();
   });
 });
+
+describe('confirmFolderRemoval', () => {
+  const openMenu = (root: ShadowRoot) =>
+    header(root, 'a').dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+    );
+  const deleteItem = (root: ParentNode) =>
+    all(root, 'menu-item').find((item) => item.textContent === 'floatingPanelDeleteFolder')!;
+
+  it("asks in the host's dialog and deletes only once it is answered yes", () => {
+    let answer: (() => void) | undefined;
+    const confirmFolderRemoval = vi.fn((_anchor: HTMLElement, onConfirm: () => void) => {
+      answer = onConfirm;
+    });
+    const onDeleteFolder = vi.fn();
+    const { root } = mount(undefined, { confirmFolderRemoval, onDeleteFolder });
+    openMenu(root);
+    deleteItem(root).click();
+
+    expect(confirmFolderRemoval).toHaveBeenCalledWith(
+      expect.any(HTMLElement),
+      expect.any(Function),
+    );
+    expect(q(root, 'context-menu')).toBeNull();
+    expect(onDeleteFolder).not.toHaveBeenCalled();
+    answer!();
+    expect(onDeleteFolder).toHaveBeenCalledWith('a');
+  });
+
+  it('default: the menu turns into an inline Delete / Cancel confirm', () => {
+    const onDeleteFolder = vi.fn();
+    const { root } = mount(undefined, { onDeleteFolder });
+    openMenu(root);
+    deleteItem(root).click();
+
+    expect(q(root, 'context-menu--confirming')).not.toBeNull();
+    expect(onDeleteFolder).not.toHaveBeenCalled();
+    deleteItem(root).click();
+    expect(onDeleteFolder).toHaveBeenCalledWith('a');
+  });
+});

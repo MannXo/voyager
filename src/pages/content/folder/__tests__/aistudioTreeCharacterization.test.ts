@@ -277,9 +277,12 @@ describe('AI Studio folder tree: what it changes', () => {
     expect(tree.conversationIds('b')).toEqual(['c1', 'c3']);
   });
 
+  // Same question and subtree removal as Gemini's sidebar (`removeFolder`):
+  // "all its contents" covers the subfolders, which neither site names.
   it('deletes a folder with every folder inside it and their contents after asking', async () => {
     await mount();
     tree.requestFolderDeletion('b');
+    expect(tree.pendingQuestion()).toBe('Delete this folder and all its contents?');
     tree.answer(false);
     await flush();
     expect(stored().folders).toHaveLength(6);
@@ -293,6 +296,10 @@ describe('AI Studio folder tree: what it changes', () => {
       expect(Object.hasOwn(data.folderContents, id)).toBe(false);
     }
     expect(tree.isRendered('b')).toBe(false);
+    // Only the folder references go: other folders keep theirs, and nothing asks
+    // AI Studio to delete a prompt.
+    expect(data.folderContents.a.map((c) => c.conversationId)).toEqual(['c4']);
+    expect(mockBrowser.runtime.sendMessage).not.toHaveBeenCalled();
   });
 
   it('renames a folder from its name', async () => {

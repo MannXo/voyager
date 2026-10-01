@@ -36,6 +36,11 @@ export type TreeActions = {
   onCreateFolder?: (name: string, parentId: string | null) => void;
   onRenameFolder?: (folderId: string, newName: string) => void;
   onDeleteFolder?: (folderId: string) => void;
+  /**
+   * Asks before `onDeleteFolder` in a dialog of the host's own. Without it, the
+   * menu turns into an inline Delete / Cancel confirm.
+   */
+  confirmFolderRemoval?: (anchor: HTMLElement, onConfirm: () => void) => void;
   onRemoveConversation?: (folderId: string, conversationId: string) => void;
   /** Asks before `onRemoveConversation`; without it, removal is immediate. */
   confirmConversationRemoval?: (title: string, anchor: HTMLElement, onConfirm: () => void) => void;
