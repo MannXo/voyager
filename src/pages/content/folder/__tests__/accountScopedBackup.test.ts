@@ -880,20 +880,22 @@ it('Gemini resets a focused floating draft on account switch and renders the loa
   harness.manager.floatingPanelHandle = panel;
   const geometry = panel.element.style.cssText;
   panel.element
-    .querySelector<HTMLButtonElement>('.gv-floating-folder-panel__icon-button--create')!
+    .shadowRoot!.querySelector<HTMLButtonElement>('.gv-floating-folder-panel__icon-button--create')!
     .click();
-  const input = panel.element.querySelector<HTMLInputElement>(
+  const input = panel.element.shadowRoot!.querySelector<HTMLInputElement>(
     '.gv-floating-folder-panel__inline-input',
   )!;
   input.value = 'Private draft a';
   input.focus();
   const switching = harness.switchTo('b');
-  expect(panel.element.textContent).not.toContain('Private a');
-  expect(panel.element.querySelector('.gv-floating-folder-panel__inline-input')).toBeNull();
+  expect(panel.element.shadowRoot!.textContent).not.toContain('Private a');
+  expect(
+    panel.element.shadowRoot!.querySelector('.gv-floating-folder-panel__inline-input'),
+  ).toBeNull();
   expect(panel.element.style.cssText).toBe(geometry);
   await switching;
   await harness.load();
-  expect(panel.element.textContent).toContain('Private b');
+  expect(panel.element.shadowRoot!.textContent).toContain('Private b');
 });
 
 it('Gemini closes the old instructions editor on account change and ignores its detached save button', async () => {

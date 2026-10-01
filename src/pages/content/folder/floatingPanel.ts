@@ -10,7 +10,9 @@ import {
 import { getTranslationSyncUnsafe } from '@/utils/i18n';
 
 import { readDragPayload } from './dragPayload';
+import panelCss from './floatingPanel.css?raw';
 import { FOLDER_COLORS, getFolderColor, isDarkMode } from './folderColors';
+import { attachShadowSurface, eventPassedThrough } from './shadowHost';
 import type { ConversationReference, Folder, FolderData } from './types';
 
 export const FLOATING_PANEL_CLASS = 'gv-floating-folder-panel';
@@ -62,6 +64,7 @@ const MAX_PANEL_WIDTH = 640;
 const VIEWPORT_SIZE_MARGIN = 32;
 const SIZE_CHANGE_DEBOUNCE_MS = 300;
 const MAX_FOLDER_NAME_LENGTH = 50;
+const MENU_SELECTOR = `.${FLOATING_PANEL_CLASS}__context-menu`;
 
 type InlineEditorState =
   | { mode: 'create'; parentId: string | null }
@@ -289,15 +292,13 @@ function createInlineForm(
     onCancel();
   };
 
-  const isInsideContextMenu = (target: EventTarget | null): boolean => {
-    if (!(target instanceof Node)) return false;
-    const element = target instanceof Element ? target : target.parentElement;
-    return !!element?.closest(`.${FLOATING_PANEL_CLASS}__context-menu`);
-  };
+  // The panel lives in a shadow root, where a document listener sees the host
+  // as the target; the composed path still names the real element.
+  const isInsideContextMenu = (e: Event): boolean =>
+    e.composedPath().some((node) => node instanceof Element && node.matches(MENU_SELECTOR));
 
   function onOutsideMouseDown(e: MouseEvent): void {
-    if (form.contains(e.target as Node)) return;
-    if (isInsideContextMenu(e.target)) return;
+    if (eventPassedThrough(e, form) || isInsideContextMenu(e)) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -905,9 +906,8 @@ export function mountFloatingPanel({
   };
   setDataReady(dataReady);
 
-  panel.appendChild(header);
-  panel.appendChild(createHintStack());
-  panel.appendChild(body);
+  const surface = attachShadowSurface(panel, panelCss);
+  surface.root.append(header, createHintStack(), body);
 
   const initialSize = clampSize(storedSize ?? { w: DEFAULT_WIDTH, h: DEFAULT_HEIGHT });
   const initialPos = clampPos(storedPos ?? defaultPos(initialSize), initialSize.w, initialSize.h);
@@ -1069,7 +1069,7 @@ export function mountFloatingPanel({
   });
 
   const onDocumentClick = (e: MouseEvent) => {
-    if (contextMenu && !panel.contains(e.target as Node)) {
+    if (contextMenu && !eventPassedThrough(e, panel)) {
       setContextMenu(null);
       render();
     }
@@ -1086,20 +1086,16 @@ export function mountFloatingPanel({
     }
     inlineFormCleanup?.();
     inlineFormCleanup = null;
+    surface.disconnect();
     panel.remove();
   };
 
   document.body.appendChild(panel);
 
   // Is the user currently typing into an inline create/rename input?
-  const isInlineFormInputFocused = () => {
-    const active = document.activeElement;
-    return (
-      active instanceof HTMLElement &&
-      panel.contains(active) &&
-      active.classList.contains(`${FLOATING_PANEL_CLASS}__inline-input`)
-    );
-  };
+  // Focus inside the shadow root shows as the host on `document.activeElement`.
+  const isInlineFormInputFocused = () =>
+    !!surface.root.activeElement?.classList.contains(`${FLOATING_PANEL_CLASS}__inline-input`);
 
   return {
     element: panel,

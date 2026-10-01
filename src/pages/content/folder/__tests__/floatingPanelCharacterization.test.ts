@@ -47,8 +47,9 @@ afterEach(() => {
 });
 
 function folderBody(handle: ReturnType<typeof mountPanel>, folderId: string): HTMLElement {
-  return folderHeader(panelRoot(handle), folderId).parentElement!.querySelector<HTMLElement>(
-    `:scope > .${FLOATING_PANEL_CLASS}__folder-body`,
+  const wrap = folderHeader(panelRoot(handle), folderId).parentElement!;
+  return Array.from(wrap.children).find((child): child is HTMLElement =>
+    child.classList.contains(`${FLOATING_PANEL_CLASS}__folder-body`),
   )!;
 }
 

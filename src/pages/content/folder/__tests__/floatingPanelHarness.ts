@@ -76,7 +76,7 @@ export function destroyMountedPanels(): void {
 export function panelRoot(
   handle: FloatingPanelHandle,
 ): ParentNode & { textContent: string | null } {
-  return handle.element;
+  return handle.element.shadowRoot!;
 }
 
 export function requireElement<T extends Element>(root: ParentNode, selector: string): T {

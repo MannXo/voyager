@@ -143,9 +143,11 @@ describe('FolderManager account routes across mounted surfaces', () => {
         fab.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
         await vi.advanceTimersByTimeAsync(0);
       }
-      const root = document.querySelector<HTMLElement>(
+      const host = document.querySelector<HTMLElement>(
         surface === 'sidebar' ? '.gv-folder-container' : '.gv-floating-folder-panel',
       )!;
+      // The floating panel renders inside its shadow root.
+      const root: ParentNode & Node = host.shadowRoot ?? host;
       const create = root.querySelector<HTMLButtonElement>(
         surface === 'sidebar' ? '.gv-folder-add-btn' : '[aria-label="floatingPanelCreateFolder"]',
       )!;
