@@ -10,11 +10,13 @@ import type { PluginScope } from '@/features/plugins/runtime/pluginScope';
 import type { PluginSettings } from '@/features/plugins/types';
 import { mountFloatingFab, unmountFloatingFab } from '@/pages/content/folder/floatingModeFab';
 import { type FloatingPanelHandle, mountFloatingPanel } from '@/pages/content/folder/floatingPanel';
+import type { TreeActions } from '@/pages/content/folder/floatingTree/shared';
 import { createFolderDialogs } from '@/pages/content/folder/folderDialogs';
 import { getTranslationSyncUnsafe as t, initI18n } from '@/utils/i18n';
 
 import { isTemporaryChat } from '../chatgptTemporaryHandoff/handoff';
 import { ChatGptFolderStore } from './ChatGptFolderStore';
+import { ChatGptFolderSection } from './chatgptFolderSection';
 import { openChatGptConversation, readCurrentConversation } from './chatgptPage';
 import { ChatGptSidebarWatcher } from './chatgptSidebarWatcher';
 import { syncSidebarTitles } from './chatgptTitleSync';
@@ -38,6 +40,7 @@ function format(key: string, values: Record<string, string | number>): string {
 
 class ChatGptFoldersView {
   private panel: FloatingPanelHandle | null = null;
+  private section: ChatGptFolderSection | null = null;
   // Gemini's removal confirm; it closes with the panel.
   private readonly dialogs = createFolderDialogs();
 
@@ -58,12 +61,32 @@ class ChatGptFoldersView {
     }, 'chatgpt-folders:fab');
     this.scope.effect(() => this.store.subscribe(() => this.refresh()), 'chatgpt-folders:sync');
     this.scope.effect(() => () => this.unmountPanel(), 'chatgpt-folders:panel');
+    this.scope.effect(() => {
+      const section = new ChatGptFolderSection(
+        this.store.data,
+        CHATGPT_FOLDER_CONFIG.rootBucketId,
+        this.treeActions(),
+      );
+      section.setDataReady(this.store.ready);
+      this.section = section;
+      return () => {
+        this.section = null;
+        section.destroy();
+      };
+    }, 'chatgpt-folders:section');
     if (this.prefs.open) this.mountPanel();
   }
 
   refresh(): void {
     this.panel?.update(this.store.data);
     this.panel?.setDataReady(this.store.ready);
+    this.section?.update(this.store.data);
+    this.section?.setDataReady(this.store.ready);
+  }
+
+  /** Keeps the sidebar section in ChatGPT's sidebar; called after every sidebar change. */
+  placeSection(sidebar: HTMLElement | null): void {
+    this.section?.place(sidebar);
   }
 
   private setOpen(open: boolean): void {
@@ -115,6 +138,14 @@ class ChatGptFoldersView {
         this.panel = null;
         this.savePrefs({ open: false });
       },
+      ...this.treeActions(),
+    });
+  }
+
+  /** What both the panel and the sidebar section do on a tree gesture. */
+  private treeActions(): TreeActions {
+    const store = this.store;
+    return {
       onNavigate: (conversation) => void openChatGptConversation(conversation),
       onCreateFolder: (name, parentId) => store.createFolder(name, parentId),
       onRenameFolder: (folderId, name) => store.renameFolder(folderId, name),
@@ -127,7 +158,7 @@ class ChatGptFoldersView {
       onMoveConversation: (id, from, to) => store.moveConversation(id, from, to),
       onSetFolderColor: (folderId, color) => store.setFolderColor(folderId, color),
       onAddCurrentConversation: (folderId) => this.addCurrent(folderId),
-    });
+    };
   }
 
   private unmountPanel(): void {
@@ -216,7 +247,10 @@ export async function activateChatGptFolders(
   const view = new ChatGptFoldersView(scope, store, prefs);
   view.start();
   const sidebar = new ChatGptSidebarWatcher(scope);
-  sidebar.onChange((nav) => syncSidebarTitles(store, nav));
+  sidebar.onChange((nav) => {
+    view.placeSection(nav);
+    syncSidebarTitles(store, nav);
+  });
   scope.effect(() => store.subscribe(() => sidebar.schedule()), 'chatgpt-folders:sidebar-sync');
   sidebar.start();
   await store.init();
