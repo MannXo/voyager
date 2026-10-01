@@ -1,0 +1,108 @@
+import type { AccountScope } from '@/core/services/AccountIsolationService';
+import { StorageKeys } from '@/core/types/common';
+import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
+import { cloneFolderData } from '@/features/folder/model/folderData';
+import { FOLDER_PLATFORMS, type FolderPlatform } from '@/features/folder/platforms';
+
+import type { ConversationReference, FolderData } from './types';
+
+/**
+ * Everything `FolderRepository` needs to know about one platform's folder bucket.
+ * Keys, backup namespaces and root bucket ids are serialized user data: freeze them.
+ */
+export interface PlatformFolderConfig {
+  platform: FolderPlatform;
+  /** `chrome.storage.local` base key; account isolation appends `:acct:<hash>`. */
+  storageKey: string;
+  /** DataBackupService namespace for the `gvBackup_<namespace>_*` recovery slots. */
+  backupNamespace: string;
+  /** Contents bucket kept for conversations outside any folder. Per-platform literal. */
+  rootBucketId: string;
+  /** `chrome.storage.sync` switches whose change re-reads the isolation setting. */
+  isolationSettingKeys: readonly string[];
+  /** Selects what an account inherits from the legacy global bucket on first scoped load. */
+  migrateLegacyData: (legacy: FolderData, scope: AccountScope | null) => FolderData;
+}
+
+function getUserIdFromUrl(url: string): string | null {
+  try {
+    const urlObj = new URL(url);
+    const match = urlObj.pathname.match(/^\/u\/(\d+)\//);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Keeps conversations whose `/u/<N>/` matches the account, plus ones without a route user. */
+export function filterLegacyFolderDataByCurrentAccount(
+  data: FolderData,
+  scope: AccountScope | null,
+): FolderData {
+  const routeUserId = scope?.routeUserId;
+  if (!routeUserId) {
+    return cloneFolderData(data);
+  }
+
+  const folderById = new Map(data.folders.map((folder) => [folder.id, folder]));
+  const visibleFolderIds = new Set<string>();
+  const nextContents: Record<string, ConversationReference[]> = {};
+
+  for (const [folderId, conversations] of Object.entries(data.folderContents || {})) {
+    const filtered = conversations.filter((conversation) => {
+      const conversationUserId = getUserIdFromUrl(conversation.url);
+      return conversationUserId === null || conversationUserId === routeUserId;
+    });
+    if (filtered.length === 0) continue;
+
+    nextContents[folderId] = filtered.map((conversation) => ({
+      ...conversation,
+    }));
+    if (folderId !== ROOT_CONVERSATIONS_ID) {
+      visibleFolderIds.add(folderId);
+    }
+  }
+
+  const stack = [...visibleFolderIds];
+  while (stack.length > 0) {
+    const currentId = stack.pop();
+    if (!currentId) continue;
+
+    const folder = folderById.get(currentId);
+    if (!folder?.parentId) continue;
+    if (visibleFolderIds.has(folder.parentId)) continue;
+    visibleFolderIds.add(folder.parentId);
+    stack.push(folder.parentId);
+  }
+
+  const folders = data.folders
+    .filter((folder) => visibleFolderIds.has(folder.id))
+    .map((folder) => ({ ...folder }));
+
+  for (const folder of folders) {
+    if (!nextContents[folder.id]) {
+      nextContents[folder.id] = [];
+    }
+  }
+
+  if (!nextContents[ROOT_CONVERSATIONS_ID]) {
+    nextContents[ROOT_CONVERSATIONS_ID] = [];
+  }
+
+  return {
+    folders,
+    folderContents: nextContents,
+  };
+}
+
+export const GEMINI_FOLDER_CONFIG: PlatformFolderConfig = {
+  platform: 'gemini',
+  storageKey: FOLDER_PLATFORMS.gemini.folderStorageKey,
+  backupNamespace: 'gemini-folders',
+  rootBucketId: ROOT_CONVERSATIONS_ID,
+  isolationSettingKeys: [
+    StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED,
+    FOLDER_PLATFORMS.gemini.accountIsolationStorageKey,
+  ],
+  migrateLegacyData: filterLegacyFolderDataByCurrentAccount,
+};

@@ -66,7 +66,7 @@ off a ChatGPT tab`).
   `chrome.storage.onChanged` fires in the SAME context that performed the write (unlike the window
   `storage` event). The manager's onChanged handler treated its own mirror write as an external
   change and reloaded.
-- **Rule:** Call `armStorageEchoSuppression()` (counter + 2s window) before every
+- **Rule:** Call `FolderRepository.armStorageEchoSuppression()` (counter + 2s window) before every
   `storage.saveData` for the active account session. The onChanged handler consumes one suppression
   per echo and still reloads on genuine external writes (popup sync, other tabs). Reset the counter
   when switching accounts; delayed writes for a previous session must not arm the new session's
@@ -113,7 +113,7 @@ off a ChatGPT tab`).
 - **Trap:** Import, cloud sync and instructions editors changed live folder data before saving. A failed save
   kept the dialog open, but cancelling it left the draft in memory and recovery backups; the next
   ordinary edit could persist the cancelled import, including an overwrite of existing folders.
-- **Rule:** Persist drafts through `FolderStore.replaceData` or AI Studio's `replaceData`, then
+- **Rule:** Persist drafts through `FolderStore.replaceData` (backed by `FolderRepository`) or AI Studio's `replaceData`, then
   publish them only on success. AI Studio writes merged folders and prompts in the same storage call.
   Track migration writes as well as ordinary saves, and finish accepted writes first; keep the current account's editing controls
   disabled during replacement so old live snapshots cannot overwrite the draft. Keep drafts out of
@@ -175,7 +175,7 @@ off a ChatGPT tab`).
 
 ## A failed account-scope resolution must retry, not leave the folder store unbound
 
-- **Trap:** `FolderStore.refreshAccountScope()` clears `dataSession` before resolving, and its catch
+- **Trap:** `FolderStore.refreshAccountScope()` (now `FolderRepository.refreshAccountScope()`) clears `dataSession` before resolving, and its catch
   only logged. One failed round trip therefore left the store unbound for the rest of the page load:
   the panel rendered empty even though the account bucket held folders, and every later edit was
   applied in memory and repainted while `saveData()` dropped it at the `!session` guard — a folder
