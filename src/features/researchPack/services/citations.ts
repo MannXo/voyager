@@ -16,8 +16,19 @@ const INTERNAL_HOSTS = new Set([
   'claude.ai',
 ]);
 
+/**
+ * Hosts whose `/url?q=` redirect is unwrapped to its target. An exact list:
+ * a pattern such as `google.*` would let `google.evil.com/url?q=<arxiv>` pass
+ * itself off as an arXiv citation.
+ */
+const GOOGLE_REDIRECT_HOSTS = new Set(['www.google.com', 'google.com']);
+
 function isGoogleRedirect(url: URL): boolean {
-  return /(^|\.)google\.[a-z.]+$/i.test(url.hostname) && url.pathname === '/url';
+  return (
+    url.protocol === 'https:' &&
+    GOOGLE_REDIRECT_HOSTS.has(url.hostname.toLowerCase()) &&
+    url.pathname === '/url'
+  );
 }
 
 /**

@@ -19,6 +19,24 @@ describe('normalizeCitationUrl', () => {
     ).toBe('https://arxiv.org/abs/2401.00001');
   });
 
+  it('unwraps only genuine Google redirect hosts', () => {
+    const target = encodeURIComponent('https://arxiv.org/abs/2401.00001');
+    expect(normalizeCitationUrl(`https://google.com/url?q=${target}`)).toBe(
+      'https://arxiv.org/abs/2401.00001',
+    );
+    for (const lookalike of [
+      `https://google.evil.com/url?q=${target}`,
+      `https://www.google.com.evil.com/url?q=${target}`,
+      `https://notgoogle.com/url?q=${target}`,
+      `https://evil.com/url?q=${target}`,
+      `https://google.co.evil/url?url=${target}`,
+    ]) {
+      const normalized = normalizeCitationUrl(lookalike);
+      expect(normalized, lookalike).not.toBe('https://arxiv.org/abs/2401.00001');
+      expect(normalized, lookalike).toMatch(/^https:\/\/[^/]*evil|^https:\/\/notgoogle/);
+    }
+  });
+
   it('rejects non-http links and the chat apps themselves', () => {
     expect(normalizeCitationUrl('javascript:alert(1)')).toBeNull();
     expect(normalizeCitationUrl('mailto:someone@example.com')).toBeNull();
