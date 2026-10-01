@@ -385,6 +385,38 @@ describe('AI Studio inline folder drafts across reloads', () => {
     expect(panelText()).toContain('From another tab');
   });
 
+  it('drops a new-subfolder draft whose parent another tab deleted', async () => {
+    local[GLOBAL_KEY] = folderData('Mine');
+    const manager = await mount();
+    manager.createFolder('Mine');
+    expect(
+      document.querySelector('[data-folder-id="Mine"] .gv-folder-inline-input'),
+    ).not.toBeNull();
+
+    writeFromElsewhere({ [GLOBAL_KEY]: folderData('From another tab') });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(document.querySelector('.gv-folder-inline-input')).toBeNull();
+  });
+
+  it('keeps a new-folder draft and a rename open at the same time', async () => {
+    local[GLOBAL_KEY] = folderData('Mine');
+    const manager = await mount();
+    manager.renameFolder('Mine');
+    const rename = document.querySelector<HTMLInputElement>('.gv-folder-rename-inline input')!;
+    manager.createFolder();
+    const create = document.querySelector<HTMLInputElement>('.gv-folder-inline-input input')!;
+    create.value = 'Draft';
+
+    writeFromElsewhere({ [GLOBAL_KEY]: twoFolders('Mine', 'From another tab') });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(rename.isConnected).toBe(true);
+    expect(create.isConnected).toBe(true);
+    expect(create.value).toBe('Draft');
+    expect(document.activeElement).toBe(create);
+  });
+
   it('does not carry a new-folder draft into another account', async () => {
     sync[StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED] = true;
     local[await scopedKey('a')] = folderData('Private a');

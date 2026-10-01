@@ -23,7 +23,7 @@ import { FolderRepository, type FolderStoreChange } from './FolderRepository';
 import {
   createInlineFolderEditor,
   createInlineMaterialIcon,
-  detachInlineDraft,
+  detachInlineDrafts,
   removeInlineDrafts,
 } from './aistudioInlineEditor';
 import { parseDragPayload } from './dragPayload';
@@ -1051,7 +1051,7 @@ export class AIStudioFolderManager {
       });
     const list = this.container.querySelector('.gv-folder-list') as HTMLElement | null;
     if (!list) return;
-    const restoreDraft = detachInlineDraft(list);
+    const restoreDraft = detachInlineDrafts(list);
     list.innerHTML = '';
 
     // Render only root-level folders here; children are rendered recursively
@@ -1426,7 +1426,7 @@ export class AIStudioFolderManager {
     const save = async () => {
       if (!this.canEdit) return;
       const name = input.value.trim();
-      if (!name) {
+      if (!name || (parentId && !this.data.folders.some((f) => f.id === parentId))) {
         cancel();
         return;
       }

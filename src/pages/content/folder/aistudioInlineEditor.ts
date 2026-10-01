@@ -66,24 +66,30 @@ export function removeInlineDrafts(root: ParentNode | null | undefined): void {
 }
 
 /**
- * Take an unfinished editor out of `list` before it is rebuilt. The returned
- * callback puts the same node, with its text, listeners, focus and selection,
- * back beside its folder; a rename whose folder no longer exists is dropped.
+ * Take unfinished editors out of `list` before it is rebuilt. The returned
+ * callback puts the same nodes, with their text, listeners, focus and
+ * selection, back beside their folder; one whose folder is gone is dropped.
  */
-export function detachInlineDraft(list: HTMLElement): () => void {
-  const wrapper = list.querySelector<HTMLElement>(DRAFT_SELECTOR);
-  if (!wrapper) return () => {};
-  const input = wrapper.querySelector('input');
-  const folderId = wrapper.closest<HTMLElement>('[data-folder-id]')?.dataset.folderId ?? null;
-  const focused = input !== null && document.activeElement === input;
-  const start = input?.selectionStart ?? null;
-  const end = input?.selectionEnd ?? null;
-  wrapper.remove();
+export function detachInlineDrafts(list: HTMLElement): () => void {
+  const drafts = Array.from(list.querySelectorAll<HTMLElement>(DRAFT_SELECTOR), (wrapper) => {
+    const input = wrapper.querySelector('input');
+    return {
+      wrapper,
+      input,
+      folderId: wrapper.closest<HTMLElement>('[data-folder-id]')?.dataset.folderId ?? null,
+      focused: input !== null && document.activeElement === input,
+      start: input?.selectionStart ?? null,
+      end: input?.selectionEnd ?? null,
+    };
+  });
+  drafts.forEach(({ wrapper }) => wrapper.remove());
 
   return () => {
-    if (!placeDraft(list, wrapper, folderId) || !focused || !input) return;
-    input.focus();
-    if (start !== null && end !== null) input.setSelectionRange(start, end);
+    for (const { wrapper, input, folderId, focused, start, end } of drafts) {
+      if (!placeDraft(list, wrapper, folderId) || !focused || !input) continue;
+      input.focus();
+      if (start !== null && end !== null) input.setSelectionRange(start, end);
+    }
   };
 }
 
@@ -98,6 +104,7 @@ function placeDraft(list: HTMLElement, wrapper: HTMLElement, folderId: string | 
     header.insertBefore(wrapper, name.nextSibling);
     return true;
   }
+  if (folderId && !folder) return false; // its parent folder is gone
   const content = folder?.querySelector('.gv-folder-content');
   if (content) content.insertBefore(wrapper, content.firstChild);
   else if (folder) folder.insertAdjacentElement('afterend', wrapper);
