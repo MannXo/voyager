@@ -189,9 +189,10 @@ describe('usePromptDataTransfer', () => {
     );
 
     expect(transfer.status).toEqual({ kind: 'ok', text: 'Imported 2' });
+    // The new prompt follows `existing` in the file, so it lands right after it.
     expect(store[StorageKeys.PROMPT_ITEMS]).toEqual([
-      expect.objectContaining({ id: 'new', text: 'New body' }),
       expect.objectContaining({ id: 'existing', tags: ['local', 'imported'] }),
+      expect.objectContaining({ id: 'new', text: 'New body' }),
     ]);
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({

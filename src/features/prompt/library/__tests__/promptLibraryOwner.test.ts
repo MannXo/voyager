@@ -141,7 +141,7 @@ describe('prompt library owner', () => {
     });
   });
 
-  it('stamps every prompt one import adds with one time, and keeps the library newest first', async () => {
+  it('stamps every prompt one import adds with one time, and puts unrelated prompts first', async () => {
     // Accepted on purpose: a batch shares one `now` rather than reading the clock per prompt.
     const { area, stored } = memoryArea([
       prompt('old', 'Old', { createdAt: 10 }),

@@ -41,13 +41,13 @@ describe('prompts import', () => {
 
     expect(result).toMatchObject({ added: 1, skipped: 1, nameConflicts: 0, total: 2 });
     expect(library).toEqual([
-      expect.objectContaining({ text: 'New prompt', tags: ['new'] }),
       expect.objectContaining({
         id: 'existing',
         text: 'Same prompt',
         tags: ['local', 'imported'],
         name: 'Imported title',
       }),
+      expect.objectContaining({ text: 'New prompt', tags: ['new'] }),
     ]);
   });
 
@@ -91,8 +91,8 @@ describe('prompts import', () => {
 
     expect(result).toMatchObject({ skipped: 1, nameConflicts: 2 });
     expect(library).toEqual([
-      expect.objectContaining({ id: 'legacy', name: 'translator', tags: ['local', 'imported'] }),
       expect.objectContaining({ id: 'named', name: 'Translator' }),
+      expect.objectContaining({ id: 'legacy', name: 'translator', tags: ['local', 'imported'] }),
     ]);
   });
 

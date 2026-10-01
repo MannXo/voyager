@@ -17,21 +17,29 @@ export interface PromptImportStats {
  * a prompt matching a stored one by id (or else by text) merges tags into it,
  * and a same-id copy that is newer replaces its text and name; anything else
  * is added. `stored` is the freshly read library; its prompts are updated in place.
+ *
+ * Array position is the manual order, so stored prompts keep their positions.
+ * An added prompt goes right after the stored prompt it follows in `incoming`
+ * (the nearest earlier one that matched), or to the front when none did;
+ * prompts sharing a place keep their incoming order.
  */
 export function mergeImportedPrompts(
   stored: PromptItem[],
   incoming: PromptItem[],
   now: number,
 ): PromptImportStats & { items: PromptItem[] } {
-  const mergedItems = [...stored];
-  const importItems = incoming;
+  const storedItems = new Set(stored);
+  const addedItems: PromptItem[] = [];
+  /** Added prompts by the stored prompt they follow; `null` is the front. */
+  const placed = new Map<PromptItem | null, PromptItem[]>();
+  let anchor: PromptItem | null = null;
 
   // Index one merge target per body without using the map as the final
   // collection. Historical stores may themselves contain duplicates and
   // must never be collapsed by a later import.
   const existingByText = new Map<string, PromptItem>();
   const existingById = new Map<string, PromptItem>();
-  for (const item of mergedItems) {
+  for (const item of stored) {
     const key = item.text.toLowerCase();
     if (!existingByText.has(key)) existingByText.set(key, item);
     if (!existingById.has(item.id)) existingById.set(item.id, item);
@@ -40,7 +48,7 @@ export function mergeImportedPrompts(
   let imported = 0;
   let duplicates = 0;
 
-  for (const item of importItems) {
+  for (const item of incoming) {
     const key = item.text.toLowerCase();
     const existingWithId = existingById.get(item.id);
     const existing = existingWithId ?? existingByText.get(key);
@@ -59,7 +67,7 @@ export function mergeImportedPrompts(
       if (shouldApplySameIdUpdate) {
         existing.text = item.text;
         existingByText.clear();
-        for (const mergedItem of mergedItems) {
+        for (const mergedItem of [...stored, ...addedItems]) {
           const mergedKey = mergedItem.text.toLowerCase();
           if (!existingByText.has(mergedKey)) {
             existingByText.set(mergedKey, mergedItem);
@@ -68,6 +76,8 @@ export function mergeImportedPrompts(
       }
       existing.updatedAt = now;
       duplicates++;
+      // A prompt this import added is placed already; only a stored one is an anchor.
+      if (storedItems.has(existing)) anchor = existing;
     } else {
       const importedItem = {
         ...item,
@@ -75,13 +85,18 @@ export function mergeImportedPrompts(
       };
       existingByText.set(key, importedItem);
       existingById.set(importedItem.id, importedItem);
-      mergedItems.push(importedItem);
+      addedItems.push(importedItem);
+      const group = placed.get(anchor);
+      if (group) group.push(importedItem);
+      else placed.set(anchor, [importedItem]);
       imported++;
     }
   }
 
-  // Save merged results
-  mergedItems.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const mergedItems = [
+    ...(placed.get(null) ?? []),
+    ...stored.flatMap((item) => [item, ...(placed.get(item) ?? [])]),
+  ];
   const nameConflicts = getPromptNameConflictIds(mergedItems).size;
   return {
     items: mergedItems,
