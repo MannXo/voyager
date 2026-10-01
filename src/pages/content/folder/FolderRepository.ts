@@ -239,6 +239,7 @@ export class FolderRepository {
       this.dataSession === session && session.loadVersion === version && !this.destroyed;
     session.loadsInFlight += 1;
     const externalWrites = session.externalWrites;
+    const writesBefore = session.writeGen;
     let applied = false; // memory now holds what storage holds
     let recovering = false; // recovery's own write supersedes this read; it is not discarded
     try {
@@ -318,8 +319,9 @@ export class FolderRepository {
       session.loadsInFlight -= 1;
       // Only a read that started after every observed external write settles them.
       if (applied && session.externalWrites === externalWrites) session.reconcilePending = false;
-      // Authoritative data replaced any failed edit; merged debounced edits are pending, not failed.
-      if (applied) session.unsavedChanges = false;
+      // Authoritative data replaced a failed edit made before this read; merged debounced
+      // edits are pending, not failed, and a write that failed during recovery is newer.
+      if (applied) session.settleFailedEdit(writesBefore);
       if (isCurrent() && session.ready) {
         this.hooks.onChange('loaded');
       }
@@ -376,7 +378,7 @@ export class FolderRepository {
 
     // Memory holding an edit whose save failed is newer than every backup (the
     // primary predates it); repair storage from it instead of rolling it back.
-    if (session.ready && session.unsavedChanges && validateFolderData(this.data)) {
+    if (session.ready && session.failedEditGen !== null && validateFolderData(this.data)) {
       this.data = this.config.normalize(this.data);
       this.hooks.onRecovery('kept');
       return this.saveData();
@@ -389,12 +391,9 @@ export class FolderRepository {
       session.markReady();
       console.warn(`${this.tag} Data recovered from localStorage backup`);
       this.hooks.onRecovery('recovered');
-      // Save recovered data to persistent storage
-      const saved = await this.saveData();
-      // Memory now holds the backup, not a local edit: a failed write of it must
-      // not outrank a newer backup that another tab may write before the next try.
-      if (!saved) session.unsavedChanges = false;
-      return saved;
+      // Save recovered data to persistent storage. It is the backup, not a local edit:
+      // its failure must not outrank a newer backup another tab may write meanwhile.
+      return this.saveMemory(false);
     }
 
     // Step 2: If current this.data already has valid structure, keep it
@@ -529,7 +528,11 @@ export class FolderRepository {
     }
   }
 
-  async saveData(): Promise<boolean> {
+  saveData(): Promise<boolean> {
+    return this.saveMemory(true);
+  }
+
+  private async saveMemory(carriesEdit: boolean): Promise<boolean> {
     const session = this.dataSession;
     if (!session || !this.canEdit) return false;
     try {
@@ -554,7 +557,7 @@ export class FolderRepository {
         return session.pendingSaveCompletion.promise;
       }
 
-      session.activeSave = this.persistDataSession(session, snapshot);
+      session.activeSave = this.persistDataSession(session, snapshot, undefined, carriesEdit);
       return session.activeSave;
     } catch (error) {
       console.error(`${this.tag} Save data error:`, error);
@@ -577,11 +580,12 @@ export class FolderRepository {
     session: FolderDataSession,
     snapshot: FolderData,
     companions?: Record<string, unknown>,
-    /** False for a draft: its failure leaves memory as it was, not holding a failed edit. */
-    fromMemory = true,
+    /** False for a draft or recovered backup: its failure leaves no local edit unsaved. */
+    carriesEdit = true,
   ): Promise<boolean> {
     this.dataSessions.set(session.storageKey, session);
     session.saveInProgress = true;
+    const gen = ++session.writeGen;
     let success = false;
     // Only the active session's echo arrives under the watched key.
     const serialized = this.dataSession === session ? serializeStoredValue(snapshot) : undefined;
@@ -643,7 +647,8 @@ export class FolderRepository {
       this.storageEchoes.disarm(echo);
       success = false;
     } finally {
-      if (!session.pendingSave && (success || fromMemory)) session.unsavedChanges = !success;
+      if (success) session.settleFailedEdit(gen);
+      else if (carriesEdit) session.failedEditGen = gen;
       // A newer queued snapshot can still persist this edit; report only a final failure.
       if (!success && this.dataSession === session && !session.pendingSave) {
         this.hooks.onSaveFailed?.();

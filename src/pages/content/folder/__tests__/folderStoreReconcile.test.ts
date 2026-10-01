@@ -389,13 +389,14 @@ describe('FolderStore reconciles external writes after local work settles', () =
       expect(names(store.data)).toEqual(['Alpha', 'From another tab']);
     });
 
-    it('keeps a rename whose save fails while storage is corrupt', async () => {
-      const emergencyNames = () => {
-        const backup = JSON.parse(localStorage.getItem('gvBackup_gemini-folders_emergency')!) as {
-          data: FolderData;
-        };
-        return names(backup.data);
+    function emergencyNames(): string[] {
+      const backup = JSON.parse(localStorage.getItem('gvBackup_gemini-folders_emergency')!) as {
+        data: FolderData;
       };
+      return names(backup.data);
+    }
+
+    it('keeps a rename whose save fails while storage is corrupt', async () => {
       slowReads();
       vi.mocked(adapter.saveData).mockResolvedValue(false);
       writeFromElsewhere(corrupt);
@@ -423,6 +424,44 @@ describe('FolderStore reconciles external writes after local work settles', () =
       await vi.advanceTimersByTimeAsync(1000);
       expect(names(store.data)).toEqual(['Alpha', 'From another tab']);
     });
+
+    it.each([
+      ['succeeds', true],
+      ['fails', false],
+    ])(
+      'keeps an edit whose queued save fails while an older recovery write %s',
+      async (_outcome, recoverySaves) => {
+        const recoveryWrite = deferred<boolean>();
+        let writes = 0;
+        vi.mocked(adapter.saveData).mockImplementation(() => {
+          writes += 1;
+          if (writes === 1) return recoveryWrite.promise;
+          if (!recoverySaves && writes === 2) return Promise.resolve(false); // its retry
+          // Gemini's localStorage quota error surfaces synchronously.
+          throw new Error('QuotaExceededError');
+        });
+        writeFromElsewhere(corrupt);
+        await vi.advanceTimersByTimeAsync(0); // recovery restored the backup and is writing it
+
+        store.data.folders[0].name = 'Mine';
+        const saving = store.saveData(); // queued behind the recovery write
+        recoveryWrite.resolve(recoverySaves);
+        await expect(saving).resolves.toBe(false);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(names(store.data)).toEqual(['Mine']);
+
+        vi.mocked(adapter.saveData).mockImplementation(async (_key, data) => {
+          stored = structuredClone(data);
+          return true;
+        });
+        writeFromElsewhere(structuredClone(corrupt));
+        await vi.advanceTimersByTimeAsync(1000);
+
+        expect(names(store.data)).toEqual(['Mine']);
+        expect(emergencyNames()).toEqual(['Mine']);
+        expect(names(stored)).toEqual(['Mine']);
+      },
+    );
 
     /** Tab B saves `value`: storage and the account's shared primary backup now hold it. */
     function savedByAnotherTab(value: FolderData): void {

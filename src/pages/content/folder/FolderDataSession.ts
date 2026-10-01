@@ -17,8 +17,13 @@ export class FolderDataSession {
   reconcilePending = false;
   /** Counts observed external writes, so a load knows whether one arrived during its read. */
   externalWrites = 0;
-  /** The last write of this session's data failed: memory holds an edit newer than every backup. */
-  unsavedChanges = false;
+  /** Numbers each write attempt in start order; writes of one session run one at a time. */
+  writeGen = 0;
+  /**
+   * The generation of a failed write that carried a local edit, while memory still holds that
+   * edit: it is newer than every backup. Null once a later write or applied load supersedes it.
+   */
+  failedEditGen: number | null = null;
   /** `externalWrites` when a reload was last requested for this session. */
   reconcileAttemptedAt = 0;
   /** What this context last read from or wrote to storage: the base for merging debounced edits. */
@@ -42,6 +47,11 @@ export class FolderDataSession {
       accountScope ? buildScopedStorageKey(namespace, accountScope.accountKey) : namespace,
       validateData,
     );
+  }
+
+  /** An operation that started at write generation `gen` succeeded; it supersedes older failures only. */
+  settleFailedEdit(gen: number): void {
+    if (this.failedEditGen !== null && this.failedEditGen <= gen) this.failedEditGen = null;
   }
 
   markReady(): void {
