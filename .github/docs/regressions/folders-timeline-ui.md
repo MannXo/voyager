@@ -648,10 +648,12 @@ drop, or hover layout.
   listener stayed on the hidden input and drafts typed into the revealed one were never saved. The
   send poller and route restore found the visible input but never rebound to it.
 - **Rule:** Every path that resolves the visible input (send poller, draft restore, observer
-  lookup) rebinds the listener to it. A `focusin` on another input candidate schedules one lookup,
-  so switching composers rebinds before typing without per-mutation layout reads.
+  lookup) rebinds the listener to it. A `focusin` on another input candidate runs one lookup
+  synchronously, not in the next frame: Prompt Manager focuses the composer and dispatches `input`
+  in the same tick, so a deferred rebind misses the inserted prompt.
 - **Guard:** `src/pages/content/draftSave/__tests__/draftSave.test.ts`
   (`saves typing in the composer the user focuses`,
+  `saves input dispatched in the same tick as the focus that switched composers`,
   `rebinds to the visible composer on the next send-detection check`).
 
 ## Delayed draft restoration must not outlive draft auto-save

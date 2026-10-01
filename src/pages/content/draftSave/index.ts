@@ -595,7 +595,11 @@ function setupObserver(): void {
   composerFocusListener = (event) => {
     const target = event.target;
     if (target === attachedInput || !(target instanceof Element)) return;
-    if (target.matches(INPUT_SELECTOR_LIST)) scheduleInputLookup();
+    if (!target.matches(INPUT_SELECTOR_LIST)) return;
+    // Rebind before returning: Prompt Manager focuses the composer and
+    // dispatches `input` in the same tick, before any frame callback runs.
+    const input = findChatInput();
+    if (input) attachInputListener(input);
   };
   document.addEventListener('focusin', composerFocusListener, true);
 }

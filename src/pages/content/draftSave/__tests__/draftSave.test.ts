@@ -568,6 +568,17 @@ describe('draftSave', () => {
       expect(draft?.content).toBe('Typed into the revealed composer');
     });
 
+    it('saves input dispatched in the same tick as the focus that switched composers', async () => {
+      const next = await startWithSwitchedComposer();
+
+      // Prompt Manager focuses the composer and dispatches `input` synchronously.
+      next.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+      type(next, 'Inserted prompt');
+
+      const draft = localStore['gvDraft_/app/test-conversation-123'] as { content: string };
+      expect(draft?.content).toBe('Inserted prompt');
+    });
+
     it('rebinds to the visible composer on the next send-detection check', async () => {
       const next = await startWithSwitchedComposer();
 
