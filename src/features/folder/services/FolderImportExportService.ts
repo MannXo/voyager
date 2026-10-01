@@ -15,6 +15,7 @@ import {
 
 import { SESSION_BACKUP_KEY, SESSION_BACKUP_TIMESTAMP_KEY } from '../constants';
 import {
+  findFolderInsideItself,
   findInheritedFolderKey,
   findRepeatedFolderId,
   ownBucket,
@@ -203,6 +204,18 @@ export class FolderImportExportService {
           type: ValidationErrorType.CORRUPTED_DATA,
           message: `Folder id "${repeated}" appears more than once`,
           details: repeated,
+        },
+      };
+    }
+
+    const insideItself = findFolderInsideItself(data.folders as Folder[]);
+    if (insideItself !== null) {
+      return {
+        success: false,
+        error: {
+          type: ValidationErrorType.CORRUPTED_DATA,
+          message: `Folder "${insideItself}" is inside itself`,
+          details: insideItself,
         },
       };
     }

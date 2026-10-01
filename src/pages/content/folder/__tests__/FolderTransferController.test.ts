@@ -158,6 +158,37 @@ describe('folder transfer commands', () => {
     expect(h.applyData).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['its own parent', [['a', 'a']]],
+    [
+      'a pair of folders',
+      [
+        ['a', 'b'],
+        ['b', 'a'],
+      ],
+    ],
+  ] as const)(
+    'refuses to merge or overwrite a file where a folder is inside itself through %s',
+    async (_kind, links) => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const h = harness(importedData());
+      const [template] = importedData().folders;
+      const text = JSON.stringify(
+        FolderImportExportService.exportToPayload({
+          folders: links.map(([id, parentId]) => ({ ...template, id, parentId })),
+          folderContents: {},
+        }),
+      );
+
+      expect(await h.transfer.import({ text }, 'merge')).toBe(false);
+      expect(await h.transfer.import({ text }, 'overwrite')).toBe(false);
+
+      expect(h.session.data).toEqual(importedData());
+      expect(h.applyData).not.toHaveBeenCalled();
+      expect(FolderImportExportService.hasBackup()).toBe(false);
+    },
+  );
+
   it('cancels an overwrite without changing the current data or backup', async () => {
     const h = harness(importedData());
     vi.spyOn(window, 'confirm').mockReturnValue(false);

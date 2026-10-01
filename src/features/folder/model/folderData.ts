@@ -352,6 +352,30 @@ export function findRepeatedFolderId(folders: readonly { id?: unknown }[]): stri
 }
 
 /**
+ * A folder id on a cycle of parent links in an imported file, a folder that is
+ * its own parent included. The tree shows such a file only by cutting the
+ * cycle, so the file is refused instead.
+ */
+export function findFolderInsideItself(
+  folders: readonly { id?: unknown; parentId?: unknown }[],
+): string | null {
+  const parents = new Map<unknown, unknown>();
+  for (const folder of folders) {
+    if (folder && !parents.has(folder.id)) parents.set(folder.id, folder.parentId);
+  }
+  const sound = new Set<unknown>();
+  for (const start of parents.keys()) {
+    const path = new Set<unknown>();
+    for (let id: unknown = start; id && !sound.has(id); id = parents.get(id)) {
+      if (path.has(id)) return String(id);
+      path.add(id);
+    }
+    path.forEach((id) => sound.add(id));
+  }
+  return null;
+}
+
+/**
  * Stores `bucket` under `id` as an own property. Plain assignment would set the
  * prototype for `__proto__` and leave the folder without a bucket, so every
  * write that rebuilds `folderContents` by id goes through here.

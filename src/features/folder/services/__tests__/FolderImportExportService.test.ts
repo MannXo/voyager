@@ -316,6 +316,33 @@ describe('FolderImportExportService.validatePayload repeated folder ids', () => 
     expect(result.success).toBe(false);
   });
 
+  it.each([
+    ['its own parent', [folderOf('a', null), folderOf('x', 'x')]],
+    ['a pair of folders', [folderOf('a', 'b'), folderOf('b', 'a')]],
+    [
+      'three folders',
+      [folderOf('r', null), folderOf('a', 'c'), folderOf('b', 'a'), folderOf('c', 'b')],
+    ],
+    [
+      'folders below a sound tree',
+      [folderOf('r', null), folderOf('a', 'r'), folderOf('b', 'c'), folderOf('c', 'b')],
+    ],
+  ])('rejects a file where a folder is inside itself through %s', (_kind, folders) => {
+    const result = FolderImportExportService.validatePayload(payloadOf(folders));
+    expect(result.success).toBe(false);
+  });
+
+  it('keeps accepting siblings and parents the file does not hold', () => {
+    const folders = [
+      folderOf('a', null),
+      folderOf('b', 'a'),
+      folderOf('c', 'a'),
+      folderOf('d', 'gone'),
+    ];
+    const result = FolderImportExportService.validatePayload(payloadOf(folders));
+    expect(result.success).toBe(true);
+  });
+
   it('keeps accepting a tree three levels deep', () => {
     const folders = [folderOf('a', null), folderOf('b', 'a'), folderOf('c', 'b')];
     const result = FolderImportExportService.validatePayload(payloadOf(folders));
