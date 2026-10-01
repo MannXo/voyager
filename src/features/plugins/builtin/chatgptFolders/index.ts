@@ -16,6 +16,8 @@ import { getTranslationSyncUnsafe as t, initI18n } from '@/utils/i18n';
 import { isTemporaryChat } from '../chatgptTemporaryHandoff/handoff';
 import { ChatGptFolderStore } from './ChatGptFolderStore';
 import { openChatGptConversation, readCurrentConversation } from './chatgptPage';
+import { ChatGptSidebarWatcher } from './chatgptSidebarWatcher';
+import { syncSidebarTitles } from './chatgptTitleSync';
 import { CHATGPT_FOLDER_CONFIG } from './config';
 import { BOOKMARK_ADD_PATH, DOWNLOAD_PATH, UPLOAD_PATH } from './icons';
 import { type ChatGptFolderPanelPrefs, loadPanelPrefs, savePanelPrefs } from './panelPrefs';
@@ -213,7 +215,12 @@ export async function activateChatGptFolders(
   if (scope.isDisposed) return;
   const view = new ChatGptFoldersView(scope, store, prefs);
   view.start();
+  const sidebar = new ChatGptSidebarWatcher(scope);
+  sidebar.onChange((nav) => syncSidebarTitles(store, nav));
+  scope.effect(() => store.subscribe(() => sidebar.schedule()), 'chatgpt-folders:sidebar-sync');
+  sidebar.start();
   await store.init();
   if (scope.isDisposed) return;
   view.refresh();
+  sidebar.schedule();
 }

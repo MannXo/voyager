@@ -7,6 +7,11 @@ const SIDEBAR_SELECTOR = 'nav[aria-label], #stage-slideover-sidebar';
 const ACTIVE_LINK_SELECTOR = `:is(${SIDEBAR_SELECTOR}) a[aria-current="page"]`;
 const PLACEHOLDER_TITLES = new Set(['ChatGPT', 'New chat']);
 
+/** A title ChatGPT shows before it names a conversation. */
+export function isPlaceholderTitle(title: string): boolean {
+  return PLACEHOLDER_TITLES.has(title);
+}
+
 function isTemporaryChatUrl(href: string): boolean {
   try {
     return new URL(href).searchParams.get('temporary-chat') === 'true';
