@@ -6,6 +6,8 @@ import { getPromptNameConflictIds } from '@/core/utils/promptName';
 import { isNewerPromptCopy, promptEditTime } from '@/core/utils/promptRevision';
 import type { PromptItem } from '@/features/backup/types/backup';
 
+import { createPromptTextIndex } from './promptTextIndex';
+
 export interface PromptImportStats {
   imported: number;
   duplicates: number;
@@ -31,7 +33,6 @@ export function mergeImportedPrompts(
   incoming: PromptItem[],
 ): PromptImportStats & { items: PromptItem[] } {
   const storedItems = new Set(stored);
-  const addedItems: PromptItem[] = [];
   /** Added prompts by the stored prompt they follow; `null` is the front. */
   const placed = new Map<PromptItem | null, PromptItem[]>();
   let anchor: PromptItem | null = null;
@@ -39,11 +40,10 @@ export function mergeImportedPrompts(
   // Index one merge target per body without using the map as the final
   // collection. Historical stores may themselves contain duplicates and
   // must never be collapsed by a later import.
-  const existingByText = new Map<string, PromptItem>();
+  const existingByText = createPromptTextIndex();
   const existingById = new Map<string, PromptItem>();
   for (const item of stored) {
-    const key = item.text.toLowerCase();
-    if (!existingByText.has(key)) existingByText.set(key, item);
+    existingByText.add(item);
     if (!existingById.has(item.id)) existingById.set(item.id, item);
   }
 
@@ -67,19 +67,12 @@ export function mergeImportedPrompts(
 
       if (shouldApplySameIdUpdate) {
         existing.updatedAt = promptEditTime(item);
-        existing.text = item.text;
+        existingByText.setText(existing, item.text);
         // Pinning bumps `updatedAt`, so the winner's pin is the newer choice.
         if (typeof item.pinnedAt === 'number' && Number.isFinite(item.pinnedAt)) {
           existing.pinnedAt = item.pinnedAt;
         } else {
           delete existing.pinnedAt;
-        }
-        existingByText.clear();
-        for (const mergedItem of [...stored, ...addedItems]) {
-          const mergedKey = mergedItem.text.toLowerCase();
-          if (!existingByText.has(mergedKey)) {
-            existingByText.set(mergedKey, mergedItem);
-          }
         }
       }
       duplicates++;
@@ -87,9 +80,8 @@ export function mergeImportedPrompts(
       if (storedItems.has(existing)) anchor = existing;
     } else {
       const importedItem = { ...item };
-      existingByText.set(key, importedItem);
+      existingByText.add(importedItem);
       existingById.set(importedItem.id, importedItem);
-      addedItems.push(importedItem);
       const group = placed.get(anchor);
       if (group) group.push(importedItem);
       else placed.set(anchor, [importedItem]);
