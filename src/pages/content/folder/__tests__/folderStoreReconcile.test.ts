@@ -6,7 +6,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import browser from 'webextension-polyfill';
 
-import { accountIsolationService } from '@/core/services/AccountIsolationService';
+import {
+  accountIsolationService,
+  buildScopedFolderStorageKey,
+} from '@/core/services/AccountIsolationService';
 
 import { FolderStore } from '../FolderStore';
 import type { IFolderStorageAdapter } from '../storage/FolderStorageAdapter';
@@ -248,5 +251,138 @@ describe('FolderStore reconciles external writes after local work settles', () =
 
     expectMerged(store.data);
     expectMerged(stored);
+  });
+});
+
+describe('FolderStore keeps an observed external write with its own account', () => {
+  const KEY_A = buildScopedFolderStorageKey('email:a');
+  const KEY_B = buildScopedFolderStorageKey('email:b');
+  let disk: Record<string, FolderData>;
+  let account: 'a' | 'b';
+  let adapter: IFolderStorageAdapter;
+  let store: FolderStore;
+
+  function emit(key: string, value: FolderData): void {
+    const [[listener]] = vi.mocked(browser.storage.onChanged.addListener).mock.calls;
+    (listener as unknown as StorageListener)(
+      { [key]: { newValue: structuredClone(value) } },
+      'local',
+    );
+  }
+
+  function writeFromElsewhere(key: string, value: FolderData): void {
+    disk[key] = structuredClone(value);
+    emit(key, value);
+  }
+
+  /** The route moves to another account, as `reloadScopedDataOnAccountRouteChange` does. */
+  async function switchTo(next: 'a' | 'b'): Promise<void> {
+    account = next;
+    await store.refreshAccountScope();
+    await store.loadData();
+  }
+
+  /** An own write to account A that has committed while its adapter promise is pending. */
+  function pendingOwnWrite(): () => Promise<void> {
+    const write = deferred<boolean>();
+    vi.mocked(adapter.saveData).mockImplementationOnce(async (key, data) => {
+      disk[key] = structuredClone(data);
+      return write.promise;
+    });
+    store.data.folders[0].name = 'Mine';
+    const saving = store.saveData();
+    emit(KEY_A, disk[KEY_A]);
+    return async () => {
+      write.resolve(true);
+      await saving;
+      await vi.advanceTimersByTimeAsync(0);
+    };
+  }
+
+  function reads(key: string): number {
+    return vi.mocked(adapter.loadData).mock.calls.filter(([read]) => read === key).length;
+  }
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    localStorage.clear();
+    vi.spyOn(accountIsolationService, 'isIsolationEnabled').mockResolvedValue(true);
+    vi.spyOn(accountIsolationService, 'resolveAccountScope').mockImplementation(async () => ({
+      accountKey: `email:${account}`,
+      accountId: account === 'a' ? 1 : 2,
+      routeUserId: account === 'a' ? '1' : '2',
+      emailHash: account,
+    }));
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    account = 'a';
+    disk = { [KEY_A]: folders('Alpha'), [KEY_B]: folders('Bravo') };
+    adapter = {
+      init: vi.fn(async () => {}),
+      loadData: vi.fn(async (key: string) => structuredClone(disk[key] ?? null)),
+      saveData: vi.fn(async (key: string, data: FolderData) => {
+        disk[key] = structuredClone(data);
+        return true;
+      }),
+      removeData: vi.fn(async () => {}),
+      getBackendName: () => 'test-memory',
+    };
+    store = new FolderStore(
+      {
+        getContext: () => ({ sidebar: null, sortMode: 'manual', enabled: true }),
+        onChange: vi.fn(),
+        onArchive: vi.fn(),
+        onRecovery: vi.fn(),
+      },
+      adapter,
+    );
+    await store.init();
+  });
+
+  afterEach(() => {
+    store.destroy();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('applies a write seen before leaving the account once its own write settles', async () => {
+    const finishOwnWrite = pendingOwnWrite();
+    writeFromElsewhere(KEY_A, folders('Mine', 'From another tab'));
+
+    await switchTo('b');
+    expect(names(store.data)).toEqual(['Bravo']);
+    await switchTo('a');
+    await finishOwnWrite();
+    expect(names(store.data)).toEqual(['Mine', 'From another tab']);
+
+    store.data.folders[1].name = 'Edited afterwards';
+    await store.saveData();
+    expect(names(disk[KEY_A])).toEqual(['Mine', 'Edited afterwards']);
+  });
+
+  it('applies a write that lands while away once its own write settles', async () => {
+    const finishOwnWrite = pendingOwnWrite();
+    await switchTo('b');
+    writeFromElsewhere(KEY_A, folders('Mine', 'From another tab'));
+
+    await switchTo('a');
+    await finishOwnWrite();
+
+    expect(names(store.data)).toEqual(['Mine', 'From another tab']);
+  });
+
+  it('does not reload another account for a write seen in this one', async () => {
+    const finishOwnWrite = pendingOwnWrite();
+    writeFromElsewhere(KEY_A, folders('Mine', 'From another tab'));
+    await switchTo('b');
+    writeFromElsewhere(KEY_A, folders('Mine', 'Again from another tab'));
+    const bReads = reads(KEY_B);
+
+    store.data.folders[0].name = 'Bravo edited';
+    await store.saveData();
+    await finishOwnWrite();
+
+    expect(reads(KEY_B)).toBe(bReads);
+    expect(names(store.data)).toEqual(['Bravo edited']);
   });
 });

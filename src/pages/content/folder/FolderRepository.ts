@@ -92,7 +92,6 @@ export class FolderRepository {
   private destroyed = false;
   private readonly storageEchoes = new StorageEchoTracker();
   /** Another context wrote the active bucket; reload once local work settles. */
-  private reconcilePending = false;
   private saveDebounceTimer: number | null = null;
   private beforeUnloadFlushHandler: (() => void) | null = null;
   private readonly tag: string;
@@ -103,11 +102,7 @@ export class FolderRepository {
     area: string,
   ): void => {
     if (this.destroyed) return;
-    const change = area === 'local' ? changes[this.activeStorageKey] : undefined;
-    if (change && !this.storageEchoes.consume(this.activeStorageKey, change.newValue)) {
-      this.reconcilePending = true;
-      this.tryReconcile();
-    }
+    if (area === 'local') this.markExternalChanges(changes);
     if (area === 'sync' && this.config.isolationSettingKeys.some((key) => changes[key])) {
       void accountIsolationService
         .isIsolationEnabled({
@@ -410,14 +405,31 @@ export class FolderRepository {
   }
 
   /**
+   * Flag each session whose bucket another context wrote, including a session
+   * retained for its pending write while another account is active: it stays
+   * flagged until it is active and idle again, and never flags another bucket.
+   */
+  private markExternalChanges(changes: Record<string, Storage.StorageChange>): void {
+    const sessions = new Set(this.dataSessions.values());
+    if (this.dataSession) sessions.add(this.dataSession);
+    for (const session of sessions) {
+      const change = changes[session.storageKey];
+      if (change && !this.storageEchoes.consume(session.storageKey, change.newValue)) {
+        session.reconcilePending = true;
+      }
+    }
+    this.tryReconcile();
+  }
+
+  /**
    * Reload after another context's write once no write is in flight, so the
    * reload is not skipped. Debounced edits are merged onto the fresh data.
    */
   private tryReconcile(): void {
     const session = this.dataSession;
-    if (!this.reconcilePending || this.destroyed || !session) return;
+    if (!session?.reconcilePending || this.destroyed) return;
     if (session.saveInProgress || session.replacingData) return; // resumed when they settle
-    this.reconcilePending = false;
+    session.reconcilePending = false;
     this.hooks.onExternalChange();
   }
 
@@ -635,7 +647,6 @@ export class FolderRepository {
     this.resolvedAccountScope = null;
     this.activeStorageKey = '';
     this.storageEchoes.reset();
-    this.reconcilePending = false;
     this.hooks.onAccountReleased();
     this.hooks.onChange('account');
     try {
