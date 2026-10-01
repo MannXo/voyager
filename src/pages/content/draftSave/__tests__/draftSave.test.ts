@@ -459,4 +459,65 @@ describe('draftSave', () => {
     expect(draft.content).toBe('Typed into the new composer');
     cleanup();
   });
+
+  describe('when Gemini switches between two mounted composers', () => {
+    let stop: (() => void) | null = null;
+
+    afterEach(() => {
+      stop?.();
+      stop = null;
+    });
+
+    function createComposer(): { el: HTMLElement; setVisible: (visible: boolean) => void } {
+      let visible = true;
+      const el = document.createElement('div');
+      el.setAttribute('contenteditable', 'true');
+      el.setAttribute('role', 'textbox');
+      Object.defineProperty(el, 'getBoundingClientRect', {
+        value: () => ({ height: visible ? 100 : 0, width: visible ? 500 : 0, top: 0, left: 0 }),
+      });
+      document.body.appendChild(el);
+      return { el, setVisible: (next) => (visible = next) };
+    }
+
+    async function startWithSwitchedComposer(): Promise<HTMLElement> {
+      setupMocks(true);
+      const previous = createComposer();
+      const next = createComposer();
+      next.setVisible(false);
+      const { startDraftSave } = await import('../index');
+      stop = await startDraftSave();
+      // Gemini hides the bound composer and reveals the other one; both stay connected.
+      previous.setVisible(false);
+      next.setVisible(true);
+      return next.el;
+    }
+
+    function type(input: HTMLElement, text: string): void {
+      input.textContent = text;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      vi.advanceTimersByTime(1000);
+    }
+
+    it('saves typing in the composer the user focuses', async () => {
+      const next = await startWithSwitchedComposer();
+
+      next.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+      await vi.advanceTimersByTimeAsync(16);
+      type(next, 'Typed into the revealed composer');
+
+      const draft = localStore['gvDraft_/app/test-conversation-123'] as { content: string };
+      expect(draft?.content).toBe('Typed into the revealed composer');
+    });
+
+    it('rebinds to the visible composer on the next send-detection check', async () => {
+      const next = await startWithSwitchedComposer();
+
+      vi.advanceTimersByTime(SEND_CHECK_INTERVAL_MS);
+      type(next, 'Typed without a focus event');
+
+      const draft = localStore['gvDraft_/app/test-conversation-123'] as { content: string };
+      expect(draft?.content).toBe('Typed without a focus event');
+    });
+  });
 });

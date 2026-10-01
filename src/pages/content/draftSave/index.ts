@@ -74,6 +74,7 @@ const INPUT_SELECTOR_LIST = INPUT_SELECTORS.join(', ');
 let isEnabled = false;
 let observer: MutationObserver | null = null;
 let inputLookupFrame: number | null = null;
+let composerFocusListener: ((event: Event) => void) | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let sendCheckTimer: ReturnType<typeof setInterval> | null = null;
 let stopRouteWatcher: (() => void) | null = null;
@@ -380,6 +381,9 @@ function startSendDetection(): void {
 
     const input = findChatInput();
     if (!input) return;
+    // A connected input is not necessarily the active composer: Gemini can
+    // hide it and reveal another mounted one without adding nodes.
+    attachInputListener(input);
 
     const empty = isInputEffectivelyEmpty(input);
 
@@ -463,6 +467,7 @@ async function restoreDraft(): Promise<void> {
     if (path !== currentPath || path !== getConversationPath()) return;
 
     const input = findChatInput();
+    if (input) attachInputListener(input);
     if (input && isInputEffectivelyEmpty(input)) {
       setInputText(input, content);
       lastSavedContent = content;
@@ -550,27 +555,40 @@ function mutationsMayReplaceChatInput(mutations: readonly MutationRecord[]): boo
   return false;
 }
 
+function scheduleInputLookup(): void {
+  if (inputLookupFrame !== null) return;
+  inputLookupFrame = window.requestAnimationFrame(() => {
+    inputLookupFrame = null;
+    const input = findChatInput();
+    if (input) {
+      attachInputListener(input);
+    }
+  });
+}
+
 /**
- * Setup observer to watch for dynamically added input elements.
+ * Setup observer to watch for dynamically added input elements, and a focus
+ * listener for a mounted composer becoming the active one.
  */
 function setupObserver(): void {
   if (observer) return;
 
   observer = new MutationObserver((mutations) => {
     if (inputLookupFrame !== null || !mutationsMayReplaceChatInput(mutations)) return;
-    inputLookupFrame = window.requestAnimationFrame(() => {
-      inputLookupFrame = null;
-      const input = findChatInput();
-      if (input) {
-        attachInputListener(input);
-      }
-    });
+    scheduleInputLookup();
   });
 
   observer.observe(document.body, {
     childList: true,
     subtree: true,
   });
+
+  composerFocusListener = (event) => {
+    const target = event.target;
+    if (target === attachedInput || !(target instanceof Element)) return;
+    if (target.matches(INPUT_SELECTOR_LIST)) scheduleInputLookup();
+  };
+  document.addEventListener('focusin', composerFocusListener, true);
 }
 
 /**
@@ -584,6 +602,10 @@ function disconnectObserver(): void {
   if (inputLookupFrame !== null) {
     window.cancelAnimationFrame(inputLookupFrame);
     inputLookupFrame = null;
+  }
+  if (composerFocusListener) {
+    document.removeEventListener('focusin', composerFocusListener, true);
+    composerFocusListener = null;
   }
 }
 

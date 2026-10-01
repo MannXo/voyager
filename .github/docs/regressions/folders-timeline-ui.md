@@ -634,3 +634,16 @@ drop, or hover layout.
 - **Guard:** `src/pages/content/gemsSidebar/__tests__/positionEnforcer.test.ts`
   (`does not read layout while conversation rows stream into the sidebar`,
   `follows Gemini when it re-renders the Gems entry`).
+
+## A connected chat input is not necessarily the active composer
+
+- **Trap:** Draft auto-save stopped re-looking up its input while the bound one stayed connected.
+  Gemini can keep two composers mounted and swap which one is visible without adding nodes, so the
+  listener stayed on the hidden input and drafts typed into the revealed one were never saved. The
+  send poller and route restore found the visible input but never rebound to it.
+- **Rule:** Every path that resolves the visible input (send poller, draft restore, observer
+  lookup) rebinds the listener to it. A `focusin` on another input candidate schedules one lookup,
+  so switching composers rebinds before typing without per-mutation layout reads.
+- **Guard:** `src/pages/content/draftSave/__tests__/draftSave.test.ts`
+  (`saves typing in the composer the user focuses`,
+  `rebinds to the visible composer on the next send-detection check`).
