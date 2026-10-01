@@ -20,6 +20,7 @@ import { FormulaCopySettings } from './components/FormulaCopySettings';
 import { GeneralSettingsCard } from './components/GeneralSettingsCard';
 import { InputSettingsCard } from './components/InputSettingsCard';
 import { KeyboardShortcutSettings } from './components/KeyboardShortcutSettings';
+import { NativeHealthNotice } from './components/NativeHealthNotice';
 import { PluginSiteSettings } from './components/PluginSiteSettings';
 import { PopupFooter } from './components/PopupFooter';
 import { PopupHeader } from './components/PopupHeader';
@@ -41,6 +42,7 @@ import { useFolderStructureCopy } from './hooks/useFolderStructureCopy';
 import { useFormulaCopyPopupSettings } from './hooks/useFormulaCopyPopupSettings';
 import { useGeneralPopupSettings } from './hooks/useGeneralPopupSettings';
 import { useInputPopupSettings } from './hooks/useInputPopupSettings';
+import { useNativeHealth } from './hooks/useNativeHealth';
 import { usePopupBrandTheme } from './hooks/usePopupBrandTheme';
 import { usePopupLayoutSettings } from './hooks/usePopupLayoutSettings';
 import { usePopupPlugins } from './hooks/usePopupPlugins';
@@ -72,6 +74,7 @@ export default function Popup({ sourceTabId }: PopupProps = {}) {
   const [aiStudioEnabled, setAiStudioEnabled] = useState(true);
   const tab = useActivePopupTab(sourceTabId);
   const plugins = usePopupPlugins(tab);
+  const nativeHealth = useNativeHealth(tab.activeTabId, tab.activeUrl);
   const isAIStudio = tab.activeAccountPlatform === 'aistudio';
   const isSafariBrowser = getVoyagerBuildTarget() === 'safari' || isSafari();
   const canUseSystemNotifications = supportsExtensionNotifications();
@@ -198,6 +201,12 @@ export default function Popup({ sourceTabId }: PopupProps = {}) {
             <p className="text-muted-foreground text-sm">{t('popupSettingsSearchNoResults')}</p>
           </Card>
         )}
+        <NativeHealthNotice
+          style={{ order: -2 }}
+          entries={nativeHealth.visibleEntries}
+          onDismiss={nativeHealth.dismiss}
+          t={t}
+        />
         <PopupUpdateBanner release={release} isSafariBrowser={isSafariBrowser} t={t} />
         {!isPluginSite && (
           <div style={{ order: sections.getSectionProps('cloudSync').order + 1 }}>
@@ -390,6 +399,7 @@ export default function Popup({ sourceTabId }: PopupProps = {}) {
         <DiagnosticsExportCard
           activeUrl={tab.activeUrl}
           loading={plugins.pluginsLoading || !plugins.pluginStateLoaded}
+          nativeHealth={nativeHealth.entries}
           plugins={plugins.diagnosticPlugins}
         />
       </PopupFooter>

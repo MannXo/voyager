@@ -3117,5 +3117,37 @@
   "popupPinHintDismiss": {
     "message": "Fermer",
     "description": "Popup: dismiss the pin reminder"
+  },
+  "nativeHealthTimeline": {
+    "message": "La chronologie ne trouve pas les échanges de la conversation sur cette page.",
+    "description": "Popup: Gemini health notice when the timeline finds no conversation turns"
+  },
+  "nativeHealthChatWidth": {
+    "message": "La largeur du chat ne trouve pas les échanges de la conversation sur cette page.",
+    "description": "Popup: Gemini health notice when chat width finds no conversation turns"
+  },
+  "nativeHealthFolders": {
+    "message": "Les dossiers n'ont pas pu s'insérer dans la barre latérale de Gemini et s'ouvrent dans un panneau flottant.",
+    "description": "Popup: Gemini health notice when folders fell back to the floating panel"
+  },
+  "nativeHealthExport": {
+    "message": "L'export ne trouve aucun message sur cette page.",
+    "description": "Popup: Gemini health notice when export finds no messages"
+  },
+  "nativeHealthComposer": {
+    "message": "Voyager ne trouve pas la zone de saisie de Gemini pour insérer des prompts.",
+    "description": "Popup: Gemini health notice when Gemini's message box is missing"
+  },
+  "nativeHealthCause": {
+    "message": "Gemini a peut-être modifié sa page.",
+    "description": "Popup: likely cause shown under a Gemini health notice"
+  },
+  "nativeHealthReport": {
+    "message": "Signaler",
+    "description": "Popup: link that opens a prefilled GitHub bug report"
+  },
+  "nativeHealthDismiss": {
+    "message": "Fermer",
+    "description": "Popup: dismiss the Gemini health notice"
   }
 }

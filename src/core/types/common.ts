@@ -241,6 +241,9 @@ export const StorageKeys = {
   // Popup "pin Voyager to the toolbar" hint. Local: the toolbar is per browser
   // profile, so a dismissal on one device must not hide it on another.
   TOOLBAR_PIN_HINT_DISMISSED: 'gvToolbarPinHintDismissed',
+  // Popup Gemini health notices the user dismissed, keyed by feature, anchor and extension
+  // version (see src/core/gemini/nativeHealth.ts). Local: it records what this profile was shown.
+  NATIVE_HEALTH_DISMISSED: 'gvNativeHealthDismissed',
 
   // Folder spacing
   GV_FOLDER_SPACING: 'gvFolderSpacing',

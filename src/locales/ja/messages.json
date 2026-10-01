@@ -3117,5 +3117,37 @@
   "popupPinHintDismiss": {
     "message": "閉じる",
     "description": "Popup: dismiss the pin reminder"
+  },
+  "nativeHealthTimeline": {
+    "message": "タイムラインがこのページで会話のターンを見つけられません。",
+    "description": "Popup: Gemini health notice when the timeline finds no conversation turns"
+  },
+  "nativeHealthChatWidth": {
+    "message": "チャットの幅の調整がこのページで会話のターンを見つけられません。",
+    "description": "Popup: Gemini health notice when chat width finds no conversation turns"
+  },
+  "nativeHealthFolders": {
+    "message": "フォルダを Gemini のサイドバーに配置できなかったため、フローティングパネルで開きました。",
+    "description": "Popup: Gemini health notice when folders fell back to the floating panel"
+  },
+  "nativeHealthExport": {
+    "message": "エクスポートがこのページでメッセージを見つけられません。",
+    "description": "Popup: Gemini health notice when export finds no messages"
+  },
+  "nativeHealthComposer": {
+    "message": "Voyager が Gemini の入力欄を見つけられないため、プロンプトを挿入できません。",
+    "description": "Popup: Gemini health notice when Gemini's message box is missing"
+  },
+  "nativeHealthCause": {
+    "message": "Gemini のページ構成が変わった可能性があります。",
+    "description": "Popup: likely cause shown under a Gemini health notice"
+  },
+  "nativeHealthReport": {
+    "message": "報告する",
+    "description": "Popup: link that opens a prefilled GitHub bug report"
+  },
+  "nativeHealthDismiss": {
+    "message": "閉じる",
+    "description": "Popup: dismiss the Gemini health notice"
   }
 }

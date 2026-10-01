@@ -3117,5 +3117,37 @@
   "popupPinHintDismiss": {
     "message": "關閉",
     "description": "Popup: dismiss the pin reminder"
+  },
+  "nativeHealthTimeline": {
+    "message": "時間軸在此頁面上找不到對話輪次。",
+    "description": "Popup: Gemini health notice when the timeline finds no conversation turns"
+  },
+  "nativeHealthChatWidth": {
+    "message": "對話區域寬度在此頁面上找不到對話輪次。",
+    "description": "Popup: Gemini health notice when chat width finds no conversation turns"
+  },
+  "nativeHealthFolders": {
+    "message": "資料夾無法掛到 Gemini 側邊欄，已改為浮動面板。",
+    "description": "Popup: Gemini health notice when folders fell back to the floating panel"
+  },
+  "nativeHealthExport": {
+    "message": "匯出在此頁面上找不到任何訊息。",
+    "description": "Popup: Gemini health notice when export finds no messages"
+  },
+  "nativeHealthComposer": {
+    "message": "Voyager 找不到 Gemini 的輸入框，無法插入提示詞。",
+    "description": "Popup: Gemini health notice when Gemini's message box is missing"
+  },
+  "nativeHealthCause": {
+    "message": "Gemini 可能變更了頁面結構。",
+    "description": "Popup: likely cause shown under a Gemini health notice"
+  },
+  "nativeHealthReport": {
+    "message": "回報問題",
+    "description": "Popup: link that opens a prefilled GitHub bug report"
+  },
+  "nativeHealthDismiss": {
+    "message": "關閉",
+    "description": "Popup: dismiss the Gemini health notice"
   }
 }

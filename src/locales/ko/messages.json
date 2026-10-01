@@ -3117,5 +3117,37 @@
   "popupPinHintDismiss": {
     "message": "닫기",
     "description": "Popup: dismiss the pin reminder"
+  },
+  "nativeHealthTimeline": {
+    "message": "타임라인이 이 페이지에서 대화 턴을 찾지 못했습니다.",
+    "description": "Popup: Gemini health notice when the timeline finds no conversation turns"
+  },
+  "nativeHealthChatWidth": {
+    "message": "대화 너비 조절이 이 페이지에서 대화 턴을 찾지 못했습니다.",
+    "description": "Popup: Gemini health notice when chat width finds no conversation turns"
+  },
+  "nativeHealthFolders": {
+    "message": "폴더를 Gemini 사이드바에 붙이지 못해 플로팅 패널로 열었습니다.",
+    "description": "Popup: Gemini health notice when folders fell back to the floating panel"
+  },
+  "nativeHealthExport": {
+    "message": "내보내기가 이 페이지에서 메시지를 찾지 못했습니다.",
+    "description": "Popup: Gemini health notice when export finds no messages"
+  },
+  "nativeHealthComposer": {
+    "message": "Voyager가 Gemini 입력창을 찾지 못해 프롬프트를 넣을 수 없습니다.",
+    "description": "Popup: Gemini health notice when Gemini's message box is missing"
+  },
+  "nativeHealthCause": {
+    "message": "Gemini 페이지 구조가 바뀌었을 수 있습니다.",
+    "description": "Popup: likely cause shown under a Gemini health notice"
+  },
+  "nativeHealthReport": {
+    "message": "문제 신고",
+    "description": "Popup: link that opens a prefilled GitHub bug report"
+  },
+  "nativeHealthDismiss": {
+    "message": "닫기",
+    "description": "Popup: dismiss the Gemini health notice"
   }
 }

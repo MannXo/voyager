@@ -335,6 +335,11 @@ export const NON_SETTINGS_BACKUP_POLICIES = {
     disposition: 'device-local',
     reason: 'The toolbar pin state is per browser profile.',
   },
+  [StorageKeys.NATIVE_HEALTH_DISMISSED]: {
+    storage: 'local',
+    disposition: 'operational',
+    reason: 'Health notice dismissals follow the installed extension version.',
+  },
   [StorageKeys.CHANGELOG_DISMISSED_VERSION]: {
     storage: 'local',
     disposition: 'operational',
