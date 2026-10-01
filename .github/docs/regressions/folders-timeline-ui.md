@@ -705,10 +705,12 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
   lets a conversation sit in several folders, while AI Studio moves a prompt out of every other
   bucket. A move from the floating panel removes the source copy even when the target already
   holds the conversation; a folder-row drop keeps it.
-- **Rule:** Every add or move goes through `placeConversations`. The caller builds records,
-  guards folder existence and decides save, notify and nudge; the core only places. Change a
-  policy by changing that caller's `placement`, `removeFrom` or `removeWhenPresent` options, not by
-  editing the core for one caller. AI Studio uses `placement: 'keep'` because its records have no
+- **Rule:** Every add or move that does not target a position goes through
+  `placeConversations`; a positioned drop (reorder, also across folders) goes through
+  `reorderConversations`, where the moved record replaces a copy the target held. The caller
+  builds records, guards folder existence and decides save, notify and nudge; the core only places.
+  Change a policy by changing that caller's `placement`, `removeFrom` or `removeWhenPresent`
+  options, not by editing the core for one caller. AI Studio uses `placement: 'keep'` because its records have no
   `sortIndex`; `append` or `top` would seed one. Placement dedupes by exact `conversationId`;
   matching any other spelling is `folderConversationIdentity.ts`'s job and a separate decision.
 - **Guard:** `src/pages/content/folder/__tests__/conversationPlacementCharacterization.test.ts`,
