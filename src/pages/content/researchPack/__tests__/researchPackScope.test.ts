@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildScopedStorageKey } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
-import { addItem, createEmptyPack } from '@/features/researchPack/services/packModel';
 import {
   type ResearchPackStorageArea,
   type ResearchPackStore,
@@ -12,46 +11,21 @@ import type { ResearchPack } from '@/features/researchPack/services/types';
 
 import { startResearchPack } from '../index';
 import type { ResearchPackScopeContext } from '../scope';
-import { clickAdd, flush, turn } from './fixtures';
+import {
+  clickAdd,
+  emitStorageChange,
+  flush,
+  geminiPageUrl,
+  packOf,
+  sharedStorage,
+  shownItems,
+  turn,
+  wait,
+} from './fixtures';
 
 const GLOBAL = StorageKeys.RESEARCH_PACK;
 const ACCOUNT_A = buildScopedStorageKey(StorageKeys.RESEARCH_PACK, 'route:0');
 const ACCOUNT_B = buildScopedStorageKey(StorageKeys.RESEARCH_PACK, 'route:1');
-
-/** jsdom runs on localhost; the pack only knows Gemini pages, so map the jsdom path onto one. */
-const geminiPageUrl = () => `https://gemini.google.com${window.location.pathname}`;
-
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-function packOf(text: string): ResearchPack {
-  return addItem(
-    createEmptyPack(),
-    {
-      text,
-      excerpt: false,
-      prompt: '',
-      sourceTitle: text,
-      sourceUrl: 'https://gemini.google.com/app/x',
-      platform: 'gemini',
-      citations: [],
-    },
-    1,
-  ).pack;
-}
-
-function sharedStorage(initial: Record<string, ResearchPack> = {}) {
-  const data = new Map<string, unknown>(Object.entries(initial));
-  const area: ResearchPackStorageArea = {
-    get: async (key) => (data.has(key) ? { [key]: structuredClone(data.get(key)) } : {}),
-    set: async (items) => {
-      for (const [key, value] of Object.entries(items)) data.set(key, structuredClone(value));
-    },
-  };
-  const store = createResearchPackOwner({ area });
-  const at = (key: string) => (data.get(key) as ResearchPack | undefined)?.items ?? [];
-  const instruction = (key: string) => (data.get(key) as ResearchPack | undefined)?.instruction;
-  return { store, at, instruction };
-}
 
 /** Wrap a store so loads or applies for chosen keys wait for an explicit release. */
 function gated(store: ResearchPackStore, delayMs: { load?: string; apply?: string; ms: number }) {
@@ -65,20 +39,6 @@ function gated(store: ResearchPackStore, delayMs: { load?: string; apply?: strin
       return store.apply(key, op);
     },
   } satisfies ResearchPackStore;
-}
-
-const shownItems = () =>
-  Array.from(document.querySelectorAll('.gv-rp-item .gv-rp-item-snippet')).map(
-    (node) => node.textContent,
-  );
-
-function emitStorageChange(changes: Record<string, unknown>, areaName: string): void {
-  const calls = vi.mocked(chrome.storage.onChanged.addListener).mock.calls;
-  const listener = calls[calls.length - 1][0] as (
-    changes: Record<string, chrome.storage.StorageChange>,
-    areaName: string,
-  ) => void;
-  listener(changes as Record<string, chrome.storage.StorageChange>, areaName);
 }
 
 const ISOLATION_ON = { [StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED_GEMINI]: { newValue: true } };
@@ -229,22 +189,6 @@ describe('research pack account scope', () => {
     expect(writeText.mock.calls[0][0]).toContain('First answer.');
     expect(writeText.mock.calls[0][0]).toContain('Second answer.');
     for (const release of held.splice(0)) release();
-  });
-
-  it('shows a pack written again after it was removed, though its revision starts over', async () => {
-    const shared = sharedStorage({ [GLOBAL]: { ...packOf('old item'), revision: 5 } });
-    stop = startResearchPack({
-      pageUrl: geminiPageUrl,
-      store: shared.store,
-      resolveKey: async () => GLOBAL,
-    });
-    await flush();
-    expect(shownItems()).toEqual(['old item']);
-
-    emitStorageChange({ [GLOBAL]: { oldValue: { ...packOf('old item'), revision: 5 } } }, 'local');
-    expect(shownItems()).toEqual([]);
-    emitStorageChange({ [GLOBAL]: { newValue: { ...packOf('new item'), revision: 1 } } }, 'local');
-    expect(shownItems()).toEqual(['new item']);
   });
 
   it('writes an answer to the account it was added under, even if the page switches first', async () => {

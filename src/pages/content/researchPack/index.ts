@@ -343,10 +343,16 @@ export function startResearchPack(options: StartResearchPackOptions = {}): StopN
   ): void => {
     const shownKey = view.key;
     if (areaName === 'local' && shownKey !== null && shownKey in changes) {
-      const { newValue } = changes[shownKey];
-      // A removed pack starts over, so its next write (revision 1) must show.
-      if (newValue === undefined) view = { key: shownKey, revision: null };
-      offer(shownKey, parsePack(newValue));
+      const { newValue, oldValue } = changes[shownKey];
+      if (newValue === undefined) {
+        // Removed: show it empty, ahead of every snapshot from before the removal
+        // so none can bring it back. The owner stamps its next write with the
+        // clock, which is past those revisions too.
+        const floor = Math.max(view.revision ?? 0, parsePack(oldValue).revision) + 1;
+        offer(shownKey, { ...createEmptyPack(), revision: floor });
+      } else {
+        offer(shownKey, parsePack(newValue));
+      }
     }
     if (isIsolationSettingChange(changes, areaName, pageUrl())) {
       isolationEpoch += 1;

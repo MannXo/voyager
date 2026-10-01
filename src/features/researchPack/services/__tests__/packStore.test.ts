@@ -71,14 +71,29 @@ describe('research pack owner', () => {
 
   it('bumps the revision on every write it makes, and only then', async () => {
     const { area, data } = memoryArea();
-    const owner = createResearchPackOwner({ area });
+    const owner = createResearchPackOwner({ area, now: () => 7 });
 
     const first = await owner.apply(KEY, { kind: 'add', draft: draft('one') });
     const second = await owner.apply(KEY, { kind: 'add', draft: draft('two') });
     const duplicate = await owner.apply(KEY, { kind: 'add', draft: draft('two') });
 
-    expect([first.pack.revision, second.pack.revision, duplicate.pack.revision]).toEqual([1, 2, 2]);
-    expect((data.get(KEY) as { revision: number }).revision).toBe(2);
+    expect([first.pack.revision, second.pack.revision, duplicate.pack.revision]).toEqual([7, 8, 8]);
+    expect((data.get(KEY) as { revision: number }).revision).toBe(8);
+  });
+
+  it('keeps revisions going forward when the pack is removed and recreated', async () => {
+    const { area, data } = memoryArea();
+    let clock = 100;
+    const owner = createResearchPackOwner({ area, now: () => clock });
+    await owner.apply(KEY, { kind: 'add', draft: draft('one') });
+    await owner.apply(KEY, { kind: 'add', draft: draft('two') });
+    const removed = (data.get(KEY) as { revision: number }).revision;
+    expect(removed).toBe(101);
+
+    data.delete(KEY);
+    clock = 150;
+    const recreated = await owner.apply(KEY, { kind: 'add', draft: draft('three') });
+    expect(recreated.pack.revision).toBeGreaterThan(removed);
   });
 
   it('continues from revision 0 for a pack stored before revisions existed', async () => {
@@ -88,7 +103,7 @@ describe('research pack owner', () => {
     const { revision: _omitted, ...legacy } = await owner.load(KEY);
     const { area: legacyArea } = memoryArea({ [KEY]: legacy });
 
-    const next = await createResearchPackOwner({ area: legacyArea }).apply(KEY, {
+    const next = await createResearchPackOwner({ area: legacyArea, now: () => 1 }).apply(KEY, {
       kind: 'add',
       draft: draft('new'),
     });

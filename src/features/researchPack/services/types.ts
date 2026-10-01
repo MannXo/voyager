@@ -47,9 +47,11 @@ export interface ResearchPackItem {
 export interface ResearchPack {
   version: typeof RESEARCH_PACK_VERSION;
   /**
-   * Bumped by the background owner on every write, never by a tab. A tab shows
-   * a snapshot only if it is at least as new as the one on screen. Packs stored
-   * before revisions existed read as 0.
+   * Set by the background owner on every write, never by a tab: the write time,
+   * or one past the previous revision if that is later. It never goes back, even
+   * when the pack is removed and recreated. A tab shows a snapshot only if it is
+   * at least as new as the one on screen. Packs stored before revisions existed
+   * read as 0.
    */
   revision: number;
   instruction: string;
