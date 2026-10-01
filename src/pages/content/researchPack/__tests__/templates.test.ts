@@ -134,6 +134,23 @@ describe('research pack templates in the panel', () => {
     expect(shared.instruction(KEY)).toBe('Compare.');
   });
 
+  it('refuses to use or export a tagged prompt longer than an instruction can be', async () => {
+    const createObjectURL = vi.fn(() => 'blob:test');
+    Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() });
+    const long = 'x'.repeat(RESEARCH_PACK_TEMPLATE_LIMITS.maxTextChars + 1);
+    const shared = await start([{ id: 'a', name: 'Huge', text: long, tags: [TAG] }]);
+
+    pick('a');
+    $<HTMLButtonElement>('.gv-rp-template-use').click();
+    $<HTMLButtonElement>('.gv-rp-template-export').click();
+    await flush();
+
+    expect(instructionBox().value).toBe('');
+    expect(shared.instruction(KEY)).toBe('');
+    expect(createObjectURL).not.toHaveBeenCalled();
+    expect($('.gv-rp-toast').hidden).toBe(false);
+  });
+
   it('saves the typed instruction as a named template in the prompt library', async () => {
     const lib = await start([{ id: 'mine', name: 'Mine', text: 'Private', tags: ['x'] }]);
     typeInstruction('Find counter-evidence.');

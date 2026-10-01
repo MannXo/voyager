@@ -134,6 +134,22 @@ export function createTemplatesSection(deps: TemplatesSectionDeps): TemplatesSec
   const selected = (): ResearchPackTemplate | null =>
     templates.find((template) => template.id === select.value) ?? null;
 
+  /**
+   * The chosen template, if it fits a template's limits. Any prompt tagged in
+   * Prompt Manager is a template, and Prompt Manager has no length limit, so
+   * an oversized one is refused here instead of being clipped into the
+   * instruction or exported as a file the import would reject.
+   */
+  const selectedWithinLimits = (): ResearchPackTemplate | null => {
+    const template = selected();
+    if (!template || locked) return null;
+    if (!checkTemplateDraft(template.name, template.text)) {
+      deps.notify(t('researchPackTemplateInvalid'), 'error');
+      return null;
+    }
+    return template;
+  };
+
   const syncControls = (): void => {
     const off = locked || busy;
     select.disabled = off || templates.length === 0;
@@ -245,8 +261,8 @@ export function createTemplatesSection(deps: TemplatesSectionDeps): TemplatesSec
   };
 
   const applyTemplate = (): void => {
-    const template = selected();
-    if (!template || locked) return;
+    const template = selectedWithinLimits();
+    if (!template) return;
     const typed = deps.instruction().trim();
     if (!typed || typed === template.text.trim()) {
       deps.applyInstruction(template.text);
@@ -325,8 +341,8 @@ export function createTemplatesSection(deps: TemplatesSectionDeps): TemplatesSec
   select.addEventListener('change', syncControls);
   useButton.addEventListener('click', applyTemplate);
   exportButton.addEventListener('click', () => {
-    const template = selected();
-    if (!template || locked) return;
+    const template = selectedWithinLimits();
+    if (!template) return;
     const at = now();
     deps.download(buildTemplateFilename(at), buildTemplateFile(template, at));
   });
