@@ -20,6 +20,12 @@ import {
 import { watchRouteChanges } from '../utils/routeWatcher';
 import type { FolderDataSession } from './FolderDataSession';
 import { FolderRepository, type FolderStoreChange } from './FolderRepository';
+import {
+  createInlineFolderEditor,
+  createInlineMaterialIcon,
+  detachInlineDraft,
+  removeInlineDrafts,
+} from './aistudioInlineEditor';
 import { parseDragPayload } from './dragPayload';
 import {
   mountHideArchivedNudge,
@@ -130,13 +136,6 @@ const PROMPT_DRAG_HOST_SELECTORS = [
 ];
 
 type LibraryPromptData = DragData & { conversationId: string };
-
-type InlineFolderEditor = {
-  wrapper: HTMLElement;
-  input: HTMLInputElement;
-  saveBtn: HTMLButtonElement;
-  cancelBtn: HTMLButtonElement;
-};
 
 function nodeContainsPromptLink(node: Node): boolean {
   if (!(node instanceof Element)) return false;
@@ -318,15 +317,6 @@ export class AIStudioFolderManager {
     return span;
   }
 
-  private createInlineMaterialIcon(name: string): HTMLElement {
-    const icon = document.createElement('mat-icon');
-    icon.setAttribute('role', 'img');
-    icon.setAttribute('aria-hidden', 'true');
-    icon.className = 'mat-icon notranslate google-symbols mat-ligature-font mat-icon-no-color';
-    icon.textContent = name;
-    return icon;
-  }
-
   private createMenuItem(
     label: string,
     iconName: string,
@@ -336,45 +326,10 @@ export class AIStudioFolderManager {
     const item = document.createElement('button');
     item.type = 'button';
     item.className = `gv-folder-menu-item${options.danger ? ' gv-folder-menu-item-danger' : ''}`;
-    item.appendChild(this.createInlineMaterialIcon(iconName));
+    item.appendChild(createInlineMaterialIcon(iconName));
     item.append(document.createTextNode(label));
     item.addEventListener('click', action);
     return item;
-  }
-
-  private createInlineFolderEditor(
-    wrapperTag: 'div' | 'span',
-    wrapperClassName: string,
-    inputClassName: string,
-    inputOptions: { placeholder?: string; value?: string } = {},
-  ): InlineFolderEditor {
-    const wrapper = document.createElement(wrapperTag);
-    wrapper.className = wrapperClassName;
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = inputClassName;
-    input.maxLength = 50;
-    if (inputOptions.placeholder) input.placeholder = inputOptions.placeholder;
-    if (inputOptions.value) input.value = inputOptions.value;
-
-    const saveBtn = document.createElement('button');
-    saveBtn.type = 'button';
-    saveBtn.className = 'gv-folder-inline-btn gv-folder-inline-save';
-    saveBtn.title = this.t('pm_save');
-    saveBtn.appendChild(this.createInlineMaterialIcon('check'));
-
-    const cancelBtn = document.createElement('button');
-    cancelBtn.type = 'button';
-    cancelBtn.className = 'gv-folder-inline-btn gv-folder-inline-cancel';
-    cancelBtn.title = this.t('pm_cancel');
-    cancelBtn.appendChild(this.createInlineMaterialIcon('close'));
-
-    wrapper.appendChild(input);
-    wrapper.appendChild(saveBtn);
-    wrapper.appendChild(cancelBtn);
-
-    return { wrapper, input, saveBtn, cancelBtn };
   }
 
   private showFolderConfirm(
@@ -632,6 +587,7 @@ export class AIStudioFolderManager {
     document.querySelector('.gv-folder-confirm-dialog.gv-aistudio-confirm')?.remove();
     document.querySelector('.gv-folder-menu.gv-aistudio-folder-menu')?.remove();
     document.querySelector('.gv-library-folder-list')?.replaceChildren();
+    removeInlineDrafts(this.container);
     this.render();
     this.applyHideArchivedToLibraryTable();
   }
@@ -1095,6 +1051,7 @@ export class AIStudioFolderManager {
       });
     const list = this.container.querySelector('.gv-folder-list') as HTMLElement | null;
     if (!list) return;
+    const restoreDraft = detachInlineDraft(list);
     list.innerHTML = '';
 
     // Render only root-level folders here; children are rendered recursively
@@ -1136,6 +1093,7 @@ export class AIStudioFolderManager {
       uncatSection.appendChild(uncatContent);
       list.appendChild(uncatSection);
     }
+    restoreDraft();
 
     // After rendering, update active highlight
     this.highlightActiveConversation();
@@ -1457,7 +1415,7 @@ export class AIStudioFolderManager {
       input,
       saveBtn,
       cancelBtn,
-    } = this.createInlineFolderEditor('div', 'gv-folder-inline-input', 'gv-folder-name-input', {
+    } = createInlineFolderEditor(this.t, 'div', 'gv-folder-inline-input', 'gv-folder-name-input', {
       placeholder: this.t('folder_name_prompt'),
     });
 
@@ -1484,6 +1442,7 @@ export class AIStudioFolderManager {
       this.data.folders.push(f);
       this.data.folderContents[f.id] = [];
       await this.save();
+      cancel();
       this.render();
     };
 
@@ -1546,27 +1505,37 @@ export class AIStudioFolderManager {
       input,
       saveBtn,
       cancelBtn,
-    } = this.createInlineFolderEditor('span', 'gv-folder-rename-inline', 'gv-folder-rename-input', {
-      value: folder.name,
-    });
+    } = createInlineFolderEditor(
+      this.t,
+      'span',
+      'gv-folder-rename-inline',
+      'gv-folder-rename-input',
+      {
+        value: folder.name,
+      },
+    );
 
+    // A reload may rebuild the header and replace the data while the editor is open.
     const restore = () => {
-      headerEl.classList.remove('gv-folder-editing');
-      folderNameEl.classList.remove('gv-hidden');
+      const header = inputContainer.closest('.gv-folder-item-header');
+      header?.classList.remove('gv-folder-editing');
+      header?.querySelector('.gv-folder-name')?.classList.remove('gv-hidden');
       inputContainer.remove();
     };
 
     const save = async () => {
       if (!this.canEdit) return;
       const name = input.value.trim();
-      if (!name) {
+      const target = this.data.folders.find((f) => f.id === folderId);
+      if (!name || !target) {
         restore();
         return;
       }
 
-      folder.name = name;
-      folder.updatedAt = now();
+      target.name = name;
+      target.updatedAt = now();
       await this.save();
+      restore();
       this.render();
     };
 

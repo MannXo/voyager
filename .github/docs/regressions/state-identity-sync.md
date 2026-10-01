@@ -110,6 +110,19 @@ off a ChatGPT tab`).
   local writes.
 - **Guard:** `src/pages/content/folder/__tests__/aistudioFolderSync.test.ts` ("archives and unarchives existing rows when another tab moves prompts")
 
+## AI Studio inline folder drafts must survive external reloads
+
+- **Trap:** `render()` cleared the whole folder list, so a cross-tab reload (or an unsuppressed
+  echo) destroyed an unfinished new-folder or rename editor. The rename editor also captured the
+  folder object and header when opened, so after a reload its save mutated a detached object and
+  the rename was silently lost.
+- **Rule:** `render()` detaches the open editor with `detachInlineDraft` and puts the same node
+  back beside its folder with its text, focus and selection; a rename whose folder is gone is
+  dropped, and `releaseAccountUi` discards drafts. Editors resolve their folder and header when
+  saving or cancelling, and remove themselves before re-rendering. Gemini's
+  `FolderTreeView.render()` still closes inline editors on every rebuild.
+- **Guard:** `src/pages/content/folder/__tests__/aistudioFolderSync.test.ts` ("AI Studio inline folder drafts across reloads")
+
 ## Folder recovery and pending writes belong to an account session
 
 - **Trap:** Live folder storage used stable account keys, but both managers shared platform-wide
