@@ -1,8 +1,10 @@
 /**
  * Bundled Gemini turn selectors: the one source every turn-finding owner reads.
  *
- * Owners call `getGeminiTurnSelectors` when they query, never at module load, so a later phase can
- * prepend remotely updated selectors here without touching them.
+ * Content owners call `getGeminiTurnSelectors` when they query, so a later phase can prepend
+ * remotely updated selectors here without touching them. The plugin site adapter
+ * (`features/plugins/sites/adapters/gemini.ts`) still snapshots them at module load; route it
+ * through here before relying on runtime updates there.
  *
  * The keys differ on purpose. Each one keeps the entries and order its owners used before the
  * lists were merged, because order is behavior in two places:
