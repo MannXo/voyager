@@ -1,6 +1,10 @@
+import type { FolderCommands } from '@/features/folder/commands/folderCommands';
+
 import type { ChatGptFolderStore } from './ChatGptFolderStore';
+import { CHATGPT_CONVERSATION_ID_PREFIX } from './chatgptIdentity';
 import { isPlaceholderTitle } from './chatgptPage';
 import { listSidebarConversations, readSidebarTitle } from './chatgptSidebarDom';
+import { createLegacyChatGptCommands } from './legacyChatGptCommands';
 
 /**
  * Gives filed conversations the titles ChatGPT's sidebar shows. Reads a row's
@@ -26,7 +30,10 @@ export class ChatGptTitleSync {
   /** Bare ids with a new reference whose row has not been read since. */
   private readonly unreconciled = new Set<string>();
 
-  constructor(private readonly store: ChatGptFolderStore) {}
+  constructor(
+    private readonly store: ChatGptFolderStore,
+    private readonly commands: FolderCommands = createLegacyChatGptCommands(store),
+  ) {}
 
   sync(sidebar: HTMLElement | null): void {
     const store = this.store;
@@ -49,6 +56,11 @@ export class ChatGptTitleSync {
       this.seen.set(row.id, title);
       titles.set(row.id, title);
     }
-    store.applyNativeTitles(titles);
+    if (titles.size === 0) return;
+    const entries = [...titles].map(([id, title]) => ({
+      conversationId: `${CHATGPT_CONVERSATION_ID_PREFIX}${id}`,
+      title,
+    }));
+    void this.commands.run({ kind: 'syncNativeTitles', entries });
   }
 }

@@ -6,10 +6,11 @@
  * PluginScope, so turning it off leaves nothing behind.
  */
 import type { ConversationReference } from '@/core/types/folder';
-import { cloneFolderData } from '@/features/folder/model/folderData';
+import type { EditOutcome, FolderCommands } from '@/features/folder/commands/folderCommands';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
 import type { PluginScope } from '@/features/plugins/runtime/pluginScope';
 import type { PluginSettings } from '@/features/plugins/types';
+import { createCommandTreeActions } from '@/pages/content/folder/commandTreeActions';
 import { mountFloatingFab, unmountFloatingFab } from '@/pages/content/folder/floatingModeFab';
 import { type FloatingPanelHandle, mountFloatingPanel } from '@/pages/content/folder/floatingPanel';
 import type { TreeActions } from '@/pages/content/folder/floatingTree/shared';
@@ -17,7 +18,7 @@ import { createFolderDialogs } from '@/pages/content/folder/folderDialogs';
 import { getTranslationSyncUnsafe as t, initI18n } from '@/utils/i18n';
 
 import { isTemporaryChat } from '../chatgptTemporaryHandoff/handoff';
-import { type AddOutcome, ChatGptFolderStore } from './ChatGptFolderStore';
+import { ChatGptFolderStore } from './ChatGptFolderStore';
 import { ChatGptFolderGuide } from './chatgptFolderGuide';
 import { type FolderPickerHandle, openFolderPicker } from './chatgptFolderPicker';
 import { ChatGptFolderSection } from './chatgptFolderSection';
@@ -28,21 +29,19 @@ import { ChatGptSidebarWatcher } from './chatgptSidebarWatcher';
 import { ChatGptTitleSync } from './chatgptTitleSync';
 import { CHATGPT_FOLDER_CONFIG } from './config';
 import { BOOKMARK_ADD_PATH, DOWNLOAD_PATH, UPLOAD_PATH } from './icons';
+import { createLegacyChatGptCommands } from './legacyChatGptCommands';
 import { type ChatGptFolderPanelPrefs, loadPanelPrefs, savePanelPrefs } from './panelPrefs';
-import {
-  chatgptFolderExportFilename,
-  exportChatGptFolders,
-  importChatGptFolders,
-} from './transfer';
+import { chatgptFolderExportFilename, exportChatGptFolders } from './transfer';
 
 const HINT_KEYS = ['chatgptFoldersHint', 'floatingPanelGestureHint'];
 
-const ADD_OUTCOME_KEYS: Record<Exclude<AddOutcome, 'closed'>, string> = {
-  added: 'chatgptFoldersAdded',
-  present: 'chatgptFoldersAlreadyFiled',
-  // The folder was deleted elsewhere; trying again shows the current folders.
-  missing: 'folder_save_error',
-};
+/** The flash that confirms a filing, or `null` when the folders were not open for edits. */
+function addOutcomeKey(outcome: EditOutcome): string | null {
+  if (outcome.kind === 'failed') return null;
+  if (outcome.kind === 'unchanged') return 'chatgptFoldersAlreadyFiled';
+  // A rejection: the folder was deleted elsewhere; trying again shows the current folders.
+  return outcome.kind === 'rejected' ? outcome.messageKey : 'chatgptFoldersAdded';
+}
 
 function format(key: string, values: Record<string, string | number>): string {
   return Object.entries(values).reduce(
@@ -61,6 +60,7 @@ class ChatGptFoldersView {
   constructor(
     private readonly scope: PluginScope,
     private readonly store: ChatGptFolderStore,
+    private readonly commands: FolderCommands,
     private readonly prefs: ChatGptFolderPanelPrefs,
   ) {}
 
@@ -127,9 +127,24 @@ class ChatGptFoldersView {
     this.picker?.close();
     this.picker = openFolderPicker(this.store.data, (folderId) => {
       this.picker = null;
-      const outcome = this.store.addConversation(folderId, conversation);
-      if (outcome !== 'closed') this.flashTree(t(ADD_OUTCOME_KEYS[outcome]));
+      this.file(folderId, conversation);
     });
+  }
+
+  /** Files `conversation` into `folderId` and confirms the result in both trees. */
+  private file(folderId: string, conversation: ConversationReference): void {
+    const { conversationId, title, url } = conversation;
+    void this.commands
+      .run({
+        kind: 'addConversations',
+        target: folderId,
+        seeds: [{ conversationId, title, url }],
+        via: 'picker',
+      })
+      .then((outcome) => {
+        const key = addOutcomeKey(outcome);
+        if (key && !this.scope.isDisposed) this.flashTree(t(key));
+      });
   }
 
   /**
@@ -196,19 +211,10 @@ class ChatGptFoldersView {
 
   /** What both the panel and the sidebar section do on a tree gesture. */
   private treeActions(): TreeActions {
-    const store = this.store;
     return {
+      ...createCommandTreeActions(this.commands),
       onNavigate: (conversation) => void openChatGptConversation(conversation),
-      onCreateFolder: (name, parentId) => store.createFolder(name, parentId),
-      onRenameFolder: (folderId, name) => store.renameFolder(folderId, name),
-      onDeleteFolder: (folderId) => store.removeFolder(folderId),
-      onRemoveConversation: (folderId, id) => store.removeConversation(folderId, id),
       confirmConversationRemoval: this.dialogs.confirmConversationRemoval,
-      onToggleStar: (folderId, id) => store.toggleStar(folderId, id),
-      onToggleFolderPinned: (folderId) => store.toggleFolderPinned(folderId),
-      onToggleFolderExpanded: (folderId) => store.toggleFolderExpanded(folderId),
-      onMoveConversation: (id, from, to) => store.moveConversation(id, from, to),
-      onSetFolderColor: (folderId, color) => store.setFolderColor(folderId, color),
       onAddCurrentConversation: (folderId) => this.addCurrent(folderId),
     };
   }
@@ -229,8 +235,7 @@ class ChatGptFoldersView {
       return;
     }
     if (!this.store.ready) return;
-    const outcome = this.store.addConversation(folderId, conversation);
-    if (outcome !== 'closed') this.flashTree(t(ADD_OUTCOME_KEYS[outcome]));
+    this.file(folderId, conversation);
   }
 
   private exportFolders(): void {
@@ -261,28 +266,33 @@ class ChatGptFoldersView {
       return;
     }
     if (!this.store.ready) return;
-    const outcome = await importChatGptFolders(parsed.data, cloneFolderData(this.store.data));
+    const outcome = await this.commands.runBulk({
+      kind: 'importFile',
+      payload: parsed.data,
+      strategy: 'merge',
+      source: 'file',
+    });
     if (this.scope.isDisposed) return;
-    if (!outcome.ok) {
-      const message =
-        outcome.reason === 'wrong-site'
-          ? t('folder_import_wrong_site')
-          : outcome.reason === 'invalid'
-            ? t('folder_import_invalid_format')
-            : format('folder_import_error', { error: outcome.message ?? '' });
-      this.panel?.flash(message);
-      return;
-    }
-    const saved = await this.store.replaceData(outcome.data);
-    if (this.scope.isDisposed) return;
-    this.panel?.flash(
-      saved
-        ? format('folder_import_success', {
-            folders: outcome.stats.foldersImported,
-            conversations: outcome.stats.conversationsImported,
-          })
-        : format('folder_import_error', { error: '' }),
-    );
+    const message = importMessage(outcome);
+    if (message) this.panel?.flash(message);
+  }
+}
+
+/** The panel's notice for an import, as today; `null` when the folders were not open for edits. */
+function importMessage(outcome: EditOutcome): string | null {
+  switch (outcome.kind) {
+    case 'saved':
+      return format('folder_import_success', {
+        folders: outcome.stats?.foldersImported ?? 0,
+        conversations: outcome.stats?.conversationsImported ?? 0,
+      });
+    case 'rejected':
+      return t(outcome.messageKey);
+    case 'failed':
+      if (outcome.reason === 'not_loaded') return null;
+      return format('folder_import_error', { error: outcome.detail ?? '' });
+    default:
+      return null;
   }
 }
 
@@ -296,7 +306,8 @@ export async function activateChatGptFolders(
   scope.child(store, 'chatgpt-folders:store');
   const prefs = await loadPanelPrefs();
   if (scope.isDisposed) return;
-  const view = new ChatGptFoldersView(scope, store, prefs);
+  const commands = createLegacyChatGptCommands(store);
+  const view = new ChatGptFoldersView(scope, store, commands, prefs);
   view.start();
   const sidebar = new ChatGptSidebarWatcher(scope);
   const moveMenu = new ChatGptMoveMenu({
@@ -305,7 +316,7 @@ export async function activateChatGptFolders(
     canFile: () => store.ready,
     onMove: (conversation) => view.pickFolderFor(conversation),
   });
-  const titles = new ChatGptTitleSync(store);
+  const titles = new ChatGptTitleSync(store, commands);
   const guide = new ChatGptFolderGuide(scope, {
     anchor: () => view.guideAnchor(),
     ready: () => store.ready,
