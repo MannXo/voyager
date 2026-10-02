@@ -243,11 +243,6 @@ export class FolderRepository {
     let applied = false; // memory now holds what storage holds
     let recovering = false; // recovery's own write supersedes this read; it is not discarded
     try {
-      // On Safari, restore recovery backups from the durable mirror before any
-      // recoverFromBackup() can run (localStorage may have been ITP-evicted).
-      await session.backup.ensureHydrated();
-      if (!isCurrent()) return;
-
       let loadedData = await this.storage.loadData(session.storageKey);
       if (!isCurrent()) return;
 
@@ -278,7 +273,7 @@ export class FolderRepository {
         }
 
         // Create primary backup on successful load
-        session.backup.createPrimaryBackup(this.data);
+        void session.backup.createPrimaryBackup(this.data);
         session.markReady();
         applied = true;
 
@@ -390,12 +385,16 @@ export class FolderRepository {
       return this.saveData();
     }
 
-    // Step 1: Try to restore from localStorage backups (primary, emergency, beforeUnload)
+    // Step 1: Read both stores, including durable copies that cannot fit in localStorage.
+    const version = session.loadVersion;
+    await session.backup.ensureHydrated();
+    if (this.dataSession !== session || session.loadVersion !== version || this.destroyed)
+      return false;
     const recovered = session.backup.recoverFromBackup();
     if (recovered && validateFolderData(recovered)) {
       this.data = this.config.normalize(recovered);
       session.markReady();
-      console.warn(`${this.tag} Data recovered from localStorage backup`);
+      console.warn(`${this.tag} Data recovered from backup`);
       this.hooks.onRecovery('recovered');
       // Save recovered data to persistent storage. It is the backup, not a local edit:
       // its failure must not outrank a newer backup another tab may write meanwhile.
@@ -548,7 +547,7 @@ export class FolderRepository {
       // A mutation supersedes any storage read already in flight for this session.
       session.loadVersion += 1;
       session.markReady();
-      session.backup.createEmergencyBackup(snapshot);
+      const emergencyBackup = session.backup.createEmergencyBackup(snapshot);
       if (session.saveInProgress) {
         session.pendingSave = snapshot;
         // Calls coalesced into this trailing snapshot share its storage result.
@@ -560,11 +559,12 @@ export class FolderRepository {
           session.pendingSaveCompletion = { promise, resolve };
         }
         this.debug('Save already in progress, queueing one trailing save');
-        return session.pendingSaveCompletion.promise;
+        return session.pendingSaveCompletion.promise.finally(() => emergencyBackup);
       }
 
       session.activeSave = this.persistDataSession(session, snapshot, undefined, carriesEdit);
-      return session.activeSave;
+      // Finish the backup attempt without making its failure fail the user save.
+      return session.activeSave.finally(() => emergencyBackup);
     } catch (error) {
       console.error(`${this.tag} Save data error:`, error);
       this.hooks.onSaveFailed?.();
@@ -636,7 +636,8 @@ export class FolderRepository {
 
       if (success) {
         // Create primary backup AFTER successful save
-        session.backup.createPrimaryBackup(snapshot);
+        // Backup failure must not change the successful user-save result.
+        await session.backup.createPrimaryBackup(snapshot);
         this.debug('Data saved successfully');
         // Centralised floating-panel sync. Any code path that persists folder
         // data (sidebar actions, cloud download, native menu → "Move to

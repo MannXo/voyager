@@ -552,3 +552,17 @@ is merged again`, the pin and unpin round trips), `src/utils/mergePrompts.test.t
   reachable. Scans do not retry, so a broken setting is not hammered on every DOM change. Tests
   click through the visible path, because jsdom clicks hidden buttons too.
 - **Guard:** `src/pages/content/researchPack/__tests__/researchPackRecovery.test.ts`.
+
+## Backup quota failures must retain a recoverable copy
+
+- **Trap:** A large Gemini library fits alongside its primary backup but an emergency or unload
+  snapshot exceeds page localStorage's quota. `setItem` retains the older slot atomically, but the
+  write failure used to skip Safari's durable mirror too; recovery could only read page slots, so
+  a missing or unusable primary left no fresh emergency copy.
+- **Rule:** Try localStorage first without deleting an older slot for space, then use the same
+  serialized slot in extension storage on failure. Report the completed backup write's result
+  separately from the user save, and read validated copies from both stores even when hydration
+  cannot fit the durable copy into page storage. Preserve slot priority and account namespaces.
+- **Guard:** `src/core/services/__tests__/DataBackupService.test.ts` (quota fallback cases) and
+  `src/pages/content/folder/__tests__/folderBackupQuota.test.ts` (1k folders / 10k refs recovery
+  and successful user saves while both backup stores reject writes).

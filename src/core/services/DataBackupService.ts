@@ -1,7 +1,7 @@
 /**
  * DataBackupService - Robust multi-layer backup system for preventing data loss
  *
- * This service provides a reliable backup mechanism using localStorage instead of sessionStorage.
+ * This service provides a reliable backup mechanism using localStorage with an extension-storage fallback.
  * It implements multiple backup layers with timestamp validation to prevent data loss in scenarios
  * like network disconnections, page refreshes, and browser crashes.
  *
@@ -45,14 +45,11 @@ export class DataBackupService<T = unknown> {
   private readonly maxBackupAge: number = (isSafari() ? 180 : 7) * 24 * 60 * 60 * 1000;
   private beforeUnloadHandler: (() => void) | null = null;
 
-  // Safari evicts localStorage after ~7 days of inactivity (ITP), which would
-  // silently destroy these recovery backups — on the exact browser where folder
-  // data is otherwise protected via browser.storage.local. On Safari we mirror
-  // every backup to the durable browser.storage.local and restore localStorage
-  // from it at startup, so the synchronous recoverFromBackup() still finds them.
-  // Chrome/Firefox/Edge keep the localStorage-only path unchanged.
+  // Safari always mirrors backups to survive ITP eviction. Other browsers use
+  // the same durable slots only when page localStorage is full or unavailable.
   private readonly useDurableMirror: boolean = isSafari();
-  private hydrationPromise: Promise<void> | null = null;
+  private readonly durableBackups = new Map<string, string>();
+  private durableWrites: Promise<boolean> = Promise.resolve(true);
 
   constructor(
     private readonly namespace: string,
@@ -62,33 +59,47 @@ export class DataBackupService<T = unknown> {
     this.emergencyKey = `gvBackup_${namespace}_emergency`;
     this.beforeUnloadKey = `gvBackup_${namespace}_beforeUnload`;
     this.metadataKey = `gvBackup_${namespace}_metadata`;
-
-    if (this.useDurableMirror) {
-      this.hydrationPromise = this.hydrateFromDurableStore();
-    }
   }
 
-  /**
-   * Resolve once Safari's durable-store backups have been restored into
-   * localStorage. Callers should await this before recoverFromBackup() on the
-   * recovery path. No-op (resolved) on non-Safari browsers.
-   */
+  /** Read durable slots before recovery, even when they cannot fit in localStorage. */
   async ensureHydrated(): Promise<void> {
-    if (this.hydrationPromise) await this.hydrationPromise;
+    await this.durableWrites;
+    await this.hydrateFromDurableStore();
   }
 
-  /** Mirror a backup slot to the durable browser.storage.local (Safari only). */
-  private mirrorToDurableStore(key: string, value: string): void {
-    if (!this.useDurableMirror) return;
-    void browser.storage.local.set({ [key]: value }).catch((error) => {
-      console.warn(`[BackupService:${this.namespace}] Durable mirror write failed:`, error);
+  /** Writes are ordered so an older async fallback cannot replace a newer one. */
+  private mirrorToDurableStore(key: string, value: string): Promise<boolean> {
+    this.durableWrites = this.durableWrites.then(async () => {
+      try {
+        await browser.storage.local.set({ [key]: value });
+        this.durableBackups.set(key, value);
+        return true;
+      } catch (error) {
+        console.warn(`[BackupService:${this.namespace}] Durable mirror write failed:`, error);
+        return false;
+      }
     });
+    return this.durableWrites;
+  }
+
+  private async writeBackup(key: string, serialized: string): Promise<boolean> {
+    let localSaved = false;
+    try {
+      // setItem is atomic on failure: never remove the previous backup to make room.
+      localStorage.setItem(key, serialized);
+      localSaved = true;
+    } catch (error) {
+      console.warn(`[BackupService:${this.namespace}] Local backup write failed:`, error);
+    }
+    if (localSaved && !this.useDurableMirror) return true;
+    const durableSaved = await this.mirrorToDurableStore(key, serialized);
+    return localSaved || durableSaved;
   }
 
   /**
    * Restore any backup slots that localStorage lost (e.g. Safari ITP eviction)
-   * from the durable browser.storage.local mirror. Live writes keep both in
-   * sync, so a value already present in localStorage is left untouched.
+   * from Safari's durable mirror. Quota fallbacks on other browsers stay in
+   * extension storage, leaving page storage space for live folder data.
    */
   private async hydrateFromDurableStore(): Promise<void> {
     try {
@@ -96,7 +107,12 @@ export class DataBackupService<T = unknown> {
       const stored = await browser.storage.local.get(keys);
       for (const key of keys) {
         const value = stored[key];
-        if (typeof value !== 'string') continue;
+        if (typeof value !== 'string') {
+          this.durableBackups.delete(key);
+          continue;
+        }
+        this.durableBackups.set(key, value);
+        if (!this.useDurableMirror) continue;
         try {
           if (localStorage.getItem(key) === null) {
             localStorage.setItem(key, value);
@@ -113,12 +129,11 @@ export class DataBackupService<T = unknown> {
   /**
    * Create a primary backup (called after successful save)
    */
-  createPrimaryBackup(data: T): boolean {
+  async createPrimaryBackup(data: T): Promise<boolean> {
     try {
       const backup = this.createBackupData(data);
       const serialized = JSON.stringify(backup);
-      localStorage.setItem(this.primaryKey, serialized);
-      this.mirrorToDurableStore(this.primaryKey, serialized);
+      if (!(await this.writeBackup(this.primaryKey, serialized))) return false;
       this.updateMetadata('primary', backup.metadata);
       console.log(`[BackupService:${this.namespace}] Primary backup created`);
       return true;
@@ -131,12 +146,11 @@ export class DataBackupService<T = unknown> {
   /**
    * Create an emergency backup (called before save operation)
    */
-  createEmergencyBackup(data: T): boolean {
+  async createEmergencyBackup(data: T): Promise<boolean> {
     try {
       const backup = this.createBackupData(data);
       const serialized = JSON.stringify(backup);
-      localStorage.setItem(this.emergencyKey, serialized);
-      this.mirrorToDurableStore(this.emergencyKey, serialized);
+      if (!(await this.writeBackup(this.emergencyKey, serialized))) return false;
       console.log(`[BackupService:${this.namespace}] Emergency backup created`);
       return true;
     } catch (error) {
@@ -148,12 +162,11 @@ export class DataBackupService<T = unknown> {
   /**
    * Create a beforeUnload backup (called when page is about to close)
    */
-  private createBeforeUnloadBackup(data: T): boolean {
+  private async createBeforeUnloadBackup(data: T): Promise<boolean> {
     try {
       const backup = this.createBackupData(data);
       const serialized = JSON.stringify(backup);
-      localStorage.setItem(this.beforeUnloadKey, serialized);
-      this.mirrorToDurableStore(this.beforeUnloadKey, serialized);
+      if (!(await this.writeBackup(this.beforeUnloadKey, serialized))) return false;
       console.log(`[BackupService:${this.namespace}] BeforeUnload backup created`);
       return true;
     } catch (error) {
@@ -176,7 +189,7 @@ export class DataBackupService<T = unknown> {
     this.beforeUnloadHandler = () => {
       try {
         const data = getDataFn();
-        this.createBeforeUnloadBackup(data);
+        void this.createBeforeUnloadBackup(data);
       } catch (error) {
         console.error(`[BackupService:${this.namespace}] BeforeUnload handler error:`, error);
       }
@@ -212,35 +225,25 @@ export class DataBackupService<T = unknown> {
    * Load a specific backup
    */
   private loadBackup(key: string, type: string): T | null {
+    const candidates: BackupData<T>[] = [];
+    let localValue: string | null = null;
     try {
-      const backupStr = localStorage.getItem(key);
-      if (!backupStr) {
-        console.log(`[BackupService:${this.namespace}] No ${type} backup found`);
-        return null;
-      }
-
-      const backup: BackupData<T> = JSON.parse(backupStr);
-
-      // Validate timestamp
-      if (!this.isBackupValid(backup)) {
-        console.warn(`[BackupService:${this.namespace}] ${type} backup is too old or invalid`);
-        return null;
-      }
-
-      // Validate data structure
-      if (!this.validateData(backup.data)) {
-        console.warn(`[BackupService:${this.namespace}] ${type} backup data validation failed`);
-        return null;
-      }
-
-      console.log(
-        `[BackupService:${this.namespace}] Successfully loaded ${type} backup from ${backup.metadata.timestamp}`,
-      );
-      return backup.data;
-    } catch (error) {
-      console.error(`[BackupService:${this.namespace}] Failed to load ${type} backup:`, error);
-      return null;
+      localValue = localStorage.getItem(key);
+    } catch {
+      // Recovery can still use extension storage when page storage is unavailable.
     }
+    for (const value of [localValue, this.durableBackups.get(key)]) {
+      if (!value) continue;
+      try {
+        const backup: BackupData<T> = JSON.parse(value);
+        if (this.isBackupValid(backup) && this.validateData(backup.data)) candidates.push(backup);
+      } catch (error) {
+        console.warn(`[BackupService:${this.namespace}] Invalid ${type} backup:`, error);
+      }
+    }
+    // Keep slot priority, but prefer the newest valid copy within each slot.
+    candidates.sort((a, b) => Date.parse(b.metadata.timestamp) - Date.parse(a.metadata.timestamp));
+    return candidates[0]?.data ?? null;
   }
 
   /**
@@ -269,7 +272,7 @@ export class DataBackupService<T = unknown> {
       const backupTime = new Date(backup.metadata.timestamp).getTime();
       const age = Date.now() - backupTime;
 
-      if (age < 0) {
+      if (!Number.isFinite(age) || age < 0) {
         console.warn(`[BackupService:${this.namespace}] Backup has future timestamp`);
         return false;
       }
@@ -316,7 +319,7 @@ export class DataBackupService<T = unknown> {
       allMetadata[type] = metadata;
       const serialized = JSON.stringify(allMetadata);
       localStorage.setItem(this.metadataKey, serialized);
-      this.mirrorToDurableStore(this.metadataKey, serialized);
+      if (this.useDurableMirror) void this.mirrorToDurableStore(this.metadataKey, serialized);
     } catch (error) {
       console.warn(`[BackupService:${this.namespace}] Failed to update metadata:`, error);
     }
@@ -343,13 +346,22 @@ export class DataBackupService<T = unknown> {
       localStorage.removeItem(this.emergencyKey);
       localStorage.removeItem(this.beforeUnloadKey);
       localStorage.removeItem(this.metadataKey);
-      if (this.useDurableMirror) {
-        void browser.storage.local
-          .remove([this.primaryKey, this.emergencyKey, this.beforeUnloadKey, this.metadataKey])
-          .catch((error) => {
-            console.warn(`[BackupService:${this.namespace}] Durable mirror clear failed:`, error);
-          });
-      }
+      this.durableBackups.clear();
+      this.durableWrites = this.durableWrites
+        .then(async () => {
+          await browser.storage.local.remove([
+            this.primaryKey,
+            this.emergencyKey,
+            this.beforeUnloadKey,
+            this.metadataKey,
+          ]);
+          this.durableBackups.clear();
+          return true;
+        })
+        .catch((error) => {
+          console.warn(`[BackupService:${this.namespace}] Durable mirror clear failed:`, error);
+          return false;
+        });
       console.log(`[BackupService:${this.namespace}] All backups cleared`);
     } catch (error) {
       console.error(`[BackupService:${this.namespace}] Failed to clear backups:`, error);
