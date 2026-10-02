@@ -1015,10 +1015,14 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
   would make it a containing block, carries the shadow-surface key guard marker and the mirrored
   scheme and direction, counts as inside for outside-click handling, and is removed with the tree.
   Trees whose own host is already a body-level fixed panel (Gemini and ChatGPT floating panels) keep
-  the menu in the tree. After a menu renders, the controller shifts it by a measured delta to stay
-  inside the viewport, so the fit also holds in a container that offsets fixed boxes.
-- **Guard:** `src/pages/content/folder/__tests__/folderTreePopoverLayer.test.ts` and the popover
-  layer host tests in `src/pages/content/folder/__tests__/floatingPanelHostCss.test.ts`.
+  the menu in the tree. The menu is placed by floating-ui (`positionMenu` in
+  `floatingTree/menuPosition.ts`: fixed strategy, `flip` then `shift` with 8px padding), which
+  computes against the menu's real containing block, so the fit also holds in a container that
+  offsets fixed boxes. Its `autoUpdate` is released when the menu closes or the tree is destroyed.
+- **Guard:** `src/pages/content/folder/__tests__/folderTreePopoverLayer.test.ts`, the popover
+  layer host tests in `src/pages/content/folder/__tests__/floatingPanelHostCss.test.ts`, and
+  `floatingTree/__tests__/treeInput.test.ts`
+  (`releases every listener, including the open menu’s position tracking`).
 
 ## Removing a folder must cut a parent cycle where the tree does
 
@@ -1042,3 +1046,70 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
   `src/features/folder/services/__tests__/FolderImportExportService.test.ts`,
   `src/pages/content/folder/__tests__/FolderTransferController.test.ts` and
   `src/pages/content/folder/__tests__/aistudioPersistence.test.ts`.
+
+## Headless Tree keeps hotkeys pressed when a keyup never reaches `document`
+
+- **Trap:** Headless Tree's `hotkeysCoreFeature` adds keys to its pressed set on the tree's keydown
+  and removes them on a keyup listener on `document`; a hotkey matches only when the pressed set
+  holds exactly its keys. Our shadow surfaces stop key events from text fields at the shadow root
+  (`attachShadowSurface`), so F2 that opens the rename field releases inside the field and stays
+  pressed: every later arrow key then holds two keys and matches nothing. A key released in another
+  window (Alt-Tab) sticks the same way.
+- **Rule:** The tree's own feature (`voyagerFeature` in `floatingTree/treeEngine.ts`) forwards
+  keyups on the tree element to Headless Tree's keyup handler, and clears the pressed set when focus
+  leaves the tree or the window blurs. Do not fix this in `shadowKeyGuard*`, which must keep typing
+  inside. The tree ships no typeahead, so Ctrl/Cmd + a letter (browser Find) is never consumed.
+- **Guard:** `src/pages/content/folder/floatingTree/__tests__/treeInput.test.ts`
+  (`keeps arrow keys working after F2 renames, though the field kept its keyup inside`,
+  `forgets a held key when the window loses focus`,
+  `lets Ctrl/Cmd + a letter through to the page, so Find still opens`).
+
+## A Headless Tree hotkey override replaces the preset entry whole
+
+- **Trap:** Headless Tree matches hotkeys against `{ ...presets, ...config.hotkeys }`, a shallow
+  spread. An override such as `expandOrDown: { handler }` (to make arrows follow RTL) dropped the
+  preset's `hotkey` string, and every keydown on the tree threw
+  `Cannot read properties of undefined (reading 'toLowerCase')`.
+- **Rule:** An entry in `hotkeys` restates its full definition: `hotkey`, `canRepeat`,
+  `preventDefault` and `handler`.
+- **Guard:** `src/pages/content/folder/floatingTree/__tests__/treeInput.test.ts` (arrow-key cases)
+  and the keyboard cases in `floatingTree/__tests__/characterization.interaction.test.ts`.
+
+## Headless Tree never forgets an item, so another account's data needs a new engine
+
+- **Trap:** A Headless Tree instance caches every item instance it has created and never prunes
+  them, and focus state is keyed by item id. Folder ids are not unique across accounts, so after an
+  account switch a reused id would carry the previous account's focus and cached item into the new
+  tree.
+- **Rule:** The tree controller bumps `generation` on `reset`, and the view starts a new engine for
+  each generation, detaching the old one from the tree element. Expansion is never stored in the
+  engine: it is derived from `isExpanded` on each render, and an expand or collapse from the
+  keyboard goes back through the controller, so `onToggleFolderExpanded` stays its only persisted
+  writer and the folder data is never written by the tree.
+- **Guard:** `src/pages/content/folder/floatingPanel.test.ts`
+  (`clears the previous account menu and expansion when the next account reuses folder ids`) and the
+  frozen-data cases in `floatingTree/__tests__/treeInput.test.ts`.
+
+## Item keys built from free-text ids need a length prefix
+
+- **Trap:** Folder and conversation ids are opaque text from storage and imports. A key such as
+  `parentId:conversationId` lets `a` + `b:c` and `a:b` + `c` collide, and a collision makes Headless
+  Tree and the virtualizer treat two rows as one: one row vanishes, or focus and measurement land on
+  the wrong row.
+- **Rule:** Keys length-prefix every id (`folderKey` and `conversationKey` in
+  `floatingTree/projection.ts`): `f<len>:<id>`, `c<len>:<parentKey><len>:<id>`, plus `#n` for a
+  repeat in one bucket.
+- **Guard:** `src/pages/content/folder/floatingTree/__tests__/projection.test.ts`.
+
+## A virtualized row must stay rendered while it holds focus or a draft
+
+- **Trap:** With windowing, a row scrolled out of view is unmounted. A folder being renamed lost
+  its field, draft and focus when the user scrolled to check another folder name, and keyboard
+  focus on an unrendered row had nowhere to go. In jsdom, and in a hidden panel, the scroller
+  measures 0×0, so virtual-core yields no range at all.
+- **Rule:** The view pins the focused row, a row waiting for focus, the open name field and the
+  menu's folder through virtual-core's `rangeExtractor` (deduplicated, in index order). A tree whose
+  scroller has no size renders its first rows plus the pinned ones. Inline trees scroll with the
+  host's own scroller (found through shadow hosts, offset by `scrollMargin`), so the tree never adds
+  a scrollbar of its own. Trees up to 150 rows render every row.
+- **Guard:** `src/pages/content/folder/floatingTree/__tests__/virtualScroll.test.ts`.
