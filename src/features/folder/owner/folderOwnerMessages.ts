@@ -58,3 +58,57 @@ export interface ApplyRequest {
   ops: Array<{ seq: number; body: unknown }>;
   ackedThrough: number;
 }
+
+/** A read of the consistent `(K, meta)` pair, produced inside a turn after resolution (§7.3). */
+export interface SnapshotRequest {
+  key: string;
+  clientId: string;
+}
+
+interface SnapshotBase {
+  epoch: string;
+  rev: number;
+  /** The requesting client's watermark; 0 when the epoch does not know it. */
+  applied: number;
+}
+
+export type SnapshotReply =
+  | ({ kind: 'ready'; data: FolderData; dataHash: string } & SnapshotBase)
+  | ({ kind: 'empty' } & SnapshotBase)
+  | ({ kind: 'invalid' } & SnapshotBase)
+  | { kind: 'refused'; reason: 'read_failed' | 'not_owner' | 'write_failed' };
+
+/** Outcomes the client delivered; held in memory and folded into the next commit of `key`. */
+export interface AckRequest {
+  key: string;
+  clientId: string;
+  ackedThrough: number;
+}
+
+export const FOLDER_OWNER_MESSAGE = {
+  open: 'gv.folderOwner.open',
+  apply: 'gv.folderOwner.apply',
+  snapshot: 'gv.folderOwner.snapshot',
+  ack: 'gv.folderOwner.ack',
+} as const;
+
+export type FolderOwnerRequest =
+  | ({ type: typeof FOLDER_OWNER_MESSAGE.open } & OpenRequest)
+  | ({ type: typeof FOLDER_OWNER_MESSAGE.apply } & ApplyRequest)
+  | ({ type: typeof FOLDER_OWNER_MESSAGE.snapshot } & SnapshotRequest)
+  | ({ type: typeof FOLDER_OWNER_MESSAGE.ack } & AckRequest);
+
+/** The sender gate's refusal (§6.8), sent before any turn runs. */
+export interface GateRefusal {
+  kind: 'refused';
+  reason: 'sender_not_allowed' | 'not_owner';
+}
+
+export type FolderOwnerResponse =
+  | OpenReply
+  | ApplyReply
+  | SnapshotReply
+  | { kind: 'acknowledged' }
+  /** A message of ours whose fields do not parse. */
+  | { kind: 'bad_request' }
+  | GateRefusal;

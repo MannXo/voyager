@@ -1,11 +1,16 @@
+import { createWriteQueue } from '@/features/storage/writeQueue';
+
 import { canonicalJson } from './canonicalHash';
 import type { OpOutcome } from './folderOps';
 import type {
+  AckRequest,
   ApplyReply,
   ApplyRequest,
   HeldClient,
   OpenReply,
   OpenRequest,
+  SnapshotReply,
+  SnapshotRequest,
 } from './folderOwnerMessages';
 import { FOLDER_SITE_POLICIES, type FolderSitePolicy, siteOfFolderKey } from './folderOwnerPolicy';
 import {
@@ -36,7 +41,7 @@ export interface FolderOwnerCoreOptions {
   area: FolderOwnerStorageArea;
   now?: () => number;
   newId?: () => string;
-  /** The shared in-process write queue (P1); defaults to a private chain. */
+  /** The shared in-process write queue; defaults to a private one. */
   serialize?: <T>(turn: () => Promise<T>) => Promise<T>;
 }
 
@@ -45,6 +50,9 @@ export interface FolderOwnerCore {
   apply(request: ApplyRequest): Promise<ApplyReply>;
   /** Startup and `open` drain of every registered or retired client's accepted ops for `key`. */
   drain(key: string): Promise<void>;
+  snapshot(request: SnapshotRequest): Promise<SnapshotReply>;
+  /** Never writes on its own: the ack rides on the next commit of its key (§6.3). */
+  ack(request: AckRequest): void;
 }
 
 const isContiguous = (ops: ReadonlyArray<{ seq: number }>): boolean =>
@@ -106,15 +114,9 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
   const { area } = options;
   const now = options.now ?? Date.now;
   const newId = options.newId ?? (() => crypto.randomUUID());
-  let queue: Promise<unknown> = Promise.resolve();
-  const serialize =
-    options.serialize ??
-    (<T>(turn: () => Promise<T>): Promise<T> => {
-      const next = queue.then(turn, turn);
-      queue = next.catch(() => undefined);
-      return next;
-    });
+  const serialize = options.serialize ?? createWriteQueue();
   const lastGcAt = new Map<string, number>();
+  const acks = new Map<string, Map<string, number>>();
 
   const resolve = (key: string): Promise<OwnerState> => resolveOwnerState(area, key, now(), newId);
 
@@ -124,11 +126,36 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
    * state is resolved again, so callers judge by the stored watermark only.
    */
   async function settle(key: string, state: ReadyState, next: Processed) {
-    const result = await commitOwnerState(area, key, state, next, newId());
-    if (result.kind === 'committed') return result.state;
+    const pending = new Map(acks.get(key));
+    const folded = foldAcks(pending, next.meta);
+    const result = await commitOwnerState(area, key, state, { ...next, meta: folded }, newId());
+    if (result.kind === 'committed') {
+      forgetAcks(key, pending);
+      return result.state;
+    }
     if (result.kind === 'failed') return null;
     const resolved = await resolve(key);
     return resolved.kind === 'ready' ? resolved : null;
+  }
+
+  /** Pending acks applied to every still-registered client. */
+  function foldAcks(pending: Map<string, number>, meta: FolderOwnerMeta): FolderOwnerMeta {
+    let folded = meta;
+    for (const [clientId, ackedThrough] of pending) {
+      const client = folded.clients[clientId];
+      if (client) folded = withClient(folded, clientId, acknowledge(client, ackedThrough, now()));
+    }
+    return folded;
+  }
+
+  /** Drops the acks a commit carried, keeping any that arrived during it. */
+  function forgetAcks(key: string, carried: Map<string, number>) {
+    const forKey = acks.get(key);
+    if (!forKey) return;
+    for (const [clientId, ackedThrough] of carried) {
+      if (forKey.get(clientId) === ackedThrough) forKey.delete(clientId);
+    }
+    if (forKey.size === 0) acks.delete(key);
   }
 
   async function removePending(clientId: string, seqs: number[], applied: number) {
@@ -226,7 +253,32 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
     };
   }
 
+  async function snapshotTurn(request: SnapshotRequest): Promise<SnapshotReply> {
+    const state = await resolve(request.key);
+    if (state.kind === 'read_failed' || state.kind === 'write_failed') {
+      return { kind: 'refused', reason: state.kind };
+    }
+    const base = {
+      epoch: state.meta.epoch,
+      rev: state.meta.rev,
+      applied: state.meta.clients[request.clientId]?.applied ?? 0,
+    };
+    if (state.kind === 'invalid') return { kind: 'invalid', ...base };
+    return state.data
+      ? { kind: 'ready', data: state.data, dataHash: state.hash, ...base }
+      : { kind: 'empty', ...base };
+  }
+
   return {
+    snapshot(request) {
+      if (!policyFor(request.key)) return Promise.resolve({ kind: 'refused', reason: 'not_owner' });
+      return serialize(() => snapshotTurn(request));
+    },
+    ack({ key, clientId, ackedThrough }) {
+      const forKey = acks.get(key) ?? new Map<string, number>();
+      forKey.set(clientId, Math.max(forKey.get(clientId) ?? 0, ackedThrough));
+      acks.set(key, forKey);
+    },
     open(request) {
       const policy = policyFor(request.key);
       if (!policy) return Promise.resolve({ kind: 'refused', reason: 'not_owner' });

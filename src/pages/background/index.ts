@@ -98,7 +98,7 @@ import { loadEnabledPlugins } from './enabledPlugins';
 import { resolveOptionalHighlightSetting } from './highlightOptionalSetting';
 import { handlePluginRuntimeMessage } from './pluginRuntimeMessages';
 import { mergeCloudPrompts, mergeCloudPromptsForUpload } from './promptDriveMerge';
-import { promptLibraryOwner, startPromptLibraryOwner } from './promptLibraryOwner';
+import { promptLibraryOwner, startQueueOwners } from './queueOwners';
 import { startResearchPackOwner } from './researchPackOwner';
 import {
   canSenderPageUseSyncPlatform,
@@ -155,7 +155,7 @@ const hostCatalogRefresher = new HostCatalogRefresher();
 startChatGptTemporaryHandoffBackgroundService();
 startStorageQuotaWarningBackgroundService();
 startResearchPackOwner();
-startPromptLibraryOwner();
+startQueueOwners();
 
 async function disableRetiredTabTitleUpdateSetting(): Promise<void> {
   try {
