@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import type { ConversationReference } from '@/core/types/folder';
+
 import { conversationKeys, isSameConversation } from '../folderConversationIdentity';
-import type { ConversationReference } from '../types';
 
 function ref(conversationId: string, url: string): ConversationReference {
   return { conversationId, title: 't', url, addedAt: 1 };
