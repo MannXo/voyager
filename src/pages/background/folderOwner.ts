@@ -78,7 +78,7 @@ export function startFolderOwner(authority: Authority = FOLDER_WRITE_AUTHORITY):
   void drainOwnedKeys(localFolderArea, core, authority).catch((error: unknown) =>
     logger.warn('Folder owner startup drain failed', { error: String(error) }),
   );
-  if (hasOwnerSite(authority)) watchOwnedKeys(core);
+  if (hasOwnerSite(authority)) watchOwnedKeys(core, authority);
   return core;
 }
 
@@ -88,9 +88,9 @@ export function startFolderOwner(authority: Authority = FOLDER_WRITE_AUTHORITY):
  * legacy neither exists, so prompt-owner turns read exactly what they read today.
  * Hook: the reviewed bundle rules (addendum P3P4 R5.2) replace the P0 resolver here.
  */
-function watchOwnedKeys(core: FolderOwnerCore): void {
+function watchOwnedKeys(core: FolderOwnerCore, authority: Authority): void {
   backgroundWriteQueue.setPrelude(async () => {
-    const bundle = await resolveBundleIntent(localFolderArea);
+    const bundle = await resolveBundleIntent(localFolderArea, authority);
     if (bundle !== 'ok') throw new Error(`Folder bundle resolution: ${bundle}`);
   });
   chrome.storage.onChanged.addListener((changes, areaName) => {

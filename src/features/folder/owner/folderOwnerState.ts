@@ -1,8 +1,10 @@
 import type { FolderData } from '@/core/types/folder';
 
+import type { FolderAuthority } from './authority';
 import { resolveBundleIntent } from './bundleIntent';
 import { canonicalJson, hashValue } from './canonicalHash';
 import type { OpOutcome } from './folderOps';
+import type { FolderSite } from './folderOwnerPolicy';
 import { orphanedClients } from './ownerEpochScan';
 
 /** `chrome.storage.local` (`browser.storage.local` on Safari), injected so faults can be simulated. */
@@ -142,8 +144,9 @@ export async function resolveOwnerState(
   key: string,
   now: number,
   newId: () => string,
+  authority: Readonly<Record<FolderSite, FolderAuthority>>,
 ): Promise<OwnerState> {
-  const bundle = await resolveBundleIntent(area);
+  const bundle = await resolveBundleIntent(area, authority);
   if (bundle !== 'ok') return { kind: bundle };
 
   const metaKey = ownerMetaKey(key);

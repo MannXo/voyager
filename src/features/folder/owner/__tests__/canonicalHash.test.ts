@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ABSENT_HASH, hashValue } from '../canonicalHash';
 import { ownerBackupKey, ownerMetaKey, resolveOwnerState } from '../folderOwnerState';
 import { createFaultyStorage } from './faultyStorage';
-import { KEY, conversation, folder, folderData } from './ownerHarness';
+import { ALL_OWNER, KEY, conversation, folder, folderData } from './ownerHarness';
 
 // T22: one hash per value, whatever the key order or storage form.
 describe('canonical hash', () => {
@@ -46,10 +46,10 @@ describe('canonical hash', () => {
   it('classifies K stored as a string of the same data as clean, not foreign', async () => {
     const data = folderData([folder('F')]);
     const storage = createFaultyStorage({ [KEY]: data });
-    await resolveOwnerState(storage.area, KEY, 1, () => 'epoch');
+    await resolveOwnerState(storage.area, KEY, 1, () => 'epoch', ALL_OWNER);
     storage.write(KEY, JSON.stringify(data));
 
-    const again = await resolveOwnerState(storage.area, KEY, 2, () => 'unused');
+    const again = await resolveOwnerState(storage.area, KEY, 2, () => 'unused', ALL_OWNER);
 
     expect(again).toMatchObject({ kind: 'ready', data, meta: { epoch: 'epoch', rev: 1 } });
     expect(storage.read(ownerBackupKey(KEY, 'foreign'))).toBeUndefined();

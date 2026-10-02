@@ -162,7 +162,8 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
     return site && options.authority[site] === 'owner' ? FOLDER_SITE_POLICIES[site] : null;
   };
 
-  const resolve = (key: string): Promise<OwnerState> => resolveOwnerState(area, key, now(), newId);
+  const resolve = (key: string): Promise<OwnerState> =>
+    resolveOwnerState(area, key, now(), newId, options.authority);
 
   /**
    * Commits `processed` and returns the durable state, or `null` when nothing

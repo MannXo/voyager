@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import type { FolderAuthority } from '../authority';
+import { BUNDLE_INTENT_KEY, resolveBundleIntent } from '../bundleIntent';
 import { createFolderOwnerCore } from '../folderOwnerCore';
 import type { FolderSite } from '../folderOwnerPolicy';
 import { ownerBackupKey, ownerMetaKey } from '../folderOwnerState';
 import { createFaultyStorage } from './faultyStorage';
 import {
   ALL_OWNER,
+  KEY,
   TestClient,
   createWorld,
   folder,
@@ -86,5 +88,37 @@ describe('running-build authority (R5.1)', () => {
       held: { from: 1, reason: 'foreign_write' },
     });
     expect(pendingKeys(storage)).toHaveLength(3);
+  });
+
+  it('leaves an open bundle of a legacy site frozen while an owned site commits', async () => {
+    const legacyK = folderData([folder('S', 'legacy value')]);
+    const open = {
+      txId: 'tx',
+      status: 'open',
+      values: {
+        [AI_STUDIO]: folderData([folder('S', 'bundle value')]),
+        [ownerMetaKey(AI_STUDIO)]: { stale: true },
+        gvPromptItems: ['bundle prompt'],
+      },
+      hashes: {},
+    };
+    const storage = createFaultyStorage({
+      [KEY]: folderData([folder('F', 'A')]),
+      [AI_STUDIO]: legacyK,
+      gvPromptItems: ['user prompt'],
+      [BUNDLE_INTENT_KEY]: open,
+    });
+    const world = createWorld(storage, undefined, AI_STUDIO_LEGACY);
+    const tab = new TestClient(world, 'G');
+
+    await tab.open(world.process());
+    await tab.send(world.process(), tab.accept(rename('F', 'B')));
+    // What the shared queue's prelude runs before a prompt-owner turn.
+    await expect(resolveBundleIntent(storage.area, AI_STUDIO_LEGACY)).resolves.toBe('ok');
+
+    expect(storedData(storage).folders[0].name).toBe('B');
+    expect(storage.read(AI_STUDIO)).toEqual(legacyK);
+    expect(storage.read('gvPromptItems')).toEqual(['user prompt']);
+    expect(storage.read(BUNDLE_INTENT_KEY)).toEqual(open);
   });
 });

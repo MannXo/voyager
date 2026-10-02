@@ -5,6 +5,7 @@ import { hashValue } from '../canonicalHash';
 import { ownerBackupKey, resolveOwnerState } from '../folderOwnerState';
 import { type Fault, type StorageOp, createFaultyStorage } from './faultyStorage';
 import {
+  ALL_OWNER,
   KEY,
   TestClient,
   createWorld,
@@ -56,7 +57,13 @@ describe('commit under partial writes (§6.4)', () => {
       const reply = await a.send(world.process(), [1]).catch(() => null);
       storage.restart();
 
-      const state = await resolveOwnerState(storage.area, KEY, world.now(), () => 'new-epoch');
+      const state = await resolveOwnerState(
+        storage.area,
+        KEY,
+        world.now(),
+        () => 'new-epoch',
+        ALL_OWNER,
+      );
       expect(state.kind, label).toBe('ready');
       if (state.kind !== 'ready') continue;
       const name = storedData(storage).folders[0].name;
@@ -96,7 +103,7 @@ describe('commit under partial writes (§6.4)', () => {
       await writeBundle(storage.area, 'tx', next).catch(() => undefined);
       storage.restart();
 
-      expect(await resolveBundleIntent(storage.area)).toBe('ok');
+      expect(await resolveBundleIntent(storage.area, ALL_OWNER)).toBe('ok');
 
       const values = keys.map((k) => storage.read(k));
       const expected = cut.call === 1 ? prev : next;
