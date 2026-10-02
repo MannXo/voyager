@@ -161,6 +161,12 @@ export function createTreeView(rerender: () => void): TreeView {
   let projection: TreeProjection | null = null;
   let rows: Row[] = [];
   let rowsFor: unknown[] = [];
+  let sizing: {
+    rows: Row[];
+    indexByKey: Map<string, number>;
+    estimateSize: (index: number) => number;
+    rowKey: (index: number) => string;
+  } | null = null;
   const virtualizer = createRowVirtualizer(rerender);
 
   const current = (): ProjectedTree => {
@@ -245,12 +251,22 @@ export function createTreeView(rerender: () => void): TreeView {
           measure: undefined,
         };
       }
-      const indexByKey = new Map(rows.map((row, index) => [row.key, index]));
-      const laidOut = rows;
+      // New sizing callbacks make the virtualizer lay out every row again, so
+      // they change only with the rows.
+      if (sizing?.rows !== rows) {
+        const laidOut = rows;
+        sizing = {
+          rows,
+          indexByKey: new Map(rows.map((row, index) => [row.key, index])),
+          estimateSize: (index) => estimate(laidOut[index]),
+          rowKey: (index) => laidOut[index]?.key ?? String(index),
+        };
+      }
+      const { indexByKey, estimateSize, rowKey } = sizing;
       virtualizer.configure({
-        count: laidOut.length,
-        estimateSize: (index) => estimate(laidOut[index]),
-        rowKey: (index) => laidOut[index]?.key ?? String(index),
+        count: rows.length,
+        estimateSize,
+        rowKey,
         pinned: pinnedKeys(tree, engine, pendingFocus)
           .map((key) => indexByKey.get(key))
           .filter((index): index is number => index !== undefined),

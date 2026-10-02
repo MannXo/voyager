@@ -152,9 +152,11 @@ export function mountFolderTree({
     if (change.inlineEditor !== undefined) inlineEditor = change.inlineEditor;
     if (change.contextMenu !== undefined) contextMenu = change.contextMenu;
     if (change.expand) setExpanded(change.expand.folderId, change.expand.expanded);
-    effect?.();
-    // The effect may have changed the data in place; lay it out again.
-    project();
+    // The effect may change the data in place; lay it out again.
+    if (effect) {
+      effect();
+      project();
+    }
     render();
     if (change.contextMenu?.fromKeyboard) {
       (layer?.container ?? body).querySelector<HTMLElement>(`.${cls('menu-item')}`)?.focus();
