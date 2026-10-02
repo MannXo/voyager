@@ -137,6 +137,15 @@ describe('folders on a parent cycle', () => {
       ],
       folderContents: bucketsOf('r', 'a', 'b'),
     });
+    // The tree renders only open folders' rows, so open each level in turn.
+    expect(rendered(root)).toEqual(['0:r']);
+    for (const id of ['r', 'a', 'b']) {
+      root
+        .querySelector<HTMLButtonElement>(
+          `.${cls('folder-header')}[data-folder-id="${id}"] .${cls('caret')}`,
+        )!
+        .click();
+    }
     expect(rendered(root)).toEqual(['0:r', '1:a', '2:b']);
   });
 
@@ -153,16 +162,24 @@ describe('folders on a parent cycle', () => {
 });
 
 describe('removing a folder takes what the tree shows inside it', () => {
-  /** Each rendered folder with the folders rendered inside its block. */
+  /**
+   * Each rendered folder with the folders rendered under it: the rows are flat,
+   * so a folder's subtree is the deeper rows that follow it.
+   */
   function shownSubtrees(root: ShadowRoot): Map<string, string[]> {
+    const rows = rendered(root).map((entry) => {
+      const [depth, id] = entry.split(':');
+      return { depth: Number(depth), id };
+    });
     const subtrees = new Map<string, string[]>();
-    for (const node of root.querySelectorAll<HTMLElement>(`.${cls('folder')}`)) {
-      const ids = Array.from(
-        node.querySelectorAll(`.${cls('folder-header')}`),
-        (header) => header.getAttribute('data-folder-id') ?? '',
-      );
-      subtrees.set(ids[0], ids.sort());
-    }
+    rows.forEach((row, index) => {
+      const ids = [row.id];
+      for (const next of rows.slice(index + 1)) {
+        if (next.depth <= row.depth) break;
+        ids.push(next.id);
+      }
+      subtrees.set(row.id, ids.sort());
+    });
     return subtrees;
   }
 

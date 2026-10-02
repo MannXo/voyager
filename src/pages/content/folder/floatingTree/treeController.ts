@@ -5,6 +5,7 @@ import type { Folder, FolderData } from '../types';
 import { renderContextMenu } from './ContextMenu';
 import { renderFolderTree } from './FolderTree';
 import { mountPopoverLayer } from './popoverLayer';
+import { type TreeProjection, buildTreeProjection } from './projection';
 import {
   type ContextMenuState,
   type InlineEditorState,
@@ -12,17 +13,8 @@ import {
   type TreeChange,
   type TreeProps,
   type TreeSiteOptions,
-  MENU_SELECTOR,
   cls,
 } from './shared';
-
-const VIEWPORT_MARGIN = 8;
-
-/** How far a box from `start` of `size` moves to sit inside `viewport`, margin kept. */
-function shiftIntoView(start: number, size: number, viewport: number): number {
-  const overflow = start + size - (viewport - VIEWPORT_MARGIN);
-  return Math.max(overflow > 0 ? -overflow : 0, VIEWPORT_MARGIN - start);
-}
 
 export type FolderTreeOptions = {
   /** The element the tree renders into. */
@@ -59,7 +51,10 @@ export type FolderTreeController = {
 
 /**
  * The view state a folder tree keeps between renders: the open inline editor,
- * the folder menu, and expansion when the host does not persist it.
+ * the folder menu, and expansion when the host does not persist it. It also
+ * owns the data revision's projection (the layout the view renders), rebuilt
+ * whenever the data or its ordering may have changed. Nothing here writes to
+ * the data: expansion goes back to the host through `onToggleFolderExpanded`.
  */
 export function mountFolderTree({
   body,
@@ -77,6 +72,17 @@ export function mountFolderTree({
   let currentConversationSortMode = conversationSortMode;
   let inlineEditor: InlineEditorState | null = null;
   let contextMenu: ContextMenuState | null = null;
+  // Bumped when another account's data replaces this one; the view starts over.
+  let generation = 0;
+  let projection: TreeProjection | null = null;
+  const project = () => {
+    projection = buildTreeProjection({
+      data: currentData,
+      rootBucketId,
+      conversationSortMode: currentConversationSortMode,
+      site: currentSite,
+    });
+  };
   const expandedFolders = new Map<string, boolean>();
   const { onToggleFolderExpanded, onRenameFolder } = actions;
   // The rename form keeps the folder it opened on, and renders wait while it
@@ -114,7 +120,10 @@ export function mountFolderTree({
       }
     }
 
+    if (!projection) project();
     const tree: TreeProps = {
+      projection: projection ?? undefined,
+      generation,
       data: currentData,
       rootBucketId,
       conversationSortMode: currentConversationSortMode,
@@ -138,29 +147,15 @@ export function mountFolderTree({
       ?.focus();
   const focusIsLost = () => !document.activeElement || document.activeElement === document.body;
 
-  // A menu opened near the viewport's edge moves inside it. The shift is a
-  // delta, so it holds in a container that offsets fixed boxes. A box without
-  // layout (0×0) stays.
-  const fitMenuIntoView = () => {
-    const menu = (layer?.container ?? body).querySelector<HTMLElement>(MENU_SELECTOR);
-    if (!contextMenu || !menu) return;
-    const rect = menu.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    const dx = shiftIntoView(rect.left, rect.width, window.innerWidth);
-    const dy = shiftIntoView(rect.top, rect.height, window.innerHeight);
-    if (!dx && !dy) return;
-    contextMenu = { ...contextMenu, x: contextMenu.x + dx, y: contextMenu.y + dy };
-    render();
-  };
-
   function apply(change: TreeChange, effect?: () => void): void {
     const closing = contextMenu && change.contextMenu === null ? contextMenu : null;
     if (change.inlineEditor !== undefined) inlineEditor = change.inlineEditor;
     if (change.contextMenu !== undefined) contextMenu = change.contextMenu;
     if (change.expand) setExpanded(change.expand.folderId, change.expand.expanded);
     effect?.();
+    // The effect may have changed the data in place; lay it out again.
+    project();
     render();
-    if (change.contextMenu) fitMenuIntoView();
     if (change.contextMenu?.fromKeyboard) {
       (layer?.container ?? body).querySelector<HTMLElement>(`.${cls('menu-item')}`)?.focus();
     } else if (closing?.fromKeyboard && focusIsLost()) {
@@ -188,7 +183,12 @@ export function mountFolderTree({
   return {
     apply,
     setSite: (next) => {
+      const reorders =
+        next.folderOrder !== currentSite?.folderOrder ||
+        next.conversationOrder !== currentSite?.conversationOrder ||
+        next.rootSection?.labelKey !== currentSite?.rootSection?.labelKey;
       currentSite = next;
+      if (reorders) project();
       render();
     },
     reset: (next, nextConversationSortMode) => {
@@ -197,11 +197,14 @@ export function mountFolderTree({
       inlineEditor = null;
       contextMenu = null;
       expandedFolders.clear();
+      generation += 1;
+      project();
       render();
     },
     update: (next, nextConversationSortMode) => {
       currentData = next;
       if (nextConversationSortMode) currentConversationSortMode = nextConversationSortMode;
+      project();
       const nextIds = new Set(next.folders.map((folder) => folder.id));
       for (const folderId of expandedFolders.keys()) {
         if (!nextIds.has(folderId)) expandedFolders.delete(folderId);

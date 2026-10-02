@@ -134,16 +134,21 @@ export function nameInput(): HTMLInputElement | null {
 export const tree = {
   text: (): string => treeRoot().textContent ?? '',
 
-  /** Rendered folders in order; a subfolder reads `Parent › Child`. */
-  folderOrder: (): string[] =>
-    Array.from(treeRoot().querySelectorAll<HTMLElement>(part('folder')), (item) => {
-      // A folder's own header comes before its body, so it is the first match.
-      const name = (folder: Element | null | undefined) =>
-        folder?.querySelector(part('folder-header'))?.querySelector(part('folder-name'))
-          ?.textContent ?? '';
-      const parent = item.parentElement?.closest(part('folder'));
-      return parent ? `${name(parent)} › ${name(item)}` : name(item);
-    }),
+  /**
+   * Rendered folders in order; a subfolder reads `Parent › Child`. Rows are
+   * flat, so a folder's parent is the nearest row above it one level up.
+   */
+  folderOrder: (): string[] => {
+    const parents: string[] = [];
+    return Array.from(treeRoot().querySelectorAll<HTMLElement>(part('folder')))
+      .filter(visible)
+      .map((item) => {
+        const depth = Number(item.dataset.depth ?? 0);
+        const name = item.querySelector(part('folder-name'))?.textContent ?? '';
+        parents[depth] = name;
+        return depth > 0 ? `${parents[depth - 1]} › ${name}` : name;
+      });
+  },
 
   isRendered: (folderId: string): boolean =>
     !!treeRoot().querySelector(`${part('folder-header')}[data-folder-id="${folderId}"]`),

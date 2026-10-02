@@ -149,11 +149,17 @@ describe('rootSection', () => {
     const { root } = mount({ rootSection: { labelKey: 'folder_uncategorized' } });
     const section = q(root, 'root-section')!;
     expect(q(section, 'root-section-title')?.textContent).toBe('folder_uncategorized');
-    expect(convIds(section, ROOT)).toEqual(['loose']);
     expect(convIds(root, ROOT)).toEqual(['loose']);
+    // Rows are flat siblings: the heading follows the last folder, and the root
+    // conversations follow the heading.
     const lastFolder = all(root, 'folder').at(-1)!;
     expect(
       lastFolder.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      section.compareDocumentPosition(
+        root.querySelector(`.${cls('conv')}[data-folder-id="${ROOT}"]`)!,
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
@@ -321,10 +327,11 @@ describe('folderBodyDrop', () => {
     root.querySelector<HTMLElement>(
       `.${cls('conv')}[data-folder-id="${bucket}"][data-conversation-id="${id}"]`,
     )!;
+  // Rows are flat: a conversation row stands for its folder's body.
   const lit = (root: ParentNode) =>
     all(root, 'drop-target').map((el) =>
-      el.classList.contains(cls('folder-body'))
-        ? `body:${el.parentElement?.querySelector(`.${cls('folder-header')}`)?.getAttribute('data-folder-id')}`
+      el.classList.contains(cls('conv'))
+        ? `body:${el.dataset.folderId}`
         : `header:${el.dataset.folderId}`,
     );
   const dragOver = (target: HTMLElement) => {

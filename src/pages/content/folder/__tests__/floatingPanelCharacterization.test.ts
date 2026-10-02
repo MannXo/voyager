@@ -47,11 +47,25 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function folderBody(handle: ReturnType<typeof mountPanel>, folderId: string): HTMLElement {
-  const wrap = folderHeader(panelRoot(handle), folderId).parentElement!;
-  return Array.from(wrap.children).find((child): child is HTMLElement =>
-    child.classList.contains(`${FLOATING_PANEL_CLASS}__folder-body`),
-  )!;
+/**
+ * Whether a folder shows what it holds. The tree renders flat rows and leaves
+ * a collapsed folder's rows out, so its conversations are or are not rendered.
+ */
+function showsContents(handle: ReturnType<typeof mountPanel>, folderId: string): boolean {
+  return (
+    panelRoot(handle).querySelector(
+      `.${FLOATING_PANEL_CLASS}__conv[data-folder-id="${folderId}"]`,
+    ) !== null
+  );
+}
+
+/** The name field of a new subfolder, when it shows right under its parent's row. */
+function subfolderInputUnder(handle: ReturnType<typeof mountPanel>, folderId: string) {
+  const row = folderHeader(panelRoot(handle), folderId).closest(`.${FLOATING_PANEL_CLASS}__folder`);
+  const next = row?.nextElementSibling;
+  return next instanceof HTMLElement && next.style.display !== 'none'
+    ? next.querySelector(`.${FLOATING_PANEL_CLASS}__inline-input`)
+    : null;
 }
 
 describe('floating panel parity with the sidebar tree', () => {
@@ -124,14 +138,14 @@ describe('floating panel parity with the sidebar tree', () => {
     click(folderHeader(panelRoot(handle), 'folder-a'));
     expect(onToggleFolderExpanded).toHaveBeenCalledWith('folder-a');
     expect(data.folders[0].isExpanded).toBe(false);
-    expect(folderBody(handle, 'folder-a').style.display).toBe('none');
+    expect(showsContents(handle, 'folder-a')).toBe(false);
 
     const remounted = mountPanel({ data, onToggleFolderExpanded });
-    expect(folderBody(remounted, 'folder-a').style.display).toBe('none');
+    expect(showsContents(remounted, 'folder-a')).toBe(false);
 
     data.folders[0].isExpanded = true;
     remounted.update(data);
-    expect(folderBody(remounted, 'folder-a').style.display).not.toBe('none');
+    expect(showsContents(remounted, 'folder-a')).toBe(true);
   });
 
   it('expands a collapsed folder through the store before adding a subfolder', () => {
@@ -162,9 +176,7 @@ describe('floating panel parity with the sidebar tree', () => {
     expect(onToggleFolderExpanded).toHaveBeenCalledTimes(1);
     expect(onToggleFolderExpanded).toHaveBeenCalledWith('folder-b');
     expect(data.folders[1].isExpanded).toBe(true);
-    expect(
-      folderBody(handle, 'folder-b').querySelector(`.${FLOATING_PANEL_CLASS}__inline-input`),
-    ).not.toBeNull();
+    expect(subfolderInputUnder(handle, 'folder-b')).not.toBeNull();
   });
 
   it('keeps expansion local when no store callback is given', () => {
@@ -172,7 +184,7 @@ describe('floating panel parity with the sidebar tree', () => {
     const handle = mountPanel({ data });
 
     click(folderHeader(panelRoot(handle), 'folder-a'));
-    expect(folderBody(handle, 'folder-a').style.display).toBe('none');
+    expect(showsContents(handle, 'folder-a')).toBe(false);
     expect(data.folders[0].isExpanded).toBe(true);
   });
 

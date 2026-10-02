@@ -1,10 +1,13 @@
 /** @jsxImportSource preact */
 import { render } from 'preact';
+import { useLayoutEffect, useRef } from 'preact/hooks';
 
 import { getFolderDepth } from '@/features/folder/model/folderData';
 
 import { FOLDER_COLORS, getFolderColor, isDarkMode } from '../folderColors';
-import { type TreeProps, canCreateChildAtDepth, cls, t } from './shared';
+import type { Folder } from '../types';
+import { positionMenu } from './menuPosition';
+import { type ContextMenuState, type TreeProps, canCreateChildAtDepth, cls, t } from './shared';
 
 type MenuButtonProps = {
   labelKey: string;
@@ -25,16 +28,31 @@ const DANGER = cls('menu-item--danger');
 const CONFIRM_BUTTON = cls('confirm-button');
 
 /** Right-click menu for one folder: pin, subfolder, rename, color, delete. */
-export function ContextMenu({ data, contextMenu, actions, apply }: TreeProps) {
+export function ContextMenu(tree: TreeProps) {
+  const { contextMenu, data } = tree;
   if (!contextMenu) return null;
   const folder = data.folders.find((candidate) => candidate.id === contextMenu.folderId);
   if (!folder) return null;
+  return <FolderMenu tree={tree} menu={contextMenu} folder={folder} />;
+}
+
+type FolderMenuProps = { tree: TreeProps; menu: ContextMenuState; folder: Folder };
+
+function FolderMenu({ tree, menu: contextMenu, folder }: FolderMenuProps) {
+  const { data, actions, apply } = tree;
+  const ref = useRef<HTMLDivElement>(null);
+  // Opens at its anchor, then floats inside the viewport until it closes.
+  useLayoutEffect(
+    () => (ref.current ? positionMenu(ref.current, contextMenu) : undefined),
+    [contextMenu],
+  );
 
   const position = { left: `${contextMenu.x}px`, top: `${contextMenu.y}px` };
 
   if (contextMenu.confirmingDelete) {
     return (
       <div
+        ref={ref}
         class={`${cls('context-menu')} ${cls('context-menu--confirming')}`}
         style={position}
         role="menu"
@@ -67,7 +85,7 @@ export function ContextMenu({ data, contextMenu, actions, apply }: TreeProps) {
   const activeColor = folder.color ?? 'default';
 
   return (
-    <div class={cls('context-menu')} style={position} role="menu">
+    <div ref={ref} class={cls('context-menu')} style={position} role="menu">
       {actions.onAddCurrentConversation && (
         <MenuButton
           labelKey="floatingPanelAddCurrentHere"

@@ -8,6 +8,7 @@ import { getTranslationSyncUnsafe } from '@/utils/i18n';
 
 import { readDragPayload } from '../dragPayload';
 import type { ConversationReference, Folder, FolderData } from '../types';
+import type { TreeProjection } from './projection';
 
 export const FLOATING_PANEL_CLASS = 'gv-floating-folder-panel';
 export const MAX_FOLDER_NAME_LENGTH = 50;
@@ -32,6 +33,11 @@ export type ContextMenuState = {
   x: number;
   y: number;
   confirmingDelete: boolean;
+  /**
+   * The size of the control the menu opened from, whose bottom-start corner is
+   * `x`, `y`. The menu aligns to it and flips above it. A pointer opens at a point.
+   */
+  anchor?: { width: number; height: number };
   /** Opened from the keyboard: the menu takes focus and returns it on close. */
   fromKeyboard?: boolean;
 };
@@ -111,6 +117,13 @@ export type TreeProps = {
   site?: TreeSiteOptions;
   /** The controller renders the folder menu in a body-level layer instead. */
   menuInLayer?: boolean;
+  /**
+   * The layout of `data` from the owner of its revision. Without it, each render
+   * lays the data out again.
+   */
+  projection?: TreeProjection;
+  /** Changes when the owner swaps in another account's data: the view starts over. */
+  generation?: number;
 };
 
 export type ConversationDragData = {

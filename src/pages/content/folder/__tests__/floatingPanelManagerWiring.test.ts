@@ -152,6 +152,8 @@ describe('floating panel wired through FolderManager', () => {
 
     const saved = vi.mocked(adapter.saveData).mock.calls.at(-1)?.[1] as FolderData | undefined;
     expect(saved?.folders.find((folder) => folder.id === 'work')?.isExpanded).toBe(false);
-    expect(header.nextElementSibling).toHaveProperty('style.display', 'none');
+    // Rows are flat: the folder reads as collapsed and renders none of its rows.
+    expect(header.getAttribute('aria-expanded')).toBe('false');
+    expect(root.querySelector(`.${PANEL}__conv[data-folder-id="work"]`)).toBeNull();
   });
 });

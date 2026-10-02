@@ -441,11 +441,16 @@ describe('Escape and focus on the folder menu', () => {
 describe('folder menu near the viewport edge', () => {
   const MENU = { width: 180, height: 160 };
 
-  /** jsdom has no layout: a menu box sits where its style puts it; everything else is at 0,0. */
+  /**
+   * jsdom has no layout: a menu box sits where its style puts it, everything
+   * else is at 0,0, and the viewport fills the window. Floating UI sizes the
+   * menu from its offset box and the viewport from the root element.
+   */
   function layOut() {
+    const isMenu = (el: Element) => el.getAttribute('role') === 'menu';
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
       function (this: HTMLElement) {
-        if (this.getAttribute('role') === 'menu') {
+        if (isMenu(this)) {
           return DOMRect.fromRect({
             x: parseFloat(this.style.left),
             y: parseFloat(this.style.top),
@@ -455,14 +460,31 @@ describe('folder menu near the viewport edge', () => {
         return DOMRect.fromRect();
       },
     );
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(
+      function (this: HTMLElement) {
+        return isMenu(this) ? MENU.width : 0;
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(
+      function (this: HTMLElement) {
+        return isMenu(this) ? MENU.height : 0;
+      },
+    );
+    vi.spyOn(Element.prototype, 'clientWidth', 'get').mockImplementation(function (this: Element) {
+      return this === document.documentElement ? window.innerWidth : 0;
+    });
+    vi.spyOn(Element.prototype, 'clientHeight', 'get').mockImplementation(function (this: Element) {
+      return this === document.documentElement ? window.innerHeight : 0;
+    });
   }
 
   it.each(['panel', 'aistudio'] as const)(
     '%s moves a menu opened by the bottom-right corner inside the viewport',
-    (consumer) => {
+    async (consumer) => {
       layOut();
       const { view } = mount(consumer);
       view.openMenuByRightClick('Beta', { x: window.innerWidth - 10, y: window.innerHeight - 10 });
+      await settle();
 
       const box = openMenu()!.getBoundingClientRect();
       expect(box.right).toBeLessThanOrEqual(window.innerWidth - 8);
@@ -472,10 +494,11 @@ describe('folder menu near the viewport edge', () => {
     },
   );
 
-  it.each(CONSUMERS)('$name opens a menu that fits where the pointer was', ({ consumer }) => {
+  it.each(CONSUMERS)('$name opens a menu that fits where the pointer was', async ({ consumer }) => {
     layOut();
     const { view } = mount(consumer);
     view.openMenuByRightClick('Beta', { x: 100, y: 120 });
+    await settle();
     const box = openMenu()!.getBoundingClientRect();
     expect({ x: box.left, y: box.top }).toEqual({ x: 100, y: 120 });
   });

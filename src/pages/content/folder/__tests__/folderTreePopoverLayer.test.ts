@@ -173,43 +173,77 @@ describe('folder menu in a popover layer', () => {
 
 describe('folder menu near the edge of the viewport', () => {
   const MENU = { width: 188, height: 161 };
+  const BUTTON = 24;
 
-  /** Layout for jsdom: the ⋮ button sits at `button`, the menu where its style puts it. */
+  /**
+   * Layout for jsdom: the ⋮ button sits at `button`, the menu where its style
+   * puts it, and the viewport fills the window. Floating UI sizes the menu from
+   * its offset box and the viewport from the root element's client box.
+   */
   function layOut(button: { left: number; bottom: number }) {
+    const isMenu = (el: Element) => el.classList.contains(cls('context-menu'));
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
       function (this: HTMLElement) {
-        if (this.classList.contains(cls('context-menu'))) {
+        if (isMenu(this)) {
           const left = parseFloat(this.style.left);
           const top = parseFloat(this.style.top);
           return DOMRect.fromRect({ x: left, y: top, ...MENU });
         }
         if (this.classList.contains(cls('icon-button--menu'))) {
-          return DOMRect.fromRect({ x: button.left, y: button.bottom - 24, width: 24, height: 24 });
+          return DOMRect.fromRect({
+            x: button.left,
+            y: button.bottom - BUTTON,
+            width: BUTTON,
+            height: BUTTON,
+          });
         }
         return DOMRect.fromRect();
       },
     );
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(
+      function (this: HTMLElement) {
+        return isMenu(this) ? MENU.width : 0;
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(
+      function (this: HTMLElement) {
+        return isMenu(this) ? MENU.height : 0;
+      },
+    );
+    vi.spyOn(Element.prototype, 'clientWidth', 'get').mockImplementation(function (this: Element) {
+      return this === document.documentElement ? window.innerWidth : 0;
+    });
+    vi.spyOn(Element.prototype, 'clientHeight', 'get').mockImplementation(function (this: Element) {
+      return this === document.documentElement ? window.innerHeight : 0;
+    });
   }
   const menuBox = () => {
     const menu = menuIn(layerRoot())!;
     return { left: parseFloat(menu.style.left), top: parseFloat(menu.style.top) };
   };
+  /** Floating UI positions asynchronously. */
+  const positioned = () => new Promise<void>((done) => setTimeout(done, 0));
 
-  it('moves a menu that would run past the bottom-right corner inside it', () => {
-    layOut({ left: window.innerWidth - 40, bottom: window.innerHeight - 20 });
+  it('moves a menu that would run past the bottom-right corner inside it', async () => {
+    const button = { left: window.innerWidth - 40, bottom: window.innerHeight - 20 };
+    layOut(button);
     const { root } = mount();
     openMenu(root, 'a');
+    await positioned();
 
+    // No room below or to the right: the menu opens above its button instead
+    // of covering it, its end edge lined up with the button's.
     expect(menuBox()).toEqual({
-      left: window.innerWidth - 8 - MENU.width,
-      top: window.innerHeight - 8 - MENU.height,
+      left: button.left + BUTTON - MENU.width,
+      top: button.bottom - BUTTON - MENU.height,
     });
   });
 
-  it('leaves a menu that fits where it opened', () => {
+  it('leaves a menu that fits where it opened', async () => {
     layOut({ left: 100, bottom: 120 });
     const { root } = mount();
     openMenu(root, 'a');
+    await positioned();
 
     expect(menuBox()).toEqual({ left: 100, top: 120 });
   });

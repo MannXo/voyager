@@ -558,12 +558,8 @@ describe('mountFloatingPanel', () => {
     expect(panelRoot(handle).querySelector(`.${FLOATING_PANEL_CLASS}__context-menu`)).toBeNull();
     expect(panelRoot(handle).textContent).toContain('Other account');
     expect(panelRoot(handle).textContent).not.toContain('Conversation A');
-    expect(
-      requireElement<HTMLElement>(
-        folderHeader(panelRoot(handle), 'folder-a').parentElement!,
-        `.${FLOATING_PANEL_CLASS}__folder-body`,
-      ).style.display,
-    ).not.toBe('none');
+    // Expansion starts over from the new data, which has folder-a open.
+    expect(folderHeader(panelRoot(handle), 'folder-a').getAttribute('aria-expanded')).toBe('true');
   });
 
   it('debounces onSizeChange and commits only the final observed size', () => {
