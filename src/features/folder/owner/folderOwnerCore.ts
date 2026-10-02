@@ -36,6 +36,7 @@ import {
   type AdmitCopy,
   admitEveryCopy,
   keepForeignCopy,
+  removeFreedSlot,
   rotateBackups,
   writePreBulk,
 } from './ownerBackups';
@@ -176,6 +177,7 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
     if (result.kind === 'committed') {
       remember(key, result.state.hash);
       forgetAcks(key, pending);
+      await removeFreedSlot(area, key, state.meta.backups, result.state.meta.backups);
       return result.state;
     }
     if (result.kind === 'failed') return null;

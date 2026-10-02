@@ -159,6 +159,25 @@ export async function rotateBackups(
   return { ...meta, backups: next };
 }
 
+/** After a committed rotation: removes the slot meta stopped naming, so K keeps at most two copies. */
+export async function removeFreedSlot(
+  area: FolderOwnerStorageArea,
+  key: string,
+  before: FolderOwnerMeta['backups'],
+  after: FolderOwnerMeta['backups'],
+): Promise<void> {
+  const named = new Set([after?.last?.slot, after?.prior?.slot]);
+  const freed = [before?.last?.slot, before?.prior?.slot].filter(
+    (slot): slot is RotationSlot => slot !== undefined && !named.has(slot),
+  );
+  if (freed.length === 0) return;
+  try {
+    await area.remove(freed.map((slot) => ownerBackupKey(key, slot)));
+  } catch {
+    // Unnamed, so never restored; the next rotation overwrites it.
+  }
+}
+
 /**
  * Keeps a copy of a value a foreign writer put in K (§6.4, T1c). The event's
  * value is captured before the owner's next commit can overwrite it; an owner

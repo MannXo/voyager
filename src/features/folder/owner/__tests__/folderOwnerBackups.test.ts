@@ -84,6 +84,9 @@ describe('backup rotation (T7a)', () => {
     await edit(w, tab, rename('F', 'six'));
     expect(slot(storage, 'prior')?.folders[0].name).toBe('four');
     expect(slot(storage, 'last')?.folders[0].name).toBe('five');
+    // Only the two named copies stay on disk.
+    const copies = storage.keys().filter((k) => /:backup:.*:[abc]$/.test(k));
+    expect(copies).toHaveLength(2);
   });
 
   it('commits an edit whose last copy cannot be written (T7b)', async () => {
