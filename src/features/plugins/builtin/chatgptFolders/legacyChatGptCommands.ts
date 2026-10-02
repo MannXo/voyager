@@ -33,7 +33,7 @@ const ADD_OUTCOMES: Record<AddOutcome, EditOutcome> = {
 /** Several adds report the strongest result: one added wins, then present, then a refusal. */
 const ADD_RANK: AddOutcome[] = ['added', 'present', 'missing', 'closed'];
 
-const unsupported = () => rejected('invalid_payload');
+const unsupported = () => rejected('unsupported');
 const recordOf = (seed: ConversationSeed): ConversationReference => ({
   ...seed,
   addedAt: Date.now(),
@@ -137,7 +137,9 @@ export function createLegacyChatGptCommands(store: ChatGptFolderStore): FolderCo
     },
     // Merge only, as the panel's import does today; ChatGPT has no backups or Drive merge.
     runBulk: (body) =>
-      body.kind === 'importFile' ? importFile(body.payload) : Promise.resolve(unsupported()),
+      body.kind === 'importFile' && body.strategy === 'merge'
+        ? importFile(body.payload)
+        : Promise.resolve(unsupported()),
     flush: () => Promise.resolve(),
   };
 }

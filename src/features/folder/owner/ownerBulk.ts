@@ -56,8 +56,11 @@ async function importGemini(body: ImportFile, current: FolderData): Promise<Impo
     : refuse('folder_import_invalid_format');
 }
 
-/** Today's ChatGPT import (merge only, as its panel offers). */
+const MERGE_ONLY: Imported = { ok: false, outcome: rejected('unsupported') };
+
+/** Today's ChatGPT import (merge only, as its panel offers; `replace` is refused unapplied). */
 async function importChatGpt(body: ImportFile, current: FolderData): Promise<Imported> {
+  if (body.strategy !== 'merge') return MERGE_ONLY;
   const result = await importChatGptFolders(body.payload, current);
   if (result.ok) return { ok: true, data: result.data, stats: result.stats };
   return refuse(
@@ -65,8 +68,9 @@ async function importChatGpt(body: ImportFile, current: FolderData): Promise<Imp
   );
 }
 
-/** Today's AI Studio import (merge only). */
+/** Today's AI Studio import (merge only; `replace` is refused unapplied). */
 function importAIStudio(body: ImportFile, current: FolderData): Imported {
+  if (body.strategy !== 'merge') return MERGE_ONLY;
   const file = readAIStudioImportFile(body.payload);
   if (!file.ok) return refuse(file.messageKey);
   return { ok: true, ...mergeAIStudioImport(current, file.data) };

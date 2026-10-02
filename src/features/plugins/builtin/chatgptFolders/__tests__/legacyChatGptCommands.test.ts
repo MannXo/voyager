@@ -94,4 +94,17 @@ describe('ChatGPT legacy FolderCommands import', () => {
     });
     expect(memory.values.local.get(StorageKeys.FOLDER_DATA_CHATGPT)).toEqual(before);
   });
+
+  it('refuses a replace import instead of merging it', async () => {
+    const before = memory.values.local.get(StorageKeys.FOLDER_DATA_CHATGPT);
+    const outcome = await createLegacyChatGptCommands(store).runBulk({
+      kind: 'importFile',
+      payload: JSON.parse(JSON.stringify(exportChatGptFolders(FILE))),
+      strategy: 'replace',
+      source: 'file',
+    });
+
+    expect(outcome).toMatchObject({ kind: 'rejected', reason: 'unsupported' });
+    expect(memory.values.local.get(StorageKeys.FOLDER_DATA_CHATGPT)).toEqual(before);
+  });
 });
