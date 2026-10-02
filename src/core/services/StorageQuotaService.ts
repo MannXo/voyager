@@ -91,14 +91,25 @@ export interface StorageQuotaSnapshot {
   estimated: boolean;
 }
 
-/** What the local area holds before one key is replaced, and the most it should hold. */
+/** What the local area holds before some keys are replaced, and the most it should hold. */
 export interface LocalStorageHeadroom {
   bytesInUse: number;
-  /** Bytes the key holds now; writing it replaces them. */
+  /** Bytes the keys hold now; writing them replaces those bytes. */
   keyBytes: number;
   /** Voyager's soft cap, or the browser's quota when that is lower. */
   limitBytes: number;
+  /** The browser's effective quota; `null` when there is no practical one. */
+  quotaBytes: number | null;
 }
+
+/** The one local quota every writer measures against (addendum P3P4 §0). */
+export interface EffectiveLocalQuota {
+  quotaBytes: number | null;
+  estimated: boolean;
+}
+
+const lowerQuota = (a: number | null, b: number | null): number | null =>
+  a === null ? b : b === null ? a : Math.min(a, b);
 
 export function getStorageQuotaEffectiveUsageRatio(snapshot: StorageQuotaSnapshot): number | null {
   const localRatio =
@@ -407,11 +418,10 @@ export class StorageQuotaService {
       }
     }
 
-    const { quotaBytes, quotaEstimated } = this.resolveAreaQuota(
-      areaId,
-      area.QUOTA_BYTES,
-      unlimitedGranted,
-    );
+    const { quotaBytes, quotaEstimated } =
+      areaId === 'local'
+        ? this.localAreaQuota(unlimitedGranted)
+        : this.resolveAreaQuota(areaId, area.QUOTA_BYTES, unlimitedGranted);
 
     return {
       usage: {
@@ -475,6 +485,42 @@ export class StorageQuotaService {
     return typeof declaredQuota === 'number' && declaredQuota > 0
       ? { quotaBytes: declaredQuota, quotaEstimated: false }
       : { quotaBytes: 10 * MEBIBYTE, quotaEstimated: true };
+  }
+
+  private localAreaQuota(
+    unlimitedGranted: boolean,
+  ): Pick<StorageAreaUsage, 'quotaBytes' | 'quotaEstimated'> {
+    const { quotaBytes, estimated } = this.effectiveLocalQuota(unlimitedGranted);
+    return { quotaBytes, quotaEstimated: estimated };
+  }
+
+  /**
+   * The area rule, or, when its result is estimated, the lower of it and the
+   * fixed per-browser rule the highlights used to apply on their own. Re-reads
+   * the grant on every call, since the user can grant it at any time.
+   */
+  async resolveEffectiveLocalQuota(): Promise<EffectiveLocalQuota> {
+    const permission = await this.getUnlimitedStoragePermissionStatus();
+    return this.effectiveLocalQuota(permission.granted);
+  }
+
+  private effectiveLocalQuota(unlimitedGranted: boolean): EffectiveLocalQuota {
+    const declared = this.chromeApi.storage?.local?.QUOTA_BYTES;
+    const area = this.resolveAreaQuota('local', declared, unlimitedGranted);
+    if (!area.quotaEstimated) return { quotaBytes: area.quotaBytes, estimated: false };
+    const flat = this.flatLocalQuota(declared, unlimitedGranted);
+    return { quotaBytes: lowerQuota(area.quotaBytes, flat), estimated: true };
+  }
+
+  private flatLocalQuota(declared: number | undefined, unlimitedGranted: boolean): number | null {
+    const browser = this.detectBrowser();
+    if (unlimitedGranted) {
+      if (browser !== 'safari') return null;
+      const major = this.dependencies.safariMajorVersion?.() ?? getSafariMajorVersion();
+      return major !== null && major >= 16 ? null : 10 * MEBIBYTE;
+    }
+    if (typeof declared === 'number' && declared > 0) return declared;
+    return browser === 'firefox' || browser === 'safari' ? 5 * MEBIBYTE : 10 * MEBIBYTE;
   }
 
   private async bytesForKeys(
@@ -702,7 +748,8 @@ export class StorageQuotaService {
   }
 
   /** A pre-write probe of the local area that reads no items when the browser can measure them. */
-  async getLocalHeadroom(key: string): Promise<LocalStorageHeadroom> {
+  async getLocalHeadroom(keyOrKeys: string | readonly string[]): Promise<LocalStorageHeadroom> {
+    const keys = typeof keyOrKeys === 'string' ? [keyOrKeys] : [...keyOrKeys];
     const area = this.chromeApi.storage?.local;
     const permission = await this.getUnlimitedStoragePermissionStatus();
     const settings =
@@ -715,7 +762,7 @@ export class StorageQuotaService {
       try {
         const [total, own] = await Promise.all([
           this.callApi<number>(area, area.getBytesInUse, [null]),
-          this.callApi<number>(area, area.getBytesInUse, [[key]]),
+          keys.length > 0 ? this.callApi<number>(area, area.getBytesInUse, [keys]) : 0,
         ]);
         if (Number.isFinite(total) && total >= 0 && Number.isFinite(own) && own >= 0) {
           bytesInUse = total;
@@ -729,14 +776,16 @@ export class StorageQuotaService {
       const items =
         (await this.callApi<Record<string, unknown>>(area ?? {}, area?.get, [null])) ?? {};
       bytesInUse = estimateBytes(items);
-      keyBytes = key in items ? estimateBytes(pickItems(items, [key])) : 0;
+      const present = keys.filter((key) => key in items);
+      keyBytes = present.length > 0 ? estimateBytes(pickItems(items, present)) : 0;
     }
     const softCapBytes = normalizeSoftCap(settings[STORAGE_QUOTA_SOFT_CAP_KEY]) * MEBIBYTE;
-    const { quotaBytes } = this.resolveAreaQuota('local', area?.QUOTA_BYTES, permission.granted);
+    const { quotaBytes } = this.effectiveLocalQuota(permission.granted);
     return {
       bytesInUse,
       keyBytes,
       limitBytes: quotaBytes === null ? softCapBytes : Math.min(softCapBytes, quotaBytes),
+      quotaBytes,
     };
   }
 

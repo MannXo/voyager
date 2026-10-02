@@ -3,6 +3,7 @@ import {
   STORAGE_QUOTA_SOFT_CAP_KEY,
   STORAGE_SOFT_CAP_OPTIONS_MB,
   type StorageSoftCapMb,
+  storageQuotaService,
 } from '@/core/services/StorageQuotaService';
 import type {
   HighlightAccountScope,
@@ -25,7 +26,6 @@ import {
   isHighlightClearMarkerV1,
   isHighlightRecordV1,
 } from '@/core/types/highlight';
-import { getSafariMajorVersion, getVoyagerBuildTarget } from '@/core/utils/browser';
 import { hashString } from '@/core/utils/hash';
 
 const MEBIBYTE = 1024 * 1024;
@@ -118,12 +118,10 @@ interface ExtensionStorageAreaLike {
 
 interface ExtensionRuntimeLike {
   lastError?: { message?: string } | null;
-  getManifest?: () => { permissions?: string[]; optional_permissions?: string[] };
 }
 
 interface ExtensionChromeLike {
   storage?: { local?: ExtensionStorageAreaLike };
-  permissions?: { contains?: (...args: unknown[]) => unknown };
   runtime?: ExtensionRuntimeLike;
 }
 
@@ -361,36 +359,9 @@ function createDefaultStorageAdapter(): HighlightStorageAdapter {
       ? async (keys) =>
           await callExtensionApi<number>(area, area.getBytesInUse, [keys], chromeApi?.runtime)
       : undefined,
-    async getEffectiveQuotaBytes() {
-      const manifest = chromeApi.runtime?.getManifest?.() ?? {};
-      const requiredUnlimited = (manifest.permissions ?? []).includes('unlimitedStorage');
-      let unlimitedGranted = requiredUnlimited;
-      if (!unlimitedGranted && chromeApi.permissions?.contains) {
-        try {
-          unlimitedGranted =
-            (await callExtensionApi<boolean>(
-              chromeApi.permissions,
-              chromeApi.permissions.contains,
-              [{ permissions: ['unlimitedStorage'] }],
-              chromeApi.runtime,
-            )) === true;
-        } catch {
-          unlimitedGranted = false;
-        }
-      }
-
-      const target = getVoyagerBuildTarget();
-      if (unlimitedGranted) {
-        if (target !== 'safari') return null;
-        const majorVersion = getSafariMajorVersion();
-        if (majorVersion !== null && majorVersion >= 16) return null;
-        return 10 * MEBIBYTE;
-      }
-      if (typeof area.QUOTA_BYTES === 'number' && area.QUOTA_BYTES > 0) {
-        return area.QUOTA_BYTES;
-      }
-      return target === 'firefox' || target === 'safari' ? 5 * MEBIBYTE : 10 * MEBIBYTE;
-    },
+    // The one resolver every writer shares (addendum P3P4 §0).
+    getEffectiveQuotaBytes: async () =>
+      (await storageQuotaService.resolveEffectiveLocalQuota()).quotaBytes,
   };
 }
 
