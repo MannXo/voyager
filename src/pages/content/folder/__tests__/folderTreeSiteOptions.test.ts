@@ -381,3 +381,156 @@ describe('folderBodyDrop', () => {
     expect(onDrop).not.toHaveBeenCalled();
   });
 });
+
+describe('filter', () => {
+  it('hides what the filter rejects, and counts only what stays', () => {
+    const { root } = mount({
+      filter: () => ({
+        folder: (item) => item.id !== 'a',
+        conversation: (item) => item.conversationId !== 'old',
+      }),
+    });
+    expect(folderNames(root)).toEqual(['Mu', 'Zeta']);
+    expect(convIds(root, 'z')).toEqual(['star', 'new']);
+    expect(q(header(root, 'z'), 'count')?.textContent).toBe('2');
+  });
+
+  it('keeps folders whose parents form a cycle, as the unfiltered tree does', () => {
+    const cyclic: FolderData = {
+      folders: [folder('x', 'Ex', { parentId: 'y' }), folder('y', 'Why', { parentId: 'x' })],
+      folderContents: { x: [conv('in-x')], y: [] },
+    };
+    const { root } = mount(
+      { filter: () => ({ folder: () => true, conversation: () => true }) },
+      {},
+      cyclic,
+    );
+    expect(folderNames(root).sort()).toEqual(['Ex', 'Why']);
+    expect(convIds(root, 'x')).toEqual(['in-x']);
+  });
+});
+
+describe('expandAll', () => {
+  it('shows the contents of collapsed folders', () => {
+    const collapsed = data();
+    collapsed.folders = collapsed.folders.map((item) => ({ ...item, isExpanded: false }));
+    expect(convIds(mount(undefined, {}, collapsed).root, 'z')).toEqual([]);
+    expect(convIds(mount({ expandAll: true }, {}, collapsed).root, 'z')).toHaveLength(3);
+  });
+});
+
+describe('reorder', () => {
+  /** Drags over and drops at `y` px into a 40 px tall `target`. */
+  function dropAt(target: HTMLElement, y: number, payload: Record<string, string>) {
+    target.getBoundingClientRect = () =>
+      ({ top: 0, bottom: 40, height: 40, left: 0, right: 200, width: 200 }) as DOMRect;
+    const dataTransfer = transfer(payload);
+    for (const type of ['dragover', 'drop']) {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'dataTransfer', { value: dataTransfer });
+      Object.defineProperty(event, 'clientY', { value: y });
+      target.dispatchEvent(event);
+    }
+  }
+  const folderDrag = {
+    'application/json': JSON.stringify({ type: 'folder', folderId: 'a' }),
+    'application/x-gv-folder': 'a',
+  };
+
+  it('drops a dragged folder before or after a folder at its edges, and into it in the middle', () => {
+    const onDrop = vi.fn(() => true);
+    const { root } = mount({ reorder: { folders: true } }, { onDrop, acceptsDrag: () => true });
+    dropAt(header(root, 'z'), 4, folderDrag);
+    expect(onDrop).toHaveBeenLastCalledWith(expect.anything(), 'z', {
+      kind: 'folder',
+      folderId: 'z',
+      position: 'before',
+    });
+    dropAt(header(root, 'z'), 36, folderDrag);
+    expect(onDrop).toHaveBeenLastCalledWith(expect.anything(), 'z', {
+      kind: 'folder',
+      folderId: 'z',
+      position: 'after',
+    });
+    dropAt(header(root, 'z'), 20, folderDrag);
+    expect(onDrop).toHaveBeenLastCalledWith(expect.anything(), 'z');
+  });
+
+  it('drops a conversation before or after a conversation row by its halves', () => {
+    const onDrop = vi.fn(() => true);
+    const { root } = mount(
+      { folderBodyDrop: true, reorder: { conversations: true } },
+      { onDrop, acceptsDrag: () => true },
+    );
+    const row = root.querySelector<HTMLElement>(`.${cls('conv')}[data-conversation-id="new"]`)!;
+    dropAt(row, 30, nativeRow);
+    expect(onDrop).toHaveBeenLastCalledWith(expect.anything(), 'z', {
+      kind: 'conversation',
+      bucketId: 'z',
+      conversationId: 'new',
+      position: 'after',
+    });
+  });
+
+  it('default: a drop on a folder edge files into the folder', () => {
+    const onDrop = vi.fn(() => true);
+    const { root } = mount(undefined, { onDrop, acceptsDrag: () => true });
+    dropAt(header(root, 'z'), 4, folderDrag);
+    expect(onDrop).toHaveBeenLastCalledWith(expect.anything(), 'z');
+  });
+});
+
+describe('conversationHref', () => {
+  const click = (target: HTMLElement, init: MouseEventInit = {}) =>
+    target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...init }));
+
+  it('opens a plain click in place and leaves a modified click to the browser', () => {
+    const onNavigate = vi.fn();
+    const { root } = mount({ conversationHref: (item) => item.url }, { onNavigate });
+    const title = root.querySelector<HTMLAnchorElement>(
+      `.${cls('conv')}[data-conversation-id="old"] a[href]`,
+    )!;
+    expect(title.getAttribute('href')).toBe('https://x.test/old');
+    expect(click(title, { ctrlKey: true })).toBe(true);
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(click(title)).toBe(false);
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('folderToggleDelayMs', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('toggles a folder only once the delay passes, and not on a double-click', () => {
+    vi.useFakeTimers();
+    const onToggleFolderExpanded = vi.fn();
+    const { root } = mount({ folderToggleDelayMs: 200 }, { onToggleFolderExpanded });
+    const name = q(header(root, 'z'), 'folder-name')!;
+    name.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    expect(onToggleFolderExpanded).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(200);
+    expect(onToggleFolderExpanded).toHaveBeenCalledTimes(1);
+
+    name.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    name.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 2 }));
+    vi.advanceTimersByTime(200);
+    expect(onToggleFolderExpanded).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('folderMenuItems', () => {
+  it("adds the site's items to the folder menu and runs the chosen one", () => {
+    const run = vi.fn();
+    const { root } = mount(undefined, {
+      folderMenuItems: (item) => (item.id === 'z' ? [{ labelKey: 'site_item', run }] : []),
+    });
+    header(root, 'z').dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+    );
+    const item = all(root, 'menu-item').find(
+      (candidate) => candidate.textContent?.trim() === 'site_item',
+    );
+    item?.click();
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+});
