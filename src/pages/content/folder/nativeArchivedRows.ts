@@ -1,4 +1,5 @@
-import { extractConversationId, getNativeConversationRoot } from './nativeSidebarDom';
+import { extractConversationId } from './nativeConversationIds';
+import { getNativeConversationRoot } from './nativeSidebarDom';
 
 const ARCHIVED_CLASS = 'gv-conversation-archived';
 const ARCHIVED_ACTIONS_CLASS = 'gv-conversation-archived-actions';

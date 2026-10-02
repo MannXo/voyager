@@ -4,16 +4,14 @@ import { StorageKeys } from '@/core/types/common';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
 
 import { watchRouteChanges } from '../utils/routeWatcher';
+import { normalizeConversationId, resolveConversationRouteId } from './folderConversationIdentity';
 import {
   buildConversationUrlFromId,
-  findNativeConversationLinkById,
   getCurrentConversationId,
   getCurrentHexIdFromLocation,
-  normalizeConversationId,
-  resolveConversationRouteId,
-  syncConversationTitleFromNative,
-  triggerNativeConversationClick,
-} from './nativeSidebarDom';
+} from './nativeConversationIds';
+import { syncConversationTitleFromNative } from './nativeConversationTitles';
+import { findNativeConversationLinkById, triggerNativeConversationClick } from './nativeSidebarDom';
 import type { ConversationReference } from './types';
 
 const FOLDER_NAVIGATION_CONFIRM_DELAY_MS = 1200;

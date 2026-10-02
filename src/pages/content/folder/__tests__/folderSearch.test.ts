@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
 
-import * as nativeSidebarDom from '../nativeSidebarDom';
+import * as nativeConversationTitles from '../nativeConversationTitles';
 import type { FolderData } from '../types';
 import { createFolderViewHarness, resetFolderViewBrowserMocks } from './folderViewHarness';
 import { sidebarTree } from './sidebarTreeDriver';
@@ -283,8 +283,8 @@ describe('folder sidebar search', () => {
 
   it('uses one native title lookup per render and persists the buffered title', async () => {
     const native = await mountNativeTitleFixture();
-    const build = vi.spyOn(nativeSidebarDom, 'buildNativeConversationTitleMap');
-    const legacyScan = vi.spyOn(nativeSidebarDom, 'syncConversationTitleFromNative');
+    const build = vi.spyOn(nativeConversationTitles, 'buildNativeConversationTitleMap');
+    const legacyScan = vi.spyOn(nativeConversationTitles, 'syncConversationTitleFromNative');
     harness!.onRefresh();
     expect(build).toHaveBeenCalledTimes(1);
     expect(legacyScan).not.toHaveBeenCalled();
@@ -305,8 +305,8 @@ describe('folder sidebar search', () => {
 
   it('search-triggered renders skip the native title sync scan', async () => {
     await mountNativeTitleFixture();
-    const build = vi.spyOn(nativeSidebarDom, 'buildNativeConversationTitleMap');
-    const legacyScan = vi.spyOn(nativeSidebarDom, 'syncConversationTitleFromNative');
+    const build = vi.spyOn(nativeConversationTitles, 'buildNativeConversationTitleMap');
+    const legacyScan = vi.spyOn(nativeConversationTitles, 'syncConversationTitleFromNative');
     typeSearch('stale');
     vi.advanceTimersByTime(250);
     expect(build).not.toHaveBeenCalled();

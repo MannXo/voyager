@@ -1,9 +1,6 @@
-import {
-  extractConversationData,
-  extractConversationId,
-  extractNativeDragTitle,
-  getNativeConversationElements,
-} from './nativeSidebarDom';
+import { extractConversationData, extractConversationId } from './nativeConversationIds';
+import { extractNativeDragTitle } from './nativeConversationTitles';
+import { getNativeConversationElements } from './nativeSidebarDom';
 import type { ConversationReference, DragData } from './types';
 
 const SELECTED_CLASS = 'gv-conversation-selected';

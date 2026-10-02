@@ -15,13 +15,10 @@ import {
   type TreeSiteOptions,
 } from './floatingTree/shared';
 import { mountFolderTree } from './floatingTree/treeController';
+import { normalizeConversationId, resolveConversationRouteId } from './folderConversationIdentity';
 import type { FolderDialogs } from './folderDialogs';
 import { DEFAULT_CONVERSATION_ICON, getGemIcon } from './gemConfig';
-import {
-  getCurrentHexIdFromLocation,
-  normalizeConversationId,
-  resolveConversationRouteId,
-} from './nativeSidebarDom';
+import { getCurrentHexIdFromLocation } from './nativeConversationIds';
 import { attachShadowSurface } from './shadowHost';
 import { type SidebarDropContext, acceptsSidebarDrag, dropOnSidebar } from './sidebarDrops';
 import type { ConversationReference, Folder } from './types';

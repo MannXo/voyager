@@ -12,7 +12,10 @@ import type { FolderTransferController } from './FolderTransferController';
 import type { FolderViewMode } from './activityView';
 import type { FolderDialogs } from './folderDialogs';
 import type { createFolderHeaderMenus } from './headerMenus';
-import { buildNativeConversationTitleMap, lookupNativeConversationTitle } from './nativeSidebarDom';
+import {
+  buildNativeConversationTitleMap,
+  lookupNativeConversationTitle,
+} from './nativeConversationTitles';
 import { SidebarActivityList } from './sidebarActivityList';
 import { type SidebarDropContext, bindRootDropZone } from './sidebarDrops';
 import {

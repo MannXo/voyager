@@ -6,13 +6,10 @@ import {
   type ConversationMenuContext,
   getConversationMenuContext,
 } from '../export/conversationMenuInjection';
+import { normalizeConversationId } from './folderConversationIdentity';
+import { getCurrentConversationId } from './nativeConversationIds';
 import { isDeleteIconName, matchesDeleteKeyword, menuDebug as debug } from './nativeMenuActions';
-import {
-  type NativeSidebarReadContext,
-  getCurrentConversationId,
-  isConversationInDOM,
-  normalizeConversationId,
-} from './nativeSidebarDom';
+import { type NativeSidebarReadContext, isConversationInDOM } from './nativeSidebarDom';
 
 export interface NativeDeleteScope {
   storageKey: string;

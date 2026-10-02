@@ -11,6 +11,7 @@ import { FolderTransferController } from './FolderTransferController';
 import { NativeConversationMenus } from './NativeConversationMenus';
 import { NativeSidebarObserver } from './NativeSidebarObserver';
 import { FloatingFolderUI } from './floatingFolderUI';
+import { resolveConversationRouteId } from './folderConversationIdentity';
 import { createFolderDialogs } from './folderDialogs';
 import { folderDebug, folderDebugWarn } from './folderManagerDebug';
 import {
@@ -24,12 +25,8 @@ import { listenForFolderRuntimeMessages } from './folderRuntimeMessages';
 import { createFolderHeaderMenus } from './headerMenus';
 import { HideArchivedNudgeState } from './hideArchivedNudgeState';
 import { NativeArchivedRows } from './nativeArchivedRows';
-import {
-  extractNativeConversationTitle,
-  findNativeConversationElement,
-  getNativeConversationElements,
-  resolveConversationRouteId,
-} from './nativeSidebarDom';
+import { extractNativeConversationTitle } from './nativeConversationTitles';
+import { findNativeConversationElement, getNativeConversationElements } from './nativeSidebarDom';
 import type { ConversationReference, Folder } from './types';
 
 export class FolderManager {

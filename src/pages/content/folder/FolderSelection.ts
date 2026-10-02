@@ -14,7 +14,8 @@ import {
   findConversationElement,
   setLightweightDragImage,
 } from './nativeConversationDrag';
-import { extractConversationId, getNativeConversationElements } from './nativeSidebarDom';
+import { extractConversationId } from './nativeConversationIds';
+import { getNativeConversationElements } from './nativeSidebarDom';
 import {
   SelectionToolbarHost,
   flashInvalidSelection,

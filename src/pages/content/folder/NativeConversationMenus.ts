@@ -6,6 +6,18 @@ import {
   getConversationMenuContext,
   injectConversationMenuMoveToFolderButton,
 } from '../export/conversationMenuInjection';
+import { normalizeConversationId } from './folderConversationIdentity';
+import {
+  buildConversationUrlFromId,
+  extractNativeConversationId,
+  extractNativeConversationUrl,
+} from './nativeConversationIds';
+import {
+  type NativeConversationInfo,
+  extractConversationInfoFromPage,
+  extractFallbackTitle,
+  extractNativeConversationTitle,
+} from './nativeConversationTitles';
 import {
   type NativeDeleteScope,
   NativeDeleteTracker,
@@ -22,16 +34,8 @@ import {
   waitForRenameButtonAndClick,
 } from './nativeMenuActions';
 import {
-  type NativeConversationInfo,
   type NativeSidebarReadContext,
-  buildConversationUrlFromId,
-  extractConversationInfoFromPage,
-  extractFallbackTitle,
-  extractNativeConversationId,
-  extractNativeConversationTitle,
-  extractNativeConversationUrl,
   findConversationElementForTrigger,
-  normalizeConversationId,
   findNativeConversationElement,
 } from './nativeSidebarDom';
 

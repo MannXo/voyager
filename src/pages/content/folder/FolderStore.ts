@@ -28,16 +28,21 @@ import {
 } from './FolderRepository';
 import { createConversationMembershipLookup } from './conversationMembership';
 import { applyNativeTitle, indexConversationsByRouteId } from './conversationTitleSync';
-import { conversationKeys, isSameConversation } from './folderConversationIdentity';
+import {
+  conversationKeys,
+  isSameConversation,
+  normalizeConversationId,
+} from './folderConversationIdentity';
 import {
   extractConversationIdFromElement,
   extractNativeConversationId,
-  extractNativeConversationTitle,
   getCurrentConversationId,
-  getNativeConversationElements,
-  normalizeConversationId,
+} from './nativeConversationIds';
+import {
+  extractNativeConversationTitle,
   syncConversationTitleFromNative,
-} from './nativeSidebarDom';
+} from './nativeConversationTitles';
+import { getNativeConversationElements } from './nativeSidebarDom';
 import { GEMINI_FOLDER_CONFIG } from './platformFolderConfig';
 import {
   type IFolderStorageAdapter,

@@ -6,7 +6,7 @@ import type { FolderData } from '@/core/types/folder';
 import type { FolderSidebarRuntime } from '../FolderSidebarRuntime';
 import type { FolderStore } from '../FolderStore';
 import { FolderManager } from '../manager';
-import { extractConversationInfoFromPage } from '../nativeSidebarDom';
+import { extractConversationInfoFromPage } from '../nativeConversationTitles';
 import * as storageAdapters from '../storage/FolderStorageAdapter';
 import { mountSidebar, setLayout } from './sidebarRuntimeHarness';
 import { sidebarTree } from './sidebarTreeDriver';
