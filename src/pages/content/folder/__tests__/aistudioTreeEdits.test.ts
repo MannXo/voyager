@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { addFolder, deleteFolderTree, renameFolder } from '../aistudioTree';
+import { addFolder, renameFolder } from '../aistudioTree';
 import type { FolderData } from '../types';
 
 function data(): FolderData {
@@ -43,36 +43,5 @@ describe('AI Studio tree edits', () => {
 
     expect(renameFolder(current, 'a', 'Renamed', 9)).toBe(true);
     expect(current.folders[0]).toMatchObject({ name: 'Renamed', updatedAt: 9 });
-  });
-
-  it('deletes a folder on a parent cycle without the folder the tree shows above it', () => {
-    const current = data();
-    current.folders[0].parentId = 'b';
-    current.folderContents = {
-      a: [{ conversationId: 'in-a', title: 'In a', url: 'https://x.test/a', addedAt: 1 }],
-      b: [],
-    };
-
-    expect(deleteFolderTree(current, 'b')).toBe(true);
-    expect(current.folders.map((folder) => folder.id)).toEqual(['a']);
-    expect(current.folderContents.a).toHaveLength(1);
-    expect(Object.keys(current.folderContents)).toEqual(['a']);
-  });
-
-  it('deletes a folder with its descendants and their buckets, and nothing else', () => {
-    const current = data();
-    current.folders.push({
-      id: 'c',
-      name: 'C',
-      parentId: null,
-      isExpanded: true,
-      createdAt: 3,
-      updatedAt: 3,
-    });
-    current.folderContents.c = [];
-
-    expect(deleteFolderTree(current, 'a')).toBe(true);
-    expect(current.folders.map((folder) => folder.id)).toEqual(['c']);
-    expect(Object.keys(current.folderContents)).toEqual(['c']);
   });
 });

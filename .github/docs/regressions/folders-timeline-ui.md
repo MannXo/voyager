@@ -1043,8 +1043,8 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
   reader), keeping every folder and bucket; repeated ids are still refused. Never rewrite stored
   parents outside an import.
 - **Guard:** `src/pages/content/folder/__tests__/folderTreeStructure.test.ts` checks that removal
-  takes what the tree shows; `src/features/folder/model/__tests__/folderData.test.ts` and
-  `src/pages/content/folder/__tests__/aistudioTreeEdits.test.ts` cover removal on cycles; the import
+  takes what the tree shows; `src/features/folder/model/__tests__/folderData.test.ts` covers
+  removal on cycles (AI Studio deletes through the same `removeFolder`); the import
   repair and the export round trip live in
   `src/features/folder/services/__tests__/FolderImportExportService.test.ts`,
   `src/pages/content/folder/__tests__/FolderTransferController.test.ts` and

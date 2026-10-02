@@ -1,6 +1,6 @@
 import { normalizeText } from '@/core/utils/text';
 import { AISTUDIO_ROOT_BUCKET_ID } from '@/features/folder/constants';
-import { getFolderAndDescendants, ownBucket, setBucket } from '@/features/folder/model/folderData';
+import { ownBucket, removeFolder, setBucket } from '@/features/folder/model/folderData';
 import { placeConversations } from '@/features/folder/model/placeConversations';
 
 import panelCss from './floatingPanel.css?raw';
@@ -186,14 +186,12 @@ export function renameFolder(data: FolderData, folderId: string, name: string, a
 }
 
 /** Removes a folder, the folders the tree shows inside it, and what they hold. */
-export function deleteFolderTree(data: FolderData, folderId: string): boolean {
-  const doomed = new Set(getFolderAndDescendants(data, folderId));
-  const before = data.folders.length;
-  data.folders = data.folders.filter((folder) => !doomed.has(folder.id));
-  for (const id of doomed) {
-    if (Object.hasOwn(data.folderContents, id)) delete data.folderContents[id];
-  }
-  return data.folders.length !== before;
+function deleteFolder(data: FolderData, folderId: string): boolean {
+  const next = removeFolder(data, folderId);
+  if (next === data) return false;
+  data.folders = next.folders;
+  data.folderContents = next.folderContents;
+  return true;
 }
 
 export function toggleFolderPinned(data: FolderData, folderId: string): boolean {
@@ -305,7 +303,7 @@ export function aistudioTreeActions(host: AIStudioTreeHost): TreeActions {
       edit((data) => addFolder(data, { id: newFolderId(), name, parentId, at: Date.now() })),
     onRenameFolder: (folderId, name) =>
       edit((data) => renameFolder(data, folderId, name, Date.now())),
-    onDeleteFolder: (folderId) => edit((data) => deleteFolderTree(data, folderId)),
+    onDeleteFolder: (folderId) => edit((data) => deleteFolder(data, folderId)),
     onRemoveConversation: (folderId, conversationId) =>
       edit((data) => removeConversation(data, folderId, conversationId)),
     confirmFolderRemoval: host.confirmFolderRemoval,
