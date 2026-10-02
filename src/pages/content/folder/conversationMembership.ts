@@ -68,14 +68,21 @@ export function buildConversationMembership(
  * current task. Folder data is edited in place, so the cache is also checked
  * against every folder's array identity and length and dropped at the next
  * microtask; a batch of sidebar rows then builds the index once.
+ *
+ * That check walks every bucket, so a pass over native rows passes one
+ * `revision` token for the whole pass, during which no folder edit may run:
+ * after the first row, lookups with that token and the same `folderContents`
+ * reuse the index without checking the shape again.
  */
 export function createConversationMembershipLookup(): (
   folderContents: FolderContents,
+  revision?: object,
 ) => ConversationMembership {
   let cached: {
     folderContents: FolderContents;
     shape: Array<readonly [string, readonly ConversationReference[], number]>;
     membership: ConversationMembership;
+    revision?: object;
   } | null = null;
 
   const sameShape = (folderContents: FolderContents): boolean => {
@@ -90,15 +97,25 @@ export function createConversationMembershipLookup(): (
     return index === cached.shape.length;
   };
 
-  return (folderContents) => {
-    if (cached && sameShape(folderContents)) return cached.membership;
+  return (folderContents, revision) => {
+    if (
+      revision !== undefined &&
+      cached?.revision === revision &&
+      cached.folderContents === folderContents
+    ) {
+      return cached.membership;
+    }
+    if (cached && sameShape(folderContents)) {
+      if (revision !== undefined) cached.revision = revision;
+      return cached.membership;
+    }
     const membership = buildConversationMembership(folderContents);
     const shape: Array<readonly [string, readonly ConversationReference[], number]> = [];
     for (const folderId in folderContents) {
       const conversations = folderContents[folderId];
       shape.push([folderId, conversations, conversations.length]);
     }
-    cached = { folderContents, shape, membership };
+    cached = { folderContents, shape, membership, revision };
     queueMicrotask(() => {
       if (cached?.membership === membership) cached = null;
     });

@@ -733,11 +733,18 @@ typed into an input inside an open shadow root`),
   index keyed only on object identity would go stale.
 - **Rule:** Look membership up through `createConversationMembershipLookup`: build the index once
   per task, rebuild when any folder array or its length changes, and drop it at the next microtask.
-  Keep the original match rules exact: direct id, id without `c_`, or a stored URL containing an id
-  longer than 8 characters.
+  That shape check walks every bucket, so a pass over native rows (one enhancement drain, one
+  `applyHideArchivedSetting`) shares one `revision` token and checks the shape once; mint a new
+  token per pass and never run a folder edit inside one. Keep the original match rules exact:
+  direct id, id without `c_`, or a stored URL containing an id longer than 8 characters.
 - **Guard:** `src/pages/content/folder/conversationMembership.test.ts` (parity with the original
   scan, `indexes once for a batch of rows instead of once per row`,
-  `sees conversations added in place during the same task`).
+  `sees conversations added in place during the same task`,
+  `checks the folder shape once for a pass that shares a revision`),
+  `src/pages/content/folder/NativeSidebarObserver.test.ts`
+  (`gives every row of one drain the same pass and the next drain a new one`) and
+  `src/pages/content/folder/__tests__/observerBatching.test.ts`
+  (`hides filed rows with one membership pass per drain, matching legacy c_ ids`).
 
 ## The Gems sidebar enforcer must not look up the visible entry on every sidebar row
 

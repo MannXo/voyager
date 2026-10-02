@@ -121,9 +121,9 @@ export class FolderManager {
   private readonly headerMenus = createFolderHeaderMenus();
   private readonly nativeSidebarObserver = new NativeSidebarObserver({
     isDestroyed: () => this.isDestroyed,
-    enhanceConversation: (row) => {
+    enhanceConversation: (row, pass) => {
       this.selection.makeConversationDraggable(row);
-      this.applyHideArchivedToConversation(row);
+      this.applyHideArchivedToConversation(row, pass);
     },
     hasStoredConversations: () => this.store.hasStoredConversations(),
     onTitlesChanged: () => this.store.syncConversationTitlesFromNative(),
@@ -842,15 +842,16 @@ export class FolderManager {
 
   private applyHideArchivedSetting(): void {
     const conversations = getNativeConversationElements(this.sidebarRuntime.sidebar);
+    const pass = {}; // one membership lookup for every row
     conversations.forEach((conv) => {
-      this.applyHideArchivedToConversation(conv as HTMLElement);
+      this.applyHideArchivedToConversation(conv as HTMLElement, pass);
     });
   }
 
   /**
    * Apply hide archived setting to a single conversation element
    */
-  private applyHideArchivedToConversation(conv: HTMLElement): void {
+  private applyHideArchivedToConversation(conv: HTMLElement, pass: object): void {
     if (!this.hideArchivedConversations) {
       if (
         conv.classList.contains('gv-conversation-archived') ||
@@ -864,7 +865,7 @@ export class FolderManager {
     }
 
     const convId = extractConversationId(conv);
-    const isArchived = this.store.isConversationInFolders(convId);
+    const isArchived = this.store.isConversationInFolders(convId, pass);
 
     this.setNativeConversationArchivedState(conv, isArchived);
   }

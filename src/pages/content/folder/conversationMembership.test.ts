@@ -140,4 +140,80 @@ describe('createConversationMembershipLookup', () => {
     expect(lookup(data).has('c_aaaabbbbccccdddd')).toBe(false);
     expect(lookup(data).has('c_1111222233334444')).toBe(true);
   });
+
+  /** Folder contents whose bucket reads are counted, as the shape check makes them. */
+  function countingBuckets(buckets: number): { contents: Contents; reads: () => number } {
+    let reads = 0;
+    const target: Contents = {};
+    for (let i = 0; i < buckets; i++) {
+      const id = `${i.toString(16).padStart(16, '0')}`;
+      target[`f${i}`] = [ref(`c_${id}`, `https://gemini.google.com/app/${id}`)];
+    }
+    const contents = new Proxy(target, {
+      get(object, key, receiver) {
+        if (typeof key === 'string' && key.startsWith('f')) reads += 1;
+        return Reflect.get(object, key, receiver);
+      },
+    });
+    return { contents, reads: () => reads };
+  }
+
+  it('checks the folder shape once for a pass that shares a revision', () => {
+    const lookup = createConversationMembershipLookup();
+    const { contents: data, reads } = countingBuckets(200);
+    const pass = {};
+    lookup(data, pass);
+    const afterFirstRow = reads();
+
+    for (let i = 0; i < 500; i++) lookup(data, pass).has(`c_${(9000 + i).toString(16)}`);
+
+    expect(reads()).toBe(afterFirstRow);
+    // Without a revision every row re-reads every bucket.
+    lookup(data).has('c_1');
+    expect(reads()).toBeGreaterThanOrEqual(afterFirstRow + 200);
+  });
+
+  it('adopts a pass for an index another caller built in the same task', () => {
+    const lookup = createConversationMembershipLookup();
+    const { contents: data, reads } = countingBuckets(200);
+    lookup(data).has('c_1');
+    const pass = {};
+    lookup(data, pass);
+    const afterFirstRow = reads();
+
+    for (let i = 0; i < 100; i++) lookup(data, pass).has(`c_${i}`);
+
+    expect(reads()).toBe(afterFirstRow);
+  });
+
+  it('checks the shape again for a new pass and sees what changed in between', () => {
+    const lookup = createConversationMembershipLookup();
+    const data: Contents = { inbox: [] };
+    expect(lookup(data, {}).has('c_aaaabbbbccccdddd')).toBe(false);
+
+    data.inbox.push(ref('c_aaaabbbbccccdddd', 'https://gemini.google.com/app/aaaabbbbccccdddd'));
+    expect(lookup(data, {}).has('c_aaaabbbbccccdddd')).toBe(true);
+    expect(lookup(data).has('c_aaaabbbbccccdddd')).toBe(true);
+  });
+
+  it('never reuses a pass across different folder contents', () => {
+    const lookup = createConversationMembershipLookup();
+    const pass = {};
+    const filed = { inbox: [ref('c_aaaabbbbccccdddd', '/app/aaaabbbbccccdddd')] };
+    expect(lookup({ inbox: [] }, pass).has('c_aaaabbbbccccdddd')).toBe(false);
+    expect(lookup(filed, pass).has('c_aaaabbbbccccdddd')).toBe(true);
+  });
+
+  it('keeps URL-derived legacy matches within a pass', () => {
+    const lookup = createConversationMembershipLookup();
+    const pass = {};
+    for (const id of [
+      'c_aaaabbbbccccdddd',
+      'c_9999888877776666',
+      '456789abcdef0',
+      'c_unknown00000',
+    ]) {
+      expect(lookup(contents, pass).has(id), id).toBe(scanMembership(contents, id));
+    }
+  });
 });

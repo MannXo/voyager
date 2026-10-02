@@ -870,8 +870,9 @@ export class FolderStore {
     }
   }
 
-  isConversationInFolders(conversationId: string): boolean {
-    return this.conversationMembership(this.data.folderContents).has(conversationId);
+  /** `revision`: one token per pass over native rows that runs no folder edit; see the lookup. */
+  isConversationInFolders(conversationId: string, revision?: object): boolean {
+    return this.conversationMembership(this.data.folderContents, revision).has(conversationId);
   }
 
   private generateId(): string {
