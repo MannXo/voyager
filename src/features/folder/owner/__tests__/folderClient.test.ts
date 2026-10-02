@@ -123,6 +123,30 @@ describe('FolderClient', () => {
     expect(names(storedData(storage)).F).toBe('B');
   });
 
+  it('T4d: rides out owner read failures and keeps accepting edits afterwards', async () => {
+    const { storage, client, fireTimers } = clientWorld();
+    await client.open();
+    let failures = 0;
+    storage.failWhen((op) => op === 'get' && failures++ < 3);
+    let first: EditOutcome | null = null;
+    void client.run(rename('F', 'B') as never).then((o) => (first = o));
+
+    for (let turn = 0; turn < 3; turn += 1) {
+      await tick();
+      expect(first).toBeNull();
+      expect(names(storedData(storage)).F).toBe('A');
+      fireTimers();
+    }
+    await tick();
+    expect(first).toEqual({ kind: 'saved' });
+
+    await expect(client.run(rename('F', 'C') as never)).resolves.toEqual({ kind: 'saved' });
+    await tick();
+    expect(names(storedData(storage)).F).toBe('C');
+    expect(client.view()).toEqual(storedData(storage));
+    expect(client.status()).toBe('ready');
+  });
+
   it('T4f: never replays an op the base already includes, even before its reply', async () => {
     const { storage, world, owner, client, hold } = clientWorld();
     await client.open();

@@ -240,7 +240,14 @@ export class FolderClient implements FolderCommands {
       this.stop();
       return;
     }
-    this.state = reason === 'read_failed' || reason === 'invalid_state' ? 'read_only' : 'delayed';
+    // An invalid K waits for recovery and a fresh open; anything else (a read or write failure,
+    // a transport error) is transient, and publishing pending keys never depends on it.
+    if (reason === 'invalid_state') {
+      this.state = 'read_only';
+      this.later(() => void this.open(), this.retry.next());
+      return;
+    }
+    this.state = 'delayed';
     this.later(again, this.retry.next());
   }
 
@@ -274,7 +281,8 @@ export class FolderClient implements FolderCommands {
       const dataHash = reply.kind === 'ready' ? reply.dataHash : this.base.dataHash;
       this.adopt({ data, epoch: reply.epoch, rev: reply.rev, dataHash, applied: reply.applied });
     }
-    if (this.state === 'reconciling') this.state = 'ready';
+    this.state = reply.kind === 'invalid' ? 'read_only' : 'ready';
+    if (this.state === 'ready') void this.publish();
   }
 
   private onStorageChange(changes: Record<string, StorageChange>): void {
