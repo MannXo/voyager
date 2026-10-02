@@ -885,6 +885,19 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
   `ignores an invisible dialog but still waits when it becomes visible`,
   `never opens over an open menu, and shows after it closes`).
 
+## The ChatGPT folder section must reset floating-panel geometry
+
+- **Trap:** The section shares `floatingPanel.css`, whose `:host` rule imposes 280px minimum width,
+  320px minimum height and a resize handle. Its empty state also reserves 220px, so one folder
+  or "No folders yet" leaves a large gap above Recents.
+- **Rule:** `chatgptFolderSection.css` resets host width/height constraints and `resize` with
+  `!important`, matching the shared host sheet's priority. The section follows its content and
+  sidebar width; its empty state has no minimum height and uses compact padding. Keep the
+  floating panel stylesheet unchanged and verify the combined sheets inside a real shadow root.
+- **Guard:** Headless Chrome or the live extension: at 1209x846 in light and dark themes, check
+  zero/one-folder sections fit their content with no resize handle, including a 240px sidebar;
+  the separate floating panel must retain its 280px/320px minimums and `resize: both`.
+
 ## Hiding filed ChatGPT chats must not hide the open chat or rows inside Projects
 
 - **Trap:** A rule that hides every filed row also hides the conversation the user has open, so the

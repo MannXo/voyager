@@ -8,6 +8,13 @@
   position: relative !important;
   z-index: auto !important;
   display: block !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  resize: none !important;
   margin: 0 0 8px !important;
   background: transparent !important;
   border: 0 !important;
@@ -51,6 +58,12 @@
   overflow: visible;
   overscroll-behavior: auto;
   padding: 0 0 4px;
+}
+
+:host(.gv-chatgpt-folder-section) .gv-floating-folder-panel__empty {
+  min-height: 0;
+  gap: 4px;
+  padding: 8px 10px;
 }
 
 /* "Added to …" after Move to folder: a quiet line under the header, on the
