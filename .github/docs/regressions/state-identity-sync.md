@@ -593,20 +593,34 @@ is merged again`, the pin and unpin round trips), `src/utils/mergePrompts.test.t
   and never ran its legacy migration; a rejected read went through backup recovery, which wrote an
   older backup over newer data. A full page localStorage turned a good read into a failed one
   through the page-mirror `setItem`, and a rejected `chrome.storage.local` write still reported
-  success although loads read that store first.
+  success although loads read that store first. Two follow-ups: a loaded tab whose reload failed
+  stayed editable, so a rename (or automatic title sync) wrote its old snapshot over a folder
+  another tab had added; and once Safari reads rejected, a failed `${key}_migrated` read ended
+  the one-time localStorage migration as "done", so the only full page copy read as absent, the
+  bucket started empty and ready, and the next save overwrote it.
 - **Rule:** `IFolderStorageAdapter.loadData` rejects when storage cannot be read, resolves `null`
   only when nothing is stored, and returns the stored value unvalidated (unparseable JSON comes
-  back as is, so validation sends it to corrupt-data recovery). Safari reads have no page fallback.
-  A failed page-mirror `setItem` after a good read still returns the data; a failed
-  `chrome.storage.local` write fails the save. `FolderRepository.loadData` classifies a rejection
-  of the bucket read or the legacy read: no migration, recovery, empty state or write. A session
-  that never loaded stays not ready (`canEdit` false) and reports `unreadable`; a loaded one keeps
-  memory and reports `kept`, once per outage. The owner's reload hook retries with backoff
-  (1 s → 30 s, repeating) until a read lands, except for an invalidated extension context; the
-  timer is cleared on account switch, suspend and destroy.
+  back as is, so validation sends it to corrupt-data recovery). Safari reads have no page fallback,
+  and `SafariFolderAdapter.loadData` rejects until that key's migration has completed in this
+  context, re-running it on each read; the migration copies the page data straight into
+  `browser.storage.local`, since a copy that falls back to the page migrated nothing. A failed page-mirror `setItem` after a good read still
+  returns the data; a failed `chrome.storage.local` write fails the save.
+  `FolderRepository.loadData` classifies a rejection of the bucket read or the legacy read: no
+  migration, recovery, empty state or write. The session is marked `readFailed`, which turns
+  `canEdit` false whether or not it loaded before: memory stays on screen, read-only, and every
+  whole-library write (edits, title and activity sync, imports) waits for a read that lands. A
+  debounce that falls due meanwhile re-arms, so the next successful load merges it and then saves;
+  a flush on unload or account switch while unreadable drops that debounced edit. `unreadable` is
+  reported once per outage. The owner's reload hook retries with backoff (1 s → 30 s, repeating)
+  until a read lands, except for an invalidated extension context; the timer is cleared on suspend
+  and destroy, and on account switch, where a rebound session that still cannot read schedules it
+  again.
 - **Guard:** `src/pages/content/folder/__tests__/folderStorePersistenceCharacterization.test.ts`
-  (`stays read-only and writes nothing when the first read fails, until a retry reads`, `leaves
-newer stored data alone when a reload cannot read it, and reads it on retry`),
+  (`stays read-only and writes nothing when the first read fails, until a retry reads`, `keeps a
+folder another tab added when a reload cannot read it and the user renames`, `saves an expand
+toggle made before a failed reload onto the data the retry reads`),
   `src/pages/content/folder/storage/__tests__/FolderStorageAdapter.test.ts` and
   `src/pages/content/folder/storage/__tests__/FolderStorageAdapter.safari.test.ts` (`rejects a
-failed read instead of answering from the page copy or as absent`).
+failed read instead of answering from the page copy or as absent`, `keeps the page-only library
+unready while its flag cannot be read, then shows it`, `... while its copy cannot be written to
+extension storage, ...`).

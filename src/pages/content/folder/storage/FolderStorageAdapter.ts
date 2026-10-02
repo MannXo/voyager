@@ -174,6 +174,9 @@ export class LocalStorageFolderAdapter implements IFolderStorageAdapter {
  * - browser.storage.local is more reliable (persistent; quota depends on Safari and permissions)
  */
 export class SafariFolderAdapter implements IFolderStorageAdapter {
+  /** Keys whose localStorage migration completed in this context. */
+  private readonly migrated = new Set<string>();
+
   /**
    * Initialize Safari adapter with data migration
    * Migrates data from localStorage to browser.storage.local (one-time)
@@ -183,6 +186,11 @@ export class SafariFolderAdapter implements IFolderStorageAdapter {
   }
 
   async loadData(key: string): Promise<FolderData | null> {
+    // Before migration completes, the only copy may still be in localStorage: an empty
+    // browser.storage answer would read as absent. Reject so the read is retried instead.
+    if (!this.migrated.has(key) && !(await this.migrateFromLocalStorage(key))) {
+      throw new Error('Folder data migration from localStorage did not complete');
+    }
     const stored = await safariStorage.getItem(key);
     if (!stored) {
       return null;
@@ -229,7 +237,9 @@ export class SafariFolderAdapter implements IFolderStorageAdapter {
    */
   async migrateFromLocalStorage(key: string): Promise<boolean> {
     try {
-      return await safariStorage.migrateFromLocalStorage(key);
+      const migrated = await safariStorage.migrateFromLocalStorage(key);
+      if (migrated) this.migrated.add(key);
+      return migrated;
     } catch (error) {
       console.error('[SafariFolderAdapter] Migration failed:', error);
       return false;

@@ -105,8 +105,8 @@ export class SafariStorage implements SafariStorageAdapter {
         return true;
       }
 
-      // Migrate data
-      await this.setItem(key, localData);
+      // Migrate data. No page fallback: a copy that only reaches localStorage is no migration.
+      await browser.storage.local.set({ [key]: localData });
       await this.setItem(migrationKey, 'true');
 
       console.log(
