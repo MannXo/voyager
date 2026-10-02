@@ -16,7 +16,8 @@ export const ownerMetaKey = (key: string): string => `gvFolderOwner:meta:${key}`
 export const ownerIntentKey = (key: string): string => `gvFolderOwner:intent:${key}`;
 export const pendingOpKey = (clientId: string, seq: number): string =>
   `gvFolderOwner:pending:${clientId}:${seq}`;
-export const ownerBackupKey = (key: string, slot: 'foreign'): string =>
+export type BackupSlot = 'last' | 'prior' | 'preBulk' | 'foreign' | 'quarantine';
+export const ownerBackupKey = (key: string, slot: BackupSlot): string =>
   `gvFolderOwner:backup:${key}:${slot}`;
 
 export interface ClientRecord {
@@ -37,6 +38,8 @@ export interface FolderOwnerMeta {
   /** `H(K)` as of this meta; `'absent'` when K does not exist. */
   dataHash: string;
   foreignAt?: number;
+  /** When `last` and `prior` were last written (§6.6); kept here so restarts do not rotate. */
+  backups?: { lastAt?: number; priorAt?: number };
   clients: Record<string, ClientRecord>;
   /** Every retired client's watermark, so its late pending keys or requests revive it (addendum P0 §1). */
   retired: Record<string, { applied: number; at: number }>;
@@ -113,6 +116,12 @@ function parseStored(raw: unknown): { value: unknown; valid: boolean } {
   } catch {
     return { value: raw, valid: false };
   }
+}
+
+/** A stored value as folder data, or `null` when it is absent or not folder data. */
+export function parseStoredData(raw: unknown): FolderData | null {
+  const parsed = parseStored(raw);
+  return parsed.valid && parsed.value !== undefined ? (parsed.value as FolderData) : null;
 }
 
 /** `H` of a stored value: a stored string and an object of the same data hash alike. */

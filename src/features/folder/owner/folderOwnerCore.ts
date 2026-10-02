@@ -29,6 +29,14 @@ import {
   pendingOpKey,
   resolveOwnerState,
 } from './folderOwnerState';
+import {
+  type AdmitCopy,
+  admitEveryCopy,
+  dropsEnoughForPreBulk,
+  rotateBackups,
+  writePreBulk,
+} from './ownerBackups';
+import { bulkProcessed, isBulkBody, newBulkOp, runBulkOp } from './ownerBulk';
 import { GC_INTERVAL_MS, collect } from './ownerCollect';
 import { drainKey } from './ownerDrain';
 import {
@@ -52,6 +60,8 @@ export interface FolderOwnerCoreOptions {
   authority: Readonly<Record<FolderSite, FolderAuthority>>;
   now?: () => number;
   newId?: () => string;
+  /** The `copy` admission for backup slots (StorageBudget hook, addendum P3P4 R6.1). */
+  admitCopy?: AdmitCopy;
   /** The shared in-process write queue; defaults to a private one. */
   serialize?: <T>(turn: () => Promise<T>) => Promise<T>;
 }
@@ -71,6 +81,7 @@ const isContiguous = (ops: ReadonlyArray<{ seq: number }>): boolean =>
 
 const isBadBatch = (ops: ApplyRequest['ops']): boolean =>
   ops.length === 0 ||
+  (ops.length > 1 && ops.some((op) => isBulkBody(op.body))) ||
   ops.length > MAX_BATCH_OPS ||
   !isContiguous(ops) ||
   canonicalJson(ops).length > MAX_BATCH_BYTES;
@@ -121,6 +132,7 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
   const now = options.now ?? Date.now;
   const newId = options.newId ?? (() => crypto.randomUUID());
   const serialize = options.serialize ?? createWriteQueue();
+  const admitCopy = options.admitCopy ?? admitEveryCopy;
   const lastGcAt = new Map<string, number>();
   const acks = new Map<string, Map<string, number>>();
 
@@ -139,7 +151,7 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
    */
   async function settle(key: string, state: ReadyState, next: Processed) {
     const pending = new Map(acks.get(key));
-    const folded = foldAcks(pending, next.meta);
+    const folded = await backUp(key, state, next, foldAcks(pending, next.meta));
     const result = await commitOwnerState(area, key, state, { ...next, meta: folded }, newId());
     if (result.kind === 'committed') {
       forgetAcks(key, pending);
@@ -148,6 +160,15 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
     if (result.kind === 'failed') return null;
     const resolved = await resolve(key);
     return resolved.kind === 'ready' ? resolved : null;
+  }
+
+  /** Optional copies before a data commit; their failure never fails the commit (§6.6). */
+  async function backUp(key: string, state: ReadyState, next: Processed, meta: FolderOwnerMeta) {
+    if (next.data === state.data) return meta;
+    if (!next.preBulkWritten && dropsEnoughForPreBulk(state.data, next.data)) {
+      await writePreBulk(area, admitCopy, key, state, now());
+    }
+    return rotateBackups(area, admitCopy, key, state, meta, now());
   }
 
   /** Pending acks applied to every still-registered client. */
@@ -243,9 +264,14 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
     if (state.kind === 'invalid') return { kind: 'refused', reason: 'invalid_state' };
     const meta = admit(state, request);
     if ('kind' in meta) return meta;
-    const processed = processOps(state, meta, clientId, ops, policy, now(), {
-      ackedThrough: request.ackedThrough,
-    });
+    const contact = { ackedThrough: request.ackedThrough };
+    const bulk = newBulkOp(ops, meta.clients[clientId].applied);
+    const result = bulk && (await runBulkOp(ctx, admitCopy, key, policy.site, state, bulk.body));
+    if (result === 'read_failed') return { kind: 'refused', reason: 'read_failed' };
+    const processed =
+      bulk && result
+        ? bulkProcessed(meta, clientId, bulk.seq, result, contact, now())
+        : processOps(state, meta, clientId, ops, policy, now(), contact);
     const durable = await settle(key, state, processed);
     const stored = durable?.meta.clients[clientId];
     if (!durable || !stored || stored.applied < ops[ops.length - 1].seq) {

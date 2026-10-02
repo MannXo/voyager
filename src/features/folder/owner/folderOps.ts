@@ -99,7 +99,9 @@ export type RejectReason =
   | 'payload_too_large'
   | 'backup_failed'
   | 'discarded_by_user'
-  | 'not_reapplied';
+  | 'not_reapplied'
+  /** A kind this build's owner does not apply yet (the cloudMerge bundle, P3). */
+  | 'unsupported';
 
 /** Stored by the owner per processed seq until the client acknowledges it. */
 export type OpOutcome =

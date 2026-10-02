@@ -17,6 +17,8 @@ export interface Processed {
   data: FolderData | null;
   meta: FolderOwnerMeta;
   outcomes: Record<number, OpOutcome>;
+  /** A bulk op already wrote `preBulk` for this commit. */
+  preBulkWritten?: boolean;
 }
 
 /** What the drain and collection steps share with the turn that runs them. */
