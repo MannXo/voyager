@@ -27,15 +27,27 @@ const FAST_MODEL_IDS = new Set([
 const FAST_MODEL_NAMES = new Set(['flash', 'fast', '高速', '高速モード']);
 
 export class DefaultModelPreferences {
-  public model: DefaultModelSetting | null = null;
-  public thinking: DefaultThinkingLevel | null = null;
-  public enabled = true;
+  private cachedModel: DefaultModelSetting | null = null;
+  private cachedThinking: DefaultThinkingLevel | null = null;
+  private autoApplyEnabled = true;
+
+  public get model(): DefaultModelSetting | null {
+    return this.cachedModel;
+  }
+
+  public get thinking(): DefaultThinkingLevel | null {
+    return this.cachedThinking;
+  }
+
+  public get enabled(): boolean {
+    return this.autoApplyEnabled;
+  }
 
   public async load(): Promise<void> {
     await this.reloadDefaults();
     const result = await storageService.get<unknown>(StorageKeys.DEFAULT_MODEL_AUTO_APPLY);
     // Missing key remains enabled for existing users.
-    this.enabled = !result.success || result.data !== false;
+    this.autoApplyEnabled = !result.success || result.data !== false;
   }
 
   public async reloadDefaults(): Promise<{
@@ -44,16 +56,17 @@ export class DefaultModelPreferences {
   }> {
     const result = await storageService.get<unknown>(StorageKeys.DEFAULT_MODEL);
     const model = result.success ? this.parseStoredDefaultModel(result.data) : null;
-    this.model = model;
+    this.cachedModel = model;
     const thinkingResult = await storageService.get<unknown>(StorageKeys.DEFAULT_THINKING_LEVEL);
     const thinking = thinkingResult.success
       ? this.parseStoredThinkingLevel(thinkingResult.data)
       : null;
-    this.thinking = thinking;
+    this.cachedThinking = thinking;
     return { model, thinking };
   }
 
   public async persistModel(model: DefaultModelSetting | null): Promise<void> {
+    this.cachedModel = model;
     if (!model) {
       await storageService.remove(StorageKeys.DEFAULT_MODEL);
     } else if (model.kind === 'id') {
@@ -65,6 +78,7 @@ export class DefaultModelPreferences {
   }
 
   public async persistThinking(thinking: DefaultThinkingLevel | null): Promise<void> {
+    this.cachedThinking = thinking;
     if (!thinking) {
       await storageService.remove(StorageKeys.DEFAULT_THINKING_LEVEL);
     } else {
@@ -114,7 +128,7 @@ export class DefaultModelPreferences {
     const id = target.kind === 'id' ? target.id : selected.id;
     if (target.pill === pill && target.name === name && (target.kind === 'id' || !id)) return;
 
-    this.model = id ? { kind: 'id', id, name, pill } : { kind: 'name', name, pill };
+    this.cachedModel = id ? { kind: 'id', id, name, pill } : { kind: 'name', name, pill };
 
     // Only the id form is persistable. A variant without `data-mode-id` keeps
     // the label for this page rather than inventing a storage shape for it.
@@ -230,7 +244,7 @@ export class DefaultModelPreferences {
       if (!change) return;
       const next = change.newValue !== false; // missing/true → enabled
       if (next === this.enabled) return;
-      this.enabled = next;
+      this.autoApplyEnabled = next;
       onChange(next);
     };
     try {

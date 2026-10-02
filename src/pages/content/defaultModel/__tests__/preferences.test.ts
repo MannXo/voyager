@@ -9,6 +9,12 @@ it('keeps the loaded model snapshot when an optimistic choice changes during the
   const thinkingReadStarted = new Promise<void>((resolve) => {
     signalThinkingRead = resolve;
   });
+  let finishModelWrite!: () => void;
+  (chrome.storage.sync.set as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+    (_items: unknown, callback: () => void) => {
+      finishModelWrite = callback;
+    },
+  );
   const storedModel = { id: 'pro-id', name: '3.1 Pro' };
   (chrome.storage.sync.get as unknown as ReturnType<typeof vi.fn>).mockImplementation(
     (keys: string[], callback: (items: Record<string, unknown>) => void) => {
@@ -27,7 +33,7 @@ it('keeps the loaded model snapshot when an optimistic choice changes during the
   await thinkingReadStarted;
 
   // A star click updates the shared cache before its storage write completes.
-  preferences.model = { kind: 'name', name: 'Thinking' };
+  const persisting = preferences.persistModel({ kind: 'name', name: 'Thinking' });
   finishThinkingRead({ gvDefaultThinkingLevel: { index: 1, label: 'Extended' } });
   const snapshot = await loading;
 
@@ -36,4 +42,6 @@ it('keeps the loaded model snapshot when an optimistic choice changes during the
     thinking: { index: 1, label: 'Extended' },
   });
   expect(preferences.model).toEqual({ kind: 'name', name: 'Thinking' });
+  finishModelWrite();
+  await persisting;
 });

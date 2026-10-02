@@ -381,7 +381,7 @@ export class DefaultStars {
       ? null
       : { index, label, ...(mode ? { mode } : {}) };
 
-    this.preferences.thinking = nextDefault;
+    const persistence = this.preferences.persistThinking(nextDefault);
 
     const itemEl = btn.closest('gem-menu-item, [role="menuitem"]');
     if (itemEl instanceof HTMLElement) {
@@ -399,7 +399,7 @@ export class DefaultStars {
       void this.injectThinkingLevelStars(submenu);
     }
 
-    await this.preferences.persistThinking(nextDefault);
+    await persistence;
   }
 
   private isDefaultForItem(
@@ -519,7 +519,7 @@ export class DefaultStars {
         : { kind: 'name', name: modelName };
 
     // Update cache immediately
-    this.preferences.model = nextDefault;
+    const persistence = this.preferences.persistModel(nextDefault);
 
     // Update current button immediately
     if (modelItem) {
@@ -544,7 +544,7 @@ export class DefaultStars {
       void this.injectStarButtons(menuPanel as HTMLElement);
     }
 
-    await this.preferences.persistModel(nextDefault);
+    await persistence;
   }
 
   private showToast(message: string) {
