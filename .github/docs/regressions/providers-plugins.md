@@ -72,6 +72,22 @@ or prompt commands.
   `src/features/plugins/builtin/claudeTimeline/index.test.ts` (`builds Claude-scoped conversation
 and turn ids`).
 
+## A cached ChatGPT adapter can override a corrected bundled turn selector
+
+- **Trap:** The timeline rendered an empty rail even though the bundled adapter matched live
+  `[data-user-message-bubble]` nodes. A same-version published catalog still selected
+  `[data-message-author-role="user"]` and took precedence over the corrected bundled adapter.
+- **Rule:** Keep prompt selectors in `site.json`, with the author-role fallback and exclusion of
+  author-role wrappers containing a bubble so each prompt is indexed once. The builtin timeline
+  must consume the resolved adapter's `userTurn`, allowing remote selector fixes. Publish the
+  corrected catalog and confirm clients fetched it; a same-version stale cache still takes
+  precedence over the bundled adapter, and disabled or manual updates do not refresh automatically.
+- **Guard:** `src/features/plugins/builtin/chatgptTimeline.test.ts`
+  (`shows and navigates live bubbles and older turns without duplicates`,
+  `uses the remote adapter userTurn to select and navigate prompts`) checks live and older prompts,
+  wrapper and same-element de-duplication, navigation and remote selector control through the real
+  builtin and primitive. Live delivery also requires checking the client's resolved adapter.
+
 ## Repeated prompts need ordered matching, and ChatGPT needs no matching at all
 
 - **Trap:** Navigator markers are keyed by a hash of the prompt text. With

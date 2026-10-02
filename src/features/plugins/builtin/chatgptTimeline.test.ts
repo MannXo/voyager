@@ -86,7 +86,7 @@ function manifest() {
   return timeline;
 }
 
-async function mount(): Promise<void> {
+async function mount(adapter = requireBundledSiteAdapter('chatgpt')): Promise<void> {
   const op = manifest().contributes.domOps?.find((entry): entry is NativeOperation => {
     return entry.op === 'native';
   });
@@ -95,7 +95,7 @@ async function mount(): Promise<void> {
   if (!params.success) throw new Error('invalid turnNavigator params');
   turnNavigatorPrimitive.activate(scope, params.data, {
     doc: document,
-    adapter: requireBundledSiteAdapter('chatgpt'),
+    adapter,
     pluginId: manifest().id,
     settings: {},
     setTargetCounter: (count) => {
@@ -274,6 +274,78 @@ afterEach(async () => {
 });
 
 describe('ChatGPT timeline', () => {
+  it('shows and navigates live bubbles and older turns without duplicates', async () => {
+    const scroller = makeScroller();
+    for (const prompt of [
+      'First question',
+      'Second question',
+      'Third question',
+      'Fourth question',
+    ]) {
+      exchange(prompt);
+    }
+    bubble(thread.lastElementChild as HTMLElement).getBoundingClientRect = rect(700);
+    await mount();
+
+    expect(labels()).toEqual([
+      'First question',
+      'Second question',
+      'Third question',
+      'Fourth question',
+    ]);
+    expect(targetCount()).toBe(4);
+    dots()[3].click();
+    expect(scroller.scrollTo).toHaveBeenLastCalledWith({ top: 450, behavior: 'smooth' });
+    expect(dots()[3].getAttribute('aria-current')).toBe('true');
+
+    // Older pages expose only author-role; transitional pages may expose both.
+    const legacy = document.createElement('section');
+    legacy.setAttribute('data-testid', 'conversation-turn-5');
+    legacy.innerHTML = '<div data-message-author-role="user">Older question</div>';
+    const prompt = legacy.firstElementChild as HTMLElement;
+    prompt.getBoundingClientRect = rect(900);
+    thread.append(legacy);
+    bubble(thread.firstElementChild as HTMLElement).parentElement!.setAttribute(
+      'data-message-author-role',
+      'user',
+    );
+    bubble(thread.children[1] as HTMLElement).setAttribute('data-message-author-role', 'user');
+    await settle();
+
+    expect(labels()).toEqual([
+      'First question',
+      'Second question',
+      'Third question',
+      'Fourth question',
+      'Older question',
+    ]);
+    expect(targetCount()).toBe(5);
+    dots()[4].click();
+    expect(scroller.scrollTo).toHaveBeenLastCalledWith({ top: 650, behavior: 'smooth' });
+    expect(window.scrollTo).not.toHaveBeenCalled();
+  });
+
+  it('uses the remote adapter userTurn to select and navigate prompts', async () => {
+    const scroller = makeScroller();
+    exchange('Not selected by the remote adapter');
+    const selected = bubble(exchange('Remote-selected prompt'));
+    selected.classList.add('remote-user-turn');
+    selected.getBoundingClientRect = rect(700);
+    const adapter = requireBundledSiteAdapter('chatgpt');
+    // The runtime passes the resolved remote adapter to the builtin primitive.
+    await mount({
+      ...adapter,
+      selectors: { ...adapter.selectors, userTurn: '.remote-user-turn' },
+    });
+
+    expect(labels()).toEqual(['Remote-selected prompt']);
+    expect(targetCount()).toBe(1);
+    dots()[0].click();
+    expect(scroller.scrollTo).toHaveBeenCalledWith({ top: 450, behavior: 'smooth' });
+    expect(dots()[0].getAttribute('aria-current')).toBe('true');
+    expect(window.scrollTo).not.toHaveBeenCalled();
+  });
+
   it('marks every prompt, skips replies, and files stars under chatgpt', async () => {
     exchange('First question');
     exchange('Second question');
