@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const distDir = path.join(rootDir, 'dist_safari');
 const projectPath = path.join(rootDir, 'Voyager', 'Voyager.xcodeproj', 'project.pbxproj');
+// public/ is copied verbatim: new top-level entries need PBXBuildFile, PBXFileReference
+// (../../dist_safari/<name>), group children and Resources registrations in Xcode.
+// Other browser builds cannot catch missing registrations.
 
 if (!fs.existsSync(distDir)) {
   throw new Error('dist_safari does not exist; run the Safari web build first');

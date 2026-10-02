@@ -16,6 +16,7 @@ export function useActivePopupTab(sourceTabId?: number) {
     'gemini',
   );
   const [activeTabContextLoaded, setActiveTabContextLoaded] = useState(false);
+  // Older reads must not replace the context after another read or source-tab change.
   const requestVersion = useRef(0);
 
   const refreshActiveTabContext = useCallback(async () => {

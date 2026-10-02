@@ -3,40 +3,6 @@
 Read this file when changing browser support, extension permissions or messaging, Safari native
 behavior, or bundled public assets.
 
-## Embedded provisioning profile paths must use native separators
-
-- **Trap:** The release privacy scanner rejected valid app and extension profiles on Windows
-  because its signed-bundle allowlist matched only `/`, while filesystem traversal produced `\`.
-- **Rule:** Normalize only the host platform's path separator before matching signed bundle
-  locations. Literal backslashes in POSIX filenames are not directory boundaries. Keep rejecting
-  profiles elsewhere and scan allowed profiles for private content. Directory-link fixtures use
-  junctions on Windows so the checks do not require symlink privileges.
-- **Guard:** `scripts/__tests__/verify-release-privacy.test.ts` covers allowed bundle locations,
-  misplaced profiles, private content, link traversal and POSIX filenames containing backslashes.
-
-## Safari support must not be inferred from historical guards
-
-- **Trap:** Safari users with Voyager watermark removal still enabled never saw the one-time notice
-  for Gemini's official watermark switch. The notice retained an obsolete Safari early return even
-  though Safari watermark removal has been supported since v1.6.0.
-- **Rule:** Run the same eligibility check on Safari and document current Safari support in the
-  content-script rules and public feature reference.
-- **Guard:** `src/pages/content/watermarkNativeNotice/__tests__/watermarkNativeNotice.test.ts`
-  (`shows on Safari when its watermark-removal setting is still active`).
-
-## Firefox content scripts must not hold Web Locks with async callbacks
-
-- **Trap:** On Firefox, account-scoped folders appeared empty and timeline/highlight scope
-  resolution logged `Permission denied to access property "then"`. Firefox Bug 1873028 runs a Web
-  Locks callback from a different security realm than the WebExtension content script. Returning the
-  content script's Promise from `navigator.locks.request()` therefore fails even though the same
-  code works in Chrome and Safari.
-- **Rule:** Firefox web-page content scripts route account-scope resolution through the existing
-  extension-background message. The background page keeps the shared Web Lock and serialized
-  profile-map update; other browser builds keep their original path unchanged.
-- **Guard:** `src/core/services/__tests__/AccountIsolationService.test.ts`
-  (`resolves Firefox content-script scopes in the background instead of using Web Locks`).
-
 ## Chrome-only permissions must not leak into the shared base manifest
 
 - **Trap:** `manifest.json` feeds every browser build. Adding Chrome-only `declarativeContent` there
@@ -50,18 +16,6 @@ behavior, or bundled public assets.
   scoping is verify-by-build:
   `bun run build:chrome && grep -c '"declarativeContent"' dist_chrome/manifest.json` must be `1`,
   while `manifest.json` / `manifest.dev.json` must be `0`.
-
-## Extension pages outside the manifest need their own build input
-
-- **Trap:** CRXJS only bundles HTML pages the manifest references (popup, options, sidebar).
-  A page the background opens with `runtime.getURL` (the first-run welcome page) is silently
-  missing from `dist_*`, and each browser config owns its own `rollupOptions.input`, so adding
-  it to one config leaves the other builds broken.
-- **Rule:** List `src/pages/welcome/index.html` in `rollupOptions.input` of the Chrome, Firefox
-  and Safari configs. Do not add it to `web_accessible_resources`; the page is for the extension
-  origin only. Safari needs no `project.pbxproj` change because `src/` is already a registered
-  top-level resource.
-- **Guard:** `src/pages/welcome/__tests__/welcomePageWiring.test.ts`.
 
 ## Safari notification clicks must be owned by the containing app
 
@@ -80,93 +34,3 @@ behavior, or bundled public assets.
   `src/core/utils/__tests__/nativeOpenConversation.test.ts`. A live Safari check must reach
   privacy-safe logs `app didReceive` and `app dispatchMessage delivered to Safari`, then visibly
   focus the target conversation.
-
-## A new file in public/ breaks the Safari build
-
-- **Trap:** `bun run build:safari` failed with `Missing Xcode file references` and
-  `Missing Xcode resource entries` after a PNG was added to `public/`. Chrome and Firefox built
-  fine, and every unit test passed, so the break surfaced only in CI and also stopped the dependent
-  release job. `public/` is copied verbatim into `dist_safari`, and
-  `scripts/verify-safari-resources.mjs` requires every top-level entry there to be registered in
-  `Voyager/Voyager.xcodeproj/project.pbxproj`. Nothing wires that up automatically, so a new bundled
-  asset silently fails the check.
-- **Rule:** Register the file in all four places the pbxproj needs, mirroring an existing PNG such
-  as `icon-32.png`: a `PBXBuildFile` entry, a `PBXFileReference` with
-  `path = "../../dist_safari/<name>"`, the group's `children` list, and the Resources build phase.
-- **Guard:** `bun run build:safari` ends with `Safari Xcode resource wiring is complete.` Run it
-  whenever you add or rename anything under `public/`; the other browser builds will not catch this.
-
-## A RegExp lookbehind in shared code breaks every feature on Safari 15.4-16.3
-
-- **Trap:** `src/features/prompt/model/promptTemplate.ts` matched legacy `{name}` placeholders with
-  `(?<!\{)\{(?!\{)...` in a module-level `new RegExp`. Safari only gained lookbehind assertions in
-  16.4, while `vite.config.safari.ts` declares `strict_min_version: '15.4'` and
-  `.github/docs/safari/INSTALLATION.md` promises macOS 11+, whose Safari stops at 15.6. The module
-  is statically imported by `src/pages/content/prompt/index.ts`, so the constructor throws during
-  content-script evaluation and takes down every Voyager feature on that page, not just prompt
-  templates. Nothing caught it: `bun run build:safari` passed because
-  `scripts/verify-safari-resources.mjs` only scans the `preserveLatexPipeCommandsInMarkdownTable`
-  fragment, the bundlers cannot see inside a runtime `new RegExp` string, and Node and jsdom both
-  support lookbehind so the unit tests stayed green.
-- **Rule:** No RegExp lookbehind in anything a content script can reach. Match the opening delimiter
-  plainly and inspect the preceding character through the `offset` argument of the `String.replace`
-  callback. Do not stand in for `(?<!x)` with a leading `(^|[^x])` group: it consumes the character,
-  so adjacent matches such as `{a}{b}` silently lose the second one.
-- **Guard:** `src/features/prompt/model/__tests__/promptTemplate.test.ts`
-  (`is built without a RegExp lookbehind so Safari 15.4 can evaluate it`,
-  `migrates adjacent single braces with nothing between them`).
-
-## Popup requests and feedback belong to the current source tab and operation
-
-- **Trap:** An embedded popup can change its source tab while a tab query or folder-structure
-  request is pending. An older response could then replace the new platform context or copy the
-  previous tab's structure. A previous copy's feedback timer could also clear a newer copy status.
-- **Rule:** Invalidate pending tab reads when another read starts or the source changes. Folder
-  copy owns its request generation and reset timer: reject obsolete responses before copying,
-  clear the previous timer before starting again, and release pending work on unmount.
-- **Guard:** `src/pages/popup/hooks/__tests__/useActivePopupTab.test.tsx` and
-  `src/pages/popup/hooks/__tests__/useFolderStructureCopy.test.tsx` cover out-of-order responses,
-  source-tab changes, clipboard ownership and reset-timer cleanup.
-
-## Modern CSS in content styles must be guarded, not assumed
-
-- **Trap:** `manifest.json` and `vite.config.firefox.ts` declare `strict_min_version: '115.0'`,
-  reasoned entirely from JavaScript: `optional_host_permissions` needs Firefox 128 and
-  `supportsOptionalHostPermissions()` feature-gates that path, so 115 looked safe. The stylesheets
-  were never checked. `public/contentStyle.css` used `:has()` (Firefox 121) in four places, and
-  relative colour syntax, `oklch(from ...)` (Firefox 128), for `--gv-coach-accent-soft`. Firefox
-  below those versions invalidates the rule or resolves the custom property to nothing, so the
-  surface loses its styling with no console error, no build failure and no failing test. One of the
-  four was a mixed selector list, `.table-block-component, .horizontal-scroll-wrapper:has(...)`,
-  where the unsupported pseudo-class took the supported sibling selector down with it. A
-  line-oriented `grep` misses the relative-colour case outright: the formatter wraps the value, so
-  `oklch(` and `from` land on different lines.
-- **Rule:** CSS newer than the declared floor goes inside an `@supports` guard, never bare and never
-  sharing a selector list with rules that must survive without it. Prefer a plain equivalent where
-  one exists: `--gv-coach-accent-soft` is written from `--gv-pm-brand-h`, which `platformTheme` sets
-  from the same colour `--gv-pm-brand` carries, so it needs no relative syntax at all. Raising
-  `strict_min_version` is a separate, deliberate decision; the ESR lines are 115, 128 and 140, and
-  the releases between them auto-update.
-- **Guard:** `src/core/utils/__tests__/firefoxCssFloor.test.ts` strips comments and `@supports`
-  blocks, then matches a feature-to-version table against the whole remaining stylesheet text, and
-  asserts the manifest and the Firefox build config declare the same floor.
-
-## Overlapping Chrome dev builds must not share dist_chrome_dev
-
-- **Trap:** After a dev rebuild, the self-reloading `dist_chrome_dev` extension invalidated open
-  tabs, but a refreshed tab failed with `Failed to fetch dynamically imported module` for an older
-  content chunk until a manual reload. A second dev build overlapped the first in the same outDir:
-  Chrome reloaded on the first build's marker, then the second build pruned that generation from a
-  manifest snapshot taken before the first build committed, deleting the service worker and content
-  chunks Chrome had just loaded. Chrome could also reload while the other build was still writing,
-  and then disable the extension. Single builds, one-off or watcher, were never affected.
-- **Rule:** Serialize Chrome dev builds that share an outDir from `buildStart` until the
-  `.voyager-build-ready` marker is written, so each build snapshots the previous committed
-  generation and writes nothing while Chrome reloads into another build. Use a lock the OS releases
-  with its holder (a loopback port), not a lock file: a stale file needs a takeover step that two
-  waiters can race on, and a stored PID can be reused by an unrelated process.
-- **Guard:** `scripts/dev-build-lock.test.ts` covers waiting on another process, exactly one waiter
-  entering after the holder is SIGKILLed, and not waiting forever on an unrelated listener. For a
-  live check, start two `__DEV__=true bunx vite build --config vite.config.chrome.ts --mode
-development` runs about one second apart with a content change and confirm a refreshed matching
-  tab runs the second build.
