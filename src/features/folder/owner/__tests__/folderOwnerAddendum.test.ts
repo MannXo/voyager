@@ -94,6 +94,26 @@ describe('addendum §1: retirement never orphans an accepted op', () => {
   });
 });
 
+describe('addendum §1: stray cleanup', () => {
+  it('clears a key left at the watermark by a crash after commit once the tombstone expires', async () => {
+    const { storage, world, c } = await setup();
+    c.accept(rename('F', 'C1'));
+    // Turn calls: bundle get, state get, intent set, K+meta set, then the pending remove.
+    storage.inject({ call: storage.calls() + 5, land: 'none', crash: true });
+    await c.flush(world.process()).catch(() => null);
+    storage.restart();
+    expect(pendingKeys(storage)).toEqual([pendingOpKey('C', 1)]);
+
+    world.advance(CLIENT_IDLE_MS);
+    await new TestClient(world, 'B').open(world.process());
+    world.advance(TOMBSTONE_TTL_MS);
+    await new TestClient(world, 'D').open(world.process());
+
+    expect(nameOf(storage)).toBe('C1');
+    expect(pendingKeys(storage)).toEqual([]);
+  });
+});
+
 // DESIGN-v2-addendum-P0.md §2: a drain does not consume the only delivery of an outcome.
 describe('addendum §2: a drained op’s outcome reaches its client', () => {
   it('returns the rejection of an op another turn drained before the client sent it', async () => {
