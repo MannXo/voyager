@@ -54,12 +54,21 @@ function buildEntry(template: Element, label: string): HTMLElement {
   }
   entry.setAttribute(MOVE_ENTRY_ATTR, '');
   entry.setAttribute('tabindex', '-1');
-  const icon = entry.querySelector('[aria-hidden="true"]');
-  icon?.replaceChildren(folderIcon());
+  const icon = folderIcon();
+  const nativeIcon = entry.querySelector('svg');
+  if (nativeIcon) {
+    // ChatGPT's native sprite SVG has no aria-hidden wrapper. Keep its sizing class.
+    icon.setAttribute('class', nativeIcon.getAttribute('class') ?? '');
+    nativeIcon.replaceWith(icon);
+  } else {
+    const holder = entry.querySelector('[aria-hidden="true"]');
+    if (holder) holder.replaceChildren(icon);
+    else entry.prepend(icon);
+  }
   const texts: Text[] = [];
   const walker = document.createTreeWalker(entry, NodeFilter.SHOW_TEXT);
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (node.nodeValue?.trim() && !icon?.contains(node)) texts.push(node as Text);
+    if (node.nodeValue?.trim() && !icon.contains(node)) texts.push(node as Text);
   }
   if (texts.length === 0) {
     entry.append(label);
