@@ -1064,17 +1064,18 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
   `forgets a held key when the window loses focus`,
   `lets Ctrl/Cmd + a letter through to the page, so Find still opens`).
 
-## Headless Tree ignores modifiers held before the tree had focus
+## Headless Tree dispatches keys it cannot interpret
 
 - **Trap:** Headless Tree matches a hotkey only against the keys it saw go down on the tree, never
   the event's `ctrlKey`/`metaKey`/`altKey`/`shiftKey`. A modifier pressed before focus entered the
   tree is invisible to it, so Ctrl+ArrowRight expanded a folder (and persisted it) and Cmd+Enter
-  opened a chat.
+  opened a chat. Its arrow presets also assume a focused item: in an empty tree, Up/Down on the
+  create form's Save or Cancel button bubbled to them and `focusNextItem` threw on `undefined`.
 - **Rule:** `voyagerFeature` in `floatingTree/treeEngine.ts` replaces the library's keydown listener
-  with a gate: a keydown with a modifier never reaches the library.
+  with a gate: a keydown with a modifier, or with no focused item, never reaches the library.
   Keyup forwarding and pressed-key resets stay as they are.
 - **Guard:** `src/pages/content/folder/floatingTree/__tests__/treeInput.test.ts` (modifier held
-  before focus).
+  before focus; arrow keys on the empty tree's create form).
 
 ## A Headless Tree hotkey override replaces the preset entry whole
 

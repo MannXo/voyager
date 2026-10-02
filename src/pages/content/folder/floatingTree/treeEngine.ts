@@ -57,7 +57,9 @@ const onRowItself = (e: KeyboardEvent, tree: TreeInstance<string>): boolean =>
  * - Keydown gate: the library matches only the keys it saw go down inside the
  *   tree, so a modifier pressed before focus arrived is invisible to it and
  *   Ctrl+ArrowRight would expand like ArrowRight. No tree hotkey takes a
- *   modifier, so a modified keydown never reaches the library.
+ *   modifier, so a modified keydown never reaches the library. Neither does a
+ *   key with no row to act on (an empty tree's create form): the library's
+ *   navigation assumes a focused item and throws without one.
  */
 function voyagerFeature(host: TreeEngineHost): FeatureImplementation<string> {
   let teardown: (() => void) | null = null;
@@ -84,6 +86,7 @@ function voyagerFeature(host: TreeEngineHost): FeatureImplementation<string> {
       const dispatch = data.current.keydownHandler;
       const keydown = (e: KeyboardEvent) => {
         if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+        if (!tree.getFocusedItem()) return;
         dispatch?.(e);
       };
       if (dispatch) element.removeEventListener('keydown', dispatch);

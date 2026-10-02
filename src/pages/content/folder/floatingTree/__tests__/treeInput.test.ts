@@ -175,6 +175,30 @@ describe('keyboard', () => {
     expect(actions.onNavigate).toHaveBeenCalledTimes(1);
   });
 
+  it('leaves arrow keys alone on the create form of an empty tree', async () => {
+    const { tree, view } = mount('panel', {
+      folders: [],
+      folderContents: { [rootOf('panel')]: [] },
+    });
+    const errors = vi.fn();
+    window.addEventListener('error', errors);
+    tree.startCreateRootFolder();
+    await settle();
+    view.typeName('First');
+
+    for (const name of ['floatingPanelSave', 'floatingPanelCancel'] as const) {
+      const button = view.formButton(name);
+      button.focus();
+      for (const key of ['ArrowDown', 'ArrowUp', 'Home', 'End']) {
+        expect(keydown(button, key).defaultPrevented).toBe(false);
+        expect(deepActiveElement()).toBe(button);
+      }
+    }
+    window.removeEventListener('error', errors);
+    expect(errors).not.toHaveBeenCalled();
+    expect(view.nameInput()?.value).toBe('First');
+  });
+
   it('keeps arrow keys working after F2 renames, though the field kept its keyup inside', async () => {
     const { view } = mount('panel');
     const parent = treeitem(view.folderRow('Parent'));
