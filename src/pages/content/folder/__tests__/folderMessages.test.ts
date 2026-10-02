@@ -215,6 +215,18 @@ describe('AI Studio folder messages', () => {
     expectRendered(message);
   });
 
+  it('shows library drop targets with folder names as text, not markup', async () => {
+    const name = '<img src=x onerror="alert(1)">';
+    const manager = createManager({
+      folders: [{ ...folder('b'), name }],
+      folderContents: { b: [] },
+    });
+    await showLibraryZone(manager);
+    const item = document.querySelector('.gv-library-folder-item[data-folder-id="b"]')!;
+    expect(item.textContent).toContain(name);
+    expect(item.querySelector('img')).toBeNull();
+  });
+
   it('names the folder it creates for an empty library', async () => {
     const manager = createManager({ folders: [], folderContents: {} });
     await showLibraryZone(manager);

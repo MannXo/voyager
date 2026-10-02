@@ -101,20 +101,6 @@ describe('background runtime message routing', () => {
     expect(imageHandler).toContain('MAX_RUNTIME_IMAGE_BYTES');
   });
 
-  it('renders AI Studio folder names as text instead of HTML', () => {
-    const source = readFileSync(
-      resolve(process.cwd(), 'src/pages/content/folder/aistudio.ts'),
-      'utf8',
-    );
-    const folderDropItem =
-      source.match(
-        /const createFolderDropItem = \(folder: Folder, isSubfolder: boolean\) => \{[\s\S]*?\/\/ Bind drop events/,
-      )?.[0] ?? '';
-
-    expect(folderDropItem).not.toContain('folderItem.innerHTML');
-    expect(folderDropItem).toContain('document.createTextNode(folder.name)');
-  });
-
   it('allows only bounded images from media hosts or the sender origin', () => {
     expect(
       parseAllowedRuntimeImageUrl(
