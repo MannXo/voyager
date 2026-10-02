@@ -2,7 +2,12 @@ import type { ConversationReference, Folder, FolderData } from '@/core/types/fol
 
 import type { FolderAuthority } from '../authority';
 import type { FolderOpBody, OpOutcome } from '../folderOps';
-import { type FolderOwnerCore, MAX_BATCH_OPS, createFolderOwnerCore } from '../folderOwnerCore';
+import {
+  type FolderOwnerCore,
+  type FolderOwnerCoreOptions,
+  MAX_BATCH_OPS,
+  createFolderOwnerCore,
+} from '../folderOwnerCore';
 import type { ApplyReply } from '../folderOwnerMessages';
 import type { FolderSite } from '../folderOwnerPolicy';
 import { type FolderOwnerMeta, ownerMetaKey, pendingOpKey } from '../folderOwnerState';
@@ -64,6 +69,7 @@ export function createWorld(
   storage: FaultyStorage,
   start = 1_000_000,
   authority: Readonly<Record<FolderSite, FolderAuthority>> = ALL_OWNER,
+  extra: Partial<FolderOwnerCoreOptions> = {},
 ) {
   let time = start;
   let ids = 0;
@@ -78,6 +84,7 @@ export function createWorld(
         authority,
         now: world.now,
         newId: () => `id-${++ids}`,
+        ...extra,
       }),
   };
   return world;

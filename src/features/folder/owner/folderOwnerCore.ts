@@ -1,3 +1,4 @@
+import type { StorageBudget } from '@/features/storage/storageBudget';
 import { createWriteQueue } from '@/features/storage/writeQueue';
 
 import type { FolderAuthority } from './authority';
@@ -33,13 +34,13 @@ import {
   resolveOwnerState,
 } from './folderOwnerState';
 import {
-  type AdmitCopy,
-  admitEveryCopy,
+  directCopy,
   keepForeignCopy,
   removeFreedSlot,
   rotateBackups,
   writePreBulk,
 } from './ownerBackups';
+import { budgetedCommit, budgetedCopy } from './ownerBudget';
 import { bulkProcessed, isBulkBody, newBulkOp, runBulkOp } from './ownerBulk';
 import { GC_INTERVAL_MS, collect } from './ownerCollect';
 import { drainKey } from './ownerDrain';
@@ -72,8 +73,11 @@ export interface FolderOwnerCoreOptions {
   authority: Readonly<Record<FolderSite, FolderAuthority>>;
   now?: () => number;
   newId?: () => string;
-  /** The `copy` admission for backup slots (StorageBudget hook, addendum P3P4 R6.1). */
-  admitCopy?: AdmitCopy;
+  /**
+   * The background's StorageBudget (addendum P3P4 R6.1): each backup copy is a
+   * `copy` step and each commit a `data` step. Without it nothing is budgeted.
+   */
+  budget?: Pick<StorageBudget, 'run'>;
   /** The shared in-process write queue; defaults to a private one. */
   serialize?: <T>(turn: () => Promise<T>) => Promise<T>;
 }
@@ -148,7 +152,8 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
   const now = options.now ?? Date.now;
   const newId = options.newId ?? (() => crypto.randomUUID());
   const serialize = options.serialize ?? createWriteQueue();
-  const admitCopy = options.admitCopy ?? admitEveryCopy;
+  const writeCopy = options.budget ? budgetedCopy(options.budget, area) : directCopy(area);
+  const gate = options.budget ? budgetedCommit(options.budget) : undefined;
   const lastGcAt = new Map<string, number>();
   const acks = new Map<string, Map<string, number>>();
   /** Hashes of K this process committed recently: their change events are not foreign. */
@@ -173,7 +178,14 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
   async function settle(key: string, state: ReadyState, next: Processed) {
     const pending = new Map(acks.get(key));
     const folded = await backUp(key, state, next, foldAcks(pending, next.meta));
-    const result = await commitOwnerState(area, key, state, { ...next, meta: folded }, newId());
+    const result = await commitOwnerState(
+      area,
+      key,
+      state,
+      { ...next, meta: folded },
+      newId(),
+      gate,
+    );
     if (result.kind === 'committed') {
       remember(key, result.state.hash);
       forgetAcks(key, pending);
@@ -188,7 +200,7 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
   /** Optional copies before a data commit; their failure never fails the commit (§6.6). */
   async function backUp(key: string, state: ReadyState, next: Processed, meta: FolderOwnerMeta) {
     if (next.data === state.data) return meta;
-    return rotateBackups(area, admitCopy, key, state, meta, now());
+    return rotateBackups(area, writeCopy, key, state, meta, now());
   }
 
   /** The required `preBulk` before a destructive op; a failed copy refuses that op unapplied. */
@@ -199,7 +211,7 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
   ): Promise<Processed> {
     const first = run(false);
     if (!first.destructive || first.preBulkWritten || !state.data) return first;
-    if (await writePreBulk(area, admitCopy, key, state, now())) {
+    if (await writePreBulk(writeCopy, key, state, now())) {
       return { ...first, preBulkWritten: true };
     }
     return run(true);
@@ -300,7 +312,7 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
     if ('kind' in meta) return meta;
     const contact = { ackedThrough: request.ackedThrough };
     const bulk = newBulkOp(ops, meta.clients[clientId].applied);
-    const result = bulk && (await runBulkOp(ctx, admitCopy, key, policy.site, state, bulk.body));
+    const result = bulk && (await runBulkOp(ctx, writeCopy, key, policy.site, state, bulk.body));
     if (result === 'read_failed') return { kind: 'refused', reason: 'read_failed' };
     const processed =
       bulk && result

@@ -1,8 +1,8 @@
 /**
  * The owner's backup slots of one K (DESIGN-v2 §6.6). Optional copies (`last`,
  * `prior`) never block or fail an edit; `preBulk` is required before a bulk op.
- * Every copy asks `admitCopy` first: the hook where the background
- * StorageBudget (addendum P3P4 R6.1) plugs in once its review is resolved.
+ * Every copy goes through `writeCopy`, which in the background admits and
+ * writes it in one StorageBudget step (addendum P3P4 R6.1).
  */
 import type { FolderData } from '@/core/types/folder';
 
@@ -31,22 +31,20 @@ export interface BackupEntry {
   value: unknown;
 }
 
-/** Whether a copy of `bytes` may be written to `slot`; the StorageBudget's `copy` admission. */
-export type AdmitCopy = (key: string, slot: BackupSlot, bytes: number) => Promise<boolean>;
+/** Writes one backup slot item; `false` when the copy was not admitted. May throw. */
+export type WriteCopy = (slotKey: string, entry: BackupEntry) => Promise<boolean>;
 
-export const admitEveryCopy: AdmitCopy = () => Promise.resolve(true);
-
-async function writeSlot(
-  area: FolderOwnerStorageArea,
-  admitCopy: AdmitCopy,
-  key: string,
-  slot: BackupSlot,
-  entry: BackupEntry,
-): Promise<boolean> {
-  try {
-    if (!(await admitCopy(key, slot, JSON.stringify(entry).length))) return false;
-    await area.set({ [ownerBackupKey(key, slot)]: entry });
+/** Writes every copy, unbudgeted: the default outside the background. */
+export const directCopy =
+  (area: FolderOwnerStorageArea): WriteCopy =>
+  async (slotKey, entry) => {
+    await area.set({ [slotKey]: entry });
     return true;
+  };
+
+async function writeSlot(writeCopy: WriteCopy, slotKey: string, entry: BackupEntry) {
+  try {
+    return await writeCopy(slotKey, entry);
   } catch {
     return false;
   }
@@ -95,13 +93,12 @@ const entryOf = (state: ReadyState, reason: BackupEntry['reason'], now: number):
 
 /** Writes `preBulk` = the state before the bulk op; `false` refuses the op (`backup_failed`). */
 export function writePreBulk(
-  area: FolderOwnerStorageArea,
-  admitCopy: AdmitCopy,
+  writeCopy: WriteCopy,
   key: string,
   state: ReadyState,
   now: number,
 ): Promise<boolean> {
-  return writeSlot(area, admitCopy, key, 'preBulk', entryOf(state, 'preBulk', now));
+  return writeSlot(writeCopy, ownerBackupKey(key, 'preBulk'), entryOf(state, 'preBulk', now));
 }
 
 const ROTATION_SLOTS: readonly RotationSlot[] = ['a', 'b', 'c'];
@@ -109,18 +106,13 @@ const ROTATION_SLOTS: readonly RotationSlot[] = ['a', 'b', 'c'];
 /** Writes `entry` to the rotation slot and reads it back; the hash it verified, else `null`. */
 async function writeVerified(
   area: FolderOwnerStorageArea,
-  admitCopy: AdmitCopy,
+  writeCopy: WriteCopy,
   key: string,
   slot: RotationSlot,
   entry: BackupEntry,
 ): Promise<string | null> {
   const hash = await hashStored(entry.value);
-  try {
-    if (!(await admitCopy(key, 'last', JSON.stringify(entry).length))) return null;
-    await area.set({ [ownerBackupKey(key, slot)]: entry });
-  } catch {
-    return null;
-  }
+  if (!(await writeSlot(writeCopy, ownerBackupKey(key, slot), entry))) return null;
   const back = await readEntry(area, ownerBackupKey(key, slot));
   return back && (await hashStored(back.value)) === hash ? hash : null;
 }
@@ -138,7 +130,7 @@ async function writeVerified(
  */
 export async function rotateBackups(
   area: FolderOwnerStorageArea,
-  admitCopy: AdmitCopy,
+  writeCopy: WriteCopy,
   key: string,
   state: ReadyState,
   meta: FolderOwnerMeta,
@@ -148,7 +140,7 @@ export async function rotateBackups(
   if (!state.data || now < (backups.lastAt ?? -Infinity) + ROTATE_LAST_MS) return meta;
   const named = new Set([backups.last?.slot, backups.prior?.slot]);
   const free = ROTATION_SLOTS.find((slot) => !named.has(slot)) ?? 'a';
-  const hash = await writeVerified(area, admitCopy, key, free, entryOf(state, 'rotation', now));
+  const hash = await writeVerified(area, writeCopy, key, free, entryOf(state, 'rotation', now));
   if (!hash) return meta; // optional: the edit commits without it
   const last: RotationRef = { slot: free, hash, savedAt: now };
   const priorDue = now >= (backups.priorAt ?? -Infinity) + ROTATE_PRIOR_MS;

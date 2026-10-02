@@ -70,6 +70,16 @@ export interface StorageBudget {
   setReservations(source: (() => number) | null): void;
 }
 
+const encoder = new TextEncoder();
+
+/** Bytes chrome.storage counts for one item: the key plus its UTF-8 JSON value. */
+export const storedItemBytes = (key: string, value: unknown): number =>
+  encoder.encode(key).byteLength + encoder.encode(JSON.stringify(value)).byteLength;
+
+/** The bytes of every item `items` stores. */
+export const storedItemsBytes = (items: Record<string, unknown>): number =>
+  Object.entries(items).reduce((sum, [key, value]) => sum + storedItemBytes(key, value), 0);
+
 export const copyReserveBytes = (limitBytes: number): number =>
   Math.max(COPY_RESERVE_MIN_BYTES, Math.ceil(limitBytes * COPY_RESERVE_RATIO));
 

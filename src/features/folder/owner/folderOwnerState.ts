@@ -243,12 +243,24 @@ export type CommitResult =
  * one `set`; anything else, including data that hashes the same, is a
  * meta-only commit. `rev` grows by one either way.
  */
+/**
+ * Runs a commit given every item it will write (the intent, then K and meta);
+ * the background admits them as one StorageBudget `data` step (R6.1).
+ */
+export type CommitGate = (
+  writes: Record<string, unknown>,
+  commit: () => Promise<CommitResult>,
+) => Promise<CommitResult>;
+
+const ungated: CommitGate = (_writes, commit) => commit();
+
 export async function commitOwnerState(
   area: FolderOwnerStorageArea,
   key: string,
   prev: ReadyState,
   next: { data: FolderData | null; meta: FolderOwnerMeta },
   txId: string,
+  gate: CommitGate = ungated,
 ): Promise<CommitResult> {
   const meta: FolderOwnerMeta = { ...next.meta, rev: prev.meta.rev + 1, dataHash: prev.hash };
   const metaKey = ownerMetaKey(key);
@@ -269,23 +281,28 @@ export async function commitOwnerState(
         prevMeta: prev.meta,
         nextMeta: meta,
       };
-      try {
-        await area.set({ [ownerIntentKey(key)]: intent });
-      } catch {
-        return { kind: 'failed' };
-      }
-      try {
-        await area.set({ [key]: data, [metaKey]: meta });
-      } catch {
-        return { kind: 'uncertain' };
-      }
-      return { kind: 'committed', state: { kind: 'ready', data, hash, meta } };
+      const intentItem = { [ownerIntentKey(key)]: intent };
+      return gate({ ...intentItem, [key]: data, [metaKey]: meta }, async () => {
+        try {
+          await area.set(intentItem);
+        } catch {
+          return { kind: 'failed' };
+        }
+        try {
+          await area.set({ [key]: data, [metaKey]: meta });
+        } catch {
+          return { kind: 'uncertain' };
+        }
+        return { kind: 'committed', state: { kind: 'ready', data, hash, meta } };
+      });
     }
   }
-  try {
-    await area.set({ [metaKey]: meta });
-  } catch {
-    return { kind: 'uncertain' };
-  }
-  return { kind: 'committed', state: { ...prev, meta } };
+  return gate({ [metaKey]: meta }, async () => {
+    try {
+      await area.set({ [metaKey]: meta });
+    } catch {
+      return { kind: 'uncertain' };
+    }
+    return { kind: 'committed', state: { ...prev, meta } };
+  });
 }

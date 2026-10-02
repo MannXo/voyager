@@ -14,7 +14,7 @@ import { mergeAIStudioImport, readAIStudioImportFile } from '@/pages/content/fol
 import { type FolderOpBody, type OpOutcome, parseFolderOpBody, rejected } from './folderOps';
 import type { FolderSite } from './folderOwnerPolicy';
 import type { FolderOwnerMeta, ReadyState } from './folderOwnerState';
-import { type AdmitCopy, readSlot, writePreBulk } from './ownerBackups';
+import { type WriteCopy, readSlot, writePreBulk } from './ownerBackups';
 import { type OwnerTurnContext, type Processed, acknowledge, withClient } from './ownerProcess';
 
 export type BulkBody = Extract<
@@ -125,7 +125,7 @@ export interface BulkResult {
  */
 export async function runBulkOp(
   ctx: OwnerTurnContext,
-  admitCopy: AdmitCopy,
+  writeCopy: WriteCopy,
   key: string,
   site: FolderSite,
   state: ReadyState,
@@ -134,7 +134,7 @@ export async function runBulkOp(
   const target = await targetOf(ctx, key, site, state, body);
   if (target === 'read_failed') return target;
   if (!target.ok) return { data: state.data, outcome: target.outcome, preBulkWritten: false };
-  if (state.data && !(await writePreBulk(ctx.area, admitCopy, key, state, ctx.now()))) {
+  if (state.data && !(await writePreBulk(writeCopy, key, state, ctx.now()))) {
     return { data: state.data, outcome: rejected('backup_failed'), preBulkWritten: false };
   }
   const preBulkWritten = state.data !== null;

@@ -1,8 +1,3 @@
-/**
- * Background owner of folder writes (DESIGN-v2 §6). Dormant: while every site
- * in `FOLDER_WRITE_AUTHORITY` is `legacy`, each request is refused with
- * `not_owner` before any storage access, and startup reads nothing.
- */
 import { logger } from '@/core/services/LoggerService';
 import { FOLDER_WRITE_AUTHORITY, type FolderAuthority } from '@/features/folder/owner/authority';
 import { resolveBundleIntent } from '@/features/folder/owner/bundleIntent';
@@ -23,6 +18,12 @@ import {
 } from '@/features/folder/owner/folderOwnerSenderGate';
 import type { FolderOwnerStorageArea } from '@/features/folder/owner/folderOwnerState';
 import { drainOwnedKeys, hasOwnerSite } from '@/features/folder/owner/ownerStartup';
+/**
+ * Background owner of folder writes (DESIGN-v2 §6). Dormant: while every site
+ * in `FOLDER_WRITE_AUTHORITY` is `legacy`, each request is refused with
+ * `not_owner` before any storage access, and startup reads nothing.
+ */
+import { storageBudget } from '@/features/storage/storageBudget';
 import { backgroundWriteQueue } from '@/features/storage/writeQueue';
 
 type Authority = Readonly<Record<FolderSite, FolderAuthority>>;
@@ -67,6 +68,7 @@ export function startFolderOwner(authority: Authority = FOLDER_WRITE_AUTHORITY):
     area: localFolderArea,
     authority,
     serialize: backgroundWriteQueue,
+    budget: storageBudget,
   });
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const reply = handleFolderOwnerMessage(message, sender, { core, authority });

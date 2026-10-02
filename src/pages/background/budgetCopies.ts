@@ -4,13 +4,11 @@
  * and writes in one step, and replies `saved` or `skipped`.
  */
 import { isWriteCopyMessage, type WriteCopyReply } from '@/features/storage/budgetCopyMessage';
-import { type StorageBudget, storageBudget } from '@/features/storage/storageBudget';
-
-const encoder = new TextEncoder();
-
-/** Bytes chrome.storage counts for a string item: the key plus the JSON-encoded value. */
-const storedBytes = (key: string, value: string): number =>
-  encoder.encode(key).byteLength + encoder.encode(JSON.stringify(value)).byteLength;
+import {
+  type StorageBudget,
+  storageBudget,
+  storedItemBytes,
+} from '@/features/storage/storageBudget';
 
 export interface BudgetCopyDeps {
   budget: StorageBudget;
@@ -29,7 +27,7 @@ export async function writeBudgetCopy(
 ): Promise<WriteCopyReply> {
   try {
     const admission = await deps.budget.run(
-      { kind: 'copy', keys: [key], bytes: storedBytes(key, value) },
+      { kind: 'copy', keys: [key], bytes: storedItemBytes(key, value) },
       () => deps.write({ [key]: value }),
     );
     return { status: admission.admitted ? 'saved' : 'skipped' };
