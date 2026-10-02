@@ -52,11 +52,6 @@ function oldLayoutFolders(data: FolderData, order?: 'created') {
   return { roots: [...sort(realRoots), ...standIns], children };
 }
 
-/** The per-node child scan of the legacy views (picker, FolderTreeView). */
-function oldRecordsWithParent(data: FolderData, parentId: string | null | undefined): Folder[] {
-  return data.folders.filter((item) => item.parentId === parentId);
-}
-
 /** Which buckets hold a conversation, by a scan of every bucket. */
 function oldBucketsHolding(data: FolderData, conversationId: string): string[] {
   return Object.keys(data.folderContents).filter(
@@ -241,15 +236,6 @@ describe('buildFolderIndex', () => {
     expect([...buildFolderIndex(data).cycleRoots]).toEqual([...findCycleRoots(data.folders)]);
   });
 
-  it.each(DATASETS)('groups %s by exact stored parent like the per-node filter', (_name, data) => {
-    const index = buildFolderIndex(data);
-    for (const key of parentKeys(data)) {
-      expect(positions(data, index.recordsWithParent(key)), String(key)).toEqual(
-        positions(data, oldRecordsWithParent(data, key)),
-      );
-    }
-  });
-
   it.each(DATASETS)('finds the buckets holding each conversation in %s', (_name, data) => {
     const index = buildFolderIndex(data);
     const ids = new Set(
@@ -284,7 +270,6 @@ describe('buildFolderIndex', () => {
     const index = buildFolderIndex(data);
     expect(index.layout()).toBe(index.layout());
     expect(index.layout('created')).not.toBe(index.layout());
-    expect(index.recordsWithParent(null)).toBe(index.recordsWithParent(null));
   });
 });
 

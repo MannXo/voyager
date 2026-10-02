@@ -44,13 +44,6 @@ export interface FolderIndex {
   layout(order?: FolderOrder): FolderLayout;
   /** A folder's children in the tree's layout and order. */
   children(parentId: string, order?: FolderOrder): readonly Folder[];
-  /**
-   * Every stored record whose `parentId` is exactly `parentId` (`null`,
-   * `undefined` and `''` are distinct), repeated ids included, in stored order.
-   * This is the legacy `folders.filter((f) => f.parentId === parentId)` relation
-   * of views that predate the shared tree; it applies no root or cycle rules.
-   */
-  recordsWithParent(parentId: string | null | undefined): readonly Folder[];
   /** The references a folder's own bucket holds, in stored order. */
   refs(folderId: string): readonly ConversationReference[];
   /**
@@ -75,7 +68,6 @@ export function buildFolderIndex(data: FolderData): FolderIndex {
   let folderById: Map<string, Folder> | null = null;
   let cycleRoots: Set<string> | null = null;
   const layouts = new Map<FolderOrder, FolderLayout>();
-  let byStoredParent: Map<string | null | undefined, Folder[]> | null = null;
   let membership: Map<string, string[]> | null = null;
   const orderedBuckets = new Map<
     ConversationOrder,
@@ -133,17 +125,6 @@ export function buildFolderIndex(data: FolderData): FolderIndex {
     },
     layout,
     children: (parentId, order) => layout(order).children.get(parentId) ?? NONE,
-    recordsWithParent(parentId) {
-      if (!byStoredParent) {
-        byStoredParent = new Map();
-        for (const folder of data.folders) {
-          const siblings = byStoredParent.get(folder.parentId);
-          if (siblings) siblings.push(folder);
-          else byStoredParent.set(folder.parentId, [folder]);
-        }
-      }
-      return byStoredParent.get(parentId) ?? NONE;
-    },
     refs: (folderId) => ownBucket(data.folderContents, folderId) ?? NONE,
     orderedRefs(folderId, order) {
       const refs = ownBucket(data.folderContents, folderId) ?? NONE;
