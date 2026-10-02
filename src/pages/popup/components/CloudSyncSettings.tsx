@@ -1,101 +1,25 @@
 import React, { useCallback, useEffect, useState } from 'react';
 
-import {
-  accountIsolationService,
-  buildScopedStorageKey,
-  detectAccountPlatformFromUrl,
-  extractRouteUserIdFromUrl,
-} from '@/core/services/AccountIsolationService';
+import { detectAccountPlatformFromUrl } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
-import type { FolderData } from '@/core/types/folder';
-import type {
-  PluginStateExportPayload,
-  PromptItem,
-  SettingsExportPayload,
-  SyncAccountScope,
-  SyncMode,
-  SyncPlatform,
-  SyncProvider,
-  SyncState,
-} from '@/core/types/sync';
+import type { SyncMode, SyncPlatform, SyncProvider, SyncState } from '@/core/types/sync';
 import { DEFAULT_SYNC_STATE } from '@/core/types/sync';
 import { getVoyagerBuildTarget, isSafari } from '@/core/utils/browser';
-import { getPromptNameConflictIds } from '@/core/utils/promptName';
 import { deleteSafariICloudBackup } from '@/core/utils/safariICloudSync';
 import { FOLDER_PLATFORMS } from '@/features/folder/platforms';
-import {
-  getTimelineHierarchyStorageKey,
-  getTimelineHierarchyStorageKeysToRead,
-  resolveTimelineHierarchyDataForStorageScope,
-} from '@/pages/content/timeline/hierarchyStorage';
-import type { TimelineHierarchyData } from '@/pages/content/timeline/hierarchyTypes';
-import type { StarredMessagesData } from '@/pages/content/timeline/starredTypes';
 
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent, CardTitle } from '../../../components/ui/card';
 import { Label } from '../../../components/ui/label';
 import { Switch } from '../../../components/ui/switch';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { cloudRestoreFailureText } from './cloudRestore';
 import {
-  mergeFolderData,
-  mergePromptsWithStats,
-  mergeStarredMessages,
-  mergeTimelineHierarchy,
-} from '../../../utils/merge';
-import { applyCloudRestore, cloudRestoreFailureText } from './cloudRestore';
-
-function isFolderData(value: unknown): value is FolderData {
-  if (typeof value !== 'object' || value === null) return false;
-  const data = value as { folders?: unknown; folderContents?: unknown };
-  return (
-    Array.isArray(data.folders) &&
-    typeof data.folderContents === 'object' &&
-    data.folderContents !== null
-  );
-}
-
-function parseStoredFolderData(value: unknown): FolderData | null {
-  if (isFolderData(value)) return value;
-  if (typeof value !== 'string') return null;
-
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return isFolderData(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function isPromptItemArray(value: unknown): value is PromptItem[] {
-  return (
-    Array.isArray(value) &&
-    value.every((item) => {
-      if (typeof item !== 'object' || item === null) return false;
-      const prompt = item as Record<string, unknown>;
-      return (
-        typeof prompt.id === 'string' &&
-        typeof prompt.text === 'string' &&
-        Array.isArray(prompt.tags) &&
-        prompt.tags.every((tag) => typeof tag === 'string') &&
-        typeof prompt.createdAt === 'number'
-      );
-    })
-  );
-}
-
-function isStarredMessagesData(value: unknown): value is StarredMessagesData {
-  if (typeof value !== 'object' || value === null) return false;
-  if (!('messages' in value)) return false;
-  const messages = (value as { messages: unknown }).messages;
-  return typeof messages === 'object' && messages !== null;
-}
-
-function isTimelineHierarchyData(value: unknown): value is TimelineHierarchyData {
-  if (typeof value !== 'object' || value === null) return false;
-  if (!('conversations' in value)) return false;
-  const conversations = (value as { conversations: unknown }).conversations;
-  return typeof conversations === 'object' && conversations !== null;
-}
+  type CloudDownloadData,
+  prepareCloudUpload,
+  resolveCloudSyncContext,
+  restoreCloudDownload,
+} from './cloudSyncData';
 
 type DownloadMode = 'merge' | 'overwrite';
 
@@ -157,104 +81,6 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
     return 'gemini';
   }, [getTargetTab]);
 
-  const resolveCurrentPageSyncScope = useCallback(
-    async (respectIsolationSetting: boolean): Promise<SyncAccountScope | null> => {
-      if (respectIsolationSetting) {
-        const isolationEnabled = await accountIsolationService.isIsolationEnabled({ platform });
-        if (!isolationEnabled) {
-          return null;
-        }
-      }
-
-      let pageUrl = '';
-      let routeUserId: string | null = null;
-      let email: string | null = null;
-      let pageContextAvailable = false;
-
-      try {
-        const tab = await getTargetTab();
-        pageUrl = tab?.url || '';
-        routeUserId = platform === 'gemini' ? extractRouteUserIdFromUrl(pageUrl) : null;
-
-        if (tab?.id) {
-          try {
-            const response = (await Promise.race([
-              chrome.tabs.sendMessage(tab.id, { type: 'gv.account.getContext' }),
-              new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 400)),
-            ])) as {
-              ok?: boolean;
-              context?: { routeUserId?: string | null; email?: string | null };
-            };
-
-            if (response?.ok && response.context) {
-              pageContextAvailable = true;
-              routeUserId = response.context.routeUserId ?? routeUserId;
-              email = response.context.email ?? null;
-            }
-          } catch {
-            // Ignore content-script lookup failure; we'll resolve with URL fallback.
-          }
-        }
-      } catch {
-        // Ignore tab query failure; account service will fallback to default scope.
-      }
-
-      if (!routeUserId && !email && !pageContextAvailable) {
-        return null;
-      }
-
-      const resolvedScope = await accountIsolationService.resolveAccountScope({
-        pageUrl,
-        routeUserId,
-        email,
-      });
-
-      return {
-        accountKey: resolvedScope.accountKey,
-        accountId: resolvedScope.accountId,
-        routeUserId: resolvedScope.routeUserId,
-      };
-    },
-    [getTargetTab, platform],
-  );
-
-  const resolveAccountSyncContext = useCallback(async (): Promise<{
-    accountScope: SyncAccountScope | null;
-    folderStorageKey: string;
-  }> => {
-    const baseFolderStorageKey = FOLDER_PLATFORMS[platform].folderStorageKey;
-    const accountScope = await resolveCurrentPageSyncScope(true);
-    if (!accountScope) {
-      return {
-        accountScope: null,
-        folderStorageKey: baseFolderStorageKey,
-      };
-    }
-
-    return {
-      accountScope,
-      folderStorageKey: buildScopedStorageKey(baseFolderStorageKey, accountScope.accountKey),
-    };
-  }, [platform, resolveCurrentPageSyncScope]);
-
-  const resolveTimelineHierarchySyncContext = useCallback(async (): Promise<{
-    accountScope: SyncAccountScope | null;
-    storageKey: string;
-  }> => {
-    if (platform !== 'gemini') {
-      return {
-        accountScope: null,
-        storageKey: StorageKeys.TIMELINE_HIERARCHY,
-      };
-    }
-
-    const accountScope = await resolveCurrentPageSyncScope(false);
-    return {
-      accountScope,
-      storageKey: getTimelineHierarchyStorageKey(accountScope?.accountKey),
-    };
-  }, [platform, resolveCurrentPageSyncScope]);
-
   // Fetch sync state and detect platform on mount
   useEffect(() => {
     const fetchState = async () => {
@@ -277,7 +103,6 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
       const detected = await detectPlatform();
       setHasFolderPlatform(detected !== null);
       if (detected) setPlatform(detected);
-      console.log('[CloudSyncSettings] Detected platform:', detected);
     };
     fetchState();
     initPlatform();
@@ -423,87 +248,12 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
     setIsUploading(true);
 
     try {
-      const accountContext = await resolveAccountSyncContext();
-      const timelineHierarchyContext = await resolveTimelineHierarchySyncContext();
-      const highlightAccountScope =
-        platform === 'gemini' && highlightSyncEnabled
-          ? await resolveCurrentPageSyncScope(false)
-          : null;
-      let accountScope = accountContext.accountScope;
-      let folderStorageKey = accountContext.folderStorageKey;
-      const timelineHierarchyAccountScope = timelineHierarchyContext.accountScope;
+      const context = await resolveCloudSyncContext(platform, highlightSyncEnabled, getTargetTab);
+      const payload = await prepareCloudUpload(context, getTargetTab);
 
-      // Get current data - prioritizing active tab content script for folders
-      let folders: FolderData = { folders: [], folderContents: {} };
-      let prompts: PromptItem[] = [];
-
-      // 1. Try to get fresh folder data from active tab
-      try {
-        const tab = await getTargetTab();
-        if (tab?.id) {
-          // Short timeout to avoid blocking
-          const response = (await Promise.race([
-            chrome.tabs.sendMessage(tab.id, { type: 'gv.sync.requestData' }),
-            new Promise((_, reject) => setTimeout(() => reject('Timeout'), 500)),
-          ])) as { ok?: boolean; data?: FolderData; accountScope?: SyncAccountScope } | null;
-
-          if (response?.ok && response.data) {
-            folders = response.data;
-            console.log('[CloudSyncSettings] Got fresh folder data from content script');
-            if (response.accountScope) {
-              accountScope = response.accountScope;
-              folderStorageKey = buildScopedStorageKey(
-                FOLDER_PLATFORMS[platform].folderStorageKey,
-                response.accountScope.accountKey,
-              );
-            }
-          }
-        }
-      } catch (e) {
-        console.log('[CloudSyncSettings] Tab fetch failed/skipped:', e);
-      }
-
-      // 2. Fallback to storage
-      try {
-        const storageResult = await chrome.storage.local.get([
-          folderStorageKey,
-          StorageKeys.PROMPT_ITEMS,
-        ]);
-        const storedFolders = parseStoredFolderData(storageResult[folderStorageKey]);
-        const storedPromptsValue = storageResult[StorageKeys.PROMPT_ITEMS];
-
-        // Only use storage folders if we didn't get them from tab
-        if ((!folders.folders || folders.folders.length === 0) && storedFolders) {
-          folders = storedFolders;
-          console.log(`[CloudSyncSettings] Loaded folders from ${folderStorageKey} (fallback)`);
-        }
-
-        // Prompts usually sync well to storage (only for Gemini)
-        if (platform === 'gemini' && isPromptItemArray(storedPromptsValue)) {
-          prompts = storedPromptsValue;
-        }
-      } catch (err) {
-        console.error('[CloudSyncSettings] Error loading data:', err);
-      }
-
-      console.log(
-        `[CloudSyncSettings] Uploading ${platform} folders:`,
-        folders.folders?.length || 0,
-        platform === 'gemini' ? `prompts: ${prompts.length}` : '(prompts skipped for AI Studio)',
-      );
-
-      // Upload to Google Drive with platform info
       const response = (await chrome.runtime.sendMessage({
         type: 'gv.sync.upload',
-        payload: {
-          folders,
-          prompts,
-          platform,
-          accountScope,
-          timelineHierarchyAccountScope,
-          highlightAccountScope,
-          includeHighlights: platform === 'gemini' && highlightSyncEnabled,
-        },
+        payload,
       })) as
         | {
             ok?: boolean;
@@ -532,15 +282,7 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
     } finally {
       setIsUploading(false);
     }
-  }, [
-    getTargetTab,
-    highlightSyncEnabled,
-    platform,
-    resolveAccountSyncContext,
-    resolveCurrentPageSyncScope,
-    resolveTimelineHierarchySyncContext,
-    t,
-  ]);
+  }, [getTargetTab, highlightSyncEnabled, platform, t]);
 
   // Handle download from Drive (restore data) with merge as the default safe path.
   const handleDownloadFromDrive = useCallback(
@@ -554,27 +296,11 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
       setDownloadMode(mode);
 
       try {
-        const accountContext = await resolveAccountSyncContext();
-        const timelineHierarchyContext = await resolveTimelineHierarchySyncContext();
-        const highlightAccountScope =
-          platform === 'gemini' && highlightSyncEnabled
-            ? await resolveCurrentPageSyncScope(false)
-            : null;
-        let accountScope = accountContext.accountScope;
-        let folderStorageKey = accountContext.folderStorageKey;
-        const timelineHierarchyAccountScope = timelineHierarchyContext.accountScope;
-        const timelineHierarchyStorageKey = timelineHierarchyContext.storageKey;
+        const context = await resolveCloudSyncContext(platform, highlightSyncEnabled, getTargetTab);
 
-        // Download from Google Drive (platform-specific)
         const response = (await chrome.runtime.sendMessage({
           type: 'gv.sync.download',
-          payload: {
-            platform,
-            accountScope,
-            timelineHierarchyAccountScope,
-            highlightAccountScope,
-            includeHighlights: platform === 'gemini' && highlightSyncEnabled,
-          },
+          payload: context.payload,
         })) as
           | {
               ok?: boolean;
@@ -586,14 +312,7 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
                 count?: number;
                 empty?: boolean;
               };
-              data?: {
-                folders?: { data?: FolderData };
-                prompts?: { items?: PromptItem[] };
-                settings?: SettingsExportPayload;
-                plugins?: PluginStateExportPayload;
-                starred?: { data?: StarredMessagesData };
-                timelineHierarchy?: { data?: TimelineHierarchyData };
-              } | null;
+              data?: CloudDownloadData | null;
             }
           | undefined;
 
@@ -615,213 +334,17 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
           return;
         }
 
-        // Get current local data for merging - prioritize Content Script
-        let localFolders: FolderData = { folders: [], folderContents: {} };
-        let localPrompts: PromptItem[] = [];
-        let localTimelineHierarchy: TimelineHierarchyData = { conversations: {} };
-
-        // 1. Try to get fresh folder data from active tab
-        try {
-          const tab = await getTargetTab();
-          console.log('[CloudSyncSettings] Active tab:', tab?.id, tab?.url);
-          if (tab?.id) {
-            const tabResponse = (await Promise.race([
-              chrome.tabs.sendMessage(tab.id, { type: 'gv.sync.requestData' }),
-              new Promise((_, reject) => setTimeout(() => reject('Timeout after 2s'), 2000)),
-            ])) as { ok?: boolean; data?: FolderData; accountScope?: SyncAccountScope } | null;
-
-            console.log('[CloudSyncSettings] Tab response:', tabResponse);
-            if (tabResponse?.ok && tabResponse.data) {
-              localFolders = tabResponse.data;
-              console.log(
-                '[CloudSyncSettings] Got fresh folder data from content script:',
-                'folders:',
-                localFolders.folders?.length,
-                'folderContents keys:',
-                Object.keys(localFolders.folderContents || {}).length,
-              );
-              if (tabResponse.accountScope) {
-                accountScope = tabResponse.accountScope;
-                folderStorageKey = buildScopedStorageKey(
-                  FOLDER_PLATFORMS[platform].folderStorageKey,
-                  tabResponse.accountScope.accountKey,
-                );
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('[CloudSyncSettings] Tab fetch failed/skipped:', e);
-        }
-
-        // 2. Fallback to storage
-        try {
-          const storageResult = await chrome.storage.local.get([
-            folderStorageKey,
-            StorageKeys.PROMPT_ITEMS,
-            ...getTimelineHierarchyStorageKeysToRead(timelineHierarchyAccountScope?.accountKey),
-          ]);
-          const storedFolders = parseStoredFolderData(storageResult[folderStorageKey]);
-          const storedPromptsValue = storageResult[StorageKeys.PROMPT_ITEMS];
-
-          // Only use storage folders if we didn't get them from tab
-          if ((!localFolders.folders || localFolders.folders.length === 0) && storedFolders) {
-            localFolders = storedFolders;
-            console.log(`[CloudSyncSettings] Loaded folders from ${folderStorageKey} (fallback)`);
-          }
-
-          // Prompts only for Gemini platform
-          if (platform === 'gemini' && isPromptItemArray(storedPromptsValue)) {
-            localPrompts = storedPromptsValue;
-          }
-
-          if (platform === 'gemini') {
-            const resolvedHierarchy = resolveTimelineHierarchyDataForStorageScope(
-              storageResult as Record<string, unknown>,
-              timelineHierarchyAccountScope?.accountKey,
-              timelineHierarchyAccountScope?.routeUserId ?? null,
-            );
-            if (isTimelineHierarchyData(resolvedHierarchy)) {
-              localTimelineHierarchy = resolvedHierarchy;
-            }
-          }
-        } catch (err) {
-          console.error('[CloudSyncSettings] Error loading local data for merge:', err);
-        }
-
-        // Sync payloads contain feature-specific export payloads from Google Drive files.
-        const {
-          folders: cloudFoldersPayload,
-          prompts: cloudPromptsPayload,
-          settings: cloudSettingsPayload,
-          plugins: cloudPluginsPayload,
-          starred: cloudStarredPayload,
-          timelineHierarchy: cloudTimelineHierarchyPayload,
-        } = response.data;
-        const cloudFolderDataRaw = cloudFoldersPayload?.data;
-        const hasCloudFolderData = isFolderData(cloudFolderDataRaw);
-        const cloudFolderData = hasCloudFolderData
-          ? cloudFolderDataRaw
-          : { folders: [], folderContents: {} };
-        const cloudPromptItems = cloudPromptsPayload?.items || [];
-        const cloudStarredData: StarredMessagesData = cloudStarredPayload?.data || { messages: {} };
-        const cloudTimelineHierarchyData: TimelineHierarchyData =
-          cloudTimelineHierarchyPayload?.data || { conversations: {} };
-
-        console.log('[CloudSyncSettings] === MERGE DEBUG ===');
-        console.log('[CloudSyncSettings] Local folders count:', localFolders.folders?.length || 0);
-        console.log(
-          '[CloudSyncSettings] Local folderContents:',
-          JSON.stringify(Object.keys(localFolders.folderContents || {})),
+        const { foldersMissing, nameConflicts } = await restoreCloudDownload(
+          context,
+          getTargetTab,
+          response.data,
+          mode,
+          response.highlights?.synced === true,
         );
-        console.log(
-          '[CloudSyncSettings] Cloud folders count:',
-          cloudFolderData.folders?.length || 0,
-        );
-        console.log(
-          '[CloudSyncSettings] Cloud folderContents:',
-          JSON.stringify(Object.keys(cloudFolderData.folderContents || {})),
-        );
-        console.log(
-          '[CloudSyncSettings] Cloud starred conversations:',
-          Object.keys(cloudStarredData.messages || {}).length,
-        );
-        console.log(
-          '[CloudSyncSettings] Cloud hierarchy conversations:',
-          Object.keys(cloudTimelineHierarchyData.conversations || {}).length,
-        );
-
-        // Get local starred messages for merge
-        let localStarred: StarredMessagesData = { messages: {} };
-        try {
-          const starredResult = await chrome.storage.local.get(['geminiTimelineStarredMessages']);
-          if (isStarredMessagesData(starredResult.geminiTimelineStarredMessages)) {
-            localStarred = starredResult.geminiTimelineStarredMessages;
-          }
-        } catch (err) {
-          console.warn('[CloudSyncSettings] Could not get local starred messages:', err);
-        }
-
-        const shouldOverwrite = mode === 'overwrite';
-
-        const nextFolders = shouldOverwrite
-          ? cloudFolderData
-          : mergeFolderData(localFolders, cloudFolderData);
-        const promptMerge = shouldOverwrite
-          ? {
-              items: cloudPromptItems,
-              nameConflicts: getPromptNameConflictIds(cloudPromptItems).size,
-            }
-          : mergePromptsWithStats(localPrompts, cloudPromptItems);
-        const nextPrompts = promptMerge.items;
-        const nextStarred = shouldOverwrite
-          ? cloudStarredData
-          : mergeStarredMessages(localStarred, cloudStarredData);
-        const nextTimelineHierarchy = shouldOverwrite
-          ? cloudTimelineHierarchyData
-          : mergeTimelineHierarchy(localTimelineHierarchy, cloudTimelineHierarchyData);
-        console.log(
-          '[CloudSyncSettings] Resolved folders count:',
-          nextFolders.folders?.length || 0,
-        );
-        console.log(
-          '[CloudSyncSettings] Resolved folderContents:',
-          JSON.stringify(Object.keys(nextFolders.folderContents || {})),
-        );
-        console.log(
-          '[CloudSyncSettings] Resolved starred conversations:',
-          Object.keys(nextStarred.messages || {}).length,
-        );
-        console.log(
-          '[CloudSyncSettings] Resolved hierarchy conversations:',
-          Object.keys(nextTimelineHierarchy.conversations || {}).length,
-        );
-        console.log('[CloudSyncSettings] === END MERGE DEBUG ===');
-
-        // Save merged data to storage (platform-specific storage key for folders)
-        const storageUpdate: Record<string, unknown> = {
-          [folderStorageKey]: nextFolders,
-        };
-
-        // Only save prompts and starred for Gemini platform
-        if (platform === 'gemini') {
-          storageUpdate[StorageKeys.PROMPT_ITEMS] = nextPrompts;
-          storageUpdate.geminiTimelineStarredMessages = nextStarred;
-          storageUpdate[timelineHierarchyStorageKey] = nextTimelineHierarchy;
-        }
-
-        await applyCloudRestore({
-          mode: shouldOverwrite ? 'overwrite' : 'merge',
-          highlightsRestored: response.highlights?.synced === true,
-          plugins:
-            cloudPluginsPayload?.format === 'gemini-voyager.plugins.v1'
-              ? cloudPluginsPayload.data
-              : undefined,
-          settings: cloudSettingsPayload?.data,
-          storageUpdate,
-          includesPrompts: platform === 'gemini',
-          // An overwrite without folder data is refused before any write.
-          foldersMissing: !hasCloudFolderData,
-        });
-
-        // Notify content script to reload folders
-        try {
-          const tab = await getTargetTab();
-          if (tab?.id) {
-            await chrome.tabs.sendMessage(tab.id, { type: 'gv.folders.reload' });
-            console.log('[CloudSyncSettings] Sent reload message to content script');
-          }
-        } catch (err) {
-          console.warn('[CloudSyncSettings] Could not notify content script:', err);
-        }
-
-        const foldersMissing = !hasCloudFolderData;
         setStatusMessage({
           text:
-            promptMerge.nameConflicts > 0
-              ? t('promptNameConflictsDetected').replace(
-                  '{count}',
-                  String(promptMerge.nameConflicts),
-                )
+            nameConflicts > 0
+              ? t('promptNameConflictsDetected').replace('{count}', String(nameConflicts))
               : t(
                   foldersMissing
                     ? 'syncSuccessFoldersMissing'
@@ -829,10 +352,7 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
                       ? 'syncSuccessHighlightsSkipped'
                       : 'syncSuccess',
                 ),
-          kind:
-            foldersMissing || response.highlights?.skipped || promptMerge.nameConflicts > 0
-              ? 'warn'
-              : 'ok',
+          kind: foldersMissing || response.highlights?.skipped || nameConflicts > 0 ? 'warn' : 'ok',
         });
       } catch (error) {
         console.error('[CloudSyncSettings] Download failed:', error);
@@ -842,15 +362,7 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
         setDownloadMode(null);
       }
     },
-    [
-      getTargetTab,
-      highlightSyncEnabled,
-      platform,
-      resolveAccountSyncContext,
-      resolveCurrentPageSyncScope,
-      resolveTimelineHierarchySyncContext,
-      t,
-    ],
+    [getTargetTab, highlightSyncEnabled, platform, t],
   );
 
   // Clear status message after 3 seconds

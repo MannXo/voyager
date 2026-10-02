@@ -27,7 +27,6 @@
     "src/pages/content/sidebarAutoHide/index.ts": 1066,
     "src/pages/content/timeline/TimelineView.ts": 1046,
     "src/pages/content/wavedrom/index.ts": 1075,
-    "src/pages/popup/components/__tests__/PluginManager.test.tsx": 1002,
-    "src/pages/popup/components/CloudSyncSettings.tsx": 1197
+    "src/pages/popup/components/__tests__/PluginManager.test.tsx": 1002
   }
 }
