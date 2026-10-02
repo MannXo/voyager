@@ -9,6 +9,7 @@ import type {
   FolderOwnerStorageArea,
   ReadyState,
 } from './folderOwnerState';
+import { dropsEnoughForPreBulk } from './ownerBackups';
 
 /** A drained body that failed the envelope checks: processed as `rejected: invalid_payload`. */
 export const INVALID_BODY = Symbol('invalid pending body');
@@ -19,6 +20,15 @@ export interface Processed {
   outcomes: Record<number, OpOutcome>;
   /** A bulk op already wrote `preBulk` for this commit. */
   preBulkWritten?: boolean;
+  /** Some op of the turn removes enough to need a `preBulk` copy first (§6.6). */
+  destructive?: boolean;
+}
+
+export interface ProcessOptions {
+  /** An outcome that replaces applying a valid body: the user's held/journal decisions (§7.8). */
+  refuse?: (body: FolderOpBody) => OpOutcome | null;
+  /** The `preBulk` copy failed: every op that needs it is refused `backup_failed`, unapplied. */
+  refuseDestructive?: boolean;
 }
 
 /** What the drain and collection steps share with the turn that runs them. */
@@ -27,6 +37,15 @@ export interface OwnerTurnContext {
   now: () => number;
   /** Commits `next` over `state`; the durable state, or `null` when nothing is known durable. */
   settle(key: string, state: ReadyState, next: Processed): Promise<ReadyState | null>;
+  /**
+   * Runs `run` and, when an op needs `preBulk`, writes it from `state` first;
+   * if that copy fails, runs again refusing those ops (§6.6).
+   */
+  guardPreBulk(
+    key: string,
+    state: ReadyState,
+    run: (refuseDestructive: boolean) => Processed,
+  ): Promise<Processed>;
   /** Best effort removal of a client's pending keys at or below `applied`. */
   removePending(clientId: string, seqs: number[], applied: number): Promise<void>;
 }
@@ -80,24 +99,28 @@ export function processOps(
   policy: FolderSitePolicy,
   now: number,
   contact: { ackedThrough: number } | null,
-  /** An outcome that replaces applying a valid body: the user's held/journal decisions (§7.8). */
-  refuse: (body: FolderOpBody) => OpOutcome | null = () => null,
+  options: ProcessOptions = {},
 ): Processed {
   const client: ClientRecord = { ...meta.clients[clientId] };
   const stored = { ...client.outcomes };
   const outcomes: Record<number, OpOutcome> = {};
   let data = state.data;
+  let destructive = false;
   for (const op of ops) {
     if (op.seq <= client.applied) {
       outcomes[op.seq] = stored[op.seq] ?? { kind: 'expired' };
       continue;
     }
     const body = op.body === INVALID_BODY ? null : parseFolderOpBody(op.body);
-    const refused = body && refuse(body);
-    const result =
+    const refused = body && options.refuse?.(body);
+    let result =
       body && !refused
         ? applyFolderOp(data ?? { folders: [], folderContents: {} }, body, policy, now)
         : { data, outcome: refused || rejected('invalid_payload') };
+    if (result.outcome.kind === 'saved' && dropsEnoughForPreBulk(data, result.data)) {
+      destructive = true;
+      if (options.refuseDestructive) result = { data, outcome: rejected('backup_failed') };
+    }
     if (result.outcome.kind === 'saved') data = result.data;
     client.applied = op.seq;
     stored[op.seq] = result.outcome;
@@ -105,5 +128,5 @@ export function processOps(
   }
   client.outcomes = stored;
   const final = contact ? acknowledge(client, contact.ackedThrough, now) : client;
-  return { data, meta: withClient(meta, clientId, final), outcomes };
+  return { data, meta: withClient(meta, clientId, final), outcomes, destructive };
 }

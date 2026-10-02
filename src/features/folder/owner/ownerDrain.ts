@@ -81,7 +81,10 @@ export async function drainClient(
     }
     const { ops, held } = readChunk(key, clientId, seqs, found, state);
     if (ops.length === 0 && !held) return state;
-    const processed = processOps(state, state.meta, clientId, ops, policy, ctx.now(), null);
+    const from = state;
+    const processed = await ctx.guardPreBulk(key, from, (refuseDestructive) =>
+      processOps(from, from.meta, clientId, ops, policy, ctx.now(), null, { refuseDestructive }),
+    );
     if (held) {
       const heldClient = { ...processed.meta.clients[clientId], held };
       processed.meta = withClient(processed.meta, clientId, heldClient);

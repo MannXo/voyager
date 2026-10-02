@@ -82,7 +82,13 @@ export async function resolveHeld(
   for (;;) {
     const ops = await readPending(ctx, key, clientId, meta.clients[clientId].applied + 1);
     if (!ops) return { kind: 'refused', reason: 'read_failed' };
-    const next = processOps(state, meta, clientId, ops, policy, ctx.now(), null, decide(decision));
+    const [from, fromMeta] = [state, meta];
+    const next = await ctx.guardPreBulk(key, from, (refuseDestructive) =>
+      processOps(from, fromMeta, clientId, ops, policy, ctx.now(), null, {
+        refuse: decide(decision),
+        refuseDestructive,
+      }),
+    );
     const settled = await ctx.settle(key, state, next);
     if (!settled) return { kind: 'refused', reason: 'write_failed' };
     Object.assign(outcomes, next.outcomes);
@@ -159,7 +165,12 @@ export async function adoptJournal(
     return { kind: 'seq_gap', applied: client.applied };
   }
   const { state, meta, clientId, ops } = target;
-  const next = processOps(state, meta, clientId, ops, policy, ctx.now(), null, notReapplied);
+  const next = await ctx.guardPreBulk(key, state, (refuseDestructive) =>
+    processOps(state, meta, clientId, ops, policy, ctx.now(), null, {
+      refuse: notReapplied,
+      refuseDestructive,
+    }),
+  );
   const settled = await ctx.settle(key, state, next);
   if (!settled || (settled.meta.clients[clientId]?.applied ?? 0) < last) {
     return { kind: 'refused', reason: 'write_failed' };

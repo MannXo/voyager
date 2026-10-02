@@ -35,7 +35,6 @@ import {
 import {
   type AdmitCopy,
   admitEveryCopy,
-  dropsEnoughForPreBulk,
   keepForeignCopy,
   rotateBackups,
   writePreBulk,
@@ -187,10 +186,21 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
   /** Optional copies before a data commit; their failure never fails the commit (§6.6). */
   async function backUp(key: string, state: ReadyState, next: Processed, meta: FolderOwnerMeta) {
     if (next.data === state.data) return meta;
-    if (!next.preBulkWritten && dropsEnoughForPreBulk(state.data, next.data)) {
-      await writePreBulk(area, admitCopy, key, state, now());
-    }
     return rotateBackups(area, admitCopy, key, state, meta, now());
+  }
+
+  /** The required `preBulk` before a destructive op; a failed copy refuses that op unapplied. */
+  async function guardPreBulk(
+    key: string,
+    state: ReadyState,
+    run: (refuseDestructive: boolean) => Processed,
+  ): Promise<Processed> {
+    const first = run(false);
+    if (!first.destructive || first.preBulkWritten || !state.data) return first;
+    if (await writePreBulk(area, admitCopy, key, state, now())) {
+      return { ...first, preBulkWritten: true };
+    }
+    return run(true);
   }
 
   /** Pending acks applied to every still-registered client. */
@@ -223,7 +233,7 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
     }
   }
 
-  const ctx: OwnerTurnContext = { area, now, settle, removePending };
+  const ctx: OwnerTurnContext = { area, now, settle, guardPreBulk, removePending };
 
   async function collectIfDue(key: string, meta: FolderOwnerMeta, at: number) {
     if (at - (lastGcAt.get(key) ?? -Infinity) < GC_INTERVAL_MS) return meta;
@@ -293,7 +303,9 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
     const processed =
       bulk && result
         ? bulkProcessed(meta, clientId, bulk.seq, result, contact, now())
-        : processOps(state, meta, clientId, ops, policy, now(), contact);
+        : await guardPreBulk(key, state, (refuseDestructive) =>
+            processOps(state, meta, clientId, ops, policy, now(), contact, { refuseDestructive }),
+          );
     const durable = await settle(key, state, processed);
     const stored = durable?.meta.clients[clientId];
     if (!durable || !stored || stored.applied < ops[ops.length - 1].seq) {

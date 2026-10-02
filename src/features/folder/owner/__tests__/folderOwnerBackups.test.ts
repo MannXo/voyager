@@ -102,6 +102,45 @@ describe('preBulk and bulk ops', () => {
     expect(storedData(storage).folders.map((f) => f.id)).toEqual(['F']);
   });
 
+  it('refuses a removal whose preBulk cannot be written and still applies the rest of the batch', async () => {
+    const { storage, world: w, tab } = await world();
+    storage.failWhen((op, keys) => op === 'set' && keys.includes(ownerBackupKey(KEY, 'preBulk')));
+    const seqs = tab.accept(rename('F', 'B'), { kind: 'removeFolder', folderId: 'W' });
+
+    const reply = await tab.send(w.process(), seqs);
+
+    expect(reply).toMatchObject({
+      kind: 'ok',
+      applied: 2,
+      outcomes: { 1: { kind: 'saved' }, 2: { kind: 'rejected', reason: 'backup_failed' } },
+    });
+    expect(storedData(storage).folders.map((f) => `${f.id}:${f.name}`)).toEqual(['F:B', 'W:Work']);
+    expect(storedData(storage).folderContents.W).toHaveLength(1);
+  });
+
+  it('refuses a drained removal of 20 references whose preBulk is not admitted', async () => {
+    const many = Array.from({ length: 20 }, (_, n) => conversation(`c${n}`));
+    const start = folderData([folder('F', 'Good')], { F: many });
+    const storage = createFaultyStorage({ [KEY]: start });
+    const w = createWorld(storage);
+    const tab = new TestClient(w, 'tab');
+    await tab.open(w.process());
+    storage.failWhen((op, keys) => op === 'set' && keys.includes(ownerBackupKey(KEY, 'preBulk')));
+    tab.accept({
+      kind: 'removeConversations',
+      folderId: 'F',
+      ids: many.map((c) => c.conversationId),
+    });
+
+    await w.process().drain(KEY);
+
+    expect(storedData(storage)).toEqual(start);
+    expect(storedMeta(storage).clients.tab).toMatchObject({
+      applied: 1,
+      outcomes: { 1: { kind: 'rejected', reason: 'backup_failed' } },
+    });
+  });
+
   it('refuses an import whose preBulk cannot be written, and a resend gets the same answer (T7b)', async () => {
     const { storage, world: w } = await world();
     storage.failWhen((op, keys) => op === 'set' && keys.includes(ownerBackupKey(KEY, 'preBulk')));
@@ -188,6 +227,25 @@ describe('preBulk and bulk ops', () => {
     expect(storedData(storage)).toEqual(next);
     expect(slot(storage, 'preBulk')).toEqual(G);
   });
+
+  it.each(['gvFolderDataAIStudio', 'gvFolderDataChatGPT'])(
+    'refuses a replace import on %s, whose import only merges',
+    async (key) => {
+      const storage = createFaultyStorage({ [key]: G });
+      const w = createWorld(storage);
+      const file = FolderImportExportService.exportToPayload(folderData([folder('N', 'New')]));
+
+      const { reply } = await bulk(
+        w,
+        { kind: 'importFile', payload: file, strategy: 'replace', source: 'file' },
+        w.process(),
+        key,
+      );
+
+      expect(reply).toMatchObject({ outcomes: { 1: { kind: 'rejected', reason: 'unsupported' } } });
+      expect(storedData(storage, key)).toEqual(G);
+    },
+  );
 
   it('refuses another site’s file on AI Studio with the wrong-site notice', async () => {
     const aiStudio = 'gvFolderDataAIStudio';
