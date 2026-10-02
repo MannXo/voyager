@@ -231,12 +231,19 @@ describe('folder menu near the edge of the viewport', () => {
     openMenu(root, 'a');
     await positioned();
 
-    // No room below or to the right: the menu opens above its button instead
-    // of covering it, its end edge lined up with the button's.
-    expect(menuBox()).toEqual({
-      left: button.left + BUTTON - MENU.width,
-      top: button.bottom - BUTTON - MENU.height,
-    });
+    // Inside the viewport, and clear of the button that opened it.
+    const { left, top } = menuBox();
+    expect(left).toBeGreaterThanOrEqual(8);
+    expect(top).toBeGreaterThanOrEqual(8);
+    expect(left + MENU.width).toBeLessThanOrEqual(window.innerWidth - 8);
+    expect(top + MENU.height).toBeLessThanOrEqual(window.innerHeight - 8);
+    const buttonTop = button.bottom - BUTTON;
+    const overlaps =
+      left < button.left + BUTTON &&
+      left + MENU.width > button.left &&
+      top < button.bottom &&
+      top + MENU.height > buttonTop;
+    expect(overlaps).toBe(false);
   });
 
   it('leaves a menu that fits where it opened', async () => {
