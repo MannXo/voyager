@@ -10,7 +10,7 @@ import type { Folder, FolderData } from './types';
 // source row may have been torn out by an Angular refresh, so dragend never fires.
 const DRAG_HEARTBEAT_MS = 800;
 const HIDE_DELAY_MS = 100;
-export const LIBRARY_DROP_ZONE_CLASS = 'gv-library-drop-zone';
+const LIBRARY_DROP_ZONE_CLASS = 'gv-library-drop-zone';
 
 const ZONE_STYLE = `
       position: fixed;

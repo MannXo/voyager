@@ -19,7 +19,7 @@ const LIBRARY_TABLE_PART_SELECTOR = `table.mat-mdc-table, mat-table, ${LIBRARY_R
 /** Rows the hide-archived pass reads; it has never matched `tr[role="row"]`. */
 const ARCHIVABLE_ROW_SELECTOR = 'tr.mat-mdc-row, tr[mat-row]';
 const ARCHIVABLE_LINK_SELECTOR = 'a[href^="/prompts/"], a.name-btn[href*="/prompts/"]';
-export const ARCHIVED_ROW_CLASS = 'gv-conversation-archived';
+const ARCHIVED_ROW_CLASS = 'gv-conversation-archived';
 
 type BoundRow = HTMLElement & { _gvLibraryDragBound?: boolean };
 
@@ -125,7 +125,7 @@ export function watchLibraryTable(onRowsChanged: () => void): () => void {
 }
 
 /** Ids of prompts filed in a real folder; Uncategorized does not count. */
-export function collectArchivedPromptIds(data: FolderData): Set<string> {
+function collectArchivedPromptIds(data: FolderData): Set<string> {
   const archived = new Set<string>();
   for (const [folderId, conversations] of Object.entries(data.folderContents)) {
     if (folderId === AISTUDIO_ROOT_BUCKET_ID || !Array.isArray(conversations)) continue;

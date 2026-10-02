@@ -99,7 +99,7 @@ export function extractPromptId(anchor: HTMLAnchorElement): string {
 }
 
 /** The anchor's accessible title: aria-label, then title, then its text. */
-export function extractPromptTitle(anchor: HTMLAnchorElement | null): string | null {
+function extractPromptTitle(anchor: HTMLAnchorElement | null): string | null {
   if (!anchor) return null;
   return (
     normalizeText(anchor.getAttribute('aria-label')) ||
