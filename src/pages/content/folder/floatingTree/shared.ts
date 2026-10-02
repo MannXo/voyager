@@ -1,10 +1,9 @@
 import { MAX_FOLDER_DEPTH } from '@/features/folder/constants';
 import {
   type ConversationSortMode,
-  findCycleRoots,
-  isRootFolder,
-  sortFolders,
+  sortFoldersByCreation,
 } from '@/features/folder/model/folderData';
+import { type FolderLayout, buildFolderIndex } from '@/features/folder/model/folderIndex';
 import { getTranslationSyncUnsafe } from '@/utils/i18n';
 
 import { readDragPayload } from '../dragPayload';
@@ -120,53 +119,22 @@ export type ConversationDragData = {
   sourceFolderId: string;
 };
 
-/** Pinned first, then oldest first. */
-export function sortFoldersByCreation(folders: readonly Folder[]): Folder[] {
-  return [...folders].sort(
-    (a, b) => Number(!!b.pinned) - Number(!!a.pinned) || a.createdAt - b.createdAt,
-  );
-}
-
-/** Where each folder renders: every stored id exactly once, under one parent. */
-export type FolderLayout = {
-  roots: Folder[];
-  children: ReadonlyMap<string, Folder[]>;
-};
+export { sortFoldersByCreation };
+export type { FolderLayout };
 
 /**
  * Lays out folders for display without rewriting them. A repeated id keeps its
  * first record. The folders `findCycleRoots` picks to cut each parent cycle
  * stand in as roots, in stored order after the real ones, and the rest of the
  * cycle hangs under them as stored. Removal cuts cycles at the same folders.
+ * The layout is the folder index's (`buildFolderIndex`), so every tree reads
+ * one projection.
  */
 export function layoutFolders(
   data: FolderData,
   order?: TreeSiteOptions['folderOrder'],
 ): FolderLayout {
-  const sort = (folders: Folder[]) =>
-    order === 'created' ? sortFoldersByCreation(folders) : sortFolders(folders);
-  const unique = new Map<string, Folder>();
-  for (const folder of data.folders) if (!unique.has(folder.id)) unique.set(folder.id, folder);
-  const cycleRoots = findCycleRoots(data.folders);
-
-  const byParent = new Map<string, Folder[]>();
-  const realRoots: Folder[] = [];
-  const standIns: Folder[] = [];
-  for (const folder of unique.values()) {
-    if (isRootFolder(folder, unique)) {
-      realRoots.push(folder);
-    } else if (cycleRoots.has(folder.id)) {
-      standIns.push(folder);
-    } else {
-      const siblings = byParent.get(folder.parentId as string) ?? [];
-      siblings.push(folder);
-      byParent.set(folder.parentId as string, siblings);
-    }
-  }
-
-  const children = new Map<string, Folder[]>();
-  for (const [parentId, kids] of byParent) children.set(parentId, sort(kids));
-  return { roots: [...sort(realRoots), ...standIns], children };
+  return buildFolderIndex(data).layout(order);
 }
 
 /** Which drags a drop target accepts at dragover, when the payload cannot be read yet. */
