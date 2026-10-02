@@ -3,7 +3,14 @@ import { describe, expect, it } from 'vitest';
 import type { ConversationReference, Folder, FolderData } from '@/core/types/folder';
 import { layoutFolders } from '@/pages/content/folder/floatingTree/shared';
 
-import { findCycleRoots, isRootFolder, sortFolders } from '../folderData';
+import {
+  type ConversationSortMode,
+  findCycleRoots,
+  isRootFolder,
+  ownBucket,
+  sortConversationsByPriority,
+  sortFolders,
+} from '../folderData';
 import { buildFolderIndex } from '../folderIndex';
 
 // ---------------------------------------------------------------------------
@@ -291,5 +298,77 @@ describe('layoutFolders', () => {
         [...expected.children].map(([key, kids]) => [key, positions(data, kids)]),
       );
     }
+  });
+});
+
+/** `orderConversations` from floatingTree/FolderTree.tsx, over the bucket it reads, verbatim. */
+function oldOrderedRefs(
+  data: FolderData,
+  folderId: string,
+  conversationOrder: 'stored' | undefined,
+  conversationSortMode: ConversationSortMode,
+): readonly ConversationReference[] {
+  const conversations = ownBucket(data.folderContents, folderId) ?? [];
+  return conversationOrder === 'stored'
+    ? conversations
+    : sortConversationsByPriority(conversations, conversationSortMode);
+}
+
+/**
+ * Buckets that hit every comparator branch: mixed `starred`, missing, tied and
+ * equal `sortIndex`, tied or missing `lastOpenedAt`/`addedAt`, repeated ids.
+ */
+function randomBuckets(seed: number): FolderData {
+  const random = seeded(seed);
+  const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)];
+  const folderContents: Record<string, ConversationReference[]> = {};
+  for (const bucketId of ['__root__', 'a', 'b', 'empty']) {
+    const size = bucketId === 'empty' ? 0 : Math.floor(random() * 14);
+    folderContents[bucketId] = Array.from({ length: size }, (_, i) => {
+      const conversationId = `c${Math.floor(random() * 8)}`;
+      return {
+        conversationId,
+        title: `${bucketId}-${i}`,
+        url: `/app/${conversationId}`,
+        addedAt: pick([0, 1, 1, 2]),
+        lastOpenedAt: pick([undefined, undefined, 1, 3]),
+        starred: pick([undefined, true, false, true]),
+        sortIndex: pick([undefined, 0, 1, 1, 2, 5]),
+      };
+    });
+  }
+  return { folders: [], folderContents };
+}
+
+describe('buildFolderIndex orderedRefs', () => {
+  it.each(Array.from({ length: 120 }, (_, i) => i))(
+    'orders random buckets #%i like the shared tree',
+    (seed) => {
+      const data = randomBuckets(seed + 1);
+      const index = buildFolderIndex(data);
+      for (const bucketId of ['__root__', 'a', 'b', 'empty', 'missing', 'constructor']) {
+        const bucket = ownBucket(data.folderContents, bucketId) ?? [];
+        const at = (refs: readonly ConversationReference[]) => refs.map((r) => bucket.indexOf(r));
+        for (const mode of ['manual', 'recent'] as const) {
+          expect(at(index.orderedRefs(bucketId, mode)), `${bucketId} ${mode}`).toEqual(
+            at(oldOrderedRefs(data, bucketId, undefined, mode)),
+          );
+          expect(index.orderedRefs(bucketId, mode)).toBe(index.orderedRefs(bucketId, mode));
+        }
+        expect(index.orderedRefs(bucketId, 'stored')).toEqual(
+          oldOrderedRefs(data, bucketId, 'stored', 'manual'),
+        );
+      }
+    },
+  );
+
+  it('returns a stored bucket itself and never rewrites it', () => {
+    const data = randomBuckets(3);
+    const before = JSON.stringify(data);
+    const index = buildFolderIndex(data);
+    expect(index.orderedRefs('a', 'stored')).toBe(data.folderContents.a);
+    index.orderedRefs('a', 'manual');
+    index.orderedRefs('a', 'recent');
+    expect(JSON.stringify(data)).toBe(before);
   });
 });

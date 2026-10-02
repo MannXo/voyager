@@ -1,15 +1,20 @@
 import type { ConversationReference, Folder, FolderData } from '@/core/types/folder';
 
 import {
+  type ConversationSortMode,
   findCycleRoots,
   isRootFolder,
   ownBucket,
+  sortConversationsByPriority,
   sortFolders,
   sortFoldersByCreation,
 } from './folderData';
 
 /** `created`: pinned first, then oldest first. Default: pinned, then sortIndex, then name. */
 export type FolderOrder = 'created' | undefined;
+
+/** `stored`: a bucket as stored. Otherwise starred first, then the sort mode (`sortConversationsByPriority`). */
+export type ConversationOrder = ConversationSortMode | 'stored';
 
 /** Where each folder renders: every stored id exactly once, under one parent. */
 export type FolderLayout = {
@@ -49,6 +54,14 @@ export interface FolderIndex {
   /** The references a folder's own bucket holds, in stored order. */
   refs(folderId: string): readonly ConversationReference[];
   /**
+   * A bucket's references in the shared tree's order: as stored, or starred
+   * first, then manual `sortIndex` or recency, with the comparator's fallbacks.
+   * A view that shows only some references must sort that subset itself: with
+   * missing `sortIndex` values the manual order is not transitive, so filtering
+   * this list can differ from sorting the filtered references.
+   */
+  orderedRefs(folderId: string, order: ConversationOrder): readonly ConversationReference[];
+  /**
    * The buckets holding a reference whose `conversationId` is exactly this id,
    * each once, in bucket order. Legacy URL or `c_` spellings are not matched;
    * native-row checks keep `buildConversationMembership` for those.
@@ -64,6 +77,10 @@ export function buildFolderIndex(data: FolderData): FolderIndex {
   const layouts = new Map<FolderOrder, FolderLayout>();
   let byStoredParent: Map<string | null | undefined, Folder[]> | null = null;
   let membership: Map<string, string[]> | null = null;
+  const orderedBuckets = new Map<
+    ConversationOrder,
+    Map<string, readonly ConversationReference[]>
+  >();
 
   const uniqueFolders = (): Map<string, Folder> => {
     if (folderById) return folderById;
@@ -128,6 +145,21 @@ export function buildFolderIndex(data: FolderData): FolderIndex {
       return byStoredParent.get(parentId) ?? NONE;
     },
     refs: (folderId) => ownBucket(data.folderContents, folderId) ?? NONE,
+    orderedRefs(folderId, order) {
+      const refs = ownBucket(data.folderContents, folderId) ?? NONE;
+      if (order === 'stored') return refs;
+      let sorted = orderedBuckets.get(order);
+      if (!sorted) {
+        sorted = new Map();
+        orderedBuckets.set(order, sorted);
+      }
+      let bucket = sorted.get(folderId);
+      if (!bucket) {
+        bucket = sortConversationsByPriority(refs, order);
+        sorted.set(folderId, bucket);
+      }
+      return bucket;
+    },
     bucketsHolding(conversationId) {
       if (!membership) {
         membership = new Map();
