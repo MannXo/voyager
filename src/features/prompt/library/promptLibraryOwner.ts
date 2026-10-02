@@ -15,6 +15,7 @@
 import { StorageKeys } from '@/core/types/common';
 import { getPromptNameComparisonKey, getPromptNameConflictIds } from '@/core/utils/promptName';
 import type { PromptItem } from '@/features/backup/types/backup';
+import { type Serialize, createWriteQueue } from '@/features/storage/writeQueue';
 
 import { type PromptImportStats, mergeImportedPrompts } from './mergeImportedPrompts';
 
@@ -203,14 +204,12 @@ export function applyPromptLibraryOp(
   }
 }
 
-export function createPromptLibraryOwner(options: { area: PromptLibraryArea }): PromptLibraryOwner {
-  let queue: Promise<unknown> = Promise.resolve();
-
-  const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
-    const next = queue.then(operation, operation);
-    queue = next.catch(() => undefined);
-    return next;
-  };
+export function createPromptLibraryOwner(options: {
+  area: PromptLibraryArea;
+  /** A queue shared with other owners; a private one by default. */
+  serialize?: Serialize;
+}): PromptLibraryOwner {
+  const serialize = options.serialize ?? createWriteQueue();
 
   const readRaw = async (): Promise<unknown> =>
     (await options.area.get(PROMPT_LIBRARY_KEY))?.[PROMPT_LIBRARY_KEY];

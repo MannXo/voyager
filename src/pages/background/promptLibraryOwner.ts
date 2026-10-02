@@ -8,6 +8,7 @@ import {
   isPromptLibraryApplyMessage,
 } from '@/features/prompt/library/promptLibraryMessages';
 import { createPromptLibraryOwner } from '@/features/prompt/library/promptLibraryOwner';
+import { backgroundWriteQueue } from '@/features/storage/writeQueue';
 
 import { isTrustedExtensionPageSender } from './runtimeMessageRouting';
 
@@ -16,6 +17,7 @@ export const promptLibraryOwner = createPromptLibraryOwner({
     get: (key) => chrome.storage.local.get(key),
     set: (items) => chrome.storage.local.set(items),
   },
+  serialize: backgroundWriteQueue,
 });
 
 /**
