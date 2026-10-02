@@ -1,0 +1,235 @@
+import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
+
+const ICON_CLASS = 'mat-icon notranslate google-symbols mat-ligature-font mat-icon-no-color';
+
+/** The floating multi-select toolbar and the listeners its drag handle holds. */
+export type SelectionToolbar = { indicator: HTMLElement; cleanup: () => void };
+
+export type SelectionToolbarState = {
+  active: boolean;
+  count: number;
+  /** Where multi-select began: folder rows remove from the folder, native rows delete chats. */
+  source: 'folder' | 'native' | null;
+  onDelete: () => void;
+  onExit: () => void;
+};
+
+/** Lets the toolbar be dragged anywhere on the page by its body (not its buttons). */
+function makeToolbarDraggable(indicator: HTMLElement): () => void {
+  let isDragging = false;
+  let initialX = 0;
+  let initialY = 0;
+  let xOffset = 0;
+  let yOffset = 0;
+
+  // Document-level mousemove/mouseup are attached only while a drag is in
+  // progress (mousedown → mouseup). Attaching them permanently leaked one
+  // listener pair per floating-mode/sidebar-mode switch, because that switch
+  // path rebuilds the indicator without running the cleanup task list.
+  const drag = (e: MouseEvent) => {
+    if (!isDragging) return;
+    e.preventDefault();
+    xOffset = e.clientX - initialX;
+    yOffset = e.clientY - initialY;
+    indicator.style.transform = `translate3d(calc(-50% + ${xOffset}px), ${yOffset}px, 0)`;
+  };
+
+  const dragEnd = () => {
+    isDragging = false;
+    indicator.style.cursor = 'move';
+    document.removeEventListener('mousemove', drag);
+    document.removeEventListener('mouseup', dragEnd);
+  };
+
+  const dragStart = (e: MouseEvent) => {
+    // Ignore if clicking buttons inside the indicator
+    if ((e.target as HTMLElement).closest('button')) return;
+    initialX = e.clientX - xOffset;
+    initialY = e.clientY - yOffset;
+    if (e.target === indicator || indicator.contains(e.target as Node)) {
+      isDragging = true;
+      indicator.style.cursor = 'grabbing';
+      document.addEventListener('mousemove', drag);
+      document.addEventListener('mouseup', dragEnd);
+    }
+  };
+
+  indicator.addEventListener('mousedown', dragStart);
+  // If the indicator is torn down mid-drag, the document-level listeners must
+  // not outlive it. removeEventListener is idempotent, so this is safe even
+  // when no drag is active.
+  return () => {
+    indicator.removeEventListener('mousedown', dragStart);
+    document.removeEventListener('mousemove', drag);
+    document.removeEventListener('mouseup', dragEnd);
+  };
+}
+
+function createToolbarContent(): HTMLElement {
+  const content = document.createElement('div');
+  content.className = 'gv-multi-select-indicator-content';
+  // Ensure content (text/icon) doesn't capture drag events aggressively
+  content.style.pointerEvents = 'none';
+
+  const icon = document.createElement('mat-icon');
+  icon.className = ICON_CLASS;
+  icon.setAttribute('role', 'img');
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = 'check_circle';
+
+  const text = document.createElement('span');
+  text.className = 'gv-multi-select-indicator-text';
+  text.textContent = '0 selected';
+  text.dataset.selectionCount = 'true';
+
+  content.append(icon, text);
+  return content;
+}
+
+export function createSelectionToolbar(): SelectionToolbar {
+  const indicator = document.createElement('div');
+  indicator.className = 'gv-multi-select-indicator';
+  indicator.dataset.multiSelectIndicator = 'true';
+
+  Object.assign(indicator.style, {
+    position: 'fixed',
+    bottom: '24px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: '9999', // Ensure it's above everything
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+    cursor: 'move', // Indicate it's draggable
+    transition: 'opacity 0.2s ease, transform 0.1s ease', // Only animate non-position props for performance
+    // Prevent text selection while dragging
+    userSelect: 'none',
+    // Ensure it has a background so IT covers content behind it
+    backgroundColor: 'var(--gem-sys-color-surface-container, #f0f4f9)', // Fallback color
+    borderRadius: '24px',
+    padding: '8px 16px',
+    alignItems: 'center',
+    gap: '12px',
+    border: '1px solid var(--gem-sys-color-outline-variant, rgba(0,0,0,0.1))',
+  });
+
+  const cleanup = makeToolbarDraggable(indicator);
+  indicator.appendChild(createToolbarContent());
+
+  // Actions container (populated by renderSelectionToolbar)
+  const actionsContainer = document.createElement('div');
+  actionsContainer.className = 'gv-multi-select-actions';
+  actionsContainer.dataset.multiSelectActions = 'true';
+  // Re-enable pointer events for buttons
+  actionsContainer.style.pointerEvents = 'auto';
+  indicator.appendChild(actionsContainer);
+
+  return { indicator, cleanup };
+}
+
+/**
+ * Places the toolbar: in the folder panel while it is mounted, otherwise in a
+ * floating host on the page. Owns the drag listeners of every toolbar it made.
+ */
+export class SelectionToolbarHost {
+  private floatingHost: HTMLElement | null = null;
+  private readonly cleanups = new Map<HTMLElement, () => void>();
+
+  constructor(private readonly getPanel: () => HTMLElement | null | undefined) {}
+
+  createIndicator(): HTMLElement {
+    const { indicator, cleanup } = createSelectionToolbar();
+    this.cleanups.set(indicator, cleanup);
+    return indicator;
+  }
+
+  /** Remove listeners attached to the old toolbars during a sidebar remount. */
+  unmount(): void {
+    for (const cleanup of this.cleanups.values()) cleanup();
+    this.cleanups.clear();
+  }
+
+  removeFloating(): void {
+    for (const [indicator, cleanup] of this.cleanups) {
+      if (this.floatingHost?.contains(indicator)) {
+        cleanup();
+        this.cleanups.delete(indicator);
+      }
+    }
+    this.floatingHost?.remove();
+    this.floatingHost = null;
+  }
+
+  containsFloating(target: Node): boolean {
+    return !!this.floatingHost?.contains(target);
+  }
+
+  /** The host showing the toolbar; with `create`, a floating one is made when none is shown. */
+  find(create: boolean): HTMLElement | null {
+    const panel = this.getPanel();
+    if (panel?.isConnected) return panel;
+    if (create && !this.floatingHost?.isConnected) {
+      const host = document.createElement('div');
+      host.className = 'gv-folder-container gv-multi-select-floating-host';
+      host.dataset.multiSelectFloatingHost = 'true';
+      host.appendChild(this.createIndicator());
+      document.body.appendChild(host);
+      this.floatingHost = host;
+    }
+    return this.floatingHost?.isConnected ? this.floatingHost : null;
+  }
+}
+
+function actionButton(modifier: string, icon: string, titleKey: string, onClick: () => void) {
+  const button = document.createElement('button');
+  button.className = `gv-multi-select-action-btn ${modifier}`;
+  button.innerHTML = `<mat-icon role="img" class="${ICON_CLASS}" aria-hidden="true">${icon}</mat-icon>`;
+  button.title = t(titleKey);
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+/** Shows the mode, the selected count and the actions for `state` in `host`'s toolbar. */
+export function renderSelectionToolbar(host: HTMLElement | null, state: SelectionToolbarState) {
+  host?.classList.toggle('gv-multi-select-mode', state.active);
+
+  const countElement = host?.querySelector('[data-selection-count="true"]');
+  if (countElement) {
+    countElement.textContent = t('folder_multi_select_count').replace(
+      '{count}',
+      String(state.count),
+    );
+  }
+
+  const actionsContainer = host?.querySelector('[data-multi-select-actions="true"]');
+  if (!actionsContainer) return;
+  actionsContainer.innerHTML = '';
+  if (!state.active) return;
+  // Folder multi-select removes from the folder; native multi-select deletes from Gemini.
+  if (state.source) {
+    actionsContainer.appendChild(
+      actionButton('gv-multi-select-delete-btn', 'delete', 'batch_delete_button', state.onDelete),
+    );
+  }
+  actionsContainer.appendChild(
+    actionButton('gv-multi-select-exit-btn', 'close', 'folder_multi_select_exit', state.onExit),
+  );
+}
+
+/** Shakes a row that cannot join the selection (a chat from another folder). */
+export function flashInvalidSelection(element: HTMLElement): void {
+  // Remove existing class (if any) to allow animation restart on rapid clicks
+  element.classList.remove('gv-invalid-selection');
+  // Force reflow to ensure animation restarts (see: CSS Triggers)
+  void element.offsetWidth;
+  element.classList.add('gv-invalid-selection');
+  element.addEventListener(
+    'animationend',
+    () => {
+      element.classList.remove('gv-invalid-selection');
+    },
+    { once: true },
+  );
+  // Haptic feedback on mobile devices: two short vibrations
+  if ('vibrate' in navigator) {
+    navigator.vibrate([30, 20, 30]);
+  }
+}
