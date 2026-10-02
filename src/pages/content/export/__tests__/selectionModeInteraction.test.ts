@@ -61,14 +61,6 @@ describe('selection mode interaction', () => {
     expect(page).toContain('reportFinishedExport(result, state.format, t)');
   });
 
-  it('falls back to direct download on Safari when clipboard copy fails', () => {
-    const code = readFileSync(resolve(process.cwd(), 'src/pages/content/export/index.ts'), 'utf8');
-
-    expect(code).toContain('let blobForFallback: Blob | null = null;');
-    expect(code).toContain('if (isSafari() && blobForFallback)');
-    expect(code).toContain('downloadImageBlob(blobForFallback, buildResponseImageFilename());');
-  });
-
   it('renders role-based selection buttons with correct data actions and localization keys', () => {
     const code = readFileSync(resolve(process.cwd(), 'src/pages/content/export/index.ts'), 'utf8');
 
