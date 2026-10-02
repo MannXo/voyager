@@ -1,24 +1,24 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { formatResetCountdown, formatUpdatedAgo, getUsagePillMode } from '../index';
 import {
   extractUsagePayload,
-  formatResetCountdown,
   formatResetLabel,
-  formatUpdatedAgo,
-  getUsagePillMode,
   hydrateUsageResetEpochs,
-  isUsagePathname,
-  mergeAutomaticUsageSnapshots,
-  mergeUsageSnapshots,
   parseResetEpoch,
   parseUsageRpcResponse,
   scrapeUsageFromDocument,
+} from '../usageParsing';
+import {
+  isUsagePathname,
+  mergeAutomaticUsageSnapshots,
+  mergeUsageSnapshots,
   selectUsageSnapshotForAccount,
   usageAccountKeyFromPathname,
   usageCacheKeyForAccount,
   usagePathForPathname,
   usageUrlForPathname,
-} from '../index';
+} from '../usageSnapshot';
 
 describe('getUsagePillMode', () => {
   it('shows an actionable empty pill before the first usage snapshot arrives', () => {
