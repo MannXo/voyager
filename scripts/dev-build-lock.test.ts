@@ -1,5 +1,5 @@
 import { type ChildProcessWithoutNullStreams, spawn } from 'child_process';
-import { type AddressInfo, type Server, createServer } from 'net';
+import { type AddressInfo, type Server, createConnection, createServer } from 'net';
 import { resolve } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -158,4 +158,21 @@ describe('dev build lock', () => {
     expect(foreignPorts).toEqual([port]);
     await lock.release();
   });
+
+  it('releases even when a connected client never closes', async () => {
+    const port = await freePort();
+    const lock = await acquireDevBuildLock('test', { port });
+    // allowHalfOpen: it keeps its sending side open after the holder's greeting.
+    const client = createConnection({ port, host: '127.0.0.1', allowHalfOpen: true });
+    client.on('error', () => undefined);
+    // Wait for the holder's greeting, so the holder has accepted the connection.
+    await new Promise<void>((done) => client.once('data', () => done()));
+
+    await lock.release();
+
+    // The port is free again: a second build takes the lock at once.
+    const next = await acquireDevBuildLock('test', { port, foreignProbeLimit: 1 });
+    await next.release();
+    client.destroy();
+  }, 5000);
 });

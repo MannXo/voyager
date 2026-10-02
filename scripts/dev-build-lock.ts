@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { type Server, createConnection, createServer } from 'net';
+import { type Server, type Socket, createConnection, createServer } from 'net';
 
 /**
  * Cross-process lock that serializes Chrome dev builds sharing one outDir.
@@ -40,9 +40,12 @@ export function devBuildLockPort(key: string): number {
   return PORT_RANGE_START + (hash % PORT_RANGE_SIZE);
 }
 
-function listen(port: number): Promise<Server | null> {
+function listen(port: number): Promise<{ server: Server; sockets: Set<Socket> } | null> {
   return new Promise((resolve, reject) => {
+    const sockets = new Set<Socket>();
     const server = createServer((socket) => {
+      sockets.add(socket);
+      socket.on('close', () => sockets.delete(socket));
       // A waiter may reset the probe connection; that must not crash the build.
       socket.on('error', () => undefined);
       socket.end(`${GREETING} ${process.pid}\n`);
@@ -56,7 +59,7 @@ function listen(port: number): Promise<Server | null> {
     // `exclusive` keeps cluster workers from sharing the handle.
     server.listen({ port, host: '127.0.0.1', exclusive: true }, () => {
       server.unref();
-      resolve(server);
+      resolve({ server, sockets });
     });
   });
 }
@@ -114,10 +117,23 @@ export async function acquireDevBuildLock(
   let foreignProbes = 0;
   let silentProbes = 0;
   for (;;) {
-    const server = await listen(port);
-    if (server) {
+    let held: Awaited<ReturnType<typeof listen>>;
+    try {
+      held = await listen(port);
+    } catch {
+      // Loopback binding denied (e.g. a sandbox): build unlocked rather than fail.
+      onForeignListener?.(port);
+      return { release: async () => undefined };
+    }
+    if (held) {
+      const { server, sockets } = held;
       return {
-        release: () => new Promise((resolve) => server.close(() => resolve())),
+        release: () =>
+          new Promise((resolve) => {
+            // A connected client that never closes would otherwise keep close() pending.
+            for (const socket of sockets) socket.destroy();
+            server.close(() => resolve());
+          }),
       };
     }
     const holder = await probe(port);
