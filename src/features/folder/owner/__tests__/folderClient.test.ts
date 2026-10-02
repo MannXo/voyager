@@ -7,6 +7,7 @@ import type { FolderOwnerCore } from '../folderOwnerCore';
 import type { FolderOwnerRequest, FolderOwnerResponse } from '../folderOwnerMessages';
 import { FOLDER_SITE_POLICIES } from '../folderOwnerPolicy';
 import { dispatchFolderOwnerRequest } from '../folderOwnerRequests';
+import { ownerMetaKey } from '../folderOwnerState';
 import { createFaultyStorage } from './faultyStorage';
 import {
   KEY,
@@ -118,6 +119,47 @@ describe('FolderClient', () => {
     await until(() => expect(outcome).toEqual({ kind: 'saved' }));
     expect(client.status()).toBe('ready');
     expect(names(storedData(storage)).F).toBe('B');
+  });
+
+  it('T3d: a reconcile while the pending-key write fails keeps showing not saved', async () => {
+    const { storage, client, sent, timerCount } = clientWorld();
+    await client.open();
+    storage.failWhen((op, keys) => op === 'set' && keys[0].startsWith('gvFolderOwner:pending:'));
+    void client.run(rename('F', 'B') as never);
+    await until(() => expect(timerCount()).toBe(1));
+
+    // The status shown whenever the client retries the failing write.
+    const shown: string[] = [];
+    storage.onCall((_call, op, keys) => {
+      if (op === 'set' && keys[0].startsWith('gvFolderOwner:pending:')) shown.push(client.status());
+    });
+    // A K-only change (for example another writer) makes the client reconcile.
+    await storage.area.set({ [KEY]: folderData([folder('F', 'A')]) });
+    await until(() => expect(sent).toContain('gv.folderOwner.snapshot'));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(shown.every((status) => status === 'delayed')).toBe(true);
+    expect(client.status()).toBe('delayed');
+    expect(names(client.view()).F).toBe('B');
+  });
+
+  it('after a stop, a scheduled retry never publishes the edit the user was told failed', async () => {
+    const { storage, client, fireTimers, timerCount } = clientWorld();
+    await client.open();
+    storage.failWhen((op, keys) => op === 'set' && keys[0].startsWith('gvFolderOwner:pending:'));
+    const edit = client.run(rename('F', 'B') as never);
+    await until(() => expect(timerCount()).toBe(1));
+    storage.failWhen(null);
+
+    // The meta is recreated under a new epoch: this client must reload.
+    const meta = storedMeta(storage);
+    await storage.area.set({ [ownerMetaKey(KEY)]: { ...meta, epoch: 'other', rev: meta.rev + 1 } });
+    await expect(edit).resolves.toMatchObject({ kind: 'failed', reason: 'reload_required' });
+    fireTimers();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(pendingKeys(storage)).toEqual([]);
+    expect(client.status()).toBe('reload_required');
   });
 
   it('T4d: rides out owner read failures and keeps accepting edits afterwards', async () => {

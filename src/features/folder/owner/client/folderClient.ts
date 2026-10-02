@@ -70,6 +70,8 @@ export class FolderClient implements FolderCommands {
   private sending = false;
   private disposed = false;
   private subscribed = true;
+  /** A pending-key `set` is failing: the status stays "Not saved" until one succeeds (§7.5). */
+  private storageFailing = false;
   /** Set while detached (§7.7): resolves once no op is still pending. */
   private allAccepted: (() => void) | null = null;
   private readonly timers = new Set<() => void>();
@@ -128,13 +130,13 @@ export class FolderClient implements FolderCommands {
       ackedThrough: this.acked,
       ...(this.base ? { epoch: this.base.epoch } : {}),
     });
-    if (!reply || this.disposed) return;
+    if (!reply || this.stopped()) return;
     if (reply.kind === 'ready' || reply.kind === 'empty' || reply.kind === 'invalid') {
       const data = reply.kind === 'ready' ? reply.data : null;
       const dataHash = reply.kind === 'ready' ? reply.dataHash : (this.base?.dataHash ?? '');
       this.base = { data, epoch: reply.epoch, rev: reply.rev, dataHash, applied: reply.applied };
       // An invalid K waits for the recovery panel (P3); edits stay queued, never applied to it.
-      this.state = reply.kind === 'invalid' ? 'read_only' : 'ready';
+      this.state = reply.kind === 'invalid' ? 'read_only' : this.settledState();
       this.retry.reset();
       void this.publish();
       return;
@@ -169,7 +171,7 @@ export class FolderClient implements FolderCommands {
 
   /** Writes pending keys one at a time in seq order, then sends. */
   private async publish(): Promise<void> {
-    if (this.publishing || !this.base || this.state === 'read_only') return;
+    if (this.publishing || !this.base || this.state === 'read_only' || this.stopped()) return;
     this.publishing = true;
     try {
       for (let op = this.nextPending(); op; op = this.nextPending()) {
@@ -186,12 +188,14 @@ export class FolderClient implements FolderCommands {
           await this.options.area.set({ [pendingOpKey(this.clientId, op.seq)]: entry });
         } catch {
           // Quota or storage failure: the op stays pending and visible; "Not saved" (§7.5).
+          this.storageFailing = true;
           this.state = 'delayed';
           this.later(() => void this.publish(), this.retry.next());
           return;
         }
-        if (this.disposed) return;
+        if (this.stopped()) return;
         op.state = 'accepted';
+        this.storageFailing = false;
         if (this.state === 'delayed') this.state = 'ready';
       }
     } finally {
@@ -201,12 +205,23 @@ export class FolderClient implements FolderCommands {
     void this.sendBatch();
   }
 
+  /** The next op to publish; one that already failed (for example after a stop) never is. */
   private nextPending(): ClientOp | undefined {
-    return this.disposed ? undefined : this.ops.find((op) => op.state === 'pending');
+    if (this.disposed) return undefined;
+    return this.ops.find((op) => op.state === 'pending' && !op.outcome);
+  }
+
+  private stopped(): boolean {
+    return this.disposed || this.state === 'reload_required';
+  }
+
+  /** `ready`, unless a pending-key write is still failing. */
+  private settledState(): FolderCommandsStatus {
+    return this.storageFailing ? 'delayed' : 'ready';
   }
 
   private async sendBatch(): Promise<void> {
-    if (this.sending || !this.base) return;
+    if (this.sending || !this.base || this.stopped()) return;
     const batch = sendable(this.ops, this.acked, this.batchLimit);
     if (batch.length === 0) return;
     this.sending = true;
@@ -219,7 +234,7 @@ export class FolderClient implements FolderCommands {
       ackedThrough: this.acked,
     });
     this.sending = false;
-    if (!reply || this.disposed) return;
+    if (!reply || this.stopped()) return;
     if (reply.kind === 'ok') {
       this.onOutcomes(reply.outcomes, reply.rev);
       void this.sendBatch();
@@ -237,7 +252,7 @@ export class FolderClient implements FolderCommands {
     }
     this.acked = settledPrefix(this.ops, this.acked);
     this.batchLimit = MAX_BATCH_OPS;
-    this.state = this.state === 'delayed' ? 'ready' : this.state;
+    if (this.state === 'delayed') this.state = this.settledState();
     this.retry.reset();
     this.prune();
     if (this.base && this.base.rev < rev) this.awaitEcho(rev);
@@ -276,6 +291,7 @@ export class FolderClient implements FolderCommands {
   private stop(): void {
     this.state = 'reload_required';
     for (const op of this.ops) if (!op.outcome) deliver(op, failed('reload_required'));
+    this.allAccepted?.();
   }
 
   /** The reply's commit should arrive as an event; ask for a snapshot if it does not. */
@@ -286,13 +302,14 @@ export class FolderClient implements FolderCommands {
   }
 
   private async snapshot(): Promise<void> {
+    if (this.stopped()) return;
     if (this.state === 'ready') this.state = 'reconciling';
     const reply = await this.request({
       type: 'gv.folderOwner.snapshot',
       key: this.options.key,
       clientId: this.clientId,
     });
-    if (!reply || this.disposed || !this.base) return;
+    if (!reply || this.stopped() || !this.base) return;
     if (reply.kind !== 'ready' && reply.kind !== 'empty' && reply.kind !== 'invalid') {
       this.onRefusal(reply, () => void this.snapshot());
       return;
@@ -303,12 +320,15 @@ export class FolderClient implements FolderCommands {
       const dataHash = reply.kind === 'ready' ? reply.dataHash : this.base.dataHash;
       this.adopt({ data, epoch: reply.epoch, rev: reply.rev, dataHash, applied: reply.applied });
     }
-    this.state = reply.kind === 'invalid' ? 'read_only' : 'ready';
-    if (this.state === 'ready') void this.publish();
+    if (reply.kind === 'invalid') this.state = 'read_only';
+    else if (this.state === 'reconciling' || this.state === 'read_only') {
+      this.state = this.settledState();
+      void this.publish();
+    }
   }
 
   private onStorageChange(changes: Record<string, StorageChange>): void {
-    if (!this.base || this.disposed) return;
+    if (!this.base || this.stopped()) return;
     const change = classifyChange(this.base, this.options.key, this.clientId, changes);
     if (change.kind === 'adopt') this.adopt(change.base);
     else if (change.kind === 'reconcile') void this.snapshot();
@@ -333,7 +353,7 @@ export class FolderClient implements FolderCommands {
     try {
       return await this.options.send(message);
     } catch {
-      if (this.disposed) return null;
+      if (this.stopped()) return null;
       this.state = this.state === 'loading' ? 'loading' : 'delayed';
       this.later(() => void this.retryRequest(message), this.retry.next());
       return null;
