@@ -1,3 +1,15 @@
+import { DefaultModelPreferences } from './preferences';
+import type { DefaultModelSetting, DefaultThinkingLevel } from './preferences';
+
+// Retry policy and composer focus belong to the automatic-application session.
+type PickerInteraction = {
+  shouldYield: () => boolean;
+  stop: () => void;
+  failed: () => void;
+  resetFailures: () => void;
+  focusInput: () => void;
+};
+
 // Gemini may use either role="menuitemradio" or role="menuitem" depending on the UI variant.
 // The 2026 redesign uses <gem-menu-item data-mode-id="..." role="menuitem">.
 const MODE_ITEM_SELECTOR = '[role="menuitemradio"], [role="menuitem"]';
@@ -27,14 +39,243 @@ const MODE_SWITCH_OBSERVER_ROOT_SELECTOR = [
 const EXTENDED_THINKING_TOGGLE_JSLOG_ID = '323336';
 
 export class ModelPicker {
-  public mayContainModeSwitchContainer(root: HTMLElement): boolean {
+  private isLocked = false;
+
+  public constructor(private readonly preferences: DefaultModelPreferences) {}
+
+  public describeItem(item: HTMLElement) {
+    const kind = this.isInlineExtendedThinkingToggle(item)
+      ? 'inline-thinking'
+      : this.isNestedThinkingLevelItem(item)
+        ? 'nested-thinking'
+        : 'model';
+    return {
+      kind,
+      id: this.getModelIdFromItem(item),
+      name: this.getModelNameFromItem(item),
+      thinkingLabel: this.getThinkingLevelLabel(item),
+    };
+  }
+
+  public describeMenu(panel: HTMLElement) {
+    const items = Array.from(panel.querySelectorAll<HTMLElement>(MODE_ITEM_SELECTOR));
+    const kind =
+      panel.matches('.cdk-overlay-pane') && this.isThinkingLevelSubmenuPane(panel)
+        ? 'thinking'
+        : panel.querySelector('[data-mode-id], .mode-title, .title-and-description')
+          ? 'model'
+          : 'other';
+    const thinkingRow = this.findThinkingLevelTriggerRow();
+    const nestedThinking =
+      thinkingRow &&
+      panel.contains(thinkingRow) &&
+      thinkingRow.querySelector('gem-menu-item, [role="menuitem"]')
+        ? thinkingRow
+        : null;
+    return {
+      kind,
+      items,
+      inlineThinking: this.findInlineExtendedThinkingToggle(panel),
+      nestedThinking,
+    };
+  }
+
+  public async selectModel(
+    targetModel: DefaultModelSetting,
+    interaction: PickerInteraction,
+  ): Promise<'switched' | 'already-selected' | 'failed'> {
+    // Share trigger discovery and pill matching with the loop's fast path.
+    const selectorBtn = this.findSelectorButton();
+    if (!selectorBtn) return 'failed';
+
+    // An unreadable pill is still painting; let the next tick retry.
+    const currentLines = this.readTriggerPillLines();
+    if (!currentLines.length) return 'failed';
+    if (this.preferences.modelMatchesLines(targetModel, currentLines)) {
+      interaction.stop();
+      return 'already-selected';
+    }
+
+    if (interaction.shouldYield()) {
+      interaction.stop();
+      return 'failed';
+    }
+    if (this.isLocked) return 'failed'; // Prevent concurrent locks
+    this.isLocked = true;
+
+    try {
+      selectorBtn.click();
+
+      const menuPanel = await this.waitForModeSwitchMenuPanel(1500);
+      if (!menuPanel) {
+        // Menu UI may have been restructured (e.g. Gemini redesign). Close any opened
+        // menu and count this as a failure so we don't loop forever toggling the trigger.
+        document.body.click();
+        interaction.failed();
+        return 'failed';
+      }
+
+      const item = this.findTargetModel(menuPanel, targetModel);
+      if (!item) {
+        document.body.click();
+        interaction.failed();
+        return 'failed';
+      }
+      if (!this.isModelItemSelected(item)) {
+        item.click();
+        interaction.focusInput();
+        return 'switched';
+      }
+      document.body.click();
+      interaction.stop();
+      await this.preferences.rememberTriggerPillLabel(targetModel, {
+        name: this.getModelNameFromItem(item),
+        id: this.getModelIdFromItem(item),
+        pill: this.readTriggerPillLines()[0],
+      });
+      return 'already-selected';
+    } catch (e) {
+      console.error('Auto lock failed', e);
+      return 'failed';
+    } finally {
+      this.isLocked = false;
+    }
+  }
+
+  public async selectThinking(
+    target: DefaultThinkingLevel,
+    interaction: PickerInteraction,
+  ): Promise<boolean> {
+    if (interaction.shouldYield()) {
+      interaction.stop();
+      return false;
+    }
+
+    if (this.isLocked) return false;
+    this.isLocked = true;
+
+    try {
+      const trigger = this.findSelectorButton();
+      if (!trigger) return false;
+
+      // Open the model menu first.
+      trigger.click();
+
+      const modelPane = await this.waitForModeSwitchMenuPanel(1500);
+      if (!modelPane) {
+        document.body.click();
+        interaction.failed();
+        return false;
+      }
+
+      // Current Gemini UI no longer exposes a Standard / Extended submenu.
+      // Extended thinking is a single opt-in row in the model menu; Standard
+      // is the implicit state when that row is not selected.
+      const inlineToggle = this.findInlineExtendedThinkingToggle(modelPane);
+      if (inlineToggle) {
+        const alreadySelected =
+          inlineToggle.classList.contains('selected') ||
+          inlineToggle.getAttribute('aria-checked') === 'true' ||
+          inlineToggle.getAttribute('aria-selected') === 'true';
+
+        return this.applyThinkingItem(inlineToggle, alreadySelected, interaction);
+      }
+
+      const thinkingRow = this.findThinkingLevelTriggerRow();
+      if (!thinkingRow) {
+        // This model doesn't expose a Thinking level. Nothing to lock — stop trying.
+        document.body.click();
+        interaction.stop();
+        return false;
+      }
+
+      this.openThinkingLevelSubmenu(thinkingRow);
+
+      // Wait briefly for the submenu to mount.
+      const submenu = await this.waitForThinkingLevelSubmenu(1500);
+      if (!submenu) {
+        document.body.click();
+        interaction.failed();
+        return false;
+      }
+
+      const items = this.getThinkingLevelItems();
+      if (!items.length) {
+        document.body.click();
+        return false;
+      }
+
+      const targetLabel = target.label.toLowerCase().trim();
+      const byLabel = items.find(
+        (it) => this.getThinkingLevelLabel(it).toLowerCase().trim() === targetLabel,
+      );
+      const byIndex = items[target.index] ?? null;
+      const targetItem = byLabel ?? byIndex;
+
+      if (!targetItem) {
+        document.body.click();
+        interaction.failed();
+        return false;
+      }
+
+      return this.applyThinkingItem(
+        targetItem,
+        targetItem.classList.contains('selected'),
+        interaction,
+      );
+    } catch (e) {
+      console.error('Auto thinking-level lock failed', e);
+      return false;
+    } finally {
+      this.isLocked = false;
+    }
+  }
+  private findTargetModel(panel: HTMLElement, target: DefaultModelSetting): HTMLElement | null {
+    const normalize = (value: string) => value.toLowerCase().trim();
+    const name = normalize(target.name);
+    const items = Array.from(panel.querySelectorAll<HTMLElement>(MODE_ITEM_SELECTOR)).filter(
+      (item) => !this.isInlineExtendedThinkingToggle(item),
+    );
+    const exact = items.find((item) =>
+      target.kind === 'id'
+        ? this.getModelIdFromItem(item) === target.id
+        : normalize(this.getModelNameFromItem(item)) === name,
+    );
+    if (exact) return exact;
+    // Legacy fallback also searches descriptions, with word boundaries.
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const wholeWord = new RegExp(`(^|\\b)${escaped}(\\b|$)`, 'i');
+    return items.find((item) => wholeWord.test(normalize(item.textContent || ''))) ?? null;
+  }
+
+  private applyThinkingItem(
+    item: HTMLElement,
+    selected: boolean,
+    interaction: PickerInteraction,
+  ): boolean {
+    if (!selected) {
+      item.click();
+      // Close both overlays so the user's next open starts clean.
+      document.body.click();
+      interaction.focusInput();
+      interaction.resetFailures();
+      return true;
+    }
+    document.body.click();
+    interaction.resetFailures();
+    interaction.stop();
+    return false;
+  }
+
+  private mayContainModeSwitchContainer(root: HTMLElement): boolean {
     return (
       root.matches(MODE_SWITCH_OBSERVER_ROOT_SELECTOR) ||
       root.closest(MODE_SWITCH_CONTAINER_SELECTOR) !== null
     );
   }
 
-  public resolveModeSwitchContainer(root: HTMLElement): HTMLElement | null {
+  public resolveAddedMenu(root: HTMLElement): HTMLElement | null {
+    if (!this.mayContainModeSwitchContainer(root)) return null;
     if (
       root.matches('.mat-mdc-menu-panel.gds-mode-switch-menu[role="menu"]') ||
       root.matches('mat-action-list.gds-mode-switch-menu-list') ||
@@ -99,7 +340,7 @@ export class ModelPicker {
     return document.querySelector<HTMLElement>(NON_MODEL_MENU_EXCLUSION_FALLBACK);
   }
 
-  public async waitForModeSwitchMenuPanel(timeoutMs: number): Promise<HTMLElement | null> {
+  private async waitForModeSwitchMenuPanel(timeoutMs: number): Promise<HTMLElement | null> {
     const startedAt = Date.now();
     const pollIntervalMs = 50;
     while (Date.now() - startedAt < timeoutMs) {
@@ -110,18 +351,18 @@ export class ModelPicker {
     return null;
   }
 
-  public isNestedThinkingLevelItem(item: HTMLElement): boolean {
+  private isNestedThinkingLevelItem(item: HTMLElement): boolean {
     const row = item.closest<HTMLElement>('[value="thinking_level"]');
     return !!row && row !== item;
   }
 
-  public isInlineExtendedThinkingToggle(item: HTMLElement): boolean {
+  private isInlineExtendedThinkingToggle(item: HTMLElement): boolean {
     if (item.getAttribute('value') === 'thinking_level') return false;
     const jslogId = item.getAttribute('jslog')?.split(';', 1)[0]?.trim();
     return jslogId === EXTENDED_THINKING_TOGGLE_JSLOG_ID;
   }
 
-  public findInlineExtendedThinkingToggle(root: ParentNode): HTMLElement | null {
+  private findInlineExtendedThinkingToggle(root: ParentNode): HTMLElement | null {
     return (
       Array.from(root.querySelectorAll<HTMLElement>(MODE_ITEM_SELECTOR)).find((item) =>
         this.isInlineExtendedThinkingToggle(item),
@@ -129,17 +370,17 @@ export class ModelPicker {
     );
   }
 
-  public getThinkingLevelLabel(item: HTMLElement): string {
+  private getThinkingLevelLabel(item: HTMLElement): string {
     const titleEl = item.querySelector('.label, .gds-title-m, .gds-label-l');
     return titleEl?.textContent?.trim() || '';
   }
 
-  public getModelNameFromItem(item: HTMLElement): string {
+  private getModelNameFromItem(item: HTMLElement): string {
     const titleEl = item.querySelector('.mode-title, .gds-title-m, .gds-label-l, .label');
     return titleEl?.textContent?.trim() || '';
   }
 
-  public getModelIdFromItem(item: HTMLElement): string | null {
+  private getModelIdFromItem(item: HTMLElement): string | null {
     const raw = item.getAttribute('data-mode-id') || item.dataset.modeId;
     if (typeof raw === 'string') {
       const id = raw.trim();
@@ -157,7 +398,7 @@ export class ModelPicker {
     return null;
   }
 
-  public isModelItemSelected(item: HTMLElement): boolean {
+  private isModelItemSelected(item: HTMLElement): boolean {
     return (
       item.getAttribute('aria-checked') === 'true' ||
       item.classList.contains('is-selected') ||
@@ -165,7 +406,7 @@ export class ModelPicker {
     );
   }
 
-  public openThinkingLevelSubmenu(thinkingRow: HTMLElement): void {
+  private openThinkingLevelSubmenu(thinkingRow: HTMLElement): void {
     const content = thinkingRow.querySelector<HTMLElement>(
       'gem-menu-item-content, .label-container',
     );
@@ -195,7 +436,7 @@ export class ModelPicker {
     thinkingRow.click();
   }
 
-  public async waitForThinkingLevelSubmenu(timeoutMs: number): Promise<HTMLElement | null> {
+  private async waitForThinkingLevelSubmenu(timeoutMs: number): Promise<HTMLElement | null> {
     const startedAt = Date.now();
     while (Date.now() - startedAt < timeoutMs) {
       const pane = this.findThinkingLevelSubmenuPane();
@@ -211,7 +452,7 @@ export class ModelPicker {
    * Find the "Thinking level" submenu row in any open model picker.
    * Detected by the stable attribute value="thinking_level" rendered by Gemini.
    */
-  public findThinkingLevelTriggerRow(): HTMLElement | null {
+  private findThinkingLevelTriggerRow(): HTMLElement | null {
     return document.querySelector<HTMLElement>(
       '.cdk-overlay-pane [value="thinking_level"], .cdk-overlay-pane gem-menu-item[value="thinking_level"]',
     );
@@ -233,13 +474,13 @@ export class ModelPicker {
     return row?.querySelector('gem-menu-item, [role="menuitem"]') ? row : null;
   }
 
-  public getThinkingLevelItems(): HTMLElement[] {
+  private getThinkingLevelItems(): HTMLElement[] {
     const submenu = this.findThinkingLevelSubmenuPane();
     if (!submenu) return [];
     return Array.from(submenu.querySelectorAll<HTMLElement>('gem-menu-item, [role="menuitem"]'));
   }
 
-  public isThinkingLevelSubmenuPane(pane: HTMLElement): boolean {
+  private isThinkingLevelSubmenuPane(pane: HTMLElement): boolean {
     // The submenu pane never carries the trigger row itself — that lives only in the parent overlay.
     if (pane.querySelector('[value="thinking_level"]')) return false;
     const row = this.findThinkingLevelTriggerRow();
@@ -252,12 +493,12 @@ export class ModelPicker {
 
   /**
    * Find the model selector trigger button using all known selectors.
-   * Shared by `readTriggerPillLines`, `tryLockToModel`, and `tryLockToThinkingLevel`
+   * Shared by `readTriggerPillLines`, `selectModel`, and `selectThinking`
    * so the fast-path check and the actual menu-opening code always agree on
    * whether the button exists (prevents unnecessary menu clicks when the button
    * is only discoverable via a selector that the fast-path didn't check — #756).
    */
-  public findSelectorButton(): HTMLElement | null {
+  private findSelectorButton(): HTMLElement | null {
     return (
       document.querySelector<HTMLElement>('[data-test-id="bard-mode-menu-button"]') ??
       document.querySelector<HTMLElement>('button.input-area-switch') ??

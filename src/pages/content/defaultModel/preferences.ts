@@ -38,13 +38,19 @@ export class DefaultModelPreferences {
     this.enabled = !result.success || result.data !== false;
   }
 
-  public async reloadDefaults(): Promise<void> {
+  public async reloadDefaults(): Promise<{
+    model: DefaultModelSetting | null;
+    thinking: DefaultThinkingLevel | null;
+  }> {
     const result = await storageService.get<unknown>(StorageKeys.DEFAULT_MODEL);
-    this.model = result.success ? this.parseStoredDefaultModel(result.data) : null;
+    const model = result.success ? this.parseStoredDefaultModel(result.data) : null;
+    this.model = model;
     const thinkingResult = await storageService.get<unknown>(StorageKeys.DEFAULT_THINKING_LEVEL);
-    this.thinking = thinkingResult.success
+    const thinking = thinkingResult.success
       ? this.parseStoredThinkingLevel(thinkingResult.data)
       : null;
+    this.thinking = thinking;
+    return { model, thinking };
   }
 
   public async persistModel(model: DefaultModelSetting | null): Promise<void> {
@@ -215,5 +221,29 @@ export class DefaultModelPreferences {
   private isWordBoundedIn(needle: string, haystack: string): boolean {
     const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return new RegExp(`(^|\\b)${escaped}(\\b|$)`, 'i').test(haystack);
+  }
+
+  public watchAutoApply(onChange: (enabled: boolean) => void): () => void {
+    const listener = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area !== 'sync' && area !== 'local') return;
+      const change = changes[StorageKeys.DEFAULT_MODEL_AUTO_APPLY];
+      if (!change) return;
+      const next = change.newValue !== false; // missing/true → enabled
+      if (next === this.enabled) return;
+      this.enabled = next;
+      onChange(next);
+    };
+    try {
+      chrome.storage.onChanged.addListener(listener);
+    } catch {
+      // chrome.storage may be unavailable in certain test contexts; safe to ignore.
+    }
+    return () => {
+      try {
+        chrome.storage.onChanged.removeListener(listener);
+      } catch {
+        // Extension context may have been invalidated.
+      }
+    };
   }
 }

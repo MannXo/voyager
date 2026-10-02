@@ -54,9 +54,7 @@ export class DefaultStars {
       for (const mutation of mutations) {
         for (const node of Array.from(mutation.addedNodes)) {
           if (!(node instanceof HTMLElement)) continue;
-          if (!this.picker.mayContainModeSwitchContainer(node)) continue;
-
-          const menuPanel = this.picker.resolveModeSwitchContainer(node);
+          const menuPanel = this.picker.resolveAddedMenu(node);
 
           if (menuPanel) {
             this.scheduleMenuPanelInjection(menuPanel);
@@ -127,25 +125,10 @@ export class DefaultStars {
       return false;
     }
 
-    const items = menuPanel.querySelectorAll(MODE_ITEM_SELECTOR);
+    const { items, kind } = this.picker.describeMenu(menuPanel);
     if (!items.length) return false;
-
-    // If this is the thinking-level submenu pane, run the dedicated injector.
-    if (
-      menuPanel.matches?.('.cdk-overlay-pane') &&
-      this.picker.isThinkingLevelSubmenuPane(menuPanel)
-    ) {
-      return this.injectThinkingLevelStars(menuPanel);
-    }
-
-    // Guard: only inject into menus that look like a model selector.
-    // `.label-container` alone is too broad: Gemini's table/options menus use it too.
-    // Non-model menus (theme picker, help, etc.) lack these even if they use menuitemradio.
-    const isModelMenu =
-      menuPanel.querySelector('[data-mode-id]') !== null ||
-      menuPanel.querySelector('.mode-title') !== null ||
-      menuPanel.querySelector('.title-and-description') !== null;
-    if (!isModelMenu) return false;
+    if (kind === 'thinking') return this.injectThinkingLevelStars(menuPanel);
+    if (kind !== 'model') return false;
 
     // Sweep stars whose owning item is no longer in the current `items`
     // set. Gemini's Angular view recycling can leave old item elements
@@ -163,105 +146,7 @@ export class DefaultStars {
 
     const currentDefault = this.preferences.model;
 
-    items.forEach((item) => {
-      const itemEl = item as HTMLElement;
-
-      if (this.picker.isInlineExtendedThinkingToggle(itemEl)) {
-        // The toggle's jslog metadata contains the current model id. A model
-        // star injected by an older build therefore looks valid by id, but its
-        // click handler writes the wrong storage key. Replace it with the
-        // dedicated thinking-preference star below.
-        itemEl
-          .querySelectorAll<HTMLElement>(
-            '.gv-default-star-btn:not([data-gv-default-kind="thinking"])',
-          )
-          .forEach((star) => star.remove());
-        return;
-      }
-
-      if (this.picker.isNestedThinkingLevelItem(itemEl)) {
-        // Gemini now renders Standard/Extended inline under the Thinking level row.
-        // Those child rows may still carry model-like metadata, so keep them out
-        // of the model default path and let the thinking-level injector own them.
-        itemEl.querySelectorAll('.gv-default-star-btn').forEach((star) => star.remove());
-        return;
-      }
-
-      // Skip submenu triggers (e.g. "Thinking level" → Standard/Extended in the 2026 redesign).
-      // Real model rows always resolve to a stable model id; submenu rows do not.
-      if (itemEl.getAttribute('aria-haspopup') === 'true') return;
-      if (itemEl.getAttribute('role') === 'menuitem' && !this.picker.getModelIdFromItem(itemEl)) {
-        // role=menuitem without any resolvable id is either a submenu opener or a non-model entry.
-        // role=menuitemradio (legacy variant) may legitimately lack data-mode-id, so we keep it.
-        return;
-      }
-
-      const modelName = this.picker.getModelNameFromItem(itemEl);
-      if (!modelName) return;
-
-      // Avoid duplicates
-      if (item.querySelector('.gv-default-star-btn')) {
-        // Update state
-        this.updateStarState(item as HTMLElement, modelName, currentDefault);
-        return;
-      }
-
-      const btn = document.createElement('button');
-      btn.className = 'gv-default-star-btn';
-      btn.dataset.gvDefaultKind = 'model';
-      btn.innerHTML = this.getStarIcon(false); // Default empty
-      btn.title = chrome.i18n.getMessage('setAsDefaultModel');
-
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation(); // Prevent menu item selection
-        e.preventDefault();
-        await this.handleStarClick(modelName, btn);
-      });
-
-      // Finding the correct container. The 2026 redesign uses .label-container; older
-      // variants use .title-and-description.
-      const titleContainer = item.querySelector('.title-and-description, .label-container');
-
-      if (titleContainer) {
-        const titleEl = titleContainer.querySelector(
-          '.mode-title, .gds-title-m, .gds-label-l, .label',
-        );
-        if (titleEl) {
-          const titleParent = titleEl.parentElement;
-          let wrapper = titleContainer.querySelector('.gv-title-wrapper') as HTMLElement | null;
-          if (!wrapper && titleParent?.classList.contains('gv-title-wrapper')) {
-            wrapper = titleParent;
-          }
-
-          if (!wrapper) {
-            // Create wrapper
-            wrapper = document.createElement('div');
-            wrapper.className = 'gv-title-wrapper';
-            wrapper.style.cssText = 'display: flex; align-items: center; width: 100%;';
-
-            // Insert wrapper where the title currently lives.
-            if (titleParent) {
-              titleParent.insertBefore(wrapper, titleEl);
-            } else {
-              titleContainer.appendChild(wrapper);
-            }
-
-            // Move title into wrapper
-            wrapper.appendChild(titleEl);
-          }
-
-          // Append star to wrapper
-          wrapper.appendChild(btn);
-        } else {
-          // Fallback if structure changes
-          titleContainer.appendChild(btn);
-        }
-      } else {
-        // Fallback
-        item.appendChild(btn);
-      }
-      this.updateStarState(item as HTMLElement, modelName, currentDefault);
-    });
+    items.forEach((item) => this.injectModelStar(item, currentDefault));
 
     await this.injectInlineExtendedThinkingStar(menuPanel);
     await this.injectNestedThinkingLevelStars(menuPanel);
@@ -269,15 +154,61 @@ export class DefaultStars {
     return true;
   }
 
+  private injectModelStar(item: HTMLElement, currentDefault: DefaultModelSetting | null): void {
+    const description = this.picker.describeItem(item);
+    if (description.kind === 'inline-thinking') {
+      // The toggle's jslog metadata contains the current model id. A model
+      // star injected by an older build therefore looks valid by id, but its
+      // click handler writes the wrong storage key. Replace it with the
+      // dedicated thinking-preference star below.
+      item
+        .querySelectorAll<HTMLElement>(
+          '.gv-default-star-btn:not([data-gv-default-kind="thinking"])',
+        )
+        .forEach((star) => star.remove());
+      return;
+    }
+
+    if (description.kind === 'nested-thinking') {
+      // Gemini now renders Standard/Extended inline under the Thinking level row.
+      // Those child rows may still carry model-like metadata, so keep them out
+      // of the model default path and let the thinking-level injector own them.
+      item.querySelectorAll('.gv-default-star-btn').forEach((star) => star.remove());
+      return;
+    }
+
+    // Skip submenu triggers (e.g. "Thinking level" → Standard/Extended in the 2026 redesign).
+    // Real model rows always resolve to a stable model id; submenu rows do not.
+    if (item.getAttribute('aria-haspopup') === 'true') return;
+    if (item.getAttribute('role') === 'menuitem' && !description.id) {
+      // role=menuitem without any resolvable id is either a submenu opener or a non-model entry.
+      // role=menuitemradio (legacy variant) may legitimately lack data-mode-id, so we keep it.
+      return;
+    }
+
+    const modelName = description.name;
+    if (!modelName) return;
+
+    // Avoid duplicates
+    if (item.querySelector('.gv-default-star-btn')) {
+      // Update state
+      this.updateStarState(item, this.isDefaultForItem(currentDefault, item, modelName), 'model');
+      return;
+    }
+
+    const btn = this.createStar('model', (button) => this.handleStarClick(modelName, button));
+
+    this.appendStar(item, btn, 'model');
+    this.updateStarState(item, this.isDefaultForItem(currentDefault, item, modelName), 'model');
+  }
+
   private async injectNestedThinkingLevelStars(menuPanel: HTMLElement): Promise<void> {
-    const thinkingRow = this.picker.findThinkingLevelTriggerRow();
-    if (!thinkingRow || !menuPanel.contains(thinkingRow)) return;
-    if (!thinkingRow.querySelector('gem-menu-item, [role="menuitem"]')) return;
-    await this.injectThinkingLevelStars(thinkingRow);
+    const thinkingRow = this.picker.describeMenu(menuPanel).nestedThinking;
+    if (thinkingRow) await this.injectThinkingLevelStars(thinkingRow);
   }
 
   private async injectInlineExtendedThinkingStar(menuPanel: HTMLElement): Promise<boolean> {
-    const item = this.picker.findInlineExtendedThinkingToggle(menuPanel);
+    const item = this.picker.describeMenu(menuPanel).inlineThinking;
     if (!item) return false;
 
     if (!this.preferences.enabled) {
@@ -285,55 +216,24 @@ export class DefaultStars {
       return false;
     }
 
-    const label = this.picker.getThinkingLevelLabel(item);
+    const label = this.picker.describeItem(item).thinkingLabel;
     if (!label) return false;
 
     let btn = item.querySelector<HTMLElement>(
       '.gv-default-star-btn[data-gv-default-kind="thinking"]',
     );
     if (!btn) {
-      btn = document.createElement('button');
-      btn.className = 'gv-default-star-btn';
-      btn.dataset.gvDefaultKind = 'thinking';
-      btn.innerHTML = this.getStarIcon(false);
-      btn.title = chrome.i18n.getMessage('setAsDefaultThinkingLevel');
+      btn = this.createStar('thinking', (button) =>
+        this.handleThinkingLevelStarClick(0, label, button, 'extended'),
+      );
 
-      btn.addEventListener('click', async (event) => {
-        event.stopPropagation();
-        event.preventDefault();
-        await this.handleThinkingLevelStarClick(0, label, btn!, 'extended');
-      });
-
-      const labelContainer = item.querySelector('.label-container');
-      const titleEl = labelContainer?.querySelector('.label, .gds-title-m, .gds-label-l');
-      if (labelContainer && titleEl) {
-        const titleParent = titleEl.parentElement;
-        let wrapper = labelContainer.querySelector<HTMLElement>('.gv-title-wrapper');
-        if (!wrapper && titleParent?.classList.contains('gv-title-wrapper')) {
-          wrapper = titleParent;
-        }
-        if (!wrapper) {
-          wrapper = document.createElement('div');
-          wrapper.className = 'gv-title-wrapper';
-          wrapper.style.cssText = 'display: flex; align-items: center; width: 100%;';
-          if (titleParent) {
-            titleParent.insertBefore(wrapper, titleEl);
-          } else {
-            labelContainer.appendChild(wrapper);
-          }
-          wrapper.appendChild(titleEl);
-        }
-        wrapper.appendChild(btn);
-      } else if (labelContainer) {
-        labelContainer.appendChild(btn);
-      } else {
-        item.appendChild(btn);
-      }
+      this.appendStar(item, btn, 'thinking');
     }
 
-    this.updateThinkingStarState(
+    this.updateStarState(
       item,
       this.isInlineExtendedThinkingDefault(this.preferences.thinking, label),
+      'thinking',
     );
     return true;
   }
@@ -378,58 +278,24 @@ export class DefaultStars {
     const defaultIndex = this.resolveThinkingDefaultIndex(items, currentDefault);
 
     items.forEach((item, index) => {
-      const label = this.picker.getThinkingLevelLabel(item);
+      const label = this.picker.describeItem(item).thinkingLabel;
       if (!label) return;
 
       const isDefault = index === defaultIndex;
 
       if (item.querySelector('.gv-default-star-btn')) {
-        this.updateThinkingStarState(item, isDefault);
+        this.updateStarState(item, isDefault, 'thinking');
         return;
       }
 
-      const btn = document.createElement('button');
-      btn.className = 'gv-default-star-btn';
-      btn.dataset.gvDefaultKind = 'thinking';
-      btn.innerHTML = this.getStarIcon(false);
-      btn.title = chrome.i18n.getMessage('setAsDefaultThinkingLevel');
-
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        e.preventDefault();
+      const btn = this.createStar('thinking', (button) => {
         const mode: ThinkingMode = items.length === 1 || index > 0 ? 'extended' : 'standard';
-        await this.handleThinkingLevelStarClick(index, label, btn, mode);
+        return this.handleThinkingLevelStarClick(index, label, button, mode);
       });
 
-      const labelContainer = item.querySelector('.label-container');
-      if (labelContainer) {
-        const titleEl = labelContainer.querySelector('.label, .gds-title-m, .gds-label-l');
-        if (titleEl) {
-          const titleParent = titleEl.parentElement;
-          let wrapper = labelContainer.querySelector('.gv-title-wrapper') as HTMLElement | null;
-          if (!wrapper && titleParent?.classList.contains('gv-title-wrapper')) {
-            wrapper = titleParent;
-          }
-          if (!wrapper) {
-            wrapper = document.createElement('div');
-            wrapper.className = 'gv-title-wrapper';
-            wrapper.style.cssText = 'display: flex; align-items: center; width: 100%;';
-            if (titleParent) {
-              titleParent.insertBefore(wrapper, titleEl);
-            } else {
-              labelContainer.appendChild(wrapper);
-            }
-            wrapper.appendChild(titleEl);
-          }
-          wrapper.appendChild(btn);
-        } else {
-          labelContainer.appendChild(btn);
-        }
-      } else {
-        item.appendChild(btn);
-      }
+      this.appendStar(item, btn, 'thinking');
 
-      this.updateThinkingStarState(item, isDefault);
+      this.updateStarState(item, isDefault, 'thinking');
     });
 
     return true;
@@ -453,7 +319,7 @@ export class DefaultStars {
     const targetLabel = currentDefault.label?.toLowerCase().trim();
     if (targetLabel) {
       const byLabel = items.findIndex(
-        (item) => this.picker.getThinkingLevelLabel(item).toLowerCase().trim() === targetLabel,
+        (item) => this.picker.describeItem(item).thinkingLabel.toLowerCase().trim() === targetLabel,
       );
       if (byLabel !== -1) return byLabel;
     }
@@ -465,7 +331,7 @@ export class DefaultStars {
     return -1;
   }
 
-  private updateThinkingStarState(item: HTMLElement, isDefault: boolean) {
+  private updateStarState(item: HTMLElement, isDefault: boolean, kind: 'model' | 'thinking') {
     const btn = item.querySelector('.gv-default-star-btn') as HTMLElement | null;
     if (!btn) return;
     this.bindStarOwnerHover(item, btn);
@@ -477,11 +343,15 @@ export class DefaultStars {
     if (isDefault) {
       btn.classList.add('is-default');
       btn.innerHTML = this.getStarIcon(true);
-      btn.title = chrome.i18n.getMessage('cancelDefaultThinkingLevel');
+      btn.title = chrome.i18n.getMessage(
+        kind === 'model' ? 'cancelDefaultModel' : 'cancelDefaultThinkingLevel',
+      );
     } else {
       btn.classList.remove('is-default');
       btn.innerHTML = this.getStarIcon(false);
-      btn.title = chrome.i18n.getMessage('setAsDefaultThinkingLevel');
+      btn.title = chrome.i18n.getMessage(
+        kind === 'model' ? 'setAsDefaultModel' : 'setAsDefaultThinkingLevel',
+      );
     }
   }
 
@@ -515,7 +385,7 @@ export class DefaultStars {
 
     const itemEl = btn.closest('gem-menu-item, [role="menuitem"]');
     if (itemEl instanceof HTMLElement) {
-      this.updateThinkingStarState(itemEl, nextDefault !== null);
+      this.updateStarState(itemEl, nextDefault !== null, 'thinking');
     }
 
     if (nextDefault) {
@@ -539,38 +409,56 @@ export class DefaultStars {
   ): boolean {
     if (!currentDefault) return false;
     if (currentDefault.kind === 'id') {
-      const id = this.picker.getModelIdFromItem(item);
+      const id = this.picker.describeItem(item).id;
       return id === currentDefault.id;
     }
     return currentDefault.name === modelName;
   }
 
-  private updateStarState(
-    item: HTMLElement,
-    modelName: string,
-    currentDefault: DefaultModelSetting | null,
-  ) {
-    const btn = item.querySelector('.gv-default-star-btn') as HTMLElement;
-    if (!btn) return;
-    this.bindStarOwnerHover(item, btn);
+  private createStar(
+    kind: 'model' | 'thinking',
+    onClick: (button: HTMLButtonElement) => Promise<void>,
+  ): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.className = 'gv-default-star-btn';
+    btn.dataset.gvDefaultKind = kind;
+    btn.innerHTML = this.getStarIcon(false);
+    btn.title = chrome.i18n.getMessage(
+      kind === 'model' ? 'setAsDefaultModel' : 'setAsDefaultThinkingLevel',
+    );
+    btn.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+      await onClick(btn);
+    });
+    return btn;
+  }
 
-    // Ensure mousedown/click stops propagation (idempotent)
-    if (!btn.hasAttribute('data-event-bound')) {
-      btn.setAttribute('data-event-bound', 'true');
-      btn.addEventListener('mousedown', (e) => e.stopPropagation());
-      btn.addEventListener('click', (e) => e.stopPropagation());
+  private appendStar(item: HTMLElement, btn: HTMLElement, kind: 'model' | 'thinking'): void {
+    const container = item.querySelector(
+      kind === 'model' ? '.title-and-description, .label-container' : '.label-container',
+    );
+    const title = container?.querySelector(
+      kind === 'model'
+        ? '.mode-title, .gds-title-m, .gds-label-l, .label'
+        : '.label, .gds-title-m, .gds-label-l',
+    );
+    if (!container || !title) {
+      (container ?? item).appendChild(btn);
+      return;
     }
-
-    const isDefault = this.isDefaultForItem(currentDefault, item, modelName);
-    if (isDefault) {
-      btn.classList.add('is-default');
-      btn.innerHTML = this.getStarIcon(true);
-      btn.title = chrome.i18n.getMessage('cancelDefaultModel');
-    } else {
-      btn.classList.remove('is-default');
-      btn.innerHTML = this.getStarIcon(false);
-      btn.title = chrome.i18n.getMessage('setAsDefaultModel');
+    const parent = title.parentElement;
+    let wrapper = container.querySelector<HTMLElement>('.gv-title-wrapper');
+    if (!wrapper && parent?.classList.contains('gv-title-wrapper')) wrapper = parent;
+    if (!wrapper) {
+      wrapper = document.createElement('div');
+      wrapper.className = 'gv-title-wrapper';
+      wrapper.style.cssText = 'display: flex; align-items: center; width: 100%;';
+      if (parent) parent.insertBefore(wrapper, title);
+      else container.appendChild(wrapper);
+      wrapper.appendChild(title);
     }
+    wrapper.appendChild(btn);
   }
 
   private bindStarOwnerHover(item: HTMLElement, btn: HTMLElement) {
@@ -605,7 +493,7 @@ export class DefaultStars {
   private async handleStarClick(modelName: string, btn: HTMLElement) {
     const closestItem = btn.closest(MODE_ITEM_SELECTOR);
     const modelItem = closestItem instanceof HTMLElement ? closestItem : null;
-    const modelId = modelItem ? this.picker.getModelIdFromItem(modelItem) : null;
+    const modelId = modelItem ? this.picker.describeItem(modelItem).id : null;
 
     // Stale-click guard — see comment on `handleThinkingLevelStarClick`.
     if (!this.preferences.enabled) {
@@ -635,7 +523,11 @@ export class DefaultStars {
 
     // Update current button immediately
     if (modelItem) {
-      this.updateStarState(modelItem, modelName, nextDefault);
+      this.updateStarState(
+        modelItem,
+        this.isDefaultForItem(nextDefault, modelItem, modelName),
+        'model',
+      );
     }
 
     // Show Toast immediately
