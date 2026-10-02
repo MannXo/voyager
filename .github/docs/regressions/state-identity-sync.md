@@ -161,15 +161,20 @@ is merged again`, the pin and unpin round trips), `src/utils/mergePrompts.test.t
   storage carelessly trades one failure for others: copies of a multi-MB library can crowd out the
   live folder mirror, prompts and highlights (Voyager's soft cap, or Safari's 5/10 MiB quota), and
   awaiting them inside the save chain lets one hung write stall every later save.
-- **Rule:** Try localStorage first without deleting an older slot for space, then use the same
-  serialized slot in extension storage on failure, but only when `getLocalHeadroom` shows the copy
-  still leaves the backup reserve free; otherwise skip it and report `false`. Never remove an extension
-  copy because a page write landed: another tab may have just written a newer one there, and
-  recovery already takes the newest valid copy of each slot. Keep backups out of the save chain (never
-  await them before a save settles) while the backup service orders its own writes per slot; send
-  the unload copy synchronously from the event. Recovery reads validated copies from both stores,
-  with a bounded wait for writes in flight, preserving slot priority and account namespaces.
-- **Guard:** `src/core/services/__tests__/DataBackupService.test.ts` (quota fallback cases),
-  `src/core/services/__tests__/StorageQuotaService.test.ts` (headroom limits) and
+- **Rule:** Try localStorage first without deleting an older slot for space, then send the same
+  serialized slot to the background (`gv.storageBudget.writeCopy`). Its storage budget measures
+  fresh, admits the copy only if it leaves the backup reserve free, and writes it in the same step,
+  so tabs never decide from a shared or stale measurement; a skipped copy or an unreachable
+  background reports `false`. Never remove an extension copy because a page write landed: another
+  tab may have just written a newer one there, and recovery already takes the newest valid copy of
+  each slot. Keep backups out of the save chain (never await them before a save settles) while the
+  backup service orders its own writes per slot; send the unload copy's message synchronously from
+  the event. Recovery reads validated copies from both stores, with a bounded wait for writes in
+  flight, preserving slot priority and account namespaces. Highlight commits check and write inside
+  the same budget, and every writer reads one quota from `resolveEffectiveLocalQuota`.
+- **Guard:** `src/core/services/__tests__/DataBackupService.test.ts` (quota fallback cases, T25a,
+  T26e), `src/features/storage/__tests__/storageBudget.test.ts`,
+  `src/features/storage/__tests__/budgetHighlights.test.ts`,
+  `src/core/services/__tests__/effectiveLocalQuota.test.ts` and
   `src/pages/content/folder/__tests__/folderBackupQuota.test.ts` (1k folders / 10k refs recovery,
   saves while a backup write hangs, and the live mirror's room near the quota).
