@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { FolderAuthority } from '../authority';
 import { BUNDLE_INTENT_KEY, resolveBundleIntent } from '../bundleIntent';
+import { hashValue } from '../canonicalHash';
 import { createFolderOwnerCore } from '../folderOwnerCore';
 import type { FolderSite } from '../folderOwnerPolicy';
 import { ownerBackupKey, ownerMetaKey } from '../folderOwnerState';
@@ -90,17 +91,29 @@ describe('running-build authority (R5.1)', () => {
     expect(pendingKeys(storage)).toHaveLength(3);
   });
 
-  it('leaves an open bundle of a legacy site frozen while an owned site commits', async () => {
+  it('abandons an open bundle of a legacy site with a status-only write (R5.2)', async () => {
     const legacyK = folderData([folder('S', 'legacy value')]);
+    const next = {
+      [AI_STUDIO]: folderData([folder('S', 'bundle value')]),
+      [ownerMetaKey(AI_STUDIO)]: { stale: true },
+      gvPromptItems: ['bundle prompt'],
+    };
+    const prev: Record<string, unknown> = { [AI_STUDIO]: legacyK, gvPromptItems: ['user prompt'] };
+    const keys: Record<string, { prevHash: string; nextHash: string }> = {};
+    for (const [key, value] of Object.entries(next)) {
+      keys[key] = { prevHash: await hashValue(prev[key]), nextHash: await hashValue(value) };
+    }
+    // A well-formed intent this build could roll forward if it owned AI Studio.
     const open = {
+      v: 1,
       txId: 'tx',
       status: 'open',
-      values: {
-        [AI_STUDIO]: folderData([folder('S', 'bundle value')]),
-        [ownerMetaKey(AI_STUDIO)]: { stale: true },
-        gvPromptItems: ['bundle prompt'],
-      },
-      hashes: {},
+      site: 'aistudio',
+      seq: 4,
+      clientId: 'S',
+      keys,
+      values: next,
+      at: 0,
     };
     const storage = createFaultyStorage({
       [KEY]: folderData([folder('F', 'A')]),
@@ -110,15 +123,31 @@ describe('running-build authority (R5.1)', () => {
     });
     const world = createWorld(storage, undefined, AI_STUDIO_LEGACY);
     const tab = new TestClient(world, 'G');
+    const before = storage.snapshot();
+    const writes: string[][] = [];
+    storage.onCall((_, op, keys) => {
+      if (op !== 'get') writes.push(keys);
+    });
 
+    // What the shared queue's prelude runs before a prompt-owner turn.
+    await expect(resolveBundleIntent(storage.area, AI_STUDIO_LEGACY, world.now)).resolves.toBe(
+      'ok',
+    );
+
+    expect(writes).toEqual([[BUNDLE_INTENT_KEY]]);
+    expect(storage.read(BUNDLE_INTENT_KEY)).toEqual({
+      v: 1,
+      txId: 'tx',
+      status: 'abandoned',
+      at: world.now(),
+    });
+    expect({ ...storage.snapshot(), [BUNDLE_INTENT_KEY]: open }).toEqual(before);
+
+    storage.onCall(null);
     await tab.open(world.process());
     await tab.send(world.process(), tab.accept(rename('F', 'B')));
-    // What the shared queue's prelude runs before a prompt-owner turn.
-    await expect(resolveBundleIntent(storage.area, AI_STUDIO_LEGACY)).resolves.toBe('ok');
-
     expect(storedData(storage).folders[0].name).toBe('B');
     expect(storage.read(AI_STUDIO)).toEqual(legacyK);
     expect(storage.read('gvPromptItems')).toEqual(['user prompt']);
-    expect(storage.read(BUNDLE_INTENT_KEY)).toEqual(open);
   });
 });

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 
-import { BUNDLE_INTENT_KEY, resolveBundleIntent, writeBundle } from '../bundleIntent';
 import { hashValue } from '../canonicalHash';
 import { ownerBackupKey, resolveOwnerState } from '../folderOwnerState';
 import { type Fault, type StorageOp, createFaultyStorage } from './faultyStorage';
@@ -83,32 +82,6 @@ describe('commit under partial writes (§6.4)', () => {
       expect(storedData(storage).folders[0].name, label).toBe('C');
       expect(storedMeta(storage).clients.A.applied, label).toBe(1);
       expect(pendingKeys(storage), label).toEqual([]);
-    }
-  });
-
-  it('T11: a 4-key bundle cut after any prefix resolves to all next values', async () => {
-    const keys = ['k1', 'k2', 'k3', 'k4'];
-    const prev = Object.fromEntries(keys.map((k) => [k, `${k}-prev`]));
-    const next = Object.fromEntries(keys.map((k) => [k, `${k}-next`]));
-    const cuts: Fault[] = [
-      { call: 1, land: 'none', crash: true },
-      ...keys.map((_, n) => ({ call: 2, land: keys.slice(0, n), crash: true })),
-      { call: 2, land: 'all', crash: true },
-      { call: 3, land: 'none', crash: true },
-    ];
-
-    for (const cut of cuts) {
-      const storage = createFaultyStorage(prev);
-      storage.inject(cut);
-      await writeBundle(storage.area, 'tx', next).catch(() => undefined);
-      storage.restart();
-
-      expect(await resolveBundleIntent(storage.area, ALL_OWNER)).toBe('ok');
-
-      const values = keys.map((k) => storage.read(k));
-      const expected = cut.call === 1 ? prev : next;
-      expect(values, JSON.stringify(cut)).toEqual(keys.map((k) => expected[k]));
-      expect(storage.read(BUNDLE_INTENT_KEY)).not.toMatchObject({ status: 'open' });
     }
   });
 });

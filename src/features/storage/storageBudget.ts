@@ -39,8 +39,8 @@ export interface BudgetRequest {
   keys: readonly string[];
   /** Bytes the write stores. */
   bytes: number;
-  /** Extra free space the write must leave under `Q` (a bundle's `M`, R3.1). */
-  margin?: number;
+  /** Extra free space the write must leave under `Q`, given `Q` (a bundle's `M`, R3.1). */
+  margin?: (quotaBytes: number) => number;
 }
 
 export type Admission<T> =
@@ -89,9 +89,11 @@ export const copyReserveBytes = (limitBytes: number): number =>
 /** Whether `request` fits `measure` with `reserved` bytes already promised. */
 export function admits(request: BudgetRequest, measure: BudgetMeasure, reserved: number): boolean {
   const peak = measure.bytesInUse + reserved - measure.keyBytes + request.bytes;
-  const margin = request.margin ?? 0;
   // The hard peak applies to every class: a credit never offsets unreleased quota.
-  if (measure.quotaBytes !== null && peak + margin > measure.quotaBytes) return false;
+  if (measure.quotaBytes !== null) {
+    const margin = request.margin?.(measure.quotaBytes) ?? 0;
+    if (peak + margin > measure.quotaBytes) return false;
+  }
   return (
     request.kind === 'data' || peak + copyReserveBytes(measure.limitBytes) <= measure.limitBytes
   );

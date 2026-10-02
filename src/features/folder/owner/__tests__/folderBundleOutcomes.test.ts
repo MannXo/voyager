@@ -6,39 +6,22 @@ import { FolderClient } from '../client/folderClient';
 import { INTERRUPTED, type StoredOutcome } from '../folderOps';
 import type { FolderOwnerRequest, FolderOwnerResponse } from '../folderOwnerMessages';
 import { FOLDER_SITE_POLICIES } from '../folderOwnerPolicy';
-import { ownerMetaKey } from '../folderOwnerState';
-import { createFaultyStorage } from './faultyStorage';
-import {
-  KEY,
-  TestClient,
-  createWorld,
-  folder,
-  folderData,
-  rename,
-  storedMeta,
-} from './ownerHarness';
+import { acknowledge } from '../ownerProcess';
+import { KEY, rename } from './ownerHarness';
 
 const TTL = 30 * 60 * 1000;
 const PENDING: StoredOutcome = { kind: 'bundle_pending', txId: 'tx-1' };
 
 describe('bundle_pending is never terminal (addendum P3P4 R4.1)', () => {
-  it('keeps a pending outcome through acks and answers a duplicate with it', async () => {
-    const storage = createFaultyStorage({ [KEY]: folderData([folder('F', 'A')]) });
-    const w = createWorld(storage);
-    const tab = new TestClient(w, 'tab');
-    await tab.open(w.process());
-    const [first] = tab.accept(rename('F', 'B'));
-    await tab.send(w.process(), [first]);
-    // Seq 1 sits inside an open bundle.
-    const meta = storedMeta(storage);
-    meta.clients.tab.outcomes[first] = PENDING;
-    storage.write(ownerMetaKey(KEY), meta);
+  it('an ack drops delivered outcomes but never a pending one', () => {
+    const client = {
+      applied: 3,
+      acked: 0,
+      outcomes: { 1: PENDING, 2: { kind: 'saved' as const }, 3: { kind: 'saved' as const } },
+      lastSeenAt: 0,
+    };
 
-    const [second] = tab.accept(rename('F', 'C'));
-    const reply = await tab.send(w.process(), [first, second], second);
-
-    expect(reply).toMatchObject({ kind: 'ok', outcomes: { [first]: PENDING } });
-    expect(storedMeta(storage).clients.tab.outcomes[first]).toEqual(PENDING);
+    expect(acknowledge(client, 2, 10).outcomes).toEqual({ 1: PENDING, 3: { kind: 'saved' } });
   });
 
   it('leaves the edit unsettled while pending and delivers the outcome it settles as', async () => {

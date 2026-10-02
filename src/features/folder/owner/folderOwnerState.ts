@@ -1,7 +1,7 @@
 import type { FolderData } from '@/core/types/folder';
 
 import type { FolderAuthority } from './authority';
-import { resolveBundleIntent } from './bundleIntent';
+import { interruptStaleBundles, resolveBundleIntent } from './bundleIntent';
 import { canonicalJson, hashValue } from './canonicalHash';
 import type { StoredOutcome } from './folderOps';
 import type { FolderSite } from './folderOwnerPolicy';
@@ -155,7 +155,7 @@ export async function resolveOwnerState(
   newId: () => string,
   authority: Readonly<Record<FolderSite, FolderAuthority>>,
 ): Promise<OwnerState> {
-  const bundle = await resolveBundleIntent(area, authority);
+  const bundle = await resolveBundleIntent(area, authority, () => now);
   if (bundle !== 'ok') return { kind: bundle };
 
   const metaKey = ownerMetaKey(key);
@@ -223,6 +223,17 @@ export async function resolveOwnerState(
     }
   } catch {
     return { kind: 'write_failed' };
+  }
+
+  // No bundle is open now, so a `bundle_pending` left in this meta can never settle (R4.3).
+  const settled = interruptStaleBundles(meta);
+  if (settled) {
+    try {
+      await area.set({ [metaKey]: settled });
+    } catch {
+      return { kind: 'write_failed' };
+    }
+    meta = settled;
   }
 
   if (!parsed.valid) return { kind: 'invalid', meta };
