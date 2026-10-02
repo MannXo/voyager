@@ -393,4 +393,23 @@ describe('DataBackupService quota fallback', () => {
     service.destroy();
     expect(JSON.parse(durableStore[BEFORE_UNLOAD_KEY] as string).data).toEqual(latest);
   });
+  it('recovers the copy that landed when a later backup write hangs', async () => {
+    vi.useFakeTimers();
+    limitLocalStorage(700);
+    const landed: Sample = { folders: Array(300).fill(1) };
+    const service = new DataBackupService<Sample>('test-ns');
+    expect(await service.createEmergencyBackup(landed)).toBe(true);
+    vi.mocked(browser.storage.local.set).mockImplementation(() => new Promise(() => {}));
+    void service.createEmergencyBackup({ folders: Array(300).fill(2) });
+
+    let recovered = false;
+    const recovery = service.ensureHydrated().then(() => {
+      recovered = true;
+    });
+    await vi.advanceTimersByTimeAsync(2000);
+    await recovery;
+
+    expect(recovered).toBe(true);
+    expect(service.recoverFromBackup()).toEqual(landed);
+  });
 });
