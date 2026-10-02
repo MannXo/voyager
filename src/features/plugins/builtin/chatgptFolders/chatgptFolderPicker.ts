@@ -5,8 +5,7 @@
  * `contentStyle.css` on chatgpt.com, alongside the content script.
  */
 import type { Folder, FolderData } from '@/core/types/folder';
-import { sortFolders } from '@/features/folder/model/folderData';
-import { type FolderIndex, buildFolderIndex } from '@/features/folder/model/folderIndex';
+import { buildFolderIndex } from '@/features/folder/model/folderIndex';
 import { attachShadowSurface } from '@/pages/content/folder/shadowHost';
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
@@ -30,21 +29,21 @@ function normalizePath(value: string): string {
 }
 
 /**
- * Folders in tree order with their depth and full path; cycles are cut. Only a
- * `null` parent is a root here, and each record of a repeated id is listed
- * under its own parent, as the picker always has.
+ * The folders the sidebar tree shows, in its order and under the parents it
+ * shows them, with their depth and full path. Reads the shared layout, so
+ * orphans, repeated ids and parent cycles resolve as they do in the tree.
  */
-function listFolders(index: FolderIndex): FolderOption[] {
+function listFolders(data: FolderData): FolderOption[] {
+  const { roots, children } = buildFolderIndex(data).layout();
   const options: FolderOption[] = [];
-  const visit = (parentId: string | null, level: number, parentPath: string, seen: Set<string>) => {
-    for (const folder of sortFolders(index.recordsWithParent(parentId))) {
-      if (seen.has(folder.id)) continue;
+  const visit = (folders: readonly Folder[], level: number, parentPath: string) => {
+    for (const folder of folders) {
       const path = parentPath ? `${parentPath} / ${folder.name}` : folder.name;
       options.push({ folder, level, path, searchKey: normalizePath(path) });
-      visit(folder.id, level + 1, path, new Set([...seen, folder.id]));
+      visit(children.get(folder.id) ?? [], level + 1, path);
     }
   };
-  visit(null, 0, '', new Set());
+  visit(roots, 0, '');
   return options;
 }
 
@@ -95,7 +94,7 @@ export function openFolderPicker(
     if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
   };
 
-  const options = listFolders(buildFolderIndex(data));
+  const options = listFolders(data);
   // Each row is built once, when a search first shows it, and reused after.
   const items = new Map<FolderOption, HTMLButtonElement>();
   const render = (): void => {

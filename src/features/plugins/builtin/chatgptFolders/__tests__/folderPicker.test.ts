@@ -1,46 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { Folder, FolderData } from '@/core/types/folder';
-import { sortFolders } from '@/features/folder/model/folderData';
+import type { Folder } from '@/core/types/folder';
+import { layoutFolders } from '@/pages/content/folder/floatingTree/shared';
 
 import { FOLDER_PICKER_CLASS, openFolderPicker } from '../chatgptFolderPicker';
 
-// The picker's listing and search before it read the folder index, copied verbatim.
-function oldNormalizePath(value: string): string {
-  return value
-    .trim()
-    .toLocaleLowerCase()
-    .replace(/\s*\/\s*/g, '/');
-}
-
-function oldListFolders(folders: readonly Folder[]) {
-  const options: Array<{ folder: Folder; level: number; path: string }> = [];
-  const visit = (parentId: string | null, level: number, parentPath: string, seen: Set<string>) => {
-    for (const folder of sortFolders(folders.filter((item) => item.parentId === parentId))) {
-      if (seen.has(folder.id)) continue;
-      const path = parentPath ? `${parentPath} / ${folder.name}` : folder.name;
-      options.push({ folder, level, path });
-      visit(folder.id, level + 1, path, new Set([...seen, folder.id]));
-    }
-  };
-  visit(null, 0, '', new Set());
-  return options;
-}
-
 type Row = { id: string; padding: string; label: string; path: string | null; name: string };
-
-function expectedRows(folders: readonly Folder[], query: string): Row[] {
-  const normalized = oldNormalizePath(query);
-  return oldListFolders(folders)
-    .filter((option) => oldNormalizePath(option.path).includes(normalized))
-    .map(({ folder, level, path }) => ({
-      id: folder.id,
-      padding: `${level * 16 + 12}px`,
-      label: path,
-      path: level > 0 ? path : null,
-      name: folder.name,
-    }));
-}
 
 function root(): ShadowRoot {
   const host = document.querySelector<HTMLElement>(`.${FOLDER_PICKER_CLASS}`);
@@ -108,36 +73,86 @@ function randomFolders(seed: number, size: number): Folder[] {
   });
 }
 
-const QUERIES = ['', 'w', 'WORK', ' work / folder ', 'a/b', 'folder 1', 'spaced', 'ä', 'zzz'];
-
 afterEach(() => {
   for (const host of document.querySelectorAll(`.${FOLDER_PICKER_CLASS}`)) host.remove();
 });
 
+function folder(id: string, name: string, parentId: string | null): Folder {
+  return { id, name, parentId, isExpanded: true, createdAt: 1, updatedAt: 1 };
+}
+
 describe('ChatGPT folder picker listing', () => {
   it.each(Array.from({ length: 40 }, (_, i) => i))(
-    'lists and searches random folders #%i as before',
+    'lists random folders #%i once each, under the parent the sidebar tree shows',
     (seed) => {
       const folders = randomFolders(seed + 1, 3 + seed * 2);
-      const data: FolderData = { folders, folderContents: {} };
+      const data = { folders, folderContents: {} };
+      const { roots, children } = layoutFolders(data);
       openFolderPicker(data, () => {});
-      for (const query of [...QUERIES, '', ...[...QUERIES].reverse()]) {
-        type(query);
-        expect(renderedRows(), query).toEqual(expectedRows(folders, query));
-        expect(!!root().querySelector('.empty')).toBe(expectedRows(folders, query).length === 0);
+      const rows = renderedRows();
+
+      expect(rows.map((row) => row.id).sort()).toEqual(
+        [...new Set(folders.map((f) => f.id))].sort(),
+      );
+      expect(rows.filter((row) => row.padding === '12px').map((row) => row.id)).toEqual(
+        roots.map((f) => f.id),
+      );
+      const ancestors: Row[] = [];
+      for (const row of rows) {
+        const level = (parseInt(row.padding, 10) - 12) / 16;
+        ancestors.length = level;
+        const parent = ancestors.at(-1);
+        if (parent) {
+          expect(children.get(parent.id)?.map((f) => f.id)).toContain(row.id);
+          expect(row.label).toBe(`${parent.label} / ${row.name}`);
+          expect(row.path).toBe(row.label);
+        } else {
+          expect(row).toMatchObject({ label: row.name, path: null });
+        }
+        ancestors.push(row);
       }
     },
   );
 
-  it('lists each record of a repeated id under its own parent, and cuts a path back to itself', () => {
+  it('lists orphans, unset parents and cut cycles where the tree does, and a repeated id once', () => {
     const folders: Folder[] = [
-      { id: 'a', name: 'A1', parentId: null, isExpanded: true, createdAt: 1, updatedAt: 1 },
-      { id: 'b', name: 'B', parentId: 'a', isExpanded: true, createdAt: 1, updatedAt: 1 },
-      { id: 'a', name: 'A2', parentId: 'b', isExpanded: true, createdAt: 1, updatedAt: 1 },
-      { id: 'c', name: 'C', parentId: 'ghost', isExpanded: true, createdAt: 1, updatedAt: 1 },
+      folder('a', 'A1', null),
+      folder('b', 'B', 'a'),
+      folder('a', 'A2', 'b'),
+      folder('c', 'C', 'ghost'),
+      folder('d', 'D', ''),
+      folder('x', 'X', 'y'),
+      folder('y', 'Y', 'x'),
     ];
     openFolderPicker({ folders, folderContents: {} }, () => {});
-    expect(renderedRows().map((row) => row.label)).toEqual(['A1', 'A1 / B']);
+    expect(renderedRows().map((row) => row.label)).toEqual([
+      'A1',
+      'A1 / B',
+      'C',
+      'D',
+      'X',
+      'X / Y',
+    ]);
+  });
+
+  it('searches full paths ignoring case and the spacing around separators', () => {
+    const folders = [
+      folder('w', 'Work', null),
+      folder('f', 'Folder 10', 'w'),
+      folder('h', 'Home', null),
+    ];
+    openFolderPicker({ folders, folderContents: {} }, () => {});
+
+    type('WORK');
+    expect(renderedRows().map((row) => row.id)).toEqual(['w', 'f']);
+    type(' work / folder ');
+    expect(renderedRows().map((row) => row.id)).toEqual(['f']);
+    type('zzz');
+    expect(renderedRows()).toEqual([]);
+    expect(root().querySelector('.empty')).not.toBeNull();
+    type('');
+    expect(renderedRows().map((row) => row.id)).toEqual(['h', 'w', 'f']);
+    expect(root().querySelector('.empty')).toBeNull();
   });
 
   it('selects the folder of a row reused across searches', () => {

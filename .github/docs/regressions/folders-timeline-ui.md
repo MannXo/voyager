@@ -975,6 +975,17 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
   `src/features/plugins/builtin/chatgptFolders/__tests__/moveToFolder.test.ts`
   (`refuses a folder another tab deleted while the picker was open, and says so`).
 
+## The ChatGPT folder picker must list the folders the sidebar tree shows
+
+- **Trap:** The "Move to folder" picker walked stored parents itself from `null`. A folder whose
+  parent was unset (`undefined`, `''`), missing, or on a parent cycle shows at the root of the
+  sidebar tree, yet the picker never offered it, so a visible folder could not take a chat from
+  the menu. A repeated id was listed twice.
+- **Rule:** The picker lists `buildFolderIndex(data).layout()`, the projection the sidebar tree
+  renders: the same folders, parents and sibling order.
+- **Guard:** `src/features/plugins/builtin/chatgptFolders/__tests__/folderPicker.test.ts`
+  (`lists orphans, unset parents and cut cycles where the tree does, and a repeated id once`).
+
 ## The ChatGPT folder picker opens only after Radix hands focus back
 
 - **Trap:** "Move to folder" closes ChatGPT's Radix menu with Escape and then opens the folder
