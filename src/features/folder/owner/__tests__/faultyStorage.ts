@@ -126,6 +126,7 @@ export function createFaultyStorage(initial: Record<string, unknown> = {}) {
       listeners.add(listener);
       return () => void listeners.delete(listener);
     },
+    listenerCount: (): number => listeners.size,
     /** Holds change events until `releaseEvents`, to deliver them late. */
     holdEvents(): void {
       held ??= [];

@@ -218,6 +218,44 @@ describe('FolderClient', () => {
     await until(() => expect(client.view()).toEqual(storedData(storage)));
   });
 
+  it('T5: an account switch keeps every op for the old key and leaves no listener or timer', async () => {
+    const { storage, world, client, hold, fireTimers, timerCount } = clientWorld();
+    await client.open();
+    hold('gv.folderOwner.apply', 'request'); // the owner never answers before the switch
+    const create = (id: string) =>
+      void client.run({ kind: 'createFolder', folderId: id, name: id, parentId: null });
+    ['X1', 'X2', 'X3'].forEach(create);
+    await until(() => expect(pendingKeys(storage)).toHaveLength(3));
+    let failures = 0;
+    storage.failWhen(
+      (op, keys) => op === 'set' && keys[0].startsWith('gvFolderOwner:pending:') && failures++ < 2,
+    );
+    ['X4', 'X5'].forEach(create);
+    await until(() => expect(timerCount()).toBe(1));
+
+    let detached = false;
+    void client.detach().then(() => (detached = true));
+    while (!detached) {
+      fireTimers();
+      await until(() => expect(detached || timerCount() > 0).toBe(true));
+    }
+
+    expect(storage.listenerCount()).toBe(0);
+    expect(timerCount()).toBe(0);
+    expect(pendingKeys(storage)).toHaveLength(5);
+    // The tab unloads; the next background start drains the old key.
+    await world.process().drain(KEY);
+    expect(storedData(storage).folders.map((f) => f.id)).toEqual([
+      'F',
+      'X1',
+      'X2',
+      'X3',
+      'X4',
+      'X5',
+    ]);
+    expect(storage.read('gvFolderData:acct:b')).toBeUndefined();
+  });
+
   it('stops with reload_required when the owner says this build does not own the site', async () => {
     const notOwner = new FolderClient({
       key: KEY,

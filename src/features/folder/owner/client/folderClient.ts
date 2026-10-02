@@ -69,6 +69,9 @@ export class FolderClient implements FolderCommands {
   private publishing = false;
   private sending = false;
   private disposed = false;
+  private subscribed = true;
+  /** Set while detached (§7.7): resolves once no op is still pending. */
+  private allAccepted: (() => void) | null = null;
   private readonly timers = new Set<() => void>();
   private readonly unsubscribe: () => void;
   private readonly now: () => number;
@@ -139,11 +142,29 @@ export class FolderClient implements FolderCommands {
     this.onRefusal(reply, () => void this.open());
   }
 
+  /**
+   * Account switch (§7.7): the UI stops reading this client at once, and it
+   * stays alive only until every op is accepted. The owner drains accepted
+   * ops even if the tab never returns to this account.
+   */
+  async detach(): Promise<void> {
+    this.release();
+    if (this.base && this.nextPending()) {
+      await new Promise<void>((resolve) => (this.allAccepted = resolve));
+    }
+    this.dispose();
+  }
+
   dispose(): void {
     this.disposed = true;
-    this.unsubscribe();
+    this.release();
     for (const cancel of this.timers) cancel();
     this.timers.clear();
+  }
+
+  private release(): void {
+    if (this.subscribed) this.unsubscribe();
+    this.subscribed = false;
   }
 
   /** Writes pending keys one at a time in seq order, then sends. */
@@ -176,6 +197,7 @@ export class FolderClient implements FolderCommands {
     } finally {
       this.publishing = false;
     }
+    if (this.allAccepted) return this.allAccepted();
     void this.sendBatch();
   }
 
