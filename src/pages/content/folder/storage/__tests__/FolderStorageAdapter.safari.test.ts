@@ -69,6 +69,20 @@ describe('SafariFolderAdapter', () => {
     expect(storageState.values.gvFolderData).toEqual(folderData);
   });
 
+  it('loads extension data before migration while page storage cannot be read', async () => {
+    storageState.values.gvFolderData = folderData;
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const pageRead = vi.spyOn(localStorage, 'getItem').mockImplementation(() => {
+      throw new DOMException('The operation is insecure.', 'SecurityError');
+    });
+
+    try {
+      await expect(new SafariFolderAdapter().loadData('gvFolderData')).resolves.toEqual(folderData);
+    } finally {
+      pageRead.mockRestore();
+    }
+  });
+
   it('rejects a failed read instead of answering from the page copy or as absent', async () => {
     const adapter = new SafariFolderAdapter();
     await adapter.init('gvFolderData');

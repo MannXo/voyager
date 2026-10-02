@@ -603,7 +603,10 @@ is merged again`, the pin and unpin round trips), `src/utils/mergePrompts.test.t
   back as is, so validation sends it to corrupt-data recovery). Safari reads have no page fallback,
   and `SafariFolderAdapter.loadData` rejects until that key's migration has completed in this
   context, re-running it on each read; the migration copies the page data straight into
-  `browser.storage.local`, since a copy that falls back to the page migrated nothing. A failed page-mirror `setItem` after a good read still
+  `browser.storage.local`, since a copy that falls back to the page migrated nothing. It checks
+  the extension bucket before page storage: data already there completes it, so an unreadable page
+  (`SecurityError`) cannot hold a good library read-only; only a missing extension bucket with
+  unreadable page storage stays unconfirmed. A failed page-mirror `setItem` after a good read still
   returns the data; a failed `chrome.storage.local` write fails the save.
   `FolderRepository.loadData` classifies a rejection of the bucket read or the legacy read: no
   migration, recovery, empty state or write. The session is marked `readFailed`, which turns
@@ -623,4 +626,5 @@ toggle made before a failed reload onto the data the retry reads`),
   `src/pages/content/folder/storage/__tests__/FolderStorageAdapter.safari.test.ts` (`rejects a
 failed read instead of answering from the page copy or as absent`, `keeps the page-only library
 unready while its flag cannot be read, then shows it`, `... while its copy cannot be written to
-extension storage, ...`).
+extension storage, ...`, `loads extension data before migration while page storage cannot be
+read`).

@@ -89,18 +89,18 @@ export class SafariStorage implements SafariStorageAdapter {
         return true;
       }
 
+      // Extension storage is authoritative: data already there needs nothing from the page,
+      // whose storage may be unreadable. The flag only saves this check next time.
+      const browserData = await browser.storage.local.get(key);
+      if (browserData[key]) {
+        await this.setItem(migrationKey, 'true').catch(() => {});
+        return true;
+      }
+
       // Check if there's data in localStorage
       const localData = localStorage.getItem(key);
       if (!localData) {
         // No data to migrate, mark as migrated
-        await this.setItem(migrationKey, 'true');
-        return true;
-      }
-
-      // Check if browser.storage.local already has data
-      const browserData = await browser.storage.local.get(key);
-      if (browserData[key]) {
-        // Data already in browser.storage.local, no migration needed
         await this.setItem(migrationKey, 'true');
         return true;
       }
