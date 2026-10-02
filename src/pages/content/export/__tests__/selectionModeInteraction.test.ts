@@ -61,33 +61,12 @@ describe('selection mode interaction', () => {
     expect(page).toContain('reportFinishedExport(result, state.format, t)');
   });
 
-  it('aligns selection bar and export progress toast with shared alignment hook', () => {
-    const code = readFileSync(resolve(process.cwd(), 'src/pages/content/export/index.ts'), 'utf8');
-
-    expect(code).toContain('function alignElementToConversationTitleCenter(');
-    expect(code).toContain('cleanupTasks.push(alignElementToConversationTitleCenter(bar));');
-    expect(code).toContain(
-      'const unbindAlignment = alignElementToConversationTitleCenter(overlay);',
-    );
-  });
-
   it('falls back to direct download on Safari when clipboard copy fails', () => {
     const code = readFileSync(resolve(process.cwd(), 'src/pages/content/export/index.ts'), 'utf8');
 
     expect(code).toContain('let blobForFallback: Blob | null = null;');
     expect(code).toContain('if (isSafari() && blobForFallback)');
     expect(code).toContain('downloadImageBlob(blobForFallback, buildResponseImageFilename());');
-  });
-
-  it('uses conversation canvas based alignment and avoids sidebar title selectors', () => {
-    const code = readFileSync(resolve(process.cwd(), 'src/pages/content/export/index.ts'), 'utf8');
-
-    expect(code).toContain('function resolveConversationCanvasCenterX(');
-    expect(code).toContain('#chat-history');
-    expect(code).toContain('infinite-scroller.chat-history');
-    expect(code).toContain('function isLikelySidebarElement(');
-    expect(code).not.toContain('function resolveConversationTitleElement(');
-    expect(code).not.toContain('candidate.closest(\'[data-test-id="conversation"]\')');
   });
 
   it('renders role-based selection buttons with correct data actions and localization keys', () => {

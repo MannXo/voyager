@@ -7,11 +7,12 @@
  * the live DOM only while an export runs; callers remove them afterwards.
  */
 
+import { EXPORT_PROGRESS_OVERLAY_CLASS } from './exportOverlayUi';
+
 const GENERATED_UI_FRAME_SELECTOR = 'iframe[src*="gemini-code-immersive"]';
 const GENERATED_UI_SCREENSHOT_MESSAGE_TYPE = 'gv.generatedUi.captureVisibleTab';
 const GENERATED_UI_CAPTURE_PERMISSION_MESSAGE_TYPE = 'gv.generatedUi.ensureCapturePermission';
 const GENERATED_UI_SCREENSHOT_SECTION_CLASS = 'gv-generated-ui-screenshot-section';
-const EXPORT_PROGRESS_OVERLAY_SELECTOR = '.gv-export-progress-overlay';
 
 /** Remove inserted screenshots, except those already moved into the PDF print container. */
 export function removeGeneratedUiScreenshotSections(): void {
@@ -130,7 +131,7 @@ export async function captureGeneratedUiScreenshots(): Promise<void> {
   if (frames.length === 0) return;
 
   const hiddenOverlays = Array.from(
-    document.querySelectorAll<HTMLElement>(EXPORT_PROGRESS_OVERLAY_SELECTOR),
+    document.querySelectorAll<HTMLElement>(`.${EXPORT_PROGRESS_OVERLAY_CLASS}`),
   );
   const previousDisplay = hiddenOverlays.map((overlay) => overlay.style.display);
   hiddenOverlays.forEach((overlay) => {
