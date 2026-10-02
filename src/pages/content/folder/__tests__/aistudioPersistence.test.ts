@@ -37,8 +37,7 @@ type Manager = {
   activeStorageKey: string;
   handleAccountIsolationToggle(enabled: boolean): Promise<void>;
   refreshScopedDataOnAccountContextChange(): Promise<void>;
-  handleCloudSync(): Promise<void>;
-  handleImport(): void;
+  transfer: { sync(): Promise<void>; importFile(): void };
   load(): Promise<void>;
   save(): Promise<boolean>;
   destroy(): void;
@@ -172,7 +171,7 @@ function createFolder(name: string): void {
 
 function chooseImport(manager: Manager, data: FolderData, marks: object = {}): void {
   const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
-  manager.handleImport();
+  manager.transfer.importFile();
   const input = click.mock.contexts.at(-1) as HTMLInputElement;
   expect(input).toBeInstanceOf(HTMLInputElement);
   Object.defineProperty(input, 'files', {
@@ -400,7 +399,7 @@ describe('AI Studio folder persistence', () => {
       const writes = holdFolderWrites(manager.activeStorageKey);
       const first = manager.save();
       await writes.firstStarted.promise;
-      const syncing = manager.handleCloudSync();
+      const syncing = manager.transfer.sync();
       try {
         await vi.advanceTimersByTimeAsync(0);
         expect(local.gvPromptItems).toEqual([]);
@@ -448,7 +447,7 @@ describe('AI Studio folder persistence', () => {
         data: { folders: { data: folderData('Failed draft') }, prompts: { items: [] } },
       });
       if (kind === 'import') chooseImport(manager, folderData('Failed draft'));
-      else await manager.handleCloudSync();
+      else await manager.transfer.sync();
       await vi.waitFor(() =>
         expect(document.querySelector('.gv-notification-error')).not.toBeNull(),
       );
@@ -502,7 +501,7 @@ describe('AI Studio folder persistence', () => {
       Object.assign(local, structuredClone(values));
     });
 
-    await manager.handleCloudSync();
+    await manager.transfer.sync();
 
     expect(notificationText()).not.toContain(getTranslationSync('downloadMergeSuccess'));
     expect(document.querySelector('.gv-notification-error')).not.toBeNull();
@@ -688,7 +687,7 @@ describe('AI Studio folder persistence', () => {
       ok: true,
       data: { folders: { data: folderData('Cloud') }, prompts: { items: [prompt] } },
     });
-    const syncing = manager.handleCloudSync();
+    const syncing = manager.transfer.sync();
     await writes.firstStarted.promise;
     try {
       expect(manager.data).toEqual(original);

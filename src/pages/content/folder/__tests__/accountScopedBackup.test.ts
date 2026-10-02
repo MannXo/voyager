@@ -52,10 +52,9 @@ type Internals = {
   accountScope: AccountScope | null;
   activeStorageKey: string;
   initializeFolderUI(): Promise<void>;
-  refreshAccountScope(force?: boolean): Promise<unknown>;
+  account: { refresh(force?: boolean): Promise<unknown> };
   load(): Promise<void>;
   save(): Promise<void>;
-  handleCloudSync(): Promise<void>;
   transfer: FolderTransferController;
   store: FolderStore;
   sidebarRuntime: FolderSidebarRuntime;
@@ -195,11 +194,11 @@ async function makeHarness(platform: Platform, account: 'a' | 'b'): Promise<Harn
     },
     load: () => (store ? store.loadData() : manager.load()),
     save: () => (store ? store.saveData() : manager.save()),
-    sync: () => (platform === 'gemini' ? manager.transfer.sync() : manager.handleCloudSync()),
+    sync: () => manager.transfer.sync(),
     switchTo: async (next) => {
       selectAccount(platform, next);
       if (store) await store.refreshAccountScope();
-      else await manager.refreshAccountScope(true);
+      else await manager.account.refresh(true);
     },
   };
 }

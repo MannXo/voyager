@@ -37,7 +37,7 @@ type Manager = {
   data: FolderData;
   activeStorageKey: string;
   save(): Promise<boolean>;
-  handleCloudSync(): Promise<void>;
+  transfer: { sync(): Promise<void> };
   destroy(): void;
 };
 
@@ -199,7 +199,7 @@ describe('AI Studio folder sync across contexts', () => {
       ok: true,
       data: { folders: { data: folderData('Cloud') }, prompts: { items: [prompt] } },
     });
-    await manager.handleCloudSync();
+    await manager.transfer.sync();
     await vi.advanceTimersByTimeAsync(0);
 
     expect(bucketReads(GLOBAL_KEY)).toBe(readsAfterMount);

@@ -37,10 +37,9 @@ type Internals = {
   save: () => Promise<boolean>;
   render: () => void;
   replaceData: (data: FolderData) => Promise<boolean>;
-  showNotification: (message: string, level?: string) => void;
   treeActions: () => TreeActions;
-  injectLibraryDropZone: () => void;
-  handleImport: () => void;
+  library: { mountDropZone: () => void };
+  transfer: { importFile: () => void };
   destroy: () => void;
 };
 
@@ -52,7 +51,6 @@ function createManager(initial: FolderData): Internals {
   internals.data = structuredClone(initial);
   internals.save = vi.fn().mockResolvedValue(true);
   internals.render = vi.fn();
-  internals.showNotification = vi.fn();
   managers.push(internals);
   return internals;
 }
@@ -119,7 +117,7 @@ const dropTargets: Array<{
       table.className = 'mat-mdc-table';
       table.innerHTML = '<tr class="mat-mdc-row"><td><a href="/prompts/row">Row</a></td></tr>';
       document.body.appendChild(table);
-      manager.injectLibraryDropZone();
+      manager.library.mountDropZone();
       table.querySelector('tr')!.dispatchEvent(new Event('dragstart', { bubbles: true }));
       await vi.advanceTimersByTimeAsync(0);
       const item =
@@ -315,6 +313,9 @@ describe('AI Studio sidebar drop zone', () => {
 });
 
 describe('AI Studio library floating drop zone', () => {
+  const lastNotice = () =>
+    [...document.querySelectorAll('.gv-notification-info')].at(-1)?.textContent;
+
   it('confirms the move after saving', async () => {
     const manager = createManager(initial);
     await dropTargets[1].drop(manager, 'b', {
@@ -322,13 +323,13 @@ describe('AI Studio library floating drop zone', () => {
       conversationId: 'p2',
       title: 'P2',
     });
-    expect(manager.showNotification).toHaveBeenCalledWith('Added to "Folder b"', 'info');
+    expect(lastNotice()).toBe('[Gemini Voyager] Added to "Folder b"');
     await dropTargets[1].drop(manager, null, {
       type: 'conversation',
       conversationId: 'p2',
       title: 'P2',
     });
-    expect(manager.showNotification).toHaveBeenLastCalledWith('Saved to Uncategorized', 'info');
+    expect(lastNotice()).toBe('[Gemini Voyager] Saved to Uncategorized');
   });
 });
 
@@ -336,7 +337,7 @@ describe('AI Studio import', () => {
   async function importText(manager: Internals, text: string): Promise<void> {
     vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
     const createElement = vi.spyOn(document, 'createElement');
-    manager.handleImport();
+    manager.transfer.importFile();
     const input = createElement.mock.results
       .map((result) => result.value as HTMLElement)
       .find((element): element is HTMLInputElement => element instanceof HTMLInputElement)!;

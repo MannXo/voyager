@@ -1,5 +1,7 @@
+import { normalizeText } from '@/core/utils/text';
 import { AISTUDIO_ROOT_BUCKET_ID } from '@/features/folder/constants';
 import { getFolderAndDescendants, ownBucket, setBucket } from '@/features/folder/model/folderData';
+import { placeConversations } from '@/features/folder/model/placeConversations';
 
 import panelCss from './floatingPanel.css?raw';
 import {
@@ -9,7 +11,7 @@ import {
 } from './floatingTree/shared';
 import { mountFolderTree } from './floatingTree/treeController';
 import { attachShadowSurface } from './shadowHost';
-import type { ConversationReference, Folder, FolderData } from './types';
+import type { ConversationReference, DragData, Folder, FolderData } from './types';
 
 /**
  * The AI Studio sidebar's folder tree: the shared floating-panel tree, placed in
@@ -147,6 +149,11 @@ export function mountAIStudioTree(options: {
 // Edits the tree asks for, applied to the live folder data in place as the
 // manager saves it. Each returns whether anything changed.
 
+/** An id for a new AI Studio folder, in the format AI Studio has always stored. */
+export function newFolderId(): string {
+  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+
 export function addFolder(
   data: FolderData,
   folder: { id: string; name: string; parentId: string | null; at: number },
@@ -239,4 +246,79 @@ export function removeConversation(
     bucket.filter((conversation) => conversation.conversationId !== conversationId),
   );
   return true;
+}
+
+/**
+ * Places a dropped prompt in one bucket (`null`: Uncategorized) and takes it out
+ * of every other: an AI Studio prompt lives in one place. A stored prompt moves
+ * with its whole record (rename, open time and all), preferring the dragged
+ * copy because legacy data can hold differing copies; the drag payload builds a
+ * record only for a prompt no bucket holds yet. No `sortIndex` is added: AI
+ * Studio shows buckets in stored order.
+ */
+export function placePrompt(
+  data: FolderData,
+  prompt: DragData & { conversationId: string },
+  targetFolderId: string | null,
+  created: { untitledTitle: string; at: number },
+): FolderData {
+  const { conversationId } = prompt;
+  const held = (list: ConversationReference[] | undefined) =>
+    list?.find((conversation) => conversation.conversationId === conversationId);
+  const stored =
+    held(ownBucket(data.folderContents, prompt.sourceFolderId)) ??
+    held(Object.values(data.folderContents).flat());
+  const record: ConversationReference = stored ?? {
+    conversationId,
+    title: normalizeText(prompt.title) || created.untitledTitle,
+    url: prompt.url || '',
+    addedAt: created.at,
+  };
+  return placeConversations(data, [record], {
+    target: targetFolderId || AISTUDIO_ROOT_BUCKET_ID,
+    placement: 'keep',
+    removeFrom: 'everywhere',
+    removeWhenPresent: true,
+  }).data;
+}
+
+export type AIStudioTreeHost = {
+  canEdit: () => boolean;
+  data: () => FolderData;
+  /** Saves the edited data, then re-renders. */
+  commit: () => void;
+  onNavigate: (conversation: ConversationReference) => void;
+  /** Moves a dropped prompt into `folderId`; false when the drop carries none. */
+  placeDrop: (event: DragEvent, folderId: string | null) => boolean;
+  confirmFolderRemoval: NonNullable<TreeActions['confirmFolderRemoval']>;
+  confirmConversationRemoval: NonNullable<TreeActions['confirmConversationRemoval']>;
+};
+
+/** What the tree's controls do to AI Studio's folder data; every edit checks `canEdit`. */
+export function aistudioTreeActions(host: AIStudioTreeHost): TreeActions {
+  const edit = (change: (data: FolderData) => boolean) => {
+    if (host.canEdit() && change(host.data())) host.commit();
+  };
+  return {
+    onNavigate: host.onNavigate,
+    onCreateFolder: (name, parentId) =>
+      edit((data) => addFolder(data, { id: newFolderId(), name, parentId, at: Date.now() })),
+    onRenameFolder: (folderId, name) =>
+      edit((data) => renameFolder(data, folderId, name, Date.now())),
+    onDeleteFolder: (folderId) => edit((data) => deleteFolderTree(data, folderId)),
+    onRemoveConversation: (folderId, conversationId) =>
+      edit((data) => removeConversation(data, folderId, conversationId)),
+    confirmFolderRemoval: host.confirmFolderRemoval,
+    confirmConversationRemoval: host.confirmConversationRemoval,
+    onToggleStar: (folderId, conversationId) =>
+      edit((data) => toggleConversationStar(data, folderId, conversationId)),
+    onToggleFolderPinned: (folderId) => edit((data) => toggleFolderPinned(data, folderId)),
+    onToggleFolderExpanded: (folderId) => edit((data) => toggleFolderExpanded(data, folderId)),
+    onDrop: (event, folderId) => {
+      if (!host.canEdit() || !host.placeDrop(event, folderId)) return false;
+      host.commit();
+      return true;
+    },
+    acceptsDrag: (types) => AISTUDIO_PROMPT_DRAG_TYPES.some((type) => types.includes(type)),
+  };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseDragDataPayload } from '../aistudio';
+import { parseDragDataPayload } from '../aistudioPromptLinks';
 import {
   isAllowedConversationUrl,
   parseDragPayload,

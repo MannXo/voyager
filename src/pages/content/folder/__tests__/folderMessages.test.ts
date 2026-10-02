@@ -98,9 +98,8 @@ type Internals = {
   save: () => Promise<boolean>;
   render: () => void;
   replaceData: (data: FolderData) => Promise<boolean>;
-  showNotification: (message: string, level?: string) => void;
-  injectLibraryDropZone: () => void;
-  handleImport: () => void;
+  library: { mountDropZone: () => void };
+  transfer: { importFile: () => void };
   treeActions: () => TreeActions;
   destroy: () => void;
 };
@@ -116,7 +115,6 @@ describe('AI Studio folder messages', () => {
     internals.save = vi.fn().mockResolvedValue(true);
     internals.render = vi.fn();
     internals.replaceData = vi.fn().mockResolvedValue(true);
-    internals.showNotification = vi.fn();
     managers.push(internals);
     return internals;
   }
@@ -126,7 +124,7 @@ describe('AI Studio folder messages', () => {
     table.className = 'mat-mdc-table';
     table.innerHTML = '<tr class="mat-mdc-row"><td><a href="/prompts/row">Row</a></td></tr>';
     document.body.appendChild(table);
-    manager.injectLibraryDropZone();
+    manager.library.mountDropZone();
     table.querySelector('tr')!.dispatchEvent(new Event('dragstart', { bubbles: true }));
     await vi.advanceTimersByTimeAsync(0);
   }
@@ -141,10 +139,18 @@ describe('AI Studio folder messages', () => {
     await vi.advanceTimersByTimeAsync(0);
   }
 
+  /** The latest notification's level and message. */
+  function lastNotification(): { level: string; message: string } {
+    const element = [...document.querySelectorAll('.gv-notification')].at(-1);
+    const level = element?.className.replace('gv-notification gv-notification-', '') ?? '';
+    const message = element?.textContent?.replace('[Gemini Voyager] ', '') ?? '';
+    return { level, message };
+  }
+
   async function importText(manager: Internals, text: string): Promise<void> {
     vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
     const createElement = vi.spyOn(document, 'createElement');
-    manager.handleImport();
+    manager.transfer.importFile();
     const input = createElement.mock.results
       .map((result) => result.value as HTMLElement)
       .find((element): element is HTMLInputElement => element instanceof HTMLInputElement)!;
@@ -179,23 +185,23 @@ describe('AI Studio folder messages', () => {
     await showLibraryZone(manager);
 
     await dropOn(document.querySelector('.gv-library-folder-item[data-folder-id="b"]')!, 'p1');
-    expect(manager.showNotification).toHaveBeenLastCalledWith('Added to "Folder b"', 'info');
+    const added = lastNotification();
+    expect(added).toEqual({ level: 'info', message: 'Added to "Folder b"' });
 
     await dropOn(document.querySelector('.gv-library-root-item')!, 'p1');
-    expect(manager.showNotification).toHaveBeenLastCalledWith('Saved to Uncategorized', 'info');
+    const saved = lastNotification();
+    expect(saved).toEqual({ level: 'info', message: 'Saved to Uncategorized' });
 
     // `$` sequences in a folder name are not replacement patterns.
     manager.data.folders[0].name = "Cost $& Benefit $'";
     await showLibraryZone(manager);
     await dropOn(document.querySelector('.gv-library-folder-item[data-folder-id="b"]')!, 'p2');
-    expect(manager.showNotification).toHaveBeenLastCalledWith(
-      'Added to "Cost $& Benefit $\'"',
-      'info',
-    );
+    expect(lastNotification()).toEqual({
+      level: 'info',
+      message: 'Added to "Cost $& Benefit $\'"',
+    });
 
-    for (const [message] of vi.mocked(manager.showNotification).mock.calls.slice(0, 2)) {
-      expectRendered(message);
-    }
+    for (const { message } of [added, saved]) expectRendered(message);
   });
 
   it('quotes a conversation title verbatim when confirming its removal', () => {

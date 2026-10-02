@@ -2,7 +2,14 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { AIStudioFolderManager, mutationAddsPromptLinks, parseDragDataPayload } from '../aistudio';
+import { createTranslator } from '@/utils/i18n';
+
+import { AIStudioFolderManager } from '../aistudio';
+import { LibrarySelection } from '../aistudioLibrarySelection';
+import { bindLibraryRows, watchLibraryTable } from '../aistudioLibraryTable';
+import { buildFolderPanel } from '../aistudioPanel';
+import { bindPromptDragSources, watchPromptHistory } from '../aistudioPromptHistory';
+import { mutationAddsPromptLinks, parseDragDataPayload } from '../aistudioPromptLinks';
 
 type DragDataTransferMock = {
   effectAllowed: string;
@@ -115,11 +122,7 @@ type AIStudioManagerInternals = {
       }>
     >;
   };
-  historyRoot: HTMLElement | null;
   dataSession: { ready: boolean };
-  observePromptList: () => void;
-  observeLibraryTable: () => void;
-  bindDraggablesInLibraryTable: () => void;
   syncConversationTitlesFromPromptList: () => Promise<void>;
   save: () => Promise<boolean>;
   render: () => void;
@@ -128,6 +131,7 @@ type AIStudioManagerInternals = {
 afterEach(() => {
   vi.useRealTimers();
   document.body.innerHTML = '';
+  window.history.replaceState({}, '', '/');
 });
 
 describe('AIStudio prompt binding performance guards', () => {
@@ -207,15 +211,8 @@ describe('AIStudio prompt binding performance guards', () => {
 
   it('binds drag handler once per host and marks anchors as bound', () => {
     const { root, row, host, anchor } = createPromptRow('abc123', 'Prompt Title');
-    const manager = new AIStudioFolderManager();
-    const bindDraggablesInPromptList = (
-      manager as unknown as {
-        bindDraggablesInPromptList: (scope?: ParentNode | null) => void;
-      }
-    ).bindDraggablesInPromptList.bind(manager);
-
-    bindDraggablesInPromptList(root);
-    bindDraggablesInPromptList(root);
+    bindPromptDragSources(root);
+    bindPromptDragSources(root);
 
     expect(anchor.dataset.gvDragBound).toBe('1');
     expect(row.draggable).toBe(true);
@@ -249,14 +246,7 @@ describe('AIStudio prompt binding performance guards', () => {
     anchor.setAttribute('aria-label', 'Native prompt title');
     anchor.setAttribute('title', 'Backup title');
 
-    const manager = new AIStudioFolderManager();
-    const bindDraggablesInPromptList = (
-      manager as unknown as {
-        bindDraggablesInPromptList: (scope?: ParentNode | null) => void;
-      }
-    ).bindDraggablesInPromptList.bind(manager);
-
-    bindDraggablesInPromptList(root);
+    bindPromptDragSources(root);
 
     const transfer: DragDataTransferMock = {
       effectAllowed: '',
@@ -283,14 +273,7 @@ describe('AIStudio prompt binding performance guards', () => {
 
   it('preserves titles when dragging from the body-level history popover', () => {
     const { row, anchor } = createHistoryPopoverPromptLink('hover456', 'Hover Prompt Title');
-    const manager = new AIStudioFolderManager();
-    const bindDraggablesInPromptList = (
-      manager as unknown as {
-        bindDraggablesInPromptList: (scope?: ParentNode | null) => void;
-      }
-    ).bindDraggablesInPromptList.bind(manager);
-
-    bindDraggablesInPromptList(document.body);
+    bindPromptDragSources(document.body);
 
     expect(anchor.dataset.gvDragBound).toBe('1');
     expect(row.draggable).toBe(true);
@@ -325,14 +308,7 @@ describe('AIStudio prompt binding performance guards', () => {
       'Account Hover Prompt Title',
       '/u/1/prompts/accountHover456',
     );
-    const manager = new AIStudioFolderManager();
-    const bindDraggablesInPromptList = (
-      manager as unknown as {
-        bindDraggablesInPromptList: (scope?: ParentNode | null) => void;
-      }
-    ).bindDraggablesInPromptList.bind(manager);
-
-    bindDraggablesInPromptList(document.body);
+    bindPromptDragSources(document.body);
 
     expect(anchor.dataset.gvDragBound).toBe('1');
     expect(row.draggable).toBe(true);
@@ -365,10 +341,9 @@ describe('AIStudio prompt binding performance guards', () => {
     vi.useFakeTimers();
     const first = createLibraryPromptRow('library111', 'First Library Prompt');
     const second = createLibraryPromptRow('library222', 'Second Library Prompt');
-    const manager = new AIStudioFolderManager();
-    const internals = manager as unknown as AIStudioManagerInternals;
+    const selection = new LibrarySelection(createTranslator(), vi.fn());
 
-    internals.bindDraggablesInLibraryTable();
+    bindLibraryRows((row) => selection.bindRow(row));
 
     first.row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
     await vi.advanceTimersByTimeAsync(500);
@@ -391,13 +366,10 @@ describe('AIStudio prompt binding performance guards', () => {
   });
 
   it('does not re-bind library rows when the floating multi-select host changes', async () => {
+    window.history.replaceState({}, '', '/library');
     createLibraryPromptRow('library333', 'Loop Guard Prompt');
-    const manager = new AIStudioFolderManager();
-    const internals = manager as unknown as AIStudioManagerInternals;
     const bindSpy = vi.fn();
-
-    internals.bindDraggablesInLibraryTable = bindSpy;
-    internals.observeLibraryTable();
+    const stop = watchLibraryTable(bindSpy);
 
     const floatingHost = document.createElement('div');
     floatingHost.dataset.multiSelectFloatingHost = 'true';
@@ -407,6 +379,7 @@ describe('AIStudio prompt binding performance guards', () => {
     await Promise.resolve();
 
     expect(bindSpy).not.toHaveBeenCalled();
+    stop();
   });
 });
 
@@ -428,13 +401,20 @@ describe('AIStudio theme compatibility', () => {
   });
 
   it('renders cloud action icons with currentColor in AI Studio', () => {
-    const code = readFileSync(
-      resolve(process.cwd(), 'src/pages/content/folder/aistudio.ts'),
-      'utf8',
+    const { container } = buildFolderPanel(
+      {
+        t: (key) => key,
+        onCloudUpload: vi.fn(),
+        onCloudSync: vi.fn(),
+        uploadTooltip: async () => '',
+        syncTooltip: async () => '',
+        onCreateFolder: vi.fn(),
+      },
+      true,
     );
+    const fills = [...container.querySelectorAll('svg')].map((svg) => svg.getAttribute('fill'));
 
-    expect(code).toContain('fill="currentColor"');
-    expect(code).not.toContain('fill="#e3e3e3"');
+    expect(fills).toEqual(['currentColor', 'currentColor']);
   });
 });
 
@@ -524,14 +504,16 @@ describe('AIStudio conversation title sync', () => {
         ],
       },
     };
-    internals.historyRoot = root;
-
     const saveSpy = vi.fn<() => Promise<boolean>>().mockResolvedValue(true);
     const renderSpy = vi.fn<() => void>();
     internals.save = saveSpy;
     internals.render = renderSpy;
 
-    internals.observePromptList();
+    const stop = watchPromptHistory(root, {
+      hasStoredPrompts: () => true,
+      syncTitles: () => internals.syncConversationTitlesFromPromptList(),
+      onPromptClick: vi.fn(),
+    });
 
     anchor.textContent = 'After Rename';
     await vi.advanceTimersByTimeAsync(350);
@@ -539,5 +521,6 @@ describe('AIStudio conversation title sync', () => {
     expect(internals.data.folderContents.folderA[0]?.title).toBe('After Rename');
     expect(saveSpy).toHaveBeenCalledTimes(1);
     expect(renderSpy).toHaveBeenCalledTimes(1);
+    stop();
   });
 });
