@@ -22,22 +22,14 @@ import type { TranslationKey } from '@/utils/translations';
 
 import { recordWatermarkPresence } from '../watermarkNativeNotice/cleanStreak';
 import { DOWNLOAD_ICON_SELECTOR, findNativeDownloadButton } from './downloadButton';
-import {
-  IMAGE_HEALTH_SAMPLE_SIZE,
-  type ImageHealthFingerprint,
-  createImageHealthFingerprint,
-  detectCorruptedGeminiDownload,
-} from './imageHealthDetector';
+import { createImageHealthMonitor } from './imageHealth';
+import type { ImageHealthFingerprint } from './imageHealthDetector';
 import { type StatusToastManager, createStatusToastManager } from './statusToast';
 import { WatermarkEngine } from './watermarkEngine';
 
 let engine: WatermarkEngine | null = null;
 let enginePromise: Promise<WatermarkEngine> | null = null;
 const processingQueue = new Set<HTMLImageElement>();
-const previewFingerprintsByImage = new WeakMap<
-  HTMLImageElement,
-  { sourceSrc: string; fingerprint: ImageHealthFingerprint }
->();
 const previewFingerprintsByIntent = new Map<string, Promise<ImageHealthFingerprint | null>>();
 let lifecycleGeneration = 0;
 let downloadRemovalEnabled = false;
@@ -90,6 +82,8 @@ const fetchImageViaBackground = async (url: string): Promise<HTMLImageElement> =
   });
 };
 
+const health = createImageHealthMonitor(fetchImageViaBackground);
+
 /**
  * Convert canvas to blob
  */
@@ -112,87 +106,6 @@ const canvasToDataURL = (canvas: HTMLCanvasElement, type = 'image/png'): string 
  */
 const isValidGeminiImage = (img: HTMLImageElement): boolean =>
   img.closest('generated-image,.generated-image-container') !== null;
-
-const captureImageFingerprint = (
-  image: CanvasImageSource & { naturalWidth?: number; naturalHeight?: number },
-): ImageHealthFingerprint | null => {
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = IMAGE_HEALTH_SAMPLE_SIZE;
-    canvas.height = IMAGE_HEALTH_SAMPLE_SIZE;
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) return null;
-
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-    return createImageHealthFingerprint(
-      imageData.data,
-      canvas.width,
-      canvas.height,
-      image.naturalWidth || canvas.width,
-      image.naturalHeight || canvas.height,
-    );
-  } catch {
-    // A tainted cross-origin preview cannot be sampled safely. In that case we
-    // skip the warning instead of risking a false positive.
-    return null;
-  }
-};
-
-const findPreviewImageForDownloadButton = (button: HTMLButtonElement): HTMLImageElement | null => {
-  const generatedImage = button.closest('generated-image,.generated-image-container');
-  const inlineImage = generatedImage?.querySelector<HTMLImageElement>('img');
-  if (inlineImage) return inlineImage;
-
-  const dialog = button.closest('expansion-dialog,[role="dialog"],.cdk-overlay-pane');
-  return (
-    dialog?.querySelector<HTMLImageElement>(
-      'generated-image img, img[src^="blob:"], img[src*="googleusercontent.com"]',
-    ) ?? null
-  );
-};
-
-const capturePreviewFingerprint = async (
-  button: HTMLButtonElement,
-): Promise<ImageHealthFingerprint | null> => {
-  const image = findPreviewImageForDownloadButton(button);
-  if (!image) return null;
-  const cached = previewFingerprintsByImage.get(image);
-  const isCurrentSource = cached?.sourceSrc === image.src;
-  const isProcessedFromCachedSource =
-    image.dataset.watermarkProcessed === 'true' &&
-    image.dataset.processedUrl === image.src &&
-    cached?.sourceSrc === image.dataset.watermarkOriginalSrc;
-  if (cached && (isCurrentSource || isProcessedFromCachedSource)) return cached.fingerprint;
-
-  const fingerprint = captureImageFingerprint(image);
-  if (fingerprint) {
-    previewFingerprintsByImage.set(image, { sourceSrc: image.src, fingerprint });
-    return fingerprint;
-  }
-
-  // Gemini preview images normally come from googleusercontent.com without a
-  // crossorigin attribute. Drawing those DOM images taints the canvas, so
-  // pixel readback above fails even though the image is visibly loaded. Reuse
-  // the extension-runtime fetch path to obtain an origin-clean copy while the
-  // native download intent remains synchronous.
-  const sourceSrc = image.src;
-  if (!/^https?:/i.test(sourceSrc)) return null;
-  try {
-    const cleanImage = await fetchImageViaBackground(sourceSrc);
-    const fetchedFingerprint = captureImageFingerprint(cleanImage);
-    if (fetchedFingerprint && image.src === sourceSrc) {
-      previewFingerprintsByImage.set(image, {
-        sourceSrc,
-        fingerprint: fetchedFingerprint,
-      });
-    }
-    return fetchedFingerprint;
-  } catch (error) {
-    console.warn('[Gemini Voyager] Failed to capture preview fingerprint:', error);
-    return null;
-  }
-};
 
 /**
  * Find all Gemini-generated images on the page
@@ -299,13 +212,7 @@ async function processImage(imgElement: HTMLImageElement): Promise<void> {
 
   const originalSrc = imgElement.src;
   try {
-    const originalPreviewFingerprint = captureImageFingerprint(imgElement);
-    if (originalPreviewFingerprint) {
-      previewFingerprintsByImage.set(imgElement, {
-        sourceSrc: originalSrc,
-        fingerprint: originalPreviewFingerprint,
-      });
-    }
+    health.rememberPreview(imgElement, originalSrc);
 
     // Fetch full resolution image via background script (bypasses CORS)
     const normalSizeSrc = replaceWithNormalSize(originalSrc);
@@ -500,11 +407,8 @@ async function inspectImageRequest(
     const previewFingerprint = await previewFingerprintPromise;
     if (!previewFingerprint) return;
     const image = await loadBridgeImage(base64);
-    const downloadFingerprint = captureImageFingerprint(image);
-    if (!downloadFingerprint) return;
-
-    const result = detectCorruptedGeminiDownload(previewFingerprint, downloadFingerprint);
-    if (result.corrupted) {
+    const result = health.compare(previewFingerprint, image);
+    if (result?.corrupted) {
       bridge.dataset.status = JSON.stringify({
         type: 'GOOGLE_IMAGE_CORRUPTED',
         timestamp: Date.now(),
@@ -554,11 +458,7 @@ async function processImageRequest(
       : undefined;
     if (intentToken) previewFingerprintsByIntent.delete(intentToken);
     const previewFingerprint = previewFingerprintPromise ? await previewFingerprintPromise : null;
-    const downloadFingerprint = previewFingerprint ? captureImageFingerprint(img) : null;
-    const healthResult =
-      previewFingerprint && downloadFingerprint
-        ? detectCorruptedGeminiDownload(previewFingerprint, downloadFingerprint)
-        : null;
+    const healthResult = previewFingerprint ? health.compare(previewFingerprint, img) : null;
 
     // Process image to remove watermark
     const processedCanvas = await engine.removeWatermarkFromImage(
@@ -816,7 +716,7 @@ function beginDownloadSequence(button: HTMLButtonElement): void {
 
   const sequenceId = ++sequenceCounter;
   const token = `gv_download_${now}_${sequenceId}`;
-  previewFingerprintsByIntent.set(token, capturePreviewFingerprint(button));
+  previewFingerprintsByIntent.set(token, health.capturePreview(button));
   markDownloadIntent(token);
   const manager = getStatusToastManager();
   manager.setAnchorElement(button);
