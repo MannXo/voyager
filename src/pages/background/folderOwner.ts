@@ -61,7 +61,11 @@ export function handleFolderOwnerMessage(
 }
 
 export function startFolderOwner(authority: Authority = FOLDER_WRITE_AUTHORITY): FolderOwnerCore {
-  const core = createFolderOwnerCore({ area: localFolderArea, serialize: backgroundWriteQueue });
+  const core = createFolderOwnerCore({
+    area: localFolderArea,
+    authority,
+    serialize: backgroundWriteQueue,
+  });
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const reply = handleFolderOwnerMessage(message, sender, { core, authority });
     if (!reply) return undefined;

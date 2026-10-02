@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { EditOutcome } from '@/features/folder/commands/folderCommands';
 
@@ -20,8 +20,8 @@ import {
   storedMeta,
 } from './ownerHarness';
 
-/** Lets queued microtasks, change events and replies run. */
-const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+/** Waits for an async condition: owner turns hash with WebCrypto, so they span macrotasks. */
+const until = (check: () => void) => vi.waitFor(check, { timeout: 2000, interval: 1 });
 
 function clientWorld() {
   const storage = createFaultyStorage({ [KEY]: folderData([folder('F', 'A')]) });
@@ -66,6 +66,7 @@ function clientWorld() {
       hold = { type, when, until: new Promise<void>((resolve) => (open = resolve)) };
       return () => open();
     },
+    timerCount: () => timers.size,
     /** Runs every timer scheduled so far; returns their delays. */
     fireTimers(): number[] {
       const due = [...timers];
@@ -89,16 +90,15 @@ describe('FolderClient', () => {
       client.run({ kind: 'renameFolder', folderId: 'F', name: 'B' }),
       client.run({ kind: 'setFolderPinned', folderId: 'X', pinned: true }),
     ]);
-    await tick();
 
     expect(outcomes.map((o) => o.kind)).toEqual(['saved', 'saved', 'saved']);
-    expect(client.view()).toEqual(storedData(storage));
+    await until(() => expect(client.view()).toEqual(storedData(storage)));
     expect(names(storedData(storage))).toEqual({ F: 'B', X: 'New' });
     expect(pendingKeys(storage)).toEqual([]);
   });
 
   it('T3d: keeps an op pending and visible while its pending key cannot be written', async () => {
-    const { storage, client, fireTimers } = clientWorld();
+    const { storage, client, fireTimers, timerCount } = clientWorld();
     await client.open();
     let failures = 0;
     storage.failWhen(
@@ -108,23 +108,20 @@ describe('FolderClient', () => {
     void client.run(rename('F', 'B') as never).then((o) => (outcome = o));
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      await tick();
+      await until(() => expect(timerCount()).toBe(1));
       expect(client.status()).toBe('delayed');
       expect(names(client.view()).F).toBe('B');
       expect(names(storedData(storage)).F).toBe('A');
       expect(outcome).toBeNull();
       fireTimers();
     }
-    await client.flush();
-    await tick();
-
-    expect(outcome).toEqual({ kind: 'saved' });
+    await until(() => expect(outcome).toEqual({ kind: 'saved' }));
     expect(client.status()).toBe('ready');
     expect(names(storedData(storage)).F).toBe('B');
   });
 
   it('T4d: rides out owner read failures and keeps accepting edits afterwards', async () => {
-    const { storage, client, fireTimers } = clientWorld();
+    const { storage, client, fireTimers, timerCount } = clientWorld();
     await client.open();
     let failures = 0;
     storage.failWhen((op) => op === 'get' && failures++ < 3);
@@ -132,18 +129,16 @@ describe('FolderClient', () => {
     void client.run(rename('F', 'B') as never).then((o) => (first = o));
 
     for (let turn = 0; turn < 3; turn += 1) {
-      await tick();
+      await until(() => expect(timerCount()).toBe(1));
       expect(first).toBeNull();
       expect(names(storedData(storage)).F).toBe('A');
       fireTimers();
     }
-    await tick();
-    expect(first).toEqual({ kind: 'saved' });
+    await until(() => expect(first).toEqual({ kind: 'saved' }));
 
     await expect(client.run(rename('F', 'C') as never)).resolves.toEqual({ kind: 'saved' });
-    await tick();
     expect(names(storedData(storage)).F).toBe('C');
-    expect(client.view()).toEqual(storedData(storage));
+    await until(() => expect(client.view()).toEqual(storedData(storage)));
     expect(client.status()).toBe('ready');
   });
 
@@ -153,16 +148,14 @@ describe('FolderClient', () => {
     const releaseReply = hold('gv.folderOwner.apply', 'reply');
 
     const created = client.run({ kind: 'createFolder', folderId: 'X', name: 'X', parentId: null });
-    await tick();
-    await tick();
+    await until(() => expect(names(storedData(storage)).X).toBe('X'));
     // Another tab deletes X after A's commit, before A hears its reply.
     const other = new TestClient(world, 'B');
     await other.open(owner);
     other.accept({ kind: 'removeFolder', folderId: 'X' });
     await other.flush(owner);
-    await tick();
 
-    expect(names(client.view())).toEqual({ F: 'A' });
+    await until(() => expect(names(client.view())).toEqual({ F: 'A' }));
     releaseReply();
     await expect(created).resolves.toEqual({ kind: 'saved' });
     expect(client.view()).toEqual(storedData(storage));
@@ -176,13 +169,11 @@ describe('FolderClient', () => {
     await expect(client.run(rename('F', 'B') as never)).resolves.toEqual({ kind: 'saved' });
     expect(names(client.view()).F).toBe('B');
     expect(fireTimers()).toEqual([2000]);
-    await tick();
 
-    expect(sent).toContain('gv.folderOwner.snapshot');
+    await until(() => expect(sent).toContain('gv.folderOwner.snapshot'));
     expect(names(client.view()).F).toBe('B');
     storage.releaseEvents();
-    await tick();
-    expect(client.view()).toEqual(storedData(storage));
+    await until(() => expect(client.view()).toEqual(storedData(storage)));
   });
 
   it('T4c: a K-only write is reconciled through a snapshot without dropping a queued op', async () => {
@@ -190,44 +181,41 @@ describe('FolderClient', () => {
     await client.open();
     const releaseRequest = hold('gv.folderOwner.apply', 'request');
     const renamed = client.run(rename('F', 'B') as never);
-    await tick();
+    await until(() => expect(sent).toContain('gv.folderOwner.apply'));
 
     // A foreign writer replaces K while the rename is on its way to the owner.
     await storage.area.set({ [KEY]: folderData([folder('F', 'A'), folder('Y', 'Foreign')]) });
-    await tick();
-    await tick();
+    await until(() => expect(names(client.view())).toEqual({ F: 'B', Y: 'Foreign' }));
     expect(sent).toContain('gv.folderOwner.snapshot');
-    expect(names(client.view())).toEqual({ F: 'B', Y: 'Foreign' });
     releaseRequest();
 
     await expect(renamed).resolves.toEqual({ kind: 'saved' });
-    await tick();
-    expect(names(client.view())).toEqual({ F: 'B', Y: 'Foreign' });
-    expect(client.view()).toEqual(storedData(storage));
+    expect(names(storedData(storage))).toEqual({ F: 'B', Y: 'Foreign' });
+    await until(() => expect(client.view()).toEqual(storedData(storage)));
   });
 
   it('delivers the rejection of an op another turn drained before the client sent it', async () => {
-    const { storage, world, client, hold } = clientWorld();
+    const { storage, world, client, hold, sent } = clientWorld();
     await client.open();
     const releaseRequest = hold('gv.folderOwner.apply', 'request');
     let outcome: EditOutcome | null = null;
     // seq 1 is in flight; seq 2 is accepted behind it and not yet sent.
     const first = client.run(rename('F', 'B') as never);
-    await tick();
+    await until(() => expect(sent).toContain('gv.folderOwner.apply'));
     void client.run(rename('Gone', 'B') as never).then((o) => (outcome = o));
-    await tick();
+    await until(() => expect(pendingKeys(storage)).toHaveLength(2));
 
     // A restarted owner drains both accepted ops before A's apply arrives; A sees the echo first.
     await new TestClient(world, 'B').open(world.process());
-    await tick();
     expect(storedMeta(storage).clients['client-1'].applied).toBe(2);
     expect(outcome).toBeNull();
     releaseRequest();
     await expect(first).resolves.toEqual({ kind: 'saved' });
-    await tick();
 
-    expect(outcome).toMatchObject({ kind: 'rejected', reason: 'folder_missing' });
-    expect(client.view()).toEqual(storedData(storage));
+    await until(() =>
+      expect(outcome).toMatchObject({ kind: 'rejected', reason: 'folder_missing' }),
+    );
+    await until(() => expect(client.view()).toEqual(storedData(storage)));
   });
 
   it('stops with reload_required when the owner says this build does not own the site', async () => {

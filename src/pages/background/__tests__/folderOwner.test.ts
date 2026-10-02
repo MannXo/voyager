@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createFaultyStorage } from '@/features/folder/owner/__tests__/faultyStorage';
-import type { FolderAuthority } from '@/features/folder/owner/authority';
+import { type FolderAuthority, FOLDER_WRITE_AUTHORITY } from '@/features/folder/owner/authority';
 import { createFolderOwnerCore } from '@/features/folder/owner/folderOwnerCore';
 import type { FolderSite } from '@/features/folder/owner/folderOwnerPolicy';
 
@@ -22,7 +22,10 @@ const GEMINI_OWNER: Record<FolderSite, FolderAuthority> = {
 
 function handlerWorld(authority?: Record<FolderSite, FolderAuthority>) {
   const storage = createFaultyStorage();
-  const core = createFolderOwnerCore({ area: storage.area });
+  const core = createFolderOwnerCore({
+    area: storage.area,
+    authority: authority ?? FOLDER_WRITE_AUTHORITY,
+  });
   return {
     storage,
     send: (message: unknown, sender: object = GEMINI_TAB) =>

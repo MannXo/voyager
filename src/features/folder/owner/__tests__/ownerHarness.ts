@@ -1,8 +1,10 @@
 import type { ConversationReference, Folder, FolderData } from '@/core/types/folder';
 
+import type { FolderAuthority } from '../authority';
 import type { FolderOpBody, OpOutcome } from '../folderOps';
 import { type FolderOwnerCore, MAX_BATCH_OPS, createFolderOwnerCore } from '../folderOwnerCore';
 import type { ApplyReply } from '../folderOwnerMessages';
+import type { FolderSite } from '../folderOwnerPolicy';
 import { type FolderOwnerMeta, ownerMetaKey, pendingOpKey } from '../folderOwnerState';
 import type { FaultyStorage } from './faultyStorage';
 
@@ -51,7 +53,18 @@ export const rename = (folderId: string, name: string): FolderOpBody => ({
 });
 
 /** A controllable clock and deterministic ids shared by every process of one test. */
-export function createWorld(storage: FaultyStorage, start = 1_000_000) {
+/** Every site owned: the build the core harness tests unless a test says otherwise. */
+export const ALL_OWNER: Readonly<Record<FolderSite, FolderAuthority>> = {
+  gemini: 'owner',
+  aistudio: 'owner',
+  chatgpt: 'owner',
+};
+
+export function createWorld(
+  storage: FaultyStorage,
+  start = 1_000_000,
+  authority: Readonly<Record<FolderSite, FolderAuthority>> = ALL_OWNER,
+) {
   let time = start;
   let ids = 0;
   const world = {
@@ -60,7 +73,12 @@ export function createWorld(storage: FaultyStorage, start = 1_000_000) {
     advance: (ms: number) => void (time += ms),
     /** A fresh owner process over the same storage: nothing survives but storage. */
     process: (): FolderOwnerCore =>
-      createFolderOwnerCore({ area: storage.area, now: world.now, newId: () => `id-${++ids}` }),
+      createFolderOwnerCore({
+        area: storage.area,
+        authority,
+        now: world.now,
+        newId: () => `id-${++ids}`,
+      }),
   };
   return world;
 }

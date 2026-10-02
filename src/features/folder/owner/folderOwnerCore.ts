@@ -1,5 +1,6 @@
 import { createWriteQueue } from '@/features/storage/writeQueue';
 
+import type { FolderAuthority } from './authority';
 import { canonicalJson } from './canonicalHash';
 import type { OpOutcome } from './folderOps';
 import type {
@@ -12,7 +13,12 @@ import type {
   SnapshotReply,
   SnapshotRequest,
 } from './folderOwnerMessages';
-import { FOLDER_SITE_POLICIES, type FolderSitePolicy, siteOfFolderKey } from './folderOwnerPolicy';
+import {
+  FOLDER_SITE_POLICIES,
+  type FolderSite,
+  type FolderSitePolicy,
+  siteOfFolderKey,
+} from './folderOwnerPolicy';
 import {
   type ClientRecord,
   type FolderOwnerMeta,
@@ -39,6 +45,11 @@ export const MAX_BATCH_BYTES = 32 * 1024 * 1024;
 
 export interface FolderOwnerCoreOptions {
   area: FolderOwnerStorageArea;
+  /**
+   * The running build's authority (addendum P3P4 R5.1): every owner action
+   * touches only keys of `owner` sites; a legacy site's K and sidecars stay frozen.
+   */
+  authority: Readonly<Record<FolderSite, FolderAuthority>>;
   now?: () => number;
   newId?: () => string;
   /** The shared in-process write queue; defaults to a private one. */
@@ -63,11 +74,6 @@ const isBadBatch = (ops: ApplyRequest['ops']): boolean =>
   ops.length > MAX_BATCH_OPS ||
   !isContiguous(ops) ||
   canonicalJson(ops).length > MAX_BATCH_BYTES;
-
-const policyFor = (key: string): FolderSitePolicy | null => {
-  const site = siteOfFolderKey(key);
-  return site ? FOLDER_SITE_POLICIES[site] : null;
-};
 
 const heldClients = (meta: FolderOwnerMeta): HeldClient[] =>
   Object.entries(meta.clients).flatMap(([clientId, client]) =>
@@ -117,6 +123,12 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
   const serialize = options.serialize ?? createWriteQueue();
   const lastGcAt = new Map<string, number>();
   const acks = new Map<string, Map<string, number>>();
+
+  /** The policy of `key`'s site when this build owns it; `null` refuses with no storage access. */
+  const policyFor = (key: string): FolderSitePolicy | null => {
+    const site = siteOfFolderKey(key);
+    return site && options.authority[site] === 'owner' ? FOLDER_SITE_POLICIES[site] : null;
+  };
 
   const resolve = (key: string): Promise<OwnerState> => resolveOwnerState(area, key, now(), newId);
 
