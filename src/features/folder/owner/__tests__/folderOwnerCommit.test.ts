@@ -106,6 +106,30 @@ describe('commit under partial writes (§6.4)', () => {
   });
 });
 
+describe('an abandoned data intent', () => {
+  it('does not roll back another client’s later meta-only commit', async () => {
+    const { storage, world, a } = await setup(false);
+    const owner = world.process();
+    const b = new TestClient(world, 'B');
+    await b.open(owner); // registered before A accepts, so this open drains nothing
+    a.accept(rename('F', 'B'));
+    // A's intent lands; its K+meta set lands neither key.
+    storage.failWhen((op, keys) => op === 'set' && keys.includes(KEY));
+    expect(await a.send(owner, [1])).toEqual({ kind: 'refused', reason: 'write_failed' });
+    storage.failWhen(null);
+    b.accept(rename('F', 'A'), rename('F', 'B2'));
+    const first = await b.send(owner, [1]); // a no-op: meta-only commit at the intent's nextRev
+
+    const next = await b.send(world.process(), [2]);
+    const retry = await b.send(world.process(), [1]);
+
+    expect(first).toMatchObject({ kind: 'ok', outcomes: { 1: { kind: 'unchanged' } } });
+    expect(next).toMatchObject({ kind: 'ok', applied: 2, outcomes: { 2: { kind: 'saved' } } });
+    expect(retry).toMatchObject({ kind: 'ok', outcomes: { 1: { kind: 'unchanged' } } });
+    expect(storedData(storage).folders[0].name).toBe('B2');
+  });
+});
+
 describe('foreign writes (§6.4)', () => {
   it('adopts a foreign value only after a verified copy of it exists', async () => {
     const { storage, world, a } = await setup(false);

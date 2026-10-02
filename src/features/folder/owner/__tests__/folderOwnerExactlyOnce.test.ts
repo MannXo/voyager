@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { CLIENT_IDLE_MS } from '../folderOwnerCore';
+import { CLIENT_IDLE_MS, DRAIN_CHUNK } from '../folderOwnerCore';
 import { createFaultyStorage } from './faultyStorage';
 import {
   KEY,
@@ -183,6 +183,20 @@ describe('accepted ops in pending keys (§6.5)', () => {
     expect(nameOf(storage)).toBe('n600');
     expect(storedMeta(storage).clients.A.applied).toBe(600);
     expect(pendingKeys(storage)).toEqual([]);
+  });
+
+  it('a full drain chunk whose commit keeps failing stops and keeps its pending keys', async () => {
+    const { storage, world, a } = await setup();
+    a.accept(...range(1, DRAIN_CHUNK).map((n) => rename('F', `n${n}`)));
+    storage.failWhen((op, keys) => op === 'set' && keys.includes(KEY));
+
+    await world.process().drain(KEY);
+
+    expect(storedMeta(storage).clients.A.applied).toBe(0);
+    expect(pendingKeys(storage)).toHaveLength(DRAIN_CHUNK);
+    storage.failWhen(null);
+    await world.process().drain(KEY);
+    expect(nameOf(storage)).toBe(`n${DRAIN_CHUNK}`);
   });
 
   it('T3e: a forged body or another site’s key is rejected and still advances the watermark', async () => {

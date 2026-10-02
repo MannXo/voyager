@@ -285,7 +285,8 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
         ops.map((op) => op.seq),
         applied,
       );
-      if (held || ops.length < DRAIN_CHUNK) return state;
+      // A chunk the durable watermark does not cover stays in its pending keys for a later turn.
+      if (held || ops.length < DRAIN_CHUNK || applied < ops[ops.length - 1].seq) return state;
     }
   }
 
@@ -316,6 +317,20 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
     return state;
   }
 
+  /** Removes the pending keys around each dropped tombstone's watermark; `false` if any may remain. */
+  async function removeStrays(dropped: Array<[string, { applied: number }]>): Promise<boolean> {
+    const strays = dropped.flatMap(([id, { applied }]) => {
+      const from = Math.max(1, applied - STRAY_SCAN + 1);
+      return seqRange(from, applied + STRAY_SCAN - from + 1).map((seq) => pendingOpKey(id, seq));
+    });
+    try {
+      await area.remove(strays);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * Retires idle clients (always leaving a tombstone) and drops tombstones past
    * their TTL. Neither step trusts one absent probe to mean "no later
@@ -338,25 +353,17 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
     }
     const clients = { ...meta.clients };
     const retired = { ...meta.retired };
-    const strays: string[] = [];
-    for (const [id, tombstone] of expired) {
-      if (found[pendingOpKey(id, tombstone.applied + 1)] !== undefined) continue;
-      delete retired[id];
-      const from = Math.max(1, tombstone.applied - STRAY_SCAN + 1);
-      const to = tombstone.applied + STRAY_SCAN;
-      strays.push(...seqRange(from, to - from + 1).map((seq) => pendingOpKey(id, seq)));
+    const dropped = expired.filter(
+      ([id, t]) => found[pendingOpKey(id, t.applied + 1)] === undefined,
+    );
+    // A tombstone is dropped only once its strays are gone: it is their only cleanup owner.
+    if (dropped.length > 0 && (await removeStrays(dropped))) {
+      for (const [id] of dropped) delete retired[id];
     }
     for (const [id, client] of idle) {
       if (found[pendingOpKey(id, client.applied + 1)] !== undefined) continue;
       delete clients[id];
       retired[id] = { applied: client.applied, at };
-    }
-    if (strays.length > 0) {
-      try {
-        await area.remove(strays);
-      } catch {
-        // Retried at the next collection; a stray above a gap is never applied.
-      }
     }
     return { ...meta, clients, retired };
   }

@@ -29,6 +29,8 @@ const clone = <T>(value: T): T =>
 export function createFaultyStorage(initial: Record<string, unknown> = {}) {
   const store = new Map<string, unknown>(Object.entries(clone(initial)));
   const faults: Fault[] = [];
+  let rule: { match: (op: StorageOp, keys: string[]) => boolean; land: Fault['land'] } | null =
+    null;
   let calls = 0;
   let dead = false;
   let before: ((call: number, op: StorageOp, keys: string[]) => void) | null = null;
@@ -39,7 +41,9 @@ export function createFaultyStorage(initial: Record<string, unknown> = {}) {
     const call = ++calls;
     before?.(call, op, keys);
     const index = faults.findIndex((fault) => fault.call === call);
-    if (index < 0) return undefined;
+    if (index < 0) {
+      return rule?.match(op, keys) ? { call, land: rule.land, crash: false } : undefined;
+    }
     const [fault] = faults.splice(index, 1);
     return fault;
   };
@@ -83,12 +87,20 @@ export function createFaultyStorage(initial: Record<string, unknown> = {}) {
     inject(fault: Fault): void {
       faults.push(fault);
     },
+    /** Fails every matching call (landing `land`) until cleared with `null`; the process lives on. */
+    failWhen(
+      match: ((op: StorageOp, keys: string[]) => boolean) | null,
+      land: Fault['land'] = 'none',
+    ) {
+      rule = match ? { match, land } : null;
+    },
     onCall(hook: typeof before): void {
       before = hook;
     },
     restart(): void {
       dead = false;
       faults.length = 0;
+      rule = null;
     },
   };
 }

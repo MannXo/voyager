@@ -150,12 +150,19 @@ export async function resolveOwnerState(
   const intent = isIntent(storedIntent) ? storedIntent : null;
 
   try {
-    if (intent && (!meta || intent.epoch === meta.epoch)) {
+    // A clean pair is final: an older intent must not undo a later meta-only commit at its nextRev.
+    const clean = meta !== null && meta.dataHash === hash;
+    if (intent && !clean && (!meta || intent.epoch === meta.epoch)) {
       if (hash === intent.nextHash && (!meta || meta.rev === intent.prevRev)) {
         // K landed, meta lost: roll forward.
         meta = intent.nextMeta;
         await area.set({ [metaKey]: meta });
-      } else if (meta && hash === intent.prevHash && meta.rev === intent.nextRev) {
+      } else if (
+        meta &&
+        hash === intent.prevHash &&
+        meta.rev === intent.nextRev &&
+        meta.dataHash === intent.nextHash
+      ) {
         // Meta landed, K lost: the ops are unapplied; their clients or pending keys still hold them.
         meta = { ...intent.prevMeta, rev: intent.nextRev + 1 };
         await area.set({ [metaKey]: meta });

@@ -95,6 +95,35 @@ describe('addendum §1: retirement never orphans an accepted op', () => {
 });
 
 describe('addendum §1: stray cleanup', () => {
+  it('keeps an expired tombstone until its strays are actually removed', async () => {
+    const { storage, world } = await setup();
+    for (const seq of [2, 3]) {
+      storage.write(pendingOpKey('C', seq), {
+        v: 1,
+        key: KEY,
+        epoch: '',
+        clientId: 'C',
+        seq,
+        at: 0,
+        op: {},
+      });
+    }
+    world.advance(CLIENT_IDLE_MS);
+    await new TestClient(world, 'B').open(world.process());
+    world.advance(TOMBSTONE_TTL_MS);
+    // The stray removal lands only seq 2, then throws.
+    storage.failWhen((op) => op === 'remove', [pendingOpKey('C', 2)]);
+    await new TestClient(world, 'D').open(world.process());
+    expect(storedMeta(storage).retired).toHaveProperty('C');
+    expect(pendingKeys(storage)).toEqual([pendingOpKey('C', 3)]);
+
+    storage.failWhen(null);
+    await new TestClient(world, 'E').open(world.process());
+
+    expect(storedMeta(storage).retired).not.toHaveProperty('C');
+    expect(pendingKeys(storage)).toEqual([]);
+  });
+
   it('clears a key left at the watermark by a crash after commit once the tombstone expires', async () => {
     const { storage, world, c } = await setup();
     c.accept(rename('F', 'C1'));
