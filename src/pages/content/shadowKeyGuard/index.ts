@@ -10,19 +10,22 @@
  *
  * This guard listens on `window` in the capture phase. It must be registered
  * before the page's own listeners, so it is installed from a `document_start`
- * entry. For a key from a text field in a marked surface it stops the original
- * event and replays a non-composed copy on the field: the copy runs the panel's
- * own handlers (Enter, Escape) and stops at the shadow root, so the page never
- * sees it. The original is never cancelled, so the browser still types the
- * character; a handler that cancels the copy cancels the original.
+ * entry. For a key from a text field or tree/menu in a marked surface it stops
+ * propagation and replays a non-composed copy on the origin: the copy runs the
+ * panel's own handlers (Enter, Escape) and stops at the shadow root. Browser
+ * defaults remain intact unless a handler cancels the copy, which cancels the
+ * original too. Widget Tab and Escape stay composed for document-level focus and
+ * dismissal handlers; text fields keep their existing boundary for every key.
  */
 
-/** Host attribute that marks a shadow surface whose fields this guard protects. */
+/** Host attribute that marks a shadow surface whose fields and widgets are protected. */
 export const SHADOW_SURFACE_ATTR = 'data-gv-shadow-surface';
 
 const KEY_EVENTS = ['keydown', 'keypress', 'keyup'] as const;
+const WIDGET_SELECTOR =
+  '[role="tree"], [role="treeitem"], [role="menu"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], .gv-floating-folder-panel__tree-row';
 
-function isTextField(node: EventTarget | undefined): node is HTMLElement {
+function isTextField(node: EventTarget | undefined): boolean {
   return (
     node instanceof HTMLInputElement ||
     node instanceof HTMLTextAreaElement ||
@@ -60,7 +63,12 @@ export function installShadowKeyGuard(win: Window = window): () => void {
   const guard = (event: Event) => {
     if (!(event instanceof KeyboardEvent)) return;
     const origin = event.composedPath()[0];
-    if (!isTextField(origin) || !isInMarkedSurface(origin)) return;
+    if (!(origin instanceof HTMLElement) || !isInMarkedSurface(origin)) return;
+    if (
+      !isTextField(origin) &&
+      (event.key === 'Tab' || event.key === 'Escape' || !origin.closest(WIDGET_SELECTOR))
+    )
+      return;
     event.stopImmediatePropagation();
     const copy = copyInsideShadow(event);
     origin.dispatchEvent(copy);

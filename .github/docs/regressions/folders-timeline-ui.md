@@ -713,6 +713,26 @@ typed into an input inside an open shadow root`),
   `scripts/__tests__/selfContainedContentScripts.test.ts` and
   `src/pages/content/folder/__tests__/shadowHost.test.ts`.
 
+## Tree and menu keys need the document-start shadow boundary too
+
+- **Trap:** The text-field-only guard let arrows, Enter and typeahead letters from shadow tree
+  rows and menus reach host window-capture shortcuts before the widget could handle them. A
+  replayed keyup also cannot reach Headless Tree's document listener, so a held key can stick if
+  focus moves to another surface before release; modifier flags must be checked even when the
+  modifier went down before the tree gained focus.
+- **Rule:** In marked shadow surfaces, protect tree/treeitem and menu/menuitem origins, including
+  radio/checkbox menu items and the tree's own rows, by replaying non-composed keys. Widget Tab
+  and Escape stay composed for document focus/dismissal handlers; text fields keep their existing
+  all-key boundary. Cancel the original only when its replay is cancelled. The tree's modifier
+  gate, local keyup forwarding and focus/window-blur reset remain responsible for library key
+  state; never compose replays onto the page. Preserve synchronous self-contained installation.
+- **Guard:** `src/pages/content/shadowKeyGuard/__tests__/shadowWidgetKeys.test.ts` exercises real
+  folder-tree arrows/Enter, browser Find with a held modifier, release in another shadow root,
+  widget/text-field Tab and Escape, ordinary controls, non-composed replay and teardown.
+  `src/pages/content/shadowKeyGuard/__tests__/shadowKeyGuardEntry.test.ts` and
+  `scripts/__tests__/selfContainedContentScripts.test.ts`, plus `bun run build:chrome`, guard the
+  synchronous emitted entry.
+
 ## Page rules beat a normal `:host` declaration whatever their specificity
 
 - **Trap:** The floating panel's host element lives in the page's tree. In headless Chrome, a page
