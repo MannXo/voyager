@@ -10,6 +10,7 @@ import {
   readViteManifestAssetPaths,
   shouldPruneDevBuildAssets,
 } from './scripts/dev-build-assets';
+import { type DevBuildLock, acquireDevBuildLock } from './scripts/dev-build-lock';
 import baseConfig, { baseBuildOptions, baseManifest } from './vite.config.base';
 
 const isDev = process.env.__DEV__ === 'true';
@@ -30,12 +31,24 @@ function devBuildReadyPlugin(): Plugin | null {
   const viteManifestPath = resolve(outDir, '.vite', 'manifest.json');
   let previousAssets = new Set<string>();
   let canPruneAssets = false;
+  let buildLock: DevBuildLock | null = null;
+  const releaseBuildLock = () => {
+    buildLock?.release();
+    buildLock = null;
+  };
 
   return {
     name: 'voyager-dev-build-ready',
     apply: 'build',
     enforce: 'post',
-    buildStart() {
+    async buildStart() {
+      // Overlapping dev builds into this outDir (say, a one-off build while the
+      // nodemon watcher rebuilds) would let Chrome reload into a half-written
+      // dist, or prune the generation Chrome just loaded. Wait for the other
+      // build to commit, then read its manifest below.
+      buildLock = await acquireDevBuildLock(resolve(outDir, '.voyager-build-lock'), {
+        onWait: (pid) => console.warn(`[voyager] Waiting for dev build ${pid} to finish...`),
+      });
       const hadPreviousManifest = existsSync(viteManifestPath);
       previousAssets = readViteManifestAssetPaths(viteManifestPath);
       // A missing manifest is normal for the first build. If one exists but
@@ -57,7 +70,9 @@ function devBuildReadyPlugin(): Plugin | null {
       // only after Rollup has finished writing every asset and stale generations
       // have been pruned, so Chrome never reloads against a half-written bundle.
       writeFileSync(resolve(outDir, '.voyager-build-ready'), `${Date.now()}\n`);
+      releaseBuildLock();
     },
+    closeBundle: releaseBuildLock,
   };
 }
 const chromeSharedContentScripts = (

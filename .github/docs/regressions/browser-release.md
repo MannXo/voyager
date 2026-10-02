@@ -150,3 +150,20 @@ behavior, or bundled public assets.
 - **Guard:** `src/core/utils/__tests__/firefoxCssFloor.test.ts` strips comments and `@supports`
   blocks, then matches a feature-to-version table against the whole remaining stylesheet text, and
   asserts the manifest and the Firefox build config declare the same floor.
+
+## Overlapping Chrome dev builds must not share dist_chrome_dev
+
+- **Trap:** After a dev rebuild, the self-reloading `dist_chrome_dev` extension invalidated open
+  tabs, but a refreshed tab failed with `Failed to fetch dynamically imported module` for an older
+  content chunk until a manual reload. A second dev build overlapped the first in the same outDir:
+  Chrome reloaded on the first build's marker, then the second build pruned that generation from a
+  manifest snapshot taken before the first build committed, deleting the service worker and content
+  chunks Chrome had just loaded. Chrome could also reload while the other build was still writing,
+  and then disable the extension. Single builds, one-off or watcher, were never affected.
+- **Rule:** Serialize Chrome dev builds that share an outDir from `buildStart` until the
+  `.voyager-build-ready` marker is written, so each build snapshots the previous committed
+  generation and writes nothing while Chrome reloads into another build.
+- **Guard:** `scripts/dev-build-lock.test.ts` covers waiting for the holder, taking over a dead
+  build's lock and never removing another build's lock. For a live check, start two
+  `__DEV__=true bunx vite build --config vite.config.chrome.ts --mode development` runs about one
+  second apart with a content change and confirm a refreshed matching tab runs the second build.
