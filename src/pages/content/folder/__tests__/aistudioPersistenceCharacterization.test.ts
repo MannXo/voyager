@@ -594,7 +594,7 @@ describe('AI Studio persistence characterization', () => {
       expect(document.querySelector<HTMLButtonElement>('.gv-folder-add-btn')?.disabled).toBe(false);
     });
 
-    it('keeps in-memory folders when a reload fails and no backup is left', async () => {
+    it('shows in-memory folders read-only when a reload fails', async () => {
       local[GLOBAL_KEY] = fixture();
       const manager = await mount();
       localStorage.clear();
@@ -603,7 +603,8 @@ describe('AI Studio persistence characterization', () => {
       await manager.load();
 
       expect(bytes(manager.data)).toBe(bytes(fixture()));
-      expect(notificationText()).toContain('using cached version');
+      expect(notificationText()).toContain('read-only');
+      expect(document.querySelector<HTMLButtonElement>('.gv-folder-add-btn')?.disabled).toBe(true);
       expect(folderWrites(GLOBAL_KEY)).toEqual([]);
     });
   });

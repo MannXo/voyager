@@ -7,6 +7,11 @@ import type { FolderData } from './types';
 export class FolderDataSession {
   data: FolderData = { folders: [], folderContents: {} };
   ready = false;
+  /**
+   * The last read of this bucket failed. Memory may be older than storage, so whole-library
+   * writes wait until a read succeeds; memory stays on screen meanwhile.
+   */
+  readFailed = false;
   loadVersion = 0;
   loadsInFlight = 0;
   saveInProgress = false;

@@ -154,7 +154,8 @@ export class FolderRepository {
     return this.dataSession;
   }
   get canEdit(): boolean {
-    return !this.destroyed && this.dataSession?.ready === true && !this.dataSession.replacingData;
+    const session = this.dataSession;
+    return !this.destroyed && !!session?.ready && !session.replacingData && !session.readFailed;
   }
   get activation(): number {
     return this.accountScopeRequest;
@@ -265,16 +266,18 @@ export class FolderRepository {
           if (!isCurrent()) return;
         }
       } catch (error) {
-        // The read itself failed, so storage may still hold real data. Recovery or
-        // empty data would overwrite it: keep storage and memory, and read again later.
+        // The read itself failed, so storage may hold newer or real data. Recovery, empty
+        // data or a save of memory would overwrite it: show memory read-only, read again later.
         if (!isCurrent()) return;
         console.error(`${this.tag} Failed to read folder data; storage left untouched:`, error);
+        session.readFailed = true;
+        this.hooks.onChange('availability');
         // Report the first failure only, not each retry.
-        if (this.readRetryAttempt === 0)
-          this.hooks.onRecovery(session.ready ? 'kept' : 'unreadable');
+        if (this.readRetryAttempt === 0) this.hooks.onRecovery('unreadable');
         if (!isExtensionContextInvalidatedError(error)) this.scheduleReadRetry(session);
         return;
       }
+      session.readFailed = false;
 
       if (loadedData && validateFolderData(loadedData)) {
         // Validate and repair data integrity
@@ -461,9 +464,10 @@ export class FolderRepository {
   }
 
   private fireDebouncedSave(): void {
-    // Saving now would supersede a read in flight and overwrite what it found;
-    // keep the timer armed so that load merges this edit, then save.
-    if (this.dataSession?.loadsInFlight) {
+    // Saving now would supersede a read in flight and overwrite what it found, or
+    // write memory a failed read could not check; keep the timer armed so the next
+    // successful load merges this edit, then save.
+    if (this.dataSession?.loadsInFlight || this.dataSession?.readFailed) {
       this.saveDebounceTimer = window.setTimeout(() => this.fireDebouncedSave(), SAVE_DEBOUNCE_MS);
       return;
     }
@@ -785,6 +789,7 @@ export class FolderRepository {
       }
       // A rebound session may hold a write observed before or during the switch.
       this.tryReconcile();
+      if (session.readFailed) this.scheduleReadRetry(session);
     } catch (error) {
       console.error(`${this.tag} Failed to resolve account scope:`, error);
       // Keep persistence unbound on failure. A global fallback has no known owner.

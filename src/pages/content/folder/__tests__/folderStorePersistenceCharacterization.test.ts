@@ -366,37 +366,53 @@ describe('FolderStore persistence characterization', () => {
       expect(adapter.saveData).not.toHaveBeenCalled();
     });
 
-    it('keeps in-memory folders when a reload throws and no backup is left', async () => {
-      saved.set(GLOBAL_KEY, storedFixture());
+    it('keeps a folder another tab added when a reload cannot read it and the user renames', async () => {
+      saved.set(GLOBAL_KEY, { folders: [beta], folderContents: { 'f-b': [c222] } });
       const folderStore = createStore();
       await folderStore.init();
-      localStorage.clear();
-      vi.mocked(adapter.loadData).mockRejectedValueOnce(new Error('storage unavailable'));
-
-      await folderStore.loadData();
-
-      expect(bytes(folderStore.data)).toBe(bytes(expectedGlobalLoad()));
-      expect(onRecovery).not.toHaveBeenCalled();
-      expect(folderStore.canEdit).toBe(true);
-    });
-
-    it('leaves newer stored data alone when a reload cannot read it, and reads it on retry', async () => {
-      saved.set(GLOBAL_KEY, storedFixture());
-      const folderStore = createStore();
-      await folderStore.init();
-      // Another tab saves; this tab's reload then fails to read, with its own load's backup on hand.
-      const newer: FolderData = { folders: [beta], folderContents: { 'f-b': [c222] } };
+      // Another tab adds a folder; this tab's reload then fails to read.
+      const newer: FolderData = { folders: [beta, alpha], folderContents: { 'f-b': [c222] } };
       saved.set(GLOBAL_KEY, newer);
       vi.mocked(adapter.loadData).mockRejectedValueOnce(new Error('storage unavailable'));
-
       await folderStore.loadData();
 
+      expect(folderStore.data.folders.map(({ id }) => id)).toEqual([beta.id]);
+      expect(folderStore.canEdit).toBe(false);
+      folderStore.renameFolder(beta.id, 'Renamed during the outage');
+      await vi.advanceTimersByTimeAsync(0);
       expect(adapter.saveData).not.toHaveBeenCalled();
       expect(bytes(saved.get(GLOBAL_KEY))).toBe(bytes(newer));
-      expect(bytes(folderStore.data)).toBe(bytes(expectedGlobalLoad()));
+
       await vi.advanceTimersByTimeAsync(1000);
-      expect(folderStore.data.folders.map(({ id }) => id)).toEqual([beta.id]);
+      expect(folderStore.canEdit).toBe(true);
+      folderStore.renameFolder(beta.id, 'Renamed');
+      await vi.advanceTimersByTimeAsync(0);
+      const stored = saved.get(GLOBAL_KEY) as FolderData;
+      expect(stored.folders.map(({ id, name }) => [id, name])).toEqual([
+        [beta.id, 'Renamed'],
+        [alpha.id, alpha.name],
+      ]);
+    });
+
+    it('saves an expand toggle made before a failed reload onto the data the retry reads', async () => {
+      saved.set(GLOBAL_KEY, { folders: [beta], folderContents: { 'f-b': [c222] } });
+      const folderStore = createStore();
+      await folderStore.init();
+      folderStore.toggleFolder(beta.id);
+      saved.set(GLOBAL_KEY, { folders: [beta, alpha], folderContents: { 'f-b': [c222] } });
+      vi.mocked(adapter.loadData).mockRejectedValueOnce(new Error('storage unavailable'));
+      await folderStore.loadData();
+
+      // The debounce comes due while the bucket is unreadable: nothing is written yet.
+      await vi.advanceTimersByTimeAsync(600);
       expect(adapter.saveData).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1000);
+      const stored = saved.get(GLOBAL_KEY) as FolderData;
+      expect(stored.folders.map(({ id, isExpanded }) => [id, isExpanded])).toEqual([
+        [beta.id, false],
+        [alpha.id, alpha.isExpanded],
+      ]);
     });
 
     it('stays read-only and writes nothing when the first read fails, until a retry reads', async () => {
