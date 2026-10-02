@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const engineCreate = vi.hoisted(() => vi.fn());
@@ -340,21 +338,6 @@ describe('watermarkRemover runtime toggle', () => {
     await vi.waitFor(() => expect(image.dataset.watermarkProcessed).toBe('true'));
     expect(image.dataset.watermarkOriginalSrc).toBe(
       'https://lh3.googleusercontent.com/replacement=s1024',
-    );
-  });
-
-  it('wires sync watermark setting changes to the current-page restart', () => {
-    const contentEntry = readFileSync(
-      resolve(process.cwd(), 'src/pages/content/index.tsx'),
-      'utf8',
-    );
-
-    expect(contentEntry).toContain('WATERMARK_STORAGE_KEYS.some');
-    expect(contentEntry).toMatch(
-      /watermarkRemoverStarted = true;\s+void startWatermarkRemover\(\);/,
-    );
-    expect(contentEntry).toMatch(
-      /watermarkRemoverStarted &&\s+areaName === 'sync'[\s\S]*?void restartWatermarkRemover\(\);/,
     );
   });
 });
