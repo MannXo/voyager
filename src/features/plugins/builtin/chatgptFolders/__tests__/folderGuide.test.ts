@@ -133,6 +133,39 @@ async function activate(): Promise<void> {
 }
 
 describe('ChatGPT folders sidebar guide', () => {
+  it('auto-shows despite CSS-hidden Prompt Manager dialogs and menus', async () => {
+    const hidden = document.createElement('div');
+    hidden.className = 'gv-hidden';
+    hidden.style.display = 'none';
+    hidden.innerHTML = '<div id="gv-pm-panel" role="dialog"></div><div role="menu"></div>';
+    document.body.append(hidden);
+    place((element) => hidden.contains(element), { top: 0, left: 0, width: 0, height: 0 });
+
+    await activate();
+    expect(bubble()).not.toBeNull();
+    expect(seen()).toBeUndefined();
+  });
+
+  it('ignores an invisible dialog but still waits when it becomes visible', async () => {
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    dialog.style.visibility = 'hidden';
+    document.body.append(dialog);
+    await activate();
+    expect(bubble()).not.toBeNull();
+    await scope.dispose();
+    await animation();
+
+    scope = new PluginScope();
+    dialog.style.visibility = 'visible';
+    await activate();
+    expect(bubble()).toBeNull();
+    dialog.remove();
+    sidebar.rerenderList();
+    await nextPass();
+    expect(bubble()).not.toBeNull();
+  });
+
   it('points at the section once it has rendered, and shows only once', async () => {
     await activate();
 

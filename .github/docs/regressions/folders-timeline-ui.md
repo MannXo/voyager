@@ -872,6 +872,19 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
   `comes back when a React re-render drops it`, `moves into a remounted sidebar`,
   `removes a copy ChatGPT cloned with its own nodes`).
 
+## Hidden overlay nodes must not block the ChatGPT folder guide
+
+- **Trap:** Prompt Manager keeps its `role="dialog"` panel and `role="menu"` export menu mounted
+  while CSS hides them. The folder guide checked only `hidden`, `aria-hidden` and Radix state,
+  so those unrendered nodes prevented the guide from ever auto-showing.
+- **Rule:** `hasOpenOverlay` ignores zero-size or CSS-invisible overlays, independently of Voyager
+  class names. A rendered open Radix menu or dialog still blocks the guide. Preserve explicit
+  hidden/closed-state checks and the guide/floating-panel exceptions.
+- **Guard:** `src/features/plugins/builtin/chatgptFolders/__tests__/folderGuide.test.ts`
+  (`auto-shows despite CSS-hidden Prompt Manager dialogs and menus`,
+  `ignores an invisible dialog but still waits when it becomes visible`,
+  `never opens over an open menu, and shows after it closes`).
+
 ## Hiding filed ChatGPT chats must not hide the open chat or rows inside Projects
 
 - **Trap:** A rule that hides every filed row also hides the conversation the user has open, so the

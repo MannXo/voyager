@@ -44,6 +44,10 @@ export function hasOpenOverlay(doc: Document = document): boolean {
   for (const element of doc.querySelectorAll<HTMLElement>(OVERLAY_SELECTOR)) {
     if (element.closest(NOT_OVERLAYS)) continue;
     if (element.hidden || element.closest('[aria-hidden="true"], [data-state="closed"]')) continue;
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) continue;
+    const visibility = doc.defaultView?.getComputedStyle(element).visibility;
+    if (visibility === 'hidden' || visibility === 'collapse') continue;
     return true;
   }
   return false;
