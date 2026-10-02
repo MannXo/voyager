@@ -1,11 +1,6 @@
 // Static imports to avoid CSP issues with dynamic imports in content scripts
 import { StorageKeys } from '@/core/types/common';
 import { isSafari } from '@/core/utils/browser';
-import {
-  buildConversationIdFromUrl,
-  buildLegacyConversationIdFromUrl,
-  buildRouteConversationIdFromUrl,
-} from '@/core/utils/conversationIdentity';
 import type { AppLanguage } from '@/utils/language';
 import type { TranslationKey } from '@/utils/translations';
 
@@ -18,11 +13,7 @@ import {
   SpeakerLabelPreferenceSaver,
   getSavedSpeakerLabelOverrides,
 } from '../../../features/export/services/SpeakerLabelPreferenceService';
-import type {
-  CanvasDoc,
-  ConversationMetadata,
-  ChatTurn as ExportChatTurn,
-} from '../../../features/export/types/export';
+import type { ConversationMetadata } from '../../../features/export/types/export';
 import {
   DEFAULT_IMAGE_EXPORT_WIDTH,
   type ExportFormat,
@@ -32,15 +23,14 @@ import { ExportDialog } from '../../../features/export/ui/ExportDialog';
 import { resolveExportErrorMessage } from '../../../features/export/ui/ExportErrorMessage';
 import { showExportToast } from '../../../features/export/ui/ExportToast';
 import { reportFinishedExport } from '../../../features/export/ui/exportResultNotice';
-import { isServerTurnId } from '../fork/turnId';
-import { historyTimestampStore } from '../timestamp/historyTimestamps';
 import { watchRouteChanges } from '../utils/routeWatcher';
 import { ExportPlatformAdapter, resolveExportAdapter } from './adapter/platformAdapters';
-import { assistantHasCanvasDoc, extractAllCanvasDocs, isAnyCanvasOpen } from './canvasDocExtractor';
 import {
-  filterOutDeepResearchImmersiveNodes,
-  findFirstElementBetweenTurns,
-} from './conversationDom';
+  type ExportMessage,
+  type ExportMessageRole,
+  createConversationCollector,
+  removeCanvasExportSections,
+} from './conversationCollector';
 import {
   getConversationMenuContext,
   getResponseMenuContext,
@@ -82,18 +72,13 @@ import {
   downloadImageBlob,
   renderResponseImageBlob,
 } from './responseImageCopy';
-import { resolveUniqueExportTurnIds } from './selectionIds';
 import {
-  groupSelectedMessagesByTurn,
   pruneMissingSelectionIds,
   reconcileExistingSelectionHost,
   resolveInitialSelectedMessageIds,
   shouldRefreshSelectionUi,
 } from './selectionUtils';
-import {
-  geminiConversationIdFromLocation,
-  openSidebarConversationForExport,
-} from './sidebarConversationNavigation';
+import { openSidebarConversationForExport } from './sidebarConversationNavigation';
 import {
   computeConversationFingerprint,
   waitForConversationFingerprintChangeOrTimeout,
@@ -118,10 +103,10 @@ const FINAL_EXPORT_PREPARE_DELAY_MS = 120;
 // Platform adapter — resolved once per page load
 const exportAdapter: ExportPlatformAdapter = resolveExportAdapter();
 ConversationExportService.setExportAdapter(exportAdapter);
+const collector = createConversationCollector(exportAdapter);
 
 let conversationMenuObserver: MutationObserver | null = null;
 let responseActionObserver: MutationObserver | null = null;
-let cachedCanvasDocs: CanvasDoc[] | null = null;
 
 let activeExportDialog: ExportDialog | null = null;
 let activeExportController: AbortController | null = null;
@@ -148,406 +133,12 @@ function cancelActiveExportOperation(): void {
   activeExportSelectionCleanup = null;
 }
 
-/** Remove all injected Canvas export sections from the DOM after export completes */
-function removeCanvasExportSections(): void {
-  document.querySelectorAll('.gv-canvas-export-section').forEach((el) => el.remove());
-}
-
-function normalizeText(text: string | null): string {
-  try {
-    return String(text || '')
-      .replace(/\s+/g, ' ')
-      .trim();
-  } catch {
-    return '';
-  }
-}
-
-// Note: cleaning of thinking toggles is handled at DOM level in extractAssistantText
-
-/**
- * querySelector variant that skips elements nested inside model-thoughts / thoughts-container.
- * When the user expands Gemini's "thinking" section, a second `message-content` element
- * appears *before* the real response in DOM order.  A plain `querySelector` would match
- * the thinking panel first, causing exports to grab the wrong content.
- */
-function queryOutsideThoughts<T extends Element = Element>(
-  root: Element,
-  selector: string,
-): T | null {
-  const candidates = root.querySelectorAll<T>(selector);
-  for (const el of Array.from(candidates)) {
-    if (!el.closest('model-thoughts, .thoughts-container, .thoughts-content')) {
-      return el;
-    }
-  }
-  return null;
-}
-
-function filterTopLevel(elements: Element[]): HTMLElement[] {
-  const arr = elements.map((e) => e as HTMLElement);
-  const out: HTMLElement[] = [];
-  for (let i = 0; i < arr.length; i++) {
-    const el = arr[i];
-    let isDescendant = false;
-    for (let j = 0; j < arr.length; j++) {
-      if (i === j) continue;
-      const other = arr[j];
-      if (other.contains(el)) {
-        isDescendant = true;
-        break;
-      }
-    }
-    if (!isDescendant) out.push(el);
-  }
-  return out;
-}
-
-function getConversationRoot(userSelectors: string[]): HTMLElement {
-  return exportAdapter.resolveConversationRoot(userSelectors, document);
-}
-
-function computeConversationId(): string {
-  return (
-    exportAdapter.extractConversationIdFromUrl() || buildConversationIdFromUrl(window.location.href)
-  );
-}
-
 function getUserSelectors(): string[] {
   return exportAdapter.getUserSelectors();
 }
 
 function getAssistantSelectors(): string[] {
   return exportAdapter.getAssistantSelectors();
-}
-
-function readStarredSet(): Set<string> {
-  const cid = computeConversationId();
-  try {
-    const candidateConversationIds = [
-      cid,
-      buildRouteConversationIdFromUrl(window.location.href),
-      buildLegacyConversationIdFromUrl(window.location.href),
-    ];
-
-    for (const candidateConversationId of candidateConversationIds) {
-      const raw = localStorage.getItem(`geminiTimelineStars:${candidateConversationId}`);
-      if (!raw) continue;
-      const arr = JSON.parse(raw);
-      if (!Array.isArray(arr)) continue;
-      return new Set(arr.map((x: unknown) => String(x)));
-    }
-
-    return new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-function extractAssistantText(el: HTMLElement): string {
-  // Prefer direct text from message container if available (connected to DOM)
-  // Use queryOutsideThoughts to avoid matching the message-content inside
-  // the expanded thinking/reasoning panel.
-  try {
-    const mc = queryOutsideThoughts<HTMLElement>(
-      el,
-      'message-content, .markdown, .markdown-main-panel',
-    );
-    if (mc) {
-      const raw = mc.textContent || mc.innerText || '';
-      const txt = normalizeText(raw);
-      if (txt) return txt;
-    }
-  } catch {}
-
-  // Clone and remove reasoning toggles/labels before reading text (detached fallback)
-  const clone = el.cloneNode(true) as HTMLElement;
-  const matchesReasonToggle = (txt: string): boolean => {
-    const s = normalizeText(txt).toLowerCase();
-    if (!s) return false;
-    return (
-      /^(show\s*(thinking|reasoning)|hide\s*(thinking|reasoning))$/i.test(s) ||
-      /^(显示\s*(思路|推理)|隐藏\s*(思路|推理))$/u.test(s)
-    );
-  };
-  const shouldDrop = (node: HTMLElement): boolean => {
-    const role = (node.getAttribute('role') || '').toLowerCase();
-    const aria = (node.getAttribute('aria-label') || '').toLowerCase();
-    const txt = node.textContent || '';
-    if (matchesReasonToggle(txt)) return true;
-    if (role === 'button' && (/thinking|reasoning/i.test(txt) || /思路|推理/u.test(txt)))
-      return true;
-    if (/thinking|reasoning/i.test(aria) || /思路|推理/u.test(aria)) return true;
-    return false;
-  };
-  try {
-    const candidates = clone.querySelectorAll(
-      'button, [role="button"], [aria-label], span, div, a',
-    );
-    candidates.forEach((n) => {
-      const eln = n as HTMLElement;
-      if (shouldDrop(eln)) eln.remove();
-    });
-  } catch {}
-  const text = normalizeText(clone.innerText || clone.textContent || '');
-  return text;
-}
-
-type ChatTurn = {
-  turnId: string;
-  user: string;
-  assistant: string;
-  starred: boolean;
-  userElement?: HTMLElement;
-  assistantElement?: HTMLElement;
-  assistantHostElement?: HTMLElement;
-};
-
-export function collectChatPairs(): ChatTurn[] {
-  const userSelectors = getUserSelectors();
-  const root = getConversationRoot(userSelectors);
-  const assistantSelectors = getAssistantSelectors();
-  const userNodeList = filterOutDeepResearchImmersiveNodes(
-    Array.from(root.querySelectorAll<HTMLElement>(userSelectors.join(','))),
-  );
-  if (!userNodeList || userNodeList.length === 0) return [];
-  const users = filterTopLevel(userNodeList);
-  if (users.length === 0) return [];
-
-  const uniqueTurnIds = resolveUniqueExportTurnIds(users);
-
-  const assistantsAll = filterOutDeepResearchImmersiveNodes(
-    Array.from(root.querySelectorAll<HTMLElement>(assistantSelectors.join(','))),
-  );
-  const assistants = filterTopLevel(assistantsAll);
-
-  const starredSet = readStarredSet();
-  const nativeConversationId = geminiConversationIdFromLocation();
-  const pairs: ChatTurn[] = [];
-
-  for (let i = 0; i < users.length; i++) {
-    const uEl = users[i] as HTMLElement;
-    const uText = normalizeText(uEl.innerText || uEl.textContent || '');
-    let aText = '';
-    let aEl = findFirstElementBetweenTurns(uEl, users[i + 1], assistants);
-
-    if (aEl) {
-      aText = extractAssistantText(aEl);
-    } else {
-      // Fallback: search next siblings up to a small window
-      let sib: HTMLElement | null = uEl;
-      for (let step = 0; step < 8 && sib; step++) {
-        sib = sib.nextElementSibling as HTMLElement | null;
-        if (!sib) break;
-        if (sib.matches(userSelectors.join(','))) break;
-        if (sib.matches(assistantSelectors.join(','))) {
-          aEl = sib;
-          aText = extractAssistantText(sib);
-          break;
-        }
-      }
-    }
-    const turnId = uniqueTurnIds[i];
-    const turnIdAliases =
-      turnId && nativeConversationId && isServerTurnId(turnId)
-        ? historyTimestampStore.getTurnIdAliases(nativeConversationId, turnId)
-        : turnId && isServerTurnId(turnId)
-          ? [turnId]
-          : [];
-    const starred = turnIdAliases.some((alias) => starredSet.has(alias));
-    if (uText || aText) {
-      // Prefer a richer assistant container for downstream rich extraction
-      let finalAssistantEl: HTMLElement | undefined = undefined;
-      if (aEl) {
-        const pick =
-          queryOutsideThoughts<HTMLElement>(aEl, 'message-content') ||
-          queryOutsideThoughts<HTMLElement>(aEl, '.markdown, .markdown-main-panel') ||
-          (aEl.closest('.presented-response-container') as HTMLElement | null) ||
-          queryOutsideThoughts<HTMLElement>(
-            aEl,
-            '.presented-response-container, .response-content',
-          ) ||
-          queryOutsideThoughts<HTMLElement>(aEl, 'response-element') ||
-          aEl;
-        finalAssistantEl = pick || undefined;
-      }
-      pairs.push({
-        turnId,
-        user: uText,
-        assistant: aText,
-        starred,
-        userElement: uEl,
-        assistantElement: finalAssistantEl,
-        assistantHostElement: aEl || undefined,
-      });
-      // Canvas document content injection: if this assistant response references
-      // a Canvas doc and the immersive-editor is open, append full Canvas content
-      // directly into the DOM element so DOMContentExtractor can pick it up.
-      // Guard against duplicate injection (collectChatPairs may be called multiple times).
-      // Canvas document content injection: if this assistant response references
-      // a Canvas doc, append full Canvas content directly into the DOM element
-      // so DOMContentExtractor can pick it up.
-      // Guard against duplicate injection (collectChatPairs may be called multiple times).
-      if (
-        aEl &&
-        assistantHasCanvasDoc(aEl) &&
-        (isAnyCanvasOpen() || (cachedCanvasDocs && cachedCanvasDocs.length > 0)) &&
-        finalAssistantEl &&
-        !finalAssistantEl.querySelector('.gv-canvas-export-section')
-      ) {
-        const canvasDocs =
-          cachedCanvasDocs && cachedCanvasDocs.length > 0
-            ? cachedCanvasDocs
-            : extractAllCanvasDocs();
-        if (canvasDocs.length > 0) {
-          const targetContainer =
-            finalAssistantEl.querySelector('.markdown, .markdown-main-panel') || finalAssistantEl;
-          for (const doc of canvasDocs) {
-            const section = document.createElement('div');
-            section.className = 'gv-canvas-export-section';
-            const heading = document.createElement('h3');
-            heading.textContent = `📄 Canvas Document: ${doc.title}`;
-            const content = document.createElement('div');
-            content.className = 'gv-canvas-content';
-            content.textContent = doc.content;
-            section.appendChild(heading);
-            section.appendChild(content);
-            targetContainer.appendChild(section);
-          }
-        }
-      }
-    }
-  }
-  return pairs;
-}
-
-type ExportMessageRole = 'user' | 'assistant' | 'unknown';
-
-type ExportMessage = {
-  messageId: string;
-  role: ExportMessageRole;
-  hostElement: HTMLElement;
-  exportElement?: HTMLElement;
-  text: string;
-  starred: boolean;
-};
-
-function buildExportMessagesFromPairs(pairs: ChatTurn[]): ExportMessage[] {
-  const out: ExportMessage[] = [];
-  pairs.forEach((pair) => {
-    if (pair.userElement) {
-      out.push({
-        messageId: `${pair.turnId}:u`,
-        role: 'user',
-        hostElement: pair.userElement,
-        exportElement: pair.userElement,
-        text: pair.user,
-        starred: pair.starred,
-      });
-    }
-
-    const assistantHost = pair.assistantHostElement;
-    if (assistantHost) {
-      out.push({
-        messageId: `${pair.turnId}:a`,
-        role: 'assistant',
-        hostElement: assistantHost,
-        exportElement: pair.assistantElement || assistantHost,
-        text: pair.assistant,
-        starred: pair.starred,
-      });
-    }
-  });
-  return out;
-}
-
-function resolveSelectionMessages(pairsInput: ChatTurn[]): ExportMessage[] {
-  const turnContainers = exportAdapter.collectTurnContainers?.();
-  if (turnContainers) {
-    // ChatGPT virtualizes its thread, so the DOM holds only a few turns. The
-    // adapter's list (crawled up front, or retained containers on the earlier
-    // DOM) is the only reliable source for selection identity and order.
-    return turnContainers.map((turn) => ({
-      messageId: turn.id,
-      role: turn.role,
-      hostElement: turn.container,
-      exportElement: turn.container,
-      text: '',
-      starred: false,
-    }));
-  }
-
-  const messages = buildExportMessagesFromPairs(pairsInput);
-  return messages
-    .map((message) => {
-      const rect = message.hostElement.getBoundingClientRect();
-      return {
-        ...message,
-        absTop: rect.top + window.scrollY,
-      };
-    })
-    .sort((a, b) => a.absTop - b.absTop);
-}
-
-function buildTurnsForSelectedMessages(
-  selectedMessages: readonly ExportMessage[],
-): ExportChatTurn[] {
-  const groupedTurns = groupSelectedMessagesByTurn(
-    selectedMessages.filter(
-      (message): message is ExportMessage & { role: Exclude<ExportMessageRole, 'unknown'> } =>
-        message.role !== 'unknown',
-    ),
-  );
-  return groupedTurns
-    .map((turn) => ({
-      user: turn.user?.text || '',
-      assistant: turn.assistant?.text || '',
-      starred: turn.starred,
-      omitEmptySections: true,
-      userElement: turn.user?.exportElement,
-      assistantElement: turn.assistant?.exportElement,
-    }))
-    .filter(
-      (turn) =>
-        turn.user.length > 0 ||
-        turn.assistant.length > 0 ||
-        !!turn.userElement ||
-        !!turn.assistantElement,
-    );
-}
-
-function buildTurnsForSelectedMessageIds(
-  selectedMessageIds: ReadonlySet<string>,
-  pairsInput: ChatTurn[] = collectChatPairs(),
-): ExportChatTurn[] {
-  if (selectedMessageIds.size === 0) return [];
-  const selectedMessages = resolveSelectionMessages(pairsInput).filter((message) =>
-    selectedMessageIds.has(message.messageId),
-  );
-  return buildTurnsForSelectedMessages(selectedMessages);
-}
-
-function resolveAssistantMessageIdFromMenuTrigger(trigger: HTMLElement | null): string | null {
-  if (!trigger) return null;
-
-  const assistantHost = trigger.closest(
-    '.response-container, response-container, .model-response, model-response',
-  ) as HTMLElement | null;
-  if (!assistantHost) return null;
-
-  const messages = buildExportMessagesFromPairs(collectChatPairs());
-  const target = messages.find((message) => {
-    if (message.role !== 'assistant') return false;
-    const host = message.hostElement;
-    return (
-      host === assistantHost ||
-      host.contains(assistantHost) ||
-      assistantHost.contains(host) ||
-      host.contains(trigger)
-    );
-  });
-
-  return target?.messageId || null;
 }
 
 function ensureDropdownInjected(logoElement: Element): HTMLButtonElement | null {
@@ -602,24 +193,11 @@ function getConversationTitleForExport(): string {
 }
 
 /**
- * Finds the top-most user message element in the DOM.
- */
-function getTopUserElement(selectors: string[]): HTMLElement | null {
-  const root = getConversationRoot(selectors);
-  const all = filterOutDeepResearchImmersiveNodes(
-    Array.from(root.querySelectorAll<HTMLElement>(selectors.join(','))),
-  );
-  if (!all.length) return null;
-  const topLevel = filterTopLevel(all);
-  return topLevel.length > 0 ? topLevel[0] : null;
-}
-
-/**
  * Scroll the conversation to the very top so virtual-scroll containers
  * render their topmost nodes, then wait for the DOM to settle.
  */
-async function scrollToTopAndRender(userSelectors: string[]): Promise<void> {
-  const topEl = getTopUserElement(userSelectors);
+async function scrollToTopAndRender(): Promise<void> {
+  const topEl = collector.topUserElement();
   if (topEl) {
     topEl.scrollIntoView({ behavior: 'auto', block: 'start' });
   }
@@ -765,14 +343,13 @@ function resolveConversationCanvasCenterX(): number {
     return rect.left + rect.width / 2;
   }
 
-  const selectors = getUserSelectors();
-  const topUser = getTopUserElement(selectors);
+  const topUser = collector.topUserElement();
   if (topUser && !isLikelySidebarElement(topUser)) {
     const rect = topUser.getBoundingClientRect();
     if (rect.width > 24) return rect.left + rect.width / 2;
   }
 
-  const root = getConversationRoot(selectors);
+  const root = collector.conversationRoot();
   if (root && !isLikelySidebarElement(root)) {
     const rect = root.getBoundingClientRect();
     if (rect.width > Math.max(300, window.innerWidth * 0.42)) return rect.left + rect.width / 2;
@@ -837,9 +414,7 @@ async function executeExportSequence(
   throwIfExportCancelled(signal);
   // Cache Canvas documents at the very start of the export sequence,
   // before we click the top node or cause any DOM updates/scrolling.
-  if (!paramState && isAnyCanvasOpen()) {
-    cachedCanvasDocs = extractAllCanvasDocs();
-  }
+  if (!paramState) collector.snapshotOpenCanvasDocs();
 
   const state =
     paramState ||
@@ -857,7 +432,7 @@ async function executeExportSequence(
       exportAdapter,
       { signal, expectedUrl: state.url },
       {
-        scrollToTop: () => scrollToTopAndRender(getUserSelectors()),
+        scrollToTop: () => scrollToTopAndRender(),
         exportSelection: () => performFinalExport(state, dict, lang),
       },
     );
@@ -878,11 +453,10 @@ async function executeExportSequence(
   }
 
   // Wait a bit if we just reloaded
-  const userSelectors = getUserSelectors();
-  let topNode = getTopUserElement(userSelectors);
+  let topNode = collector.topUserElement();
   if (!topNode) {
     await waitForElement('body', 2000);
-    const pairs = collectChatPairs();
+    const pairs = collector.collectChatPairs();
     if (pairs.length > 0 && pairs[0].userElement) {
       topNode = pairs[0].userElement;
     }
@@ -962,8 +536,7 @@ async function executeExportSequenceWithProgress(
     );
   } finally {
     hideProgress();
-    cachedCanvasDocs = null;
-    removeCanvasExportSections();
+    collector.releaseCanvasDocs();
     removeGeneratedUiScreenshotSections();
   }
 }
@@ -985,9 +558,8 @@ async function performFinalExport(
   await captureGeneratedUiScreenshots();
   throwIfExportCancelled(signal);
 
-  const pairs = collectChatPairs();
-  const messages = resolveSelectionMessages(pairs);
-  if (!noteExportTurns(messages.length > 0, () => collectChatPairs().length > 0)) {
+  const messages = collector.collectSelectionMessages();
+  if (!noteExportTurns(messages.length > 0, () => collector.collectChatPairs().length > 0)) {
     alert(t('export_dialog_warning'));
     return;
   }
@@ -1200,8 +772,7 @@ async function performFinalExport(
     selectorBindings.set(msg.messageId, { host, cleanup: cleanupBinding });
   };
 
-  const syncMessages = (pairsInput: ChatTurn[]) => {
-    const selectionMessages = resolveSelectionMessages(pairsInput);
+  const syncMessages = (selectionMessages: ExportMessage[]) => {
     allMessageIds = selectionMessages.map((m) => m.messageId);
     const liveMessageIds = new Set(allMessageIds);
     const removedSelectionIds = pruneMissingSelectionIds(selectedIds, liveMessageIds);
@@ -1413,7 +984,7 @@ async function performFinalExport(
                 expectedUrl: selectionUrl,
               }),
           )
-        : buildTurnsForSelectedMessageIds(selectedIdsForExport, collectChatPairs());
+        : collector.turnsForMessageIds(selectedIdsForExport);
       throwIfExportCancelled(signal);
       if (exportRouteKey(location.href) !== exportRouteKey(selectionUrl)) {
         throw new Error('export_conversation_changed');
@@ -1469,7 +1040,7 @@ async function performFinalExport(
   });
 
   // Observe new lazy-loaded messages while selection mode is active.
-  const root = getConversationRoot(getUserSelectors());
+  const root = collector.conversationRoot();
   const scheduleRefresh = () => {
     if (refreshTimer) return;
     refreshTimer = window.setTimeout(() => {
@@ -1481,7 +1052,7 @@ async function performFinalExport(
         return;
       }
       try {
-        syncMessages(collectChatPairs());
+        syncMessages(collector.collectSelectionMessages());
         updateBottomBar(bar);
       } catch {}
     }, 250);
@@ -1513,7 +1084,7 @@ async function performFinalExport(
 
   // Initial sync
   activeExportSelectionCleanup = cancelSession;
-  syncMessages(pairs);
+  syncMessages(collector.collectSelectionMessages());
   updateBottomBar(bar);
   await sessionPromise;
 }
@@ -1717,7 +1288,7 @@ async function handleResponseCopyImageClick(
     user: t('export_speaker_user_default'),
     assistant: t('export_speaker_assistant_default'),
   };
-  const messageId = resolveAssistantMessageIdFromMenuTrigger(trigger);
+  const messageId = collector.assistantMessageIdFor(trigger);
   let blobForFallback: Blob | null = null;
   try {
     if (!messageId) {
@@ -1726,7 +1297,7 @@ async function handleResponseCopyImageClick(
     }
 
     const selectedMessageIds = new Set<string>([messageId]);
-    const turnsForExport = buildTurnsForSelectedMessageIds(selectedMessageIds, collectChatPairs());
+    const turnsForExport = collector.turnsForMessageIds(selectedMessageIds);
     if (turnsForExport.length === 0) {
       showExportToast(texts.targetMissing);
       return;
@@ -2082,7 +1653,7 @@ export async function startExportButton(
         return;
       }
       if (context.menuType === 'message') {
-        const initialSelectedMessageId = resolveAssistantMessageIdFromMenuTrigger(context.trigger);
+        const initialSelectedMessageId = collector.assistantMessageIdFor(context.trigger);
         void showExportDialog(dict, lang, { initialSelectedMessageId });
         return;
       }
