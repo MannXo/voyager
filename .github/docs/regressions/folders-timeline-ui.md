@@ -895,10 +895,13 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
   or "No folders yet" leaves a large gap above Recents.
 - **Rule:** `chatgptFolderSection.css` resets host width/height constraints and `resize` with
   `!important`, matching the shared host sheet's priority. The section follows its content and
-  sidebar width; its empty state has no minimum height and uses compact padding. Keep the
+  sidebar width; its empty state has no minimum height and uses compact padding. The sidebar is
+  a flex column, so the host also sets `flex-shrink: 0`: with `min-height: 0` alone, an expanded
+  Recents list shrinks the section to 0px and the tree overlaps Recents. Keep the
   floating panel stylesheet unchanged and verify the combined sheets inside a real shadow root.
 - **Guard:** Headless Chrome or the live extension: at 1209x846 in light and dark themes, check
-  zero/one-folder sections fit their content with no resize handle, including a 240px sidebar;
+  zero/one-folder sections fit their content with no resize handle, including a 240px sidebar
+  and with a long, expanded Recents list (section height equals the tree height);
   the separate floating panel must retain its 280px/320px minimums and `resize: both`.
 
 ## Hiding filed ChatGPT chats must not hide the open chat or rows inside Projects

@@ -12,6 +12,9 @@
   height: auto !important;
   min-width: 0 !important;
   min-height: 0 !important;
+  /* The sidebar is a flex column: without this, a long Recents list shrinks
+     the section to 0px and the tree overlaps it. */
+  flex-shrink: 0 !important;
   max-width: none !important;
   max-height: none !important;
   resize: none !important;
