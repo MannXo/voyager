@@ -15,6 +15,13 @@ export function sortFolders(folders: readonly Folder[]): Folder[] {
   });
 }
 
+/** Pinned first, then oldest first. */
+export function sortFoldersByCreation(folders: readonly Folder[]): Folder[] {
+  return [...folders].sort(
+    (a, b) => Number(!!b.pinned) - Number(!!a.pinned) || a.createdAt - b.createdAt,
+  );
+}
+
 export function sortConversationsByPriority(
   conversations: readonly ConversationReference[],
   mode: ConversationSortMode = 'manual',
