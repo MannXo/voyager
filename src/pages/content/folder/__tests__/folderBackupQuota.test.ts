@@ -18,12 +18,27 @@ vi.mock('webextension-polyfill', () => ({
   },
 }));
 
-vi.mock('@/core/utils/browser', () => ({ isSafari: () => false, isFirefox: () => false }));
+vi.mock('@/core/utils/browser', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/core/utils/browser')>()),
+  isSafari: () => false,
+  isFirefox: () => false,
+}));
 
 const KEY = 'gvFolderData';
 const PRIMARY = 'gvBackup_gemini-folders_primary';
 const EMERGENCY = 'gvBackup_gemini-folders_emergency';
-const QUOTA = 5 * 1024 * 1024;
+const MiB = 1024 * 1024;
+const QUOTA = 5 * MiB;
+
+/** Bytes chrome.storage.local counts for one item. */
+function itemBytes(key: string, value: unknown): number {
+  const encoder = new TextEncoder();
+  return encoder.encode(key).byteLength + encoder.encode(JSON.stringify(value)).byteLength;
+}
+
+function storedBytes(items: Record<string, unknown>): number {
+  return Object.entries(items).reduce((sum, [key, value]) => sum + itemBytes(key, value), 0);
+}
 
 function library(): FolderData {
   const folders = Array.from({ length: 1000 }, (_, i) => ({
@@ -107,6 +122,9 @@ describe('FolderRepository backup quota safety', () => {
 
   afterEach(() => {
     repository?.destroy();
+    const local = chrome.storage.local as { QUOTA_BYTES?: number; getBytesInUse?: unknown };
+    delete local.QUOTA_BYTES;
+    delete local.getBytesInUse;
     vi.restoreAllMocks();
   });
 
@@ -115,6 +133,7 @@ describe('FolderRepository backup quota safety', () => {
     await createRepository().init();
     repository.data.folders[0].name = 'Changed';
     await expect(repository.saveData()).resolves.toBe(true);
+    await repository.session!.backup.ensureHydrated();
     const expected = structuredClone(repository.data);
 
     expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual(expected);
@@ -138,31 +157,34 @@ describe('FolderRepository backup quota safety', () => {
     expect(localStorage.getItem(EMERGENCY)).toBeNull();
   });
 
-  it('finishes the emergency fallback before reporting a completed save', async () => {
-    localStorage.setItem(KEY, JSON.stringify(library()));
+  it('saves on while a backup write hangs', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ folders: [], folderContents: {} }));
     await createRepository().init();
-    let release!: () => void;
-    const write = new Promise<void>((resolve) => {
-      release = resolve;
+    const setItem = vi.mocked(localStorage.setItem).getMockImplementation()!;
+    vi.mocked(localStorage.setItem).mockImplementation((key, value) => {
+      if (key.startsWith('gvBackup_')) throw new DOMException('Storage full', 'QuotaExceededError');
+      setItem(key, value);
     });
-    vi.mocked(browser.storage.local.set).mockImplementation(async (items) => {
-      if (EMERGENCY in items) await write;
-      Object.assign(durable, items);
-    });
-    repository.data.folders[0].name = 'Changed';
-    let settled = false;
-    const saving = repository.saveData().then((saved) => {
-      settled = true;
-      return saved;
-    });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(JSON.parse(localStorage.getItem(KEY)!).folders[0].name).toBe('Changed');
-    expect(settled).toBe(false);
+    // Every backup copy now goes to extension storage, which never answers.
+    vi.mocked(browser.storage.local.set).mockImplementation(() => new Promise(() => {}));
+    const settles = (saving: Promise<boolean>) =>
+      Promise.race([saving, new Promise((resolve) => setTimeout(resolve, 500, 'hung'))]);
 
-    release();
-    await expect(saving).resolves.toBe(true);
-    expect(settled).toBe(true);
-    expect(JSON.parse(durable[EMERGENCY] as string).data).toEqual(repository.data);
+    repository.data.folders.push({
+      id: 'a',
+      name: 'A',
+      parentId: null,
+      isExpanded: true,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await expect(settles(repository.saveData())).resolves.toBe(true);
+    repository.data.folders[0].name = 'B';
+    await expect(settles(repository.saveData())).resolves.toBe(true);
+
+    expect(JSON.parse(localStorage.getItem(KEY)!).folders[0].name).toBe('B');
+    expect((durable[KEY] as FolderData).folders[0].name).toBe('B');
+    expect(onSaveFailed).not.toHaveBeenCalled();
   });
 
   it('keeps a successful user save and older primary when both backup stores fail', async () => {
@@ -182,5 +204,44 @@ describe('FolderRepository backup quota safety', () => {
     expect(durable[KEY]).toEqual(repository.data);
     expect(localStorage.getItem(PRIMARY)).toBe(oldPrimary);
     expect(onSaveFailed).not.toHaveBeenCalled();
+  });
+  it('leaves the live folder mirror room to grow when extension storage is near its quota', async () => {
+    const cap = 10 * MiB;
+    const capped = async (items: Record<string, unknown>) => {
+      if (storedBytes({ ...durable, ...items }) > cap) throw new Error('QUOTA_BYTES exceeded');
+      Object.assign(durable, items);
+    };
+    vi.mocked(browser.storage.local.set).mockImplementation(capped);
+    vi.mocked(chrome.storage.local.set).mockImplementation(capped);
+    Object.assign(chrome.storage.local, {
+      QUOTA_BYTES: cap,
+      getBytesInUse: async (keys: string[] | null) =>
+        storedBytes(
+          Object.fromEntries(
+            Object.entries(durable).filter(([key]) => keys === null || keys.includes(key)),
+          ),
+        ),
+    });
+    localStorage.setItem(KEY, JSON.stringify(library()));
+    await createRepository().init();
+    repository.data.folders[0].name = 'Changed';
+    const emergencyBytes = itemBytes(
+      EMERGENCY,
+      JSON.stringify({ data: repository.data, metadata: { timestamp: new Date().toISOString() } }),
+    );
+    // Other features fill extension storage until the emergency copy would still fit
+    // under the quota, with 300 KB to spare, but not with the reserve kept free.
+    const used = storedBytes(durable) + itemBytes('gvPromptItems', '');
+    durable.gvPromptItems = 'p'.repeat(cap - used - emergencyBytes - 300_000);
+
+    await expect(repository.saveData()).resolves.toBe(true);
+    await repository.session!.backup.ensureHydrated();
+    expect(durable).not.toHaveProperty(EMERGENCY);
+
+    // The library grows past that spare room; its mirror must still land.
+    repository.data.folders[1].name = 'n'.repeat(600_000);
+    await expect(repository.saveData()).resolves.toBe(true);
+    await repository.session!.backup.ensureHydrated();
+    expect(durable[KEY]).toEqual(repository.data);
   });
 });

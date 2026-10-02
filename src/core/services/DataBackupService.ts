@@ -18,7 +18,31 @@
  */
 import browser from 'webextension-polyfill';
 
+import { storageQuotaService } from '@/core/services/StorageQuotaService';
 import { isSafari } from '@/core/utils/browser';
+
+/**
+ * Room a backup copy must leave free in extension storage. It exceeds the
+ * highlights' own reserve (max(512 KiB, 10%)), so a copy never takes the space
+ * live folder data, prompts or highlights write into.
+ */
+const EXTENSION_RESERVE_MIN_BYTES = 2 * 1024 * 1024;
+const EXTENSION_RESERVE_RATIO = 0.25;
+/** Recovery waits this long for backup writes in flight, then reads what landed. */
+const PENDING_WRITE_WAIT_MS = 2000;
+
+interface QueuedExtensionWrite {
+  /** `null` removes the slot's extension-storage copy. */
+  value: string | null;
+  version: number;
+  settle: Array<(saved: boolean) => void>;
+}
+
+/** Bytes chrome.storage counts for a string item: the key plus the JSON-encoded value. */
+function storedBytes(key: string, value: string): number {
+  const encoder = new TextEncoder();
+  return encoder.encode(key).byteLength + encoder.encode(JSON.stringify(value)).byteLength;
+}
 
 export interface BackupMetadata {
   timestamp: string;
@@ -48,8 +72,20 @@ export class DataBackupService<T = unknown> {
   // Safari always mirrors backups to survive ITP eviction. Other browsers use
   // the same durable slots only when page localStorage is full or unavailable.
   private readonly useDurableMirror: boolean = isSafari();
+  /** Extension-storage copies this context has read or written, for recovery. */
   private readonly durableBackups = new Map<string, string>();
-  private durableWrites: Promise<boolean> = Promise.resolve(true);
+  /** Writes run one at a time; a newer value replaces a queued one for the same slot. */
+  private readonly queuedWrites = new Map<string, QueuedExtensionWrite>();
+  private draining: Promise<void> | null = null;
+  /** Backup work recovery waits for: queued writes, unload copies and stale-copy removals. */
+  private readonly inFlight = new Set<Promise<unknown>>();
+  /** Bumped per write, so a superseded write neither lands late nor updates the cache. */
+  private readonly slotVersions = new Map<string, number>();
+  /** Last measured extension-storage use, raised by each copy accepted since. */
+  private headroom: { bytesInUse: number; limitBytes: number } | null = null;
+  /** Slots that may hold an extension-storage copy: found once per context, or sent since. */
+  private readonly storedSlots = new Set<string>();
+  private slotProbe: Promise<void> | null = null;
 
   constructor(
     private readonly namespace: string,
@@ -63,26 +99,176 @@ export class DataBackupService<T = unknown> {
 
   /** Read durable slots before recovery, even when they cannot fit in localStorage. */
   async ensureHydrated(): Promise<void> {
-    await this.durableWrites;
+    await this.settlePendingWrites();
     await this.hydrateFromDurableStore();
   }
 
-  /** Writes are ordered so an older async fallback cannot replace a newer one. */
-  private mirrorToDurableStore(key: string, value: string): Promise<boolean> {
-    this.durableWrites = this.durableWrites.then(async () => {
-      try {
-        await browser.storage.local.set({ [key]: value });
-        this.durableBackups.set(key, value);
-        return true;
-      } catch (error) {
-        console.warn(`[BackupService:${this.namespace}] Durable mirror write failed:`, error);
-        return false;
-      }
+  /** Wait for backup writes in flight, but a hung write must not block recovery. */
+  private async settlePendingWrites(): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, PENDING_WRITE_WAIT_MS);
     });
-    return this.durableWrites;
+    const settled = (async () => {
+      while (this.inFlight.size > 0) await Promise.all(this.inFlight);
+    })();
+    try {
+      await Promise.race([settled, timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
-  private async writeBackup(key: string, serialized: string): Promise<boolean> {
+  private track<P extends Promise<unknown>>(work: P): P {
+    this.inFlight.add(work);
+    void work.finally(() => this.inFlight.delete(work));
+    return work;
+  }
+
+  private nextVersion(key: string): number {
+    const version = (this.slotVersions.get(key) ?? 0) + 1;
+    this.slotVersions.set(key, version);
+    return version;
+  }
+
+  /**
+   * Queue a copy or removal for one slot. Queued writes run in order, so an
+   * older copy never lands after a newer one.
+   */
+  private queueExtensionWrite(key: string, value: string | null): Promise<boolean> {
+    const version = this.nextVersion(key);
+    if (value !== null) this.storedSlots.add(key);
+    const replaced = this.queuedWrites.get(key);
+    this.queuedWrites.delete(key);
+    return new Promise((resolve) => {
+      this.queuedWrites.set(key, {
+        value,
+        version,
+        settle: [...(replaced?.settle ?? []), resolve],
+      });
+      this.draining ??= this.track(this.drainQueuedWrites());
+    });
+  }
+
+  private async drainQueuedWrites(): Promise<void> {
+    for (let next = this.queuedWrites.entries().next(); !next.done;) {
+      const [key, write] = next.value;
+      this.queuedWrites.delete(key);
+      const saved =
+        write.value === null
+          ? await this.removeExtensionCopy(key, write.version)
+          : await this.putExtensionCopy(key, write.value, write.version);
+      for (const settle of write.settle) settle(saved);
+      next = this.queuedWrites.entries().next();
+    }
+    this.draining = null;
+  }
+
+  /** Measure first: a copy that would not leave the reserve free is skipped. */
+  private async putExtensionCopy(key: string, value: string, version: number): Promise<boolean> {
+    let replacedBytes: number;
+    try {
+      const measured = await storageQuotaService.getLocalHeadroom(key);
+      this.headroom = { bytesInUse: measured.bytesInUse, limitBytes: measured.limitBytes };
+      replacedBytes = measured.keyBytes;
+    } catch (error) {
+      this.headroom = null;
+      console.warn(`[BackupService:${this.namespace}] Extension storage unmeasurable:`, error);
+      return false;
+    }
+    // A newer write for this slot took over while this one measured.
+    if (this.slotVersions.get(key) !== version) return true;
+    if (!this.claimHeadroom(key, value, replacedBytes)) return false;
+    return this.issueExtensionWrite(key, value, version);
+  }
+
+  /** Accept a copy only if it leaves the reserve free, and count it as stored. */
+  private claimHeadroom(key: string, value: string, replacedBytes: number): boolean {
+    const headroom = this.headroom;
+    if (!headroom) return false;
+    const reserve = Math.max(
+      EXTENSION_RESERVE_MIN_BYTES,
+      Math.ceil(headroom.limitBytes * EXTENSION_RESERVE_RATIO),
+    );
+    const projected = headroom.bytesInUse - replacedBytes + storedBytes(key, value);
+    if (projected + reserve > headroom.limitBytes) {
+      console.warn(`[BackupService:${this.namespace}] Skipped ${key}: extension storage near cap`);
+      return false;
+    }
+    headroom.bytesInUse = projected;
+    return true;
+  }
+
+  /** Calls `set` synchronously, before any await, so an unloading page still sends it. */
+  private async issueExtensionWrite(key: string, value: string, version: number): Promise<boolean> {
+    try {
+      await browser.storage.local.set({ [key]: value });
+      if (this.slotVersions.get(key) === version) this.durableBackups.set(key, value);
+      return true;
+    } catch (error) {
+      console.warn(`[BackupService:${this.namespace}] Durable mirror write failed:`, error);
+      return false;
+    }
+  }
+
+  private async removeExtensionCopy(key: string, version: number): Promise<boolean> {
+    try {
+      await browser.storage.local.remove(key);
+      if (this.slotVersions.get(key) === version) {
+        this.durableBackups.delete(key);
+        this.storedSlots.delete(key);
+      }
+      return true;
+    } catch (error) {
+      console.warn(`[BackupService:${this.namespace}] Durable copy removal failed:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Send a copy now, ahead of queued writes, which an unloading page cannot wait
+   * for. It decides from the last measurement because a fresh one would await.
+   */
+  private writeExtensionCopyNow(key: string, value: string): Promise<boolean> {
+    const version = this.nextVersion(key);
+    this.storedSlots.add(key);
+    const replaced = this.queuedWrites.get(key);
+    this.queuedWrites.delete(key);
+    const cached = this.durableBackups.get(key);
+    const write = this.claimHeadroom(key, value, cached ? storedBytes(key, cached) : 0)
+      ? this.issueExtensionWrite(key, value, version)
+      : Promise.resolve(false);
+    for (const settle of replaced?.settle ?? []) void write.then(settle);
+    return this.track(write);
+  }
+
+  /** Remove a slot's extension-storage copy once page storage holds a newer one. */
+  private async dropStaleCopy(key: string): Promise<void> {
+    const version = this.slotVersions.get(key);
+    this.slotProbe ??= this.probeStoredSlots();
+    await this.slotProbe;
+    // A copy queued meanwhile is newer than the page write and owns the slot.
+    if (this.slotVersions.get(key) !== version || !this.storedSlots.has(key)) return;
+    await this.queueExtensionWrite(key, null);
+  }
+
+  /** One read per context: an earlier page may have left fallback copies behind. */
+  private async probeStoredSlots(): Promise<void> {
+    const keys = [this.primaryKey, this.emergencyKey, this.beforeUnloadKey];
+    try {
+      const stored = await browser.storage.local.get(keys);
+      for (const key of keys) if (key in stored) this.storedSlots.add(key);
+    } catch {
+      for (const key of keys) this.storedSlots.add(key);
+    }
+  }
+
+  /**
+   * Write a slot to localStorage, and to extension storage when Safari mirrors it
+   * or page storage rejected it. A page write that lands supersedes any older
+   * fallback copy, so that copy is removed rather than left for recovery.
+   */
+  private async writeBackup(key: string, serialized: string, now = false): Promise<boolean> {
     let localSaved = false;
     try {
       // setItem is atomic on failure: never remove the previous backup to make room.
@@ -91,8 +277,13 @@ export class DataBackupService<T = unknown> {
     } catch (error) {
       console.warn(`[BackupService:${this.namespace}] Local backup write failed:`, error);
     }
-    if (localSaved && !this.useDurableMirror) return true;
-    const durableSaved = await this.mirrorToDurableStore(key, serialized);
+    if (localSaved && !this.useDurableMirror) {
+      void this.track(this.dropStaleCopy(key));
+      return true;
+    }
+    const durableSaved = await (now
+      ? this.writeExtensionCopyNow(key, serialized)
+      : this.queueExtensionWrite(key, serialized));
     return localSaved || durableSaved;
   }
 
@@ -166,7 +357,7 @@ export class DataBackupService<T = unknown> {
     try {
       const backup = this.createBackupData(data);
       const serialized = JSON.stringify(backup);
-      if (!(await this.writeBackup(this.beforeUnloadKey, serialized))) return false;
+      if (!(await this.writeBackup(this.beforeUnloadKey, serialized, true))) return false;
       console.log(`[BackupService:${this.namespace}] BeforeUnload backup created`);
       return true;
     } catch (error) {
@@ -184,6 +375,16 @@ export class DataBackupService<T = unknown> {
   setupBeforeUnloadBackup(getDataFn: () => T): void {
     if (this.beforeUnloadHandler) {
       window.removeEventListener('beforeunload', this.beforeUnloadHandler);
+    }
+
+    // The unload copy cannot await a measurement, so take one now if none exists.
+    if (!this.headroom) {
+      void storageQuotaService.getLocalHeadroom(this.beforeUnloadKey).then(
+        ({ bytesInUse, limitBytes }) => {
+          this.headroom ??= { bytesInUse, limitBytes };
+        },
+        () => {},
+      );
     }
 
     this.beforeUnloadHandler = () => {
@@ -319,7 +520,7 @@ export class DataBackupService<T = unknown> {
       allMetadata[type] = metadata;
       const serialized = JSON.stringify(allMetadata);
       localStorage.setItem(this.metadataKey, serialized);
-      if (this.useDurableMirror) void this.mirrorToDurableStore(this.metadataKey, serialized);
+      if (this.useDurableMirror) void this.queueExtensionWrite(this.metadataKey, serialized);
     } catch (error) {
       console.warn(`[BackupService:${this.namespace}] Failed to update metadata:`, error);
     }
@@ -347,21 +548,14 @@ export class DataBackupService<T = unknown> {
       localStorage.removeItem(this.beforeUnloadKey);
       localStorage.removeItem(this.metadataKey);
       this.durableBackups.clear();
-      this.durableWrites = this.durableWrites
-        .then(async () => {
-          await browser.storage.local.remove([
-            this.primaryKey,
-            this.emergencyKey,
-            this.beforeUnloadKey,
-            this.metadataKey,
-          ]);
-          this.durableBackups.clear();
-          return true;
-        })
-        .catch((error) => {
-          console.warn(`[BackupService:${this.namespace}] Durable mirror clear failed:`, error);
-          return false;
-        });
+      for (const key of [
+        this.primaryKey,
+        this.emergencyKey,
+        this.beforeUnloadKey,
+        this.metadataKey,
+      ]) {
+        void this.queueExtensionWrite(key, null);
+      }
       console.log(`[BackupService:${this.namespace}] All backups cleared`);
     } catch (error) {
       console.error(`[BackupService:${this.namespace}] Failed to clear backups:`, error);

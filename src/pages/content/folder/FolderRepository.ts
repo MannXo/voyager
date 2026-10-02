@@ -547,7 +547,8 @@ export class FolderRepository {
       // A mutation supersedes any storage read already in flight for this session.
       session.loadVersion += 1;
       session.markReady();
-      const emergencyBackup = session.backup.createEmergencyBackup(snapshot);
+      // Backups stay off the save chain: a slow or failed copy never delays or fails a save.
+      void session.backup.createEmergencyBackup(snapshot);
       if (session.saveInProgress) {
         session.pendingSave = snapshot;
         // Calls coalesced into this trailing snapshot share its storage result.
@@ -559,12 +560,11 @@ export class FolderRepository {
           session.pendingSaveCompletion = { promise, resolve };
         }
         this.debug('Save already in progress, queueing one trailing save');
-        return session.pendingSaveCompletion.promise.finally(() => emergencyBackup);
+        return session.pendingSaveCompletion.promise;
       }
 
       session.activeSave = this.persistDataSession(session, snapshot, undefined, carriesEdit);
-      // Finish the backup attempt without making its failure fail the user save.
-      return session.activeSave.finally(() => emergencyBackup);
+      return session.activeSave;
     } catch (error) {
       console.error(`${this.tag} Save data error:`, error);
       this.hooks.onSaveFailed?.();
@@ -635,9 +635,8 @@ export class FolderRepository {
       }
 
       if (success) {
-        // Create primary backup AFTER successful save
-        // Backup failure must not change the successful user-save result.
-        await session.backup.createPrimaryBackup(snapshot);
+        // Create primary backup AFTER successful save, without holding the save chain.
+        void session.backup.createPrimaryBackup(snapshot);
         this.debug('Data saved successfully');
         // Centralised floating-panel sync. Any code path that persists folder
         // data (sidebar actions, cloud download, native menu → "Move to

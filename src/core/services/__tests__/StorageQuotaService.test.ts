@@ -345,6 +345,30 @@ describe('StorageQuotaService', () => {
     },
   );
 
+  it.each([
+    // Chrome still reports QUOTA_BYTES = 10 MiB once unlimitedStorage lifts it.
+    { label: 'the soft cap on unlimited Chromium', target: 'chrome', required: true, expected: 50 },
+    { label: 'the 10 MiB quota on legacy Safari', target: 'safari', required: false, expected: 10 },
+  ] as const)('limits local headroom to $label', async ({ target, required, expected }) => {
+    const local = createArea(
+      { [STORAGE_QUOTA_SOFT_CAP_KEY]: 50, backup: 'x', other: 'y' },
+      { quotaBytes: 10 * MEBIBYTE, weights: { backup: 300, other: 700 } },
+    );
+    const { chromeApi } = createChromeMock(local, createArea({}), { required, granted: true });
+    const service = new StorageQuotaService({
+      chromeApi,
+      buildTarget: () => target,
+      safariMajorVersion: () => 15,
+      legacySafariStorageLimit: () => true,
+    });
+
+    await expect(service.getLocalHeadroom('backup')).resolves.toEqual({
+      bytesInUse: 1001,
+      keyBytes: 300,
+      limitBytes: expected * MEBIBYTE,
+    });
+  });
+
   it('marks an unknown Safari granted quota as estimated instead of assuming 10 MiB', async () => {
     const local = createArea({}, { quotaBytes: 99 * MEBIBYTE });
     const sync = createArea({});

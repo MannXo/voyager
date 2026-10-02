@@ -91,6 +91,15 @@ export interface StorageQuotaSnapshot {
   estimated: boolean;
 }
 
+/** What the local area holds before one key is replaced, and the most it should hold. */
+export interface LocalStorageHeadroom {
+  bytesInUse: number;
+  /** Bytes the key holds now; writing it replaces them. */
+  keyBytes: number;
+  /** Voyager's soft cap, or the browser's quota when that is lower. */
+  limitBytes: number;
+}
+
 export function getStorageQuotaEffectiveUsageRatio(snapshot: StorageQuotaSnapshot): number | null {
   const localRatio =
     snapshot.local.available && snapshot.local.quotaBytes === null
@@ -689,6 +698,45 @@ export class StorageQuotaService {
       permission,
       estimated:
         local.usage.estimated || sync.usage.estimated || categories.some((item) => item.estimated),
+    };
+  }
+
+  /** A pre-write probe of the local area that reads no items when the browser can measure them. */
+  async getLocalHeadroom(key: string): Promise<LocalStorageHeadroom> {
+    const area = this.chromeApi.storage?.local;
+    const permission = await this.getUnlimitedStoragePermissionStatus();
+    const settings =
+      (await this.callApi<Record<string, unknown>>(area ?? {}, area?.get, [
+        [STORAGE_QUOTA_SOFT_CAP_KEY],
+      ])) ?? {};
+    let bytesInUse: number | null = null;
+    let keyBytes: number | null = null;
+    if (area?.getBytesInUse) {
+      try {
+        const [total, own] = await Promise.all([
+          this.callApi<number>(area, area.getBytesInUse, [null]),
+          this.callApi<number>(area, area.getBytesInUse, [[key]]),
+        ]);
+        if (Number.isFinite(total) && total >= 0 && Number.isFinite(own) && own >= 0) {
+          bytesInUse = total;
+          keyBytes = own;
+        }
+      } catch {
+        // Estimated below, as for older APIs.
+      }
+    }
+    if (bytesInUse === null || keyBytes === null) {
+      const items =
+        (await this.callApi<Record<string, unknown>>(area ?? {}, area?.get, [null])) ?? {};
+      bytesInUse = estimateBytes(items);
+      keyBytes = key in items ? estimateBytes(pickItems(items, [key])) : 0;
+    }
+    const softCapBytes = normalizeSoftCap(settings[STORAGE_QUOTA_SOFT_CAP_KEY]) * MEBIBYTE;
+    const { quotaBytes } = this.resolveAreaQuota('local', area?.QUOTA_BYTES, permission.granted);
+    return {
+      bytesInUse,
+      keyBytes,
+      limitBytes: quotaBytes === null ? softCapBytes : Math.min(softCapBytes, quotaBytes),
     };
   }
 

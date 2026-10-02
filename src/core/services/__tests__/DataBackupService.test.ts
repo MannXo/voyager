@@ -3,28 +3,51 @@ import browser from 'webextension-polyfill';
 
 import { DataBackupService } from '../DataBackupService';
 
-// In-memory stand-in for browser.storage.local (the Safari durable mirror).
-const durableStore: Record<string, unknown> = {};
+// One in-memory extension storage behind both browser.storage.local (writes)
+// and chrome.storage.local (StorageQuotaService's headroom probe). `set` rejects
+// past `QUOTA_BYTES`, counting bytes the way Chrome does.
+const extension = vi.hoisted(() => {
+  const store: Record<string, unknown> = {};
+  const itemBytes = (key: string, value: unknown): number => {
+    const encoder = new TextEncoder();
+    return encoder.encode(key).byteLength + encoder.encode(JSON.stringify(value)).byteLength;
+  };
+  const bytesIn = (items: Record<string, unknown>, keys?: string[] | null): number =>
+    (keys ?? Object.keys(items))
+      .filter((key) => key in items)
+      .reduce((sum, key) => sum + itemBytes(key, items[key]), 0);
+  const list = (keys?: string | string[] | null): string[] =>
+    keys == null ? Object.keys(store) : Array.isArray(keys) ? keys : [keys];
+  const area = {
+    QUOTA_BYTES: undefined as number | undefined,
+    get: async (keys?: string | string[] | null) =>
+      Object.fromEntries(
+        list(keys)
+          .filter((key) => key in store)
+          .map((key) => [key, store[key]]),
+      ),
+    set: async (items: Record<string, unknown>) => {
+      const quota = area.QUOTA_BYTES ?? Number.POSITIVE_INFINITY;
+      if (bytesIn({ ...store, ...items }) > quota) throw new Error('QUOTA_BYTES quota exceeded');
+      Object.assign(store, items);
+    },
+    remove: async (keys: string | string[]) => {
+      for (const key of list(keys)) delete store[key];
+    },
+    getBytesInUse: async (keys?: string | string[] | null) =>
+      bytesIn(store, keys == null ? null : list(keys)),
+  };
+  return { store, area, itemBytes };
+});
+const durableStore = extension.store;
 
 vi.mock('webextension-polyfill', () => ({
   default: {
     storage: {
       local: {
-        get: vi.fn(async (keys: string | string[]) => {
-          const list = Array.isArray(keys) ? keys : [keys];
-          const out: Record<string, unknown> = {};
-          for (const key of list) {
-            if (key in durableStore) out[key] = durableStore[key];
-          }
-          return out;
-        }),
-        set: vi.fn(async (items: Record<string, unknown>) => {
-          Object.assign(durableStore, items);
-        }),
-        remove: vi.fn(async (keys: string | string[]) => {
-          const list = Array.isArray(keys) ? keys : [keys];
-          for (const key of list) delete durableStore[key];
-        }),
+        get: vi.fn((keys) => extension.area.get(keys)),
+        set: vi.fn((items) => extension.area.set(items)),
+        remove: vi.fn((keys) => extension.area.remove(keys)),
       },
     },
   },
@@ -32,9 +55,21 @@ vi.mock('webextension-polyfill', () => ({
 
 // Toggle Safari detection per test. Read once per DataBackupService construction.
 let isSafariValue = false;
-vi.mock('@/core/utils/browser', () => ({
+vi.mock('@/core/utils/browser', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/core/utils/browser')>()),
   isSafari: () => isSafariValue,
 }));
+
+const chromeLocal = chrome.storage.local;
+
+function resetStores(): void {
+  vi.clearAllMocks();
+  vi.mocked(browser.storage.local.set).mockImplementation((items) => extension.area.set(items));
+  localStorage.clear();
+  for (const key of Object.keys(durableStore)) delete durableStore[key];
+  extension.area.QUOTA_BYTES = undefined;
+  (chrome.storage as { local: unknown }).local = extension.area;
+}
 
 interface Sample {
   folders: number[];
@@ -44,16 +79,12 @@ const PRIMARY_KEY = 'gvBackup_test-ns_primary';
 
 describe('DataBackupService durable mirror (Safari)', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
     isSafariValue = false;
-    vi.mocked(browser.storage.local.set).mockImplementation(async (items) => {
-      Object.assign(durableStore, items);
-    });
-    localStorage.clear();
-    for (const key of Object.keys(durableStore)) delete durableStore[key];
+    resetStores();
   });
 
   afterEach(() => {
+    (chrome.storage as { local: unknown }).local = chromeLocal;
     vi.restoreAllMocks();
     vi.useRealTimers();
   });
@@ -140,12 +171,6 @@ describe('DataBackupService durable mirror (Safari)', () => {
       vi.useRealTimers();
     }
   });
-
-  it('can read durable fallbacks on non-Safari', async () => {
-    isSafariValue = false;
-    const service = new DataBackupService<Sample>('test-ns');
-    await expect(service.ensureHydrated()).resolves.toBeUndefined();
-  });
 });
 
 // Atomic quota stand-in: an unsuccessful replacement must leave the old value intact.
@@ -162,18 +187,17 @@ function limitLocalStorage(limit: number): void {
 }
 
 const EMERGENCY_KEY = 'gvBackup_test-ns_emergency';
+const BEFORE_UNLOAD_KEY = 'gvBackup_test-ns_beforeUnload';
+const MiB = 1024 * 1024;
 
 describe('DataBackupService quota fallback', () => {
   beforeEach(() => {
     isSafariValue = false;
-    vi.mocked(browser.storage.local.set).mockImplementation(async (items) => {
-      Object.assign(durableStore, items);
-    });
-    localStorage.clear();
-    for (const key of Object.keys(durableStore)) delete durableStore[key];
+    resetStores();
   });
 
   afterEach(() => {
+    (chrome.storage as { local: unknown }).local = chromeLocal;
     vi.restoreAllMocks();
     vi.useRealTimers();
   });
@@ -234,6 +258,8 @@ describe('DataBackupService quota fallback', () => {
     const data: Sample = { folders: Array(300).fill(100) };
     const writer = new DataBackupService<Sample>('test-ns');
     writer.setupBeforeUnloadBackup(() => data);
+    // Let the headroom measurement the unload copy decides from land.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     window.dispatchEvent(new Event('beforeunload'));
     await writer.ensureHydrated();
     writer.destroy();
@@ -293,5 +319,78 @@ describe('DataBackupService quota fallback', () => {
     await service.ensureHydrated();
     expect(service.recoverFromBackup()).toBeNull();
     expect(Object.keys(durableStore)).toHaveLength(0);
+  });
+  it('removes an earlier page fallback copy once a newer page write of the slot lands', async () => {
+    const pageFull = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new DOMException('Storage full', 'QuotaExceededError');
+    });
+    const earlier = new DataBackupService<Sample>('test-ns');
+    expect(await earlier.createEmergencyBackup({ folders: [1] })).toBe(true);
+    expect(durableStore).toHaveProperty(EMERGENCY_KEY);
+
+    pageFull.mockRestore();
+    const later = new DataBackupService<Sample>('test-ns');
+    const newer: Sample = { folders: [2] };
+    expect(await later.createEmergencyBackup(newer)).toBe(true);
+    await later.ensureHydrated();
+
+    expect(durableStore).not.toHaveProperty(EMERGENCY_KEY);
+    expect(later.recoverFromBackup()).toEqual(newer);
+  });
+
+  it('skips a fallback copy that would not leave the reserve free for other data', async () => {
+    extension.area.QUOTA_BYTES = 10 * MiB;
+    limitLocalStorage(700);
+    const data: Sample = { folders: Array.from({ length: 100_000 }, (_, i) => i) };
+    const copyBytes = extension.itemBytes(
+      EMERGENCY_KEY,
+      JSON.stringify({
+        data,
+        metadata: {
+          timestamp: new Date().toISOString(),
+          version: '1.0',
+          dataSize: JSON.stringify(data).length,
+          itemCount: data.folders.length,
+        },
+      }),
+    );
+    // The copy itself fits under the quota, with half a MiB to spare.
+    durableStore.gvOtherFeature = 'x'.repeat(10 * MiB - MiB / 2 - copyBytes - 32);
+
+    const service = new DataBackupService<Sample>('test-ns');
+    expect(await service.createEmergencyBackup(data)).toBe(false);
+    expect(durableStore).not.toHaveProperty(EMERGENCY_KEY);
+    // The room the copy would have taken stays available to other features.
+    await expect(extension.area.set({ gvFolderData: 'y'.repeat(MiB) })).resolves.toBeUndefined();
+  });
+
+  it('sends the Safari unload copy while an earlier mirror write is still in flight', async () => {
+    isSafariValue = true;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.mocked(browser.storage.local.set).mockImplementation(async (items) => {
+      if (PRIMARY_KEY in items) await held;
+      await extension.area.set(items);
+    });
+    const service = new DataBackupService<Sample>('test-ns');
+    const primary = service.createPrimaryBackup({ folders: [1] });
+    await vi.waitFor(() =>
+      expect(browser.storage.local.set).toHaveBeenCalledWith({ [PRIMARY_KEY]: expect.any(String) }),
+    );
+
+    const latest: Sample = { folders: [2] };
+    service.setupBeforeUnloadBackup(() => latest);
+    window.dispatchEvent(new Event('beforeunload'));
+    // Sent within the event itself; an unloading page cannot wait for the held write.
+    expect(browser.storage.local.set).toHaveBeenLastCalledWith({
+      [BEFORE_UNLOAD_KEY]: expect.any(String),
+    });
+
+    release();
+    await primary;
+    service.destroy();
+    expect(JSON.parse(durableStore[BEFORE_UNLOAD_KEY] as string).data).toEqual(latest);
   });
 });

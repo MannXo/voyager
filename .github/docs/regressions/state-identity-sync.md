@@ -558,11 +558,18 @@ is merged again`, the pin and unpin round trips), `src/utils/mergePrompts.test.t
 - **Trap:** A large Gemini library fits alongside its primary backup but an emergency or unload
   snapshot exceeds page localStorage's quota. `setItem` retains the older slot atomically, but the
   write failure used to skip Safari's durable mirror too; recovery could only read page slots, so
-  a missing or unusable primary left no fresh emergency copy.
+  a missing or unusable primary left no fresh emergency copy. Moving those copies into extension
+  storage carelessly trades one failure for others: copies of a multi-MB library can crowd out the
+  live folder mirror, prompts and highlights (Voyager's soft cap, or Safari's 5/10 MiB quota), and
+  awaiting them inside the save chain lets one hung write stall every later save.
 - **Rule:** Try localStorage first without deleting an older slot for space, then use the same
-  serialized slot in extension storage on failure. Report the completed backup write's result
-  separately from the user save, and read validated copies from both stores even when hydration
-  cannot fit the durable copy into page storage. Preserve slot priority and account namespaces.
-- **Guard:** `src/core/services/__tests__/DataBackupService.test.ts` (quota fallback cases) and
-  `src/pages/content/folder/__tests__/folderBackupQuota.test.ts` (1k folders / 10k refs recovery
-  and successful user saves while both backup stores reject writes).
+  serialized slot in extension storage on failure, but only when `getLocalHeadroom` shows the copy
+  still leaves the backup reserve free; otherwise skip it and report `false`. Once a page write of a
+  slot lands, remove that slot's older extension copy. Keep backups out of the save chain (never
+  await them before a save settles) while the backup service orders its own writes per slot; send
+  the unload copy synchronously from the event. Recovery reads validated copies from both stores,
+  with a bounded wait for writes in flight, preserving slot priority and account namespaces.
+- **Guard:** `src/core/services/__tests__/DataBackupService.test.ts` (quota fallback cases),
+  `src/core/services/__tests__/StorageQuotaService.test.ts` (headroom limits) and
+  `src/pages/content/folder/__tests__/folderBackupQuota.test.ts` (1k folders / 10k refs recovery,
+  saves while a backup write hangs, and the live mirror's room near the quota).
