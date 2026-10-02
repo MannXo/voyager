@@ -76,7 +76,7 @@ Choose checks by changed surface. Repeat passing checks only after relevant chan
 
 Run tooling through `bun run <script>` or `bunx`; the formatter is oxfmt and the linter is oxlint. `bun run lint` (`oxlint --fix`) and `bun run format` (`oxfmt`) apply corrections: inspect their diffs. Read-only reviews use `:check` variants; for specific files, `bunx oxfmt --check <files>`.
 
-Features and behavior fixes need meaningful tests. Assert observable behavior or data invariants; avoid repeating mocks, private wiring or source spelling. Static checks belong to static contracts such as resource registration or forbidden primitives. Migrate valuable regression assertions with extracted responsibilities. Prose, formatting and other reversible changes without a behavior change need no new tests.
+Features need meaningful tests. A bug fix adds a regression test only when behavior coverage has a genuine gap; otherwise extend or rely on the existing test. Assert observable behavior or data invariants. Tautological tests (restating the implementation or its mocks) and change-detector tests (pinning source spelling, private wiring or incidental structure) are considered harmful. Static checks belong to static contracts such as resource registration or forbidden primitives. Migrate valuable regression assertions with extracted responsibilities. Prose, formatting and other reversible changes without a behavior change need no new tests.
 
 For Chrome development, run `bun run dev:chrome` and load/reload `dist_chrome_dev`. Production checks use `build:chrome`/`dist_chrome`. `build:all` builds Chrome, Firefox and Safari; `build:browsers` includes Edge too.
 
