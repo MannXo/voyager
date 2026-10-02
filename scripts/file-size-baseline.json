@@ -5,7 +5,7 @@
     "src/core/services/GoogleDriveSyncService.ts": 1680,
     "src/core/services/HighlightAnnotationService.ts": 1444,
     "src/features/export/services/__tests__/DOMContentExtractor.test.ts": 1960,
-    "src/features/export/services/DOMContentExtractor.ts": 1499,
+    "src/features/export/services/DOMContentExtractor.ts": 1495,
     "src/features/export/services/PDFPrintService.ts": 1188,
     "src/features/formulaCopy/FormulaCopyService.test.ts": 1210,
     "src/features/formulaCopy/FormulaCopyService.ts": 1037,
@@ -19,14 +19,14 @@
     "src/pages/content/echarts/__tests__/echarts.test.ts": 1649,
     "src/pages/content/echarts/index.ts": 1439,
     "src/pages/content/export/index.ts": 2843,
-    "src/pages/content/folder/aistudio.ts": 3147,
+    "src/pages/content/folder/aistudio.ts": 3107,
     "src/pages/content/folder/FolderSelection.ts": 1552,
     "src/pages/content/folder/FolderTreeView.ts": 1643,
     "src/pages/content/folder/NativeConversationMenus.ts": 1111,
     "src/pages/content/fork/index.ts": 1398,
     "src/pages/content/mermaid/index.ts": 1120,
     "src/pages/content/prompt/__tests__/slashPrompt.test.ts": 1949,
-    "src/pages/content/prompt/index.ts": 2607,
+    "src/pages/content/prompt/index.ts": 2602,
     "src/pages/content/prompt/slashPrompt.ts": 1955,
     "src/pages/content/quoteReply/index.ts": 1195,
     "src/pages/content/sidebarAutoHide/index.ts": 1066,
@@ -35,6 +35,6 @@
     "src/pages/content/watermarkRemover/index.ts": 1012,
     "src/pages/content/wavedrom/index.ts": 1075,
     "src/pages/popup/components/__tests__/PluginManager.test.tsx": 1002,
-    "src/pages/popup/components/CloudSyncSettings.tsx": 1200
+    "src/pages/popup/components/CloudSyncSettings.tsx": 1197
   }
 }
