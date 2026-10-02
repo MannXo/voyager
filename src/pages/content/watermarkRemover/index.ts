@@ -17,20 +17,17 @@
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
 import { fetchImageViaExtensionRuntime } from '@/core/utils/runtimeImageFetch';
 import { WATERMARK_STORAGE_KEYS, resolveWatermarkSettings } from '@/core/utils/watermarkSettings';
-import { getTranslationSync } from '@/utils/i18n';
-import type { TranslationKey } from '@/utils/translations';
 
 import { recordWatermarkPresence } from '../watermarkNativeNotice/cleanStreak';
-import { DOWNLOAD_ICON_SELECTOR, findNativeDownloadButton } from './downloadButton';
+import { DOWNLOAD_ICON_SELECTOR } from './downloadButton';
+import { createDownloadFeedback } from './downloadFeedback';
 import { createImageHealthMonitor } from './imageHealth';
-import type { ImageHealthFingerprint } from './imageHealthDetector';
-import { type StatusToastManager, createStatusToastManager } from './statusToast';
+import { createStatusToastManager } from './statusToast';
 import { WatermarkEngine } from './watermarkEngine';
 
 let engine: WatermarkEngine | null = null;
 let enginePromise: Promise<WatermarkEngine> | null = null;
 const processingQueue = new Set<HTMLImageElement>();
-const previewFingerprintsByIntent = new Map<string, Promise<ImageHealthFingerprint | null>>();
 let lifecycleGeneration = 0;
 let downloadRemovalEnabled = false;
 let previewRemovalEnabled = false;
@@ -42,7 +39,6 @@ let previewRemovalEnabled = false;
 let previewObserver: MutationObserver | null = null;
 let indicatorObserver: MutationObserver | null = null;
 let bridgeObserver: MutationObserver | null = null;
-let statusObserver: MutationObserver | null = null;
 const pendingDebounceTimeouts = new Set<ReturnType<typeof setTimeout>>();
 
 /**
@@ -83,6 +79,12 @@ const fetchImageViaBackground = async (url: string): Promise<HTMLImageElement> =
 };
 
 const health = createImageHealthMonitor(fetchImageViaBackground);
+const feedback = createDownloadFeedback({
+  getBridge: getBridgeElement,
+  capturePreview: health.capturePreview,
+  createToastManager: () => createStatusToastManager({ maxToasts: 4, anchorTtlMs: 30000 }),
+  isRemovalEnabled: () => downloadRemovalEnabled,
+});
 
 /**
  * Convert canvas to blob
@@ -399,8 +401,7 @@ async function inspectImageRequest(
   bridge: HTMLElement,
 ): Promise<void> {
   if (!intentToken) return;
-  const previewFingerprintPromise = previewFingerprintsByIntent.get(intentToken);
-  previewFingerprintsByIntent.delete(intentToken);
+  const previewFingerprintPromise = feedback.takePreview(intentToken);
   if (!previewFingerprintPromise) return;
 
   try {
@@ -453,10 +454,7 @@ async function processImageRequest(
 
   try {
     const img = await loadBridgeImage(base64);
-    const previewFingerprintPromise = intentToken
-      ? previewFingerprintsByIntent.get(intentToken)
-      : undefined;
-    if (intentToken) previewFingerprintsByIntent.delete(intentToken);
+    const previewFingerprintPromise = intentToken ? feedback.takePreview(intentToken) : undefined;
     const previewFingerprint = previewFingerprintPromise ? await previewFingerprintPromise : null;
     const healthResult = previewFingerprint ? health.compare(previewFingerprint, img) : null;
 
@@ -510,8 +508,7 @@ async function configureWatermarkRemover(reconfigure: boolean): Promise<void> {
     // Download health inspection is independent of watermark removal. Keep
     // the click intent, bridge, and warning listener alive even when both
     // removal modes are off; Gemini's native response stays untouched.
-    setupStatusListener();
-    setupDownloadButtonTracking();
+    feedback.start();
     setupFetchInterceptorBridge();
 
     if (!downloadEnabled && !previewEnabled) {
@@ -599,10 +596,8 @@ function teardownWatermarkRemover(preserveDownloadRuntime: boolean): void {
 
   downloadRemovalEnabled = false;
   bridgeObserver?.disconnect();
-  statusObserver?.disconnect();
   bridgeObserver = null;
-  statusObserver = null;
-  clearActiveDownloadSequence();
+  feedback.stop();
 
   // Tell the MAIN-world fetch interceptor watermark mutation is off. It may
   // still clone a user-initiated native download for the read-only health check.
@@ -618,14 +613,6 @@ function teardownWatermarkRemover(preserveDownloadRuntime: boolean): void {
   document
     .querySelectorAll<HTMLElement>('.nanobanana-indicator')
     .forEach((indicator) => indicator.remove());
-
-  // Remove the global download-button tracking listeners.
-  if (downloadCaptureHandler) {
-    document.removeEventListener('pointerdown', downloadCaptureHandler, true);
-    document.removeEventListener('click', downloadCaptureHandler, true);
-    downloadCaptureHandler = null;
-  }
-  downloadTrackingReady = false;
 }
 
 /**
@@ -636,277 +623,4 @@ function teardownWatermarkRemover(preserveDownloadRuntime: boolean): void {
 export function stopWatermarkRemover(): void {
   lifecycleGeneration += 1;
   teardownWatermarkRemover(false);
-}
-
-let statusToastManager: StatusToastManager | null = null;
-let downloadTrackingReady = false;
-let downloadCaptureHandler: ((event: Event) => void) | null = null;
-let lastImmediateToastAt = 0;
-let sequenceCounter = 0;
-
-const LARGE_WARNING_AUTO_DISMISS_MS = 8000;
-const PROCESSING_FALLBACK_AUTO_DISMISS_MS = 35000;
-// Gemini can spend more than 10s walking the download chain on slow networks
-// before the final rd-gg/rd-gg-dl image request appears.
-const DOWNLOAD_INTENT_TTL_MS = 60000;
-
-type DownloadToastSequence = {
-  id: number;
-  token: string;
-  downloadToastId: string | null;
-  warningToastId: string | null;
-  processingToastId: string | null;
-  processingTimer: ReturnType<typeof setTimeout> | null;
-};
-
-let activeSequence: DownloadToastSequence | null = null;
-
-function clearActiveDownloadSequence(): void {
-  if (!activeSequence) return;
-
-  previewFingerprintsByIntent.delete(activeSequence.token);
-
-  if (activeSequence.processingTimer) {
-    clearTimeout(activeSequence.processingTimer);
-  }
-
-  if (statusToastManager) {
-    for (const toastId of [
-      activeSequence.downloadToastId,
-      activeSequence.warningToastId,
-      activeSequence.processingToastId,
-    ]) {
-      if (toastId) statusToastManager.removeToast(toastId);
-    }
-  }
-
-  activeSequence = null;
-}
-
-const getStatusToastManager = (): StatusToastManager => {
-  if (!statusToastManager) {
-    statusToastManager = createStatusToastManager({ maxToasts: 4, anchorTtlMs: 30000 });
-  }
-  return statusToastManager;
-};
-
-const t = (key: TranslationKey, fallback: string): string => {
-  const value = getTranslationSync(key);
-  return value === key ? fallback : value;
-};
-
-function markDownloadIntent(token: string): void {
-  const bridge = getBridgeElement();
-  bridge.dataset.downloadIntentExpiresAt = String(Date.now() + DOWNLOAD_INTENT_TTL_MS);
-  bridge.dataset.downloadIntentToken = token;
-}
-
-function beginDownloadSequence(button: HTMLButtonElement): void {
-  const now = Date.now();
-  if (now - lastImmediateToastAt < 300 && activeSequence) {
-    markDownloadIntent(activeSequence.token);
-    return;
-  }
-  lastImmediateToastAt = now;
-
-  if (activeSequence?.processingTimer) {
-    clearTimeout(activeSequence.processingTimer);
-  }
-  if (activeSequence) previewFingerprintsByIntent.delete(activeSequence.token);
-
-  const sequenceId = ++sequenceCounter;
-  const token = `gv_download_${now}_${sequenceId}`;
-  previewFingerprintsByIntent.set(token, health.capturePreview(button));
-  markDownloadIntent(token);
-  const manager = getStatusToastManager();
-  manager.setAnchorElement(button);
-  let downloadToastId: string | null = null;
-  let processingTimer: ReturnType<typeof setTimeout> | null = null;
-
-  if (downloadRemovalEnabled) {
-    const downloadMessage = t('downloadingOriginal', '正在下载原始图片');
-    const processingMessage = t('downloadProcessing', '正在处理水印中');
-    downloadToastId = manager.addToast(downloadMessage, 'info', {
-      pending: true,
-      autoDismissMs: 3000,
-    });
-
-    processingTimer = setTimeout(() => {
-      if (!activeSequence || activeSequence.id !== sequenceId) return;
-      if (activeSequence.downloadToastId) {
-        manager.removeToast(activeSequence.downloadToastId);
-        activeSequence.downloadToastId = null;
-      }
-      if (!activeSequence.processingToastId) {
-        activeSequence.processingToastId = manager.addToast(processingMessage, 'info', {
-          pending: true,
-          autoDismissMs: PROCESSING_FALLBACK_AUTO_DISMISS_MS,
-        });
-      }
-    }, 3000);
-  }
-
-  activeSequence = {
-    id: sequenceId,
-    token,
-    downloadToastId,
-    warningToastId: null,
-    processingToastId: null,
-    processingTimer,
-  };
-}
-
-function setupDownloadButtonTracking(): void {
-  if (downloadTrackingReady) return;
-  downloadTrackingReady = true;
-
-  downloadCaptureHandler = (event: Event): void => {
-    const button = findNativeDownloadButton(event.target);
-    if (!button) return;
-
-    beginDownloadSequence(button);
-  };
-
-  document.addEventListener('pointerdown', downloadCaptureHandler, true);
-  document.addEventListener('click', downloadCaptureHandler, true);
-}
-
-/**
- * Setup listener for status events from fetchInterceptor
- */
-function setupStatusListener(): void {
-  if (statusObserver) return;
-  const bridge = getBridgeElement();
-  const manager = getStatusToastManager();
-  const downloadMessage = t('downloadingOriginal', '正在下载原始图片');
-  const downloadLargeMessage = t('downloadingOriginalLarge', '正在下载原始图片（大文件）');
-  const warningMessage = t('downloadLargeWarning', '大文件警告');
-  const processingMessage = t('downloadProcessing', '正在处理水印中');
-  const successMessage = t('downloadSuccess', '正在下载');
-  const errorPrefix = t('downloadError', '失败');
-  const corruptedMessage = t(
-    'googleImageCorrupted',
-    'Google 返回的原图已损坏（并非 Voyager 导致）；下载结果可能模糊或内容缺失',
-  );
-
-  const finalizeSequence = (level: 'success' | 'warning' | 'error', message: string): void => {
-    const autoDismissMs = level === 'success' ? 2500 : level === 'warning' ? 10000 : 4000;
-    if (activeSequence?.processingTimer) {
-      clearTimeout(activeSequence.processingTimer);
-      activeSequence.processingTimer = null;
-    }
-    if (activeSequence?.warningToastId) {
-      manager.removeToast(activeSequence.warningToastId);
-      activeSequence.warningToastId = null;
-    }
-    if (activeSequence?.downloadToastId) {
-      manager.removeToast(activeSequence.downloadToastId);
-      activeSequence.downloadToastId = null;
-    }
-
-    if (
-      activeSequence?.processingToastId &&
-      manager.updateToast(activeSequence.processingToastId, message, level, {
-        autoDismissMs,
-        markFinal: true,
-      })
-    ) {
-      return;
-    }
-
-    if (
-      !manager.updateLatestPending(message, level, {
-        autoDismissMs,
-        markFinal: true,
-      })
-    ) {
-      manager.addToast(message, level, {
-        autoDismissMs,
-      });
-    }
-  };
-
-  const handleStatus = (statusData: string): void => {
-    console.log('[Gemini Voyager] Status data received:', statusData);
-    if (!statusData) return;
-
-    try {
-      const { type, message, intentToken } = JSON.parse(statusData);
-      bridge.removeAttribute('data-status');
-      if (!activeSequence || intentToken !== activeSequence.token) return;
-
-      switch (type) {
-        case 'DOWNLOADING':
-          // Step 1: Downloading original image
-          if (activeSequence) {
-            if (activeSequence.warningToastId) {
-              manager.removeToast(activeSequence.warningToastId);
-              activeSequence.warningToastId = null;
-            }
-            if (!activeSequence.downloadToastId) {
-              activeSequence.downloadToastId = manager.addToast(downloadMessage, 'info', {
-                pending: true,
-                autoDismissMs: 3000,
-              });
-            }
-          }
-          break;
-        case 'DOWNLOADING_LARGE':
-          // Step 1 with large file warning
-          if (activeSequence) {
-            if (!activeSequence.downloadToastId) {
-              activeSequence.downloadToastId = manager.addToast(downloadLargeMessage, 'info', {
-                pending: true,
-                autoDismissMs: 3000,
-              });
-            } else {
-              manager.updateToast(activeSequence.downloadToastId, downloadLargeMessage, 'info');
-            }
-            if (!activeSequence.warningToastId) {
-              activeSequence.warningToastId = manager.addToast(warningMessage, 'warning', {
-                autoDismissMs: LARGE_WARNING_AUTO_DISMISS_MS,
-              });
-            }
-          }
-          break;
-        case 'PROCESSING':
-          // Step 2: Processing watermark
-          if (activeSequence?.processingToastId) {
-            manager.updateToast(activeSequence.processingToastId, processingMessage, 'info');
-            break;
-          }
-          if (!activeSequence?.processingTimer) {
-            const processingToastId = manager.addToast(processingMessage, 'info', {
-              pending: true,
-              autoDismissMs: PROCESSING_FALLBACK_AUTO_DISMISS_MS,
-            });
-            if (activeSequence) activeSequence.processingToastId = processingToastId;
-          }
-          break;
-        case 'SUCCESS':
-          // Step 3: Done, auto-dismiss after 2s
-          finalizeSequence('success', successMessage);
-          break;
-        case 'ERROR':
-          finalizeSequence('error', `${errorPrefix}: ${message}`);
-          break;
-        case 'GOOGLE_IMAGE_CORRUPTED':
-          finalizeSequence('warning', corruptedMessage);
-          break;
-      }
-    } catch (e) {
-      console.error('[Gemini Voyager] Failed to parse status:', e);
-    }
-  };
-
-  statusObserver = new MutationObserver(() => {
-    const statusData = bridge.dataset.status;
-    if (!statusData) return;
-    handleStatus(statusData);
-  });
-
-  statusObserver.observe(bridge, { attributes: true, attributeFilter: ['data-status'] });
-  if (bridge.dataset.status) {
-    handleStatus(bridge.dataset.status);
-  }
 }
