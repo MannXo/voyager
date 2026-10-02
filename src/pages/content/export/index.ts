@@ -31,12 +31,7 @@ import {
   createConversationCollector,
   removeCanvasExportSections,
 } from './conversationCollector';
-import {
-  getConversationMenuContext,
-  getResponseMenuContext,
-  injectConversationMenuExportButton,
-  injectResponseMenuExportButton,
-} from './conversationMenuInjection';
+import { watchConversationMenusForExport } from './conversationMenuExportObserver';
 import { waitForAnyElement, waitForElement } from './domWait';
 import { isAbortError, throwIfExportCancelled } from './exportCancellation';
 import { withExportCollectingBanner } from './exportCollectingBanner';
@@ -46,6 +41,7 @@ import {
   languageFromStorageChanges,
   loadExportDictionaries,
   readExportLanguage,
+  translateExportOr,
 } from './exportLocale';
 import { resolveExportLogoAnchor } from './exportLogoAnchor';
 import {
@@ -89,14 +85,6 @@ import {
   waitForConversationFingerprintChangeOrTimeout,
 } from './topNodePreload';
 
-const CONVERSATION_MENU_SELECTOR = '.mat-mdc-menu-panel[role="menu"], gem-menu';
-const CONVERSATION_MENU_TRIGGER_TEST_IDS = [
-  'actions-menu-button',
-  'conversation-actions-menu-icon-button',
-];
-const RESPONSE_MENU_TRIGGER_TEST_ID = 'more-menu-button';
-const MENU_INJECTION_RETRY_LIMIT = 8;
-const MENU_INJECTION_RETRY_DELAY_MS = 80;
 const EXPORT_PRELOAD_WAIT_OPTIONS = {
   timeoutMs: 12000,
   minWaitMs: 700,
@@ -110,7 +98,6 @@ const exportAdapter: ExportPlatformAdapter = resolveExportAdapter();
 ConversationExportService.setExportAdapter(exportAdapter);
 const collector = createConversationCollector(exportAdapter);
 
-let conversationMenuObserver: MutationObserver | null = null;
 let responseActionObserver: MutationObserver | null = null;
 
 let activeExportDialog: ExportDialog | null = null;
@@ -964,25 +951,6 @@ async function checkPendingExport() {
   }
 }
 
-function getConversationMenuPanelsFromNode(node: HTMLElement): HTMLElement[] {
-  const panels: HTMLElement[] = [];
-  if (node.matches(CONVERSATION_MENU_SELECTOR)) {
-    panels.push(node);
-  }
-  panels.push(...Array.from(node.querySelectorAll<HTMLElement>(CONVERSATION_MENU_SELECTOR)));
-  return panels;
-}
-
-function parseMenuTriggerPanelIds(trigger: HTMLElement): string[] {
-  const raw = `${trigger.getAttribute('aria-controls') || ''} ${
-    trigger.getAttribute('aria-owns') || ''
-  }`;
-  return raw
-    .split(/\s+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 type ResponseCopyImageTexts = {
   label: string;
   copied: string;
@@ -1215,146 +1183,6 @@ function setupResponseActionCopyImageObserver({
   );
 }
 
-function setupConversationMenuExportObserver({
-  dict,
-  getCurrentLanguage,
-  onExport,
-}: {
-  dict: Record<AppLanguage, Record<string, string>>;
-  getCurrentLanguage: () => AppLanguage;
-  onExport: (context: {
-    menuType: 'top' | 'sidebar' | 'message';
-    trigger: HTMLElement | null;
-  }) => void;
-}): void {
-  if (conversationMenuObserver) return;
-
-  const tryInjectOnPanel = (
-    menuPanel: HTMLElement,
-    retriesLeft: number = MENU_INJECTION_RETRY_LIMIT,
-  ) => {
-    if (!menuPanel.isConnected) return;
-    const currentLang = getCurrentLanguage();
-    const label =
-      dict[currentLang]?.['exportChatJson'] ??
-      dict.en?.['exportChatJson'] ??
-      'Export conversation history';
-    const tooltip =
-      dict[currentLang]?.['exportChatJson'] ??
-      dict.en?.['exportChatJson'] ??
-      'Export conversation history';
-
-    const menuContext = getConversationMenuContext(menuPanel);
-    if (menuContext) {
-      const injected = injectConversationMenuExportButton(menuPanel, {
-        label,
-        tooltip,
-        onClick: () => onExport(menuContext),
-      });
-      if (!injected && retriesLeft > 0) {
-        window.setTimeout(
-          () => tryInjectOnPanel(menuPanel, retriesLeft - 1),
-          MENU_INJECTION_RETRY_DELAY_MS,
-        );
-      }
-      return;
-    }
-
-    const responseMenuContext = getResponseMenuContext(menuPanel);
-    if (responseMenuContext) {
-      const injected = injectResponseMenuExportButton(menuPanel, {
-        label,
-        tooltip,
-        onClick: () =>
-          onExport({
-            menuType: 'message',
-            trigger: responseMenuContext.trigger,
-          }),
-      });
-      if (!injected && retriesLeft > 0) {
-        window.setTimeout(
-          () => tryInjectOnPanel(menuPanel, retriesLeft - 1),
-          MENU_INJECTION_RETRY_DELAY_MS,
-        );
-      }
-      return;
-    }
-
-    if (retriesLeft > 0) {
-      window.setTimeout(
-        () => tryInjectOnPanel(menuPanel, retriesLeft - 1),
-        MENU_INJECTION_RETRY_DELAY_MS,
-      );
-    }
-  };
-
-  const observer = new MutationObserver((mutations) => {
-    for (const mutation of mutations) {
-      mutation.addedNodes.forEach((node) => {
-        if (!(node instanceof HTMLElement)) return;
-        const panelSet = new Set<HTMLElement>();
-        const panels = getConversationMenuPanelsFromNode(node);
-        panels.forEach((panel) => panelSet.add(panel));
-        const closestPanel = node.closest(CONVERSATION_MENU_SELECTOR) as HTMLElement | null;
-        if (closestPanel) panelSet.add(closestPanel);
-        panelSet.forEach((panel) => {
-          window.setTimeout(() => tryInjectOnPanel(panel), 30);
-        });
-      });
-    }
-  });
-
-  observer.observe(document.body, { childList: true, subtree: true });
-  conversationMenuObserver = observer;
-
-  const existingPanels = document.querySelectorAll<HTMLElement>(CONVERSATION_MENU_SELECTOR);
-  existingPanels.forEach((panel) => window.setTimeout(() => tryInjectOnPanel(panel), 30));
-
-  const triggerSelector = [...CONVERSATION_MENU_TRIGGER_TEST_IDS, RESPONSE_MENU_TRIGGER_TEST_ID]
-    .map((id) => `[data-test-id="${id}"]`)
-    .join(', ');
-  const onMenuTriggerInteraction = (event: Event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) return;
-    const trigger = target.closest(triggerSelector) as HTMLElement | null;
-    if (!trigger) return;
-
-    const panelIds = parseMenuTriggerPanelIds(trigger);
-    if (panelIds.length === 0) return;
-
-    for (let attempt = 0; attempt <= MENU_INJECTION_RETRY_LIMIT; attempt++) {
-      window.setTimeout(() => {
-        panelIds.forEach((id) => {
-          const panel = document.getElementById(id);
-          if (!(panel instanceof HTMLElement)) return;
-          if (!panel.matches(CONVERSATION_MENU_SELECTOR)) return;
-          tryInjectOnPanel(panel);
-        });
-      }, attempt * MENU_INJECTION_RETRY_DELAY_MS);
-    }
-  };
-
-  document.addEventListener('click', onMenuTriggerInteraction, true);
-  document.addEventListener('pointerdown', onMenuTriggerInteraction, true);
-
-  window.addEventListener(
-    'beforeunload',
-    () => {
-      try {
-        conversationMenuObserver?.disconnect();
-      } catch {}
-      try {
-        document.removeEventListener('click', onMenuTriggerInteraction, true);
-      } catch {}
-      try {
-        document.removeEventListener('pointerdown', onMenuTriggerInteraction, true);
-      } catch {}
-      conversationMenuObserver = null;
-    },
-    { once: true },
-  );
-}
-
 /**
  * Mount the export entry point for the current platform.
  *
@@ -1440,9 +1268,8 @@ export async function startExportButton(
 
   // --- Gemini path: logo anchor + menu injection ---
 
-  setupConversationMenuExportObserver({
-    dict,
-    getCurrentLanguage: () => lang,
+  watchConversationMenusForExport({
+    label: () => translateExportOr(dict, lang, 'exportChatJson', 'Export conversation history'),
     onExport: (context) => {
       if (context.menuType === 'sidebar' && context.trigger) {
         const trigger = context.trigger;
