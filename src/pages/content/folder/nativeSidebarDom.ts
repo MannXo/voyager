@@ -6,10 +6,15 @@ import { folderDebug as debugLog, folderDebugWarn as debugWarn } from './folderM
 import {
   extractConversationId,
   extractConversationIdFromElement,
+  buildConversationUrlFromId,
   extractNativeConversationId,
   extractNativeConversationUrl,
 } from './nativeConversationIds';
-import { extractNativeConversationTitle } from './nativeConversationTitles';
+import {
+  type NativeConversationInfo,
+  extractFallbackTitle,
+  extractNativeConversationTitle,
+} from './nativeConversationTitles';
 
 /** Current native sidebar state, read again after asynchronous collection waits. */
 export interface NativeSidebarReadContext {
@@ -75,6 +80,24 @@ export function findConversationElementForTrigger(trigger: HTMLElement): HTMLEle
   if (historyItem) return historyItem;
 
   return null;
+}
+
+/** Id, URL and title of one native row, for its ⋮ menu; null without an id. */
+export function readNativeConversationInfo(
+  conversationEl: HTMLElement,
+  accountIsolationEnabled: boolean,
+): NativeConversationInfo | null {
+  const id = extractNativeConversationId(conversationEl);
+  if (!id) return null;
+
+  const url =
+    extractNativeConversationUrl(conversationEl, accountIsolationEnabled) ||
+    buildConversationUrlFromId(id, accountIsolationEnabled);
+  const title =
+    extractNativeConversationTitle(conversationEl) ||
+    extractFallbackTitle(conversationEl) ||
+    'Untitled';
+  return { id, title, url };
 }
 
 export function findNativeConversationLinkById(conversationId: string): HTMLAnchorElement | null {

@@ -8,15 +8,8 @@ import {
 } from '../export/conversationMenuInjection';
 import { normalizeConversationId } from './folderConversationIdentity';
 import {
-  buildConversationUrlFromId,
-  extractNativeConversationId,
-  extractNativeConversationUrl,
-} from './nativeConversationIds';
-import {
   type NativeConversationInfo,
   extractConversationInfoFromPage,
-  extractFallbackTitle,
-  extractNativeConversationTitle,
 } from './nativeConversationTitles';
 import {
   type NativeDeleteScope,
@@ -37,6 +30,7 @@ import {
   type NativeSidebarReadContext,
   findConversationElementForTrigger,
   findNativeConversationElement,
+  readNativeConversationInfo,
 } from './nativeSidebarDom';
 
 export interface NativeConversationMenuCallbacks {
@@ -260,20 +254,10 @@ export class NativeConversationMenus {
   ): { id: string; title: string; url: string } | null {
     const conversationEl = findConversationElementForTrigger(trigger);
     if (!conversationEl) return null;
-    const id = extractNativeConversationId(conversationEl);
-    if (!id) return null;
-
     const { accountIsolationEnabled } = this.callbacks.getContext();
-    const url =
-      extractNativeConversationUrl(conversationEl, accountIsolationEnabled) ||
-      buildConversationUrlFromId(id, accountIsolationEnabled);
-    const title =
-      extractNativeConversationTitle(conversationEl) ||
-      extractFallbackTitle(conversationEl) ||
-      'Untitled';
-    if (!url) return null;
-    debug('log', 'resolveConversationInfoForMenu(sidebar):', { id, title, url });
-    return { id, title, url };
+    const info = readNativeConversationInfo(conversationEl, accountIsolationEnabled);
+    if (info) debug('log', 'resolveConversationInfoForMenu(sidebar):', info);
+    return info;
   }
 
   // Belt-and-suspenders alongside nativeMenuObserver: when a conversation ⋮
