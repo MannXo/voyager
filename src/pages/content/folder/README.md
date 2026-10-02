@@ -39,7 +39,7 @@ points (`ensureDataLoaded`, `getFolders`, `addConversationToFolderFromNative`) c
 | Native mutation scheduling       | [`NativeSidebarObserver.ts`](NativeSidebarObserver.ts): observer, frame batch, idle queue and title debounce.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Native menus and deletion        | [`NativeConversationMenus.ts`](NativeConversationMenus.ts): menu injection, confirmation identity and settlement checks; callbacks change data through the store.                                                                                                                                                                                                                                                                                                                                                                                                              |
 | Browser storage                  | [`storage/FolderStorageAdapter.ts`](storage/FolderStorageAdapter.ts): Safari durable storage and Chromium mirror behavior.                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| Other hosts and views            | [`aistudio.ts`](aistudio.ts), [`floatingPanel.ts`](floatingPanel.ts); shared schema/session, separate host integration.                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Other hosts and views            | [`aistudio.ts`](aistudio.ts) (see [AI Studio](#ai-studio)), [`floatingPanel.ts`](floatingPanel.ts); shared schema/session, separate host integration.                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | Gem metadata and startup         | [`gemConfig.ts`](gemConfig.ts), [`index.ts`](index.ts).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 Test data invariants and scheduling at their owner. Keep account transitions and manager wiring in
@@ -64,6 +64,23 @@ Read the [state/identity](../../../../.github/docs/regressions/state-identity-sy
 [folder UI](../../../../.github/docs/regressions/folders-timeline-ui.md) notes before changing those
 boundaries. Extract only a complete responsibility with its state, setup, cleanup and behavior tests;
 file length alone is not a reason to add another layer.
+
+### AI Studio
+
+[`aistudio.ts`](aistudio.ts) is the adapter: it binds `FolderRepository` (AI Studio config, chrome.storage
+adapter) to the page and owns the three lifetimes. Account release resets the tree, dialogs and library
+selection; a nav rebuild re-injects the panel; `destroy()` stops everything except the settings and
+runtime-message listeners. The other modules take explicit host callbacks, never the manager.
+
+| Responsibility                      | Module                                                                                                                                          |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Folder tree, edits and drops        | [`aistudioTree.ts`](aistudioTree.ts): the shared floating tree in the nav, `aistudioTreeActions`, `placePrompt`                                 |
+| Panel frame and mount               | [`aistudioPanel.ts`](aistudioPanel.ts): header actions, legacy/V2 insertion, remount watch                                                      |
+| Account scope                       | [`aistudioAccountScope.ts`](aistudioAccountScope.ts): isolation setting, `/u/<n>`+email fingerprint, 1200 ms poll                               |
+| Left-nav prompt history             | [`aistudioPromptHistory.ts`](aistudioPromptHistory.ts), [`aistudioPromptLinks.ts`](aistudioPromptLinks.ts): drag sources, titles, active prompt |
+| /library page                       | [`aistudioLibraryPage.ts`](aistudioLibraryPage.ts) over table, selection, batch delete and drop-zone modules                                    |
+| Hide archived, sidebar width        | [`aistudioHideArchived.ts`](aistudioHideArchived.ts), [`aistudioSidebarWidth.ts`](aistudioSidebarWidth.ts)                                      |
+| Drive sync, import/export, messages | [`aistudioTransfer.ts`](aistudioTransfer.ts), [`aistudioImport.ts`](aistudioImport.ts)                                                          |
 
 ## Adding Support for New Gems
 

@@ -158,7 +158,7 @@ off a ChatGPT tab`).
   touch the `/library` table, so rows moved into or out of folders in another tab kept a stale
   `gv-conversation-archived` class until the next local mutation.
 - **Rule:** The repository's `onExternalChange` hook in `aistudio.ts` runs
-  `applyHideArchivedToLibraryTable()` after the reload settles, alongside `onPersistSettled` for
+  `applyHideArchived()` after the reload settles, alongside `onPersistSettled` for
   local writes.
 - **Guard:** `src/pages/content/folder/__tests__/aistudioFolderSync.test.ts` ("archives and unarchives existing rows when another tab moves prompts")
 
@@ -288,7 +288,7 @@ off a ChatGPT tab`).
   applied in memory and repainted while `saveData()` dropped it at the `!session` guard — a folder
   the user created looked saved and was gone on reload. Firefox is the only target that resolves the
   scope through the background page (`AccountIsolationService.shouldResolveScopeInBackground`), so
-  it alone can fail this way. `aistudio.ts` recovered through its 1200 ms account poller and now
+  it alone can fail this way. AI Studio recovered through its 1200 ms account poller and now
   also shares the repository retry. Nothing self-healed until the next SPA account-route change.
 - **Rule:** Retry a failed resolution a bounded number of times with growing gaps, then stop. Never
   fall back to the global `gvFolderData` bucket — an ownerless bucket can belong to another account.
