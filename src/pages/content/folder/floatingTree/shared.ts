@@ -42,6 +42,31 @@ export type ContextMenuState = {
   fromKeyboard?: boolean;
 };
 
+/** The drag type a folder row adds to its payload, so targets can tell a folder drag at dragover. */
+export const FOLDER_DRAG_TYPE = 'application/x-gv-folder';
+
+/**
+ * Where a drop lands beside a row, for a site that reorders by position. A
+ * drop in the middle of a folder header has none: it files into the folder.
+ */
+export type DropPlacement =
+  | { kind: 'folder'; folderId: string; position: 'before' | 'after' }
+  | {
+      kind: 'conversation';
+      bucketId: string;
+      conversationId: string;
+      position: 'before' | 'after';
+    };
+
+/** An entry a site adds to the folder menu, above Delete. */
+export type FolderMenuItem = { labelKey: string; run: () => void };
+
+/** What a site's filter shows; everything else is left out of the projection. */
+export type TreeFilter = {
+  folder: (folder: Folder) => boolean;
+  conversation: (conv: ConversationReference, bucketId: string) => boolean;
+};
+
 /** Data callbacks the tree raises; the host decides how each one is stored. */
 export type TreeActions = {
   onNavigate?: (conv: ConversationReference) => void;
@@ -69,9 +94,34 @@ export type TreeActions = {
    * move, including drags the tree's payload check refuses, such as a native
    * row with no source folder. Returns whether it used the drop.
    */
-  onDrop?: (e: DragEvent, folderId: string) => boolean;
+  onDrop?: (e: DragEvent, folderId: string, placement?: DropPlacement) => boolean;
   /** With `onDrop`: the drags to accept at dragover, from `dataTransfer.types`. */
   acceptsDrag?: (types: readonly string[]) => boolean;
+  /** Double-click on a conversation title. */
+  onRenameConversation?: (conv: ConversationReference) => void;
+  /** Right-click on a conversation row; the host opens its own menu. */
+  onConversationMenu?: (e: MouseEvent, conv: ConversationReference) => void;
+  /** Extra folder menu entries, such as a site's project actions. */
+  folderMenuItems?: (folder: Folder) => readonly FolderMenuItem[];
+  /** Mouse down on a conversation row, and its release or leave (`e` is null then). */
+  onConversationPress?: (
+    e: MouseEvent | null,
+    conv: ConversationReference,
+    bucketId: string,
+  ) => void;
+  /**
+   * Sees every click on a conversation title before it navigates; returning
+   * true takes it (the default action is prevented), as a selection mode does.
+   */
+  interceptConversationClick?: (
+    e: MouseEvent,
+    conv: ConversationReference,
+    bucketId: string,
+    row: HTMLElement,
+  ) => boolean;
+  /** After the row has set its own payload; the host may replace it. */
+  onConversationDragStart?: (e: DragEvent, conv: ConversationReference, bucketId: string) => void;
+  onConversationDragEnd?: () => void;
 };
 
 /** Ways a site's tree differs from the floating panel's; each is off by default. */
@@ -94,6 +144,32 @@ export type TreeSiteOptions = {
    * whole folder block is a target; the innermost folder wins. Default: the header only.
    */
   folderBodyDrop?: boolean;
+  /** Shows only what it passes; a folder's count counts what is shown. */
+  filter?: (layout: FolderLayout) => TreeFilter;
+  /** Every folder shows open, as while searching; stored expansion is kept. */
+  expandAll?: boolean;
+  /** Marks the open conversation's rows, in place of `activeConversationId`. */
+  isActiveConversation?: (conv: ConversationReference, bucketId: string) => boolean;
+  /** Marks rows a site's selection mode holds. */
+  isConversationSelected?: (conv: ConversationReference, bucketId: string) => boolean;
+  /** Titles become links to this address, so modified clicks open it natively. */
+  conversationHref?: (conv: ConversationReference) => string;
+  /** A Google Symbols ligature drawn before each title. */
+  conversationIcon?: (conv: ConversationReference) => string;
+  /** The empty state's message. Default: `floatingPanelEmpty`. */
+  emptyLabelKey?: string;
+  /**
+   * A header click toggles after this many milliseconds, so a double-click
+   * renames without toggling twice. Default: at once.
+   */
+  folderToggleDelayMs?: number;
+  /** Unpinned folder rows drag as `{ type: 'folder' }` payloads tagged `FOLDER_DRAG_TYPE`. */
+  folderDrag?: boolean;
+  /**
+   * Drops beside a row carry a `DropPlacement`: the top or bottom quarter of a
+   * folder header for folder drags, the top or bottom half of a conversation row.
+   */
+  reorder?: { folders?: boolean; conversations?: boolean };
 };
 
 /** A transient view change; `null` clears the editor or menu, omitted keeps it. */

@@ -149,6 +149,16 @@ function FolderMenu({ tree, menu: contextMenu, folder }: FolderMenuProps) {
           </div>
         </div>
       )}
+      {actions.folderMenuItems?.(folder).map((item) => (
+        <MenuButton
+          key={item.labelKey}
+          labelKey={item.labelKey}
+          onClick={(e) => {
+            e.stopPropagation();
+            apply({ contextMenu: null }, item.run);
+          }}
+        />
+      ))}
       <div class={cls('menu-divider')} />
       <MenuButton
         labelKey="floatingPanelDeleteFolder"

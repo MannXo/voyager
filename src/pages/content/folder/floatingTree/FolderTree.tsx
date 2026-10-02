@@ -99,14 +99,15 @@ function FolderTreeView({ tree, container }: ViewProps) {
   }
   if (slots && frame.total > cursor + 0.5) children.push(spacer('gap:end', frame.total - cursor));
 
+  // What the projection shows, so a site filter that leaves nothing shows the empty state.
   const empty =
-    tree.data.folders.length === 0 &&
+    tree.projection.folders.length === 0 &&
     tree.projection.rootConversationCount === 0 &&
     tree.inlineEditor?.mode !== 'create';
 
   return (
     <>
-      {empty && <EmptyState />}
+      {empty && <EmptyState labelKey={tree.site?.emptyLabelKey} />}
       <div class={cls('tree')} role="tree" aria-label={t('floatingPanelTitle')} ref={listRef}>
         {children}
       </div>

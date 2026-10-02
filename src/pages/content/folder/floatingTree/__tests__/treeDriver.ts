@@ -187,8 +187,9 @@ export function treeDriver(tree: Pick<MountedTree, 'root' | 'rootBucketId'>) {
   const conversationRows = (): HTMLElement[] =>
     Array.from(root.querySelectorAll<HTMLElement>('[data-conversation-id]'));
 
-  const titleButton = (row: Element): HTMLButtonElement => {
-    const button = row.querySelector<HTMLButtonElement>('button[dir="auto"]');
+  // A site with conversation links (Gemini) renders the title as a link.
+  const titleButton = (row: Element): HTMLElement => {
+    const button = row.querySelector<HTMLElement>('button[dir="auto"], a[dir="auto"]');
     if (!button) throw new Error('conversation row has no title');
     return button;
   };
@@ -317,7 +318,7 @@ export function treeDriver(tree: Pick<MountedTree, 'root' | 'rootBucketId'>) {
       conversationRows()
         .filter((row) => isShown(row) && titleButton(row).textContent?.trim() === title)
         .map((row) => row.dataset.folderId ?? ''),
-    titleButton: (bucketId: string, title: string): HTMLButtonElement =>
+    titleButton: (bucketId: string, title: string): HTMLElement =>
       titleButton(conversationRow(bucketId, title)),
     openConversation: (bucketId: string, title: string): void =>
       titleButton(conversationRow(bucketId, title)).click(),

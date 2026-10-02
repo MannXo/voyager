@@ -101,9 +101,10 @@ export function mountFolderTree({
   // With a store callback, expansion is the folder's persisted `isExpanded`,
   // shared with the sidebar; without one it stays local to this tree.
   const isExpanded = (folder: Folder): boolean =>
-    onToggleFolderExpanded
+    !!currentSite?.expandAll ||
+    (onToggleFolderExpanded
       ? folder.isExpanded
-      : (expandedFolders.get(folder.id) ?? folder.isExpanded);
+      : (expandedFolders.get(folder.id) ?? folder.isExpanded));
   const setExpanded = (folderId: string, expanded: boolean): void => {
     if (!onToggleFolderExpanded) {
       expandedFolders.set(folderId, expanded);
@@ -188,7 +189,8 @@ export function mountFolderTree({
       const reorders =
         next.folderOrder !== currentSite?.folderOrder ||
         next.conversationOrder !== currentSite?.conversationOrder ||
-        next.rootSection?.labelKey !== currentSite?.rootSection?.labelKey;
+        next.rootSection?.labelKey !== currentSite?.rootSection?.labelKey ||
+        next.filter !== currentSite?.filter;
       currentSite = next;
       if (reorders) project();
       render();

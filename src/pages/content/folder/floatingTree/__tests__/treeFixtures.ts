@@ -15,10 +15,20 @@ export function conv(
   return { conversationId: id, title, url: `https://example.test/c/${id}`, addedAt: 1, ...extra };
 }
 
+/** Hooks for a site's own menus, selection and drags; added per case like the confirms. */
+type SiteHooks =
+  | 'onRenameConversation'
+  | 'onConversationMenu'
+  | 'folderMenuItems'
+  | 'onConversationPress'
+  | 'interceptConversationClick'
+  | 'onConversationDragStart'
+  | 'onConversationDragEnd';
+
 type DataCallbacks = Required<
   Omit<
     TreeActions,
-    'confirmFolderRemoval' | 'confirmConversationRemoval' | 'onDrop' | 'acceptsDrag'
+    'confirmFolderRemoval' | 'confirmConversationRemoval' | 'onDrop' | 'acceptsDrag' | SiteHooks
   >
 >;
 

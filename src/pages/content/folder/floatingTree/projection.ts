@@ -66,13 +66,14 @@ export type ProjectionInput = {
   data: FolderData;
   rootBucketId: string;
   conversationSortMode: ConversationSortMode;
-  site?: Pick<TreeSiteOptions, 'folderOrder' | 'conversationOrder' | 'rootSection'>;
+  site?: Pick<TreeSiteOptions, 'folderOrder' | 'conversationOrder' | 'rootSection' | 'filter'>;
 };
 
 /**
  * Lays out folders (`layoutFolders`: cycles cut, repeats dropped) and each
  * bucket's conversations: stored order, or starred first then the sort mode.
  * Root conversations come first, or after the folders under `rootSection`.
+ * A site filter reads the same cycle-cut layout, so it cannot lose a cycle.
  */
 export function buildTreeProjection({
   data,
@@ -81,6 +82,9 @@ export function buildTreeProjection({
   site,
 }: ProjectionInput): TreeProjection {
   const layout = layoutFolders(data, site?.folderOrder);
+  const filter = site?.filter?.(layout);
+  const shownFolders = (list: readonly Folder[]): readonly Folder[] =>
+    filter ? list.filter((folder) => filter.folder(folder)) : list;
   const nodes = new Map<string, TreeNode>();
   const children = new Map<string, readonly string[]>();
   const folders: FolderNode[] = [];
@@ -91,7 +95,11 @@ export function buildTreeProjection({
 
   const conversationsOf = (parentKey: string, bucketId: string, folderDepth: number): string[] => {
     const seen = new Map<string, number>();
-    return order(ownBucket(data.folderContents, bucketId) ?? []).map((conversation) => {
+    const bucket = ownBucket(data.folderContents, bucketId) ?? [];
+    const shown = filter
+      ? bucket.filter((conversation) => filter.conversation(conversation, bucketId))
+      : bucket;
+    return order(shown).map((conversation) => {
       const occurrence = seen.get(conversation.conversationId) ?? 0;
       seen.set(conversation.conversationId, occurrence + 1);
       const key = conversationKey(parentKey, conversation.conversationId, occurrence);
@@ -102,25 +110,22 @@ export function buildTreeProjection({
 
   const addFolder = (folder: Folder, depth: number, parentKey: string): string => {
     const key = folderKey(folder.id);
-    const subfolders = layout.children.get(folder.id) ?? [];
-    const bucket = ownBucket(data.folderContents, folder.id) ?? [];
-    const node: FolderNode = {
-      kind: 'folder',
-      key,
-      folder,
-      parentKey,
-      depth,
-      count: bucket.length + subfolders.length,
-    };
+    const node: FolderNode = { kind: 'folder', key, folder, parentKey, depth, count: 0 };
     nodes.set(key, node);
     folders.push(node);
-    const subfolderKeys = subfolders.map((child) => addFolder(child, depth + 1, key));
-    children.set(key, [...subfolderKeys, ...conversationsOf(key, folder.id, depth)]);
+    const subfolderKeys = shownFolders(layout.children.get(folder.id) ?? []).map((child) =>
+      addFolder(child, depth + 1, key),
+    );
+    const conversationKeys = conversationsOf(key, folder.id, depth);
+    node.count = subfolderKeys.length + conversationKeys.length;
+    children.set(key, [...subfolderKeys, ...conversationKeys]);
     return key;
   };
 
   const rootConversations = conversationsOf(ROOT_ITEM_KEY, rootBucketId, -1);
-  const rootFolders = layout.roots.map((folder) => addFolder(folder, 0, ROOT_ITEM_KEY));
+  const rootFolders = shownFolders(layout.roots).map((folder) =>
+    addFolder(folder, 0, ROOT_ITEM_KEY),
+  );
   children.set(
     ROOT_ITEM_KEY,
     site?.rootSection

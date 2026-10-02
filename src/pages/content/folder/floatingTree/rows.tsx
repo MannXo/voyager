@@ -1,5 +1,6 @@
 /** @jsxImportSource preact */
 import type { ItemInstance } from '@headless-tree/core';
+import { useEffect, useRef } from 'preact/hooks';
 
 import { getFolderDepth } from '@/features/folder/model/folderData';
 
@@ -8,6 +9,8 @@ import { IconButton, InlineForm } from './controls';
 import type { ConversationNode, FolderNode } from './projection';
 import {
   type ConversationDragData,
+  type DropPlacement,
+  FOLDER_DRAG_TYPE,
   type TreeProps,
   acceptsDrag,
   canCreateChildAtDepth,
@@ -18,8 +21,27 @@ import {
 
 const DROP_TARGET = cls('drop-target');
 const DRAGGING = cls('conv--dragging');
+const FOLDER_DRAGGING = cls('folder-header--dragging');
+/** Set on a row while a drop would land before or after it. */
+const DROP_POSITION = 'data-drop-position';
 
 type DropEvent = DragEvent & { currentTarget: HTMLElement };
+type PlacementOf = (e: DropEvent) => DropPlacement | undefined;
+
+/** Whether the pointer is in the top or bottom `edge` (a fraction of the height) of the row. */
+function edgeOf(e: DropEvent, edge: number): 'before' | 'after' | null {
+  const rect = e.currentTarget.getBoundingClientRect();
+  if (rect.height <= 0) return null;
+  const offset = (e.clientY - rect.top) / rect.height;
+  if (offset < edge) return 'before';
+  if (offset >= 1 - edge) return 'after';
+  return null;
+}
+
+function showPlacement(target: HTMLElement, placement: DropPlacement | undefined): void {
+  if (placement) target.setAttribute(DROP_POSITION, placement.position);
+  else target.removeAttribute(DROP_POSITION);
+}
 type Ref = (element: Element | null) => void;
 
 /** A click that opens in place: no Ctrl, Meta or Shift, which ask for something else. */
@@ -27,8 +49,11 @@ export function isPlainClick(e: MouseEvent): boolean {
   return !e.ctrlKey && !e.metaKey && !e.shiftKey;
 }
 
-/** Dragover, dragleave and drop handlers that file a conversation into `folderId`. */
-export function dropHandlers(tree: TreeProps, folderId: string) {
+/**
+ * Dragover, dragleave and drop handlers that file a conversation into
+ * `folderId`. With `placementOf`, a drop beside the row carries its placement.
+ */
+export function dropHandlers(tree: TreeProps, folderId: string, placementOf?: PlacementOf) {
   const { actions } = tree;
   // Nested targets: the innermost one takes the drag, and its ancestors stay unlit.
   const nested = !!tree.site?.folderBodyDrop;
@@ -44,20 +69,26 @@ export function dropHandlers(tree: TreeProps, folderId: string) {
       e.preventDefault();
       if (nested) e.stopPropagation();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      e.currentTarget.classList.add(DROP_TARGET);
+      const placement = placementOf?.(e);
+      showPlacement(e.currentTarget, placement);
+      e.currentTarget.classList.toggle(DROP_TARGET, !placement);
     },
     onDragLeave: (e: DropEvent) => {
       const into = e.relatedTarget;
       if (nested && into instanceof Node && e.currentTarget.contains(into)) return;
       e.currentTarget.classList.remove(DROP_TARGET);
+      showPlacement(e.currentTarget, undefined);
     },
     onDrop: (e: DropEvent) => {
       e.currentTarget.classList.remove(DROP_TARGET);
+      const placement = placementOf?.(e);
+      showPlacement(e.currentTarget, undefined);
       if (nested) e.stopPropagation();
       if (actions.onDrop) {
         e.preventDefault();
         e.stopPropagation();
-        actions.onDrop(e, folderId);
+        if (placement) actions.onDrop(e, folderId, placement);
+        else actions.onDrop(e, folderId);
         return;
       }
       const payload = readConversationDragData(e);
@@ -109,13 +140,13 @@ function rowShell(
   };
 }
 
-export function EmptyState() {
+export function EmptyState({ labelKey = 'floatingPanelEmpty' }: { labelKey?: string }) {
   return (
     <div class={cls('empty')}>
       <svg class={cls('empty-icon')} viewBox="0 0 24 24" aria-hidden="true">
         <path d="M4.75 6.5c0-.69.56-1.25 1.25-1.25h4.16c.36 0 .69.15.93.41l1.12 1.23c.14.15.34.24.55.24H18c.69 0 1.25.56 1.25 1.25v1.12H4.75v-3Zm0 4.25h14.5v6.75c0 .69-.56 1.25-1.25 1.25H6c-.69 0-1.25-.56-1.25-1.25v-6.75Z" />
       </svg>
-      <div class={cls('empty-label')}>{t('floatingPanelEmpty')}</div>
+      <div class={cls('empty-label')}>{t(labelKey)}</div>
     </div>
   );
 }
@@ -146,7 +177,11 @@ export function CreateFolderRow({ tree, parentId, index, measure, hidden }: Crea
       <InlineForm
         initialValue=""
         extraClass={parentId === null ? cls('inline-form--root') : undefined}
-        style={parentId === null ? undefined : { paddingInlineStart: `${32 + parentDepth * 12}px` }}
+        style={
+          parentId === null
+            ? undefined
+            : { paddingInlineStart: `calc(32px + ${parentDepth} * var(--gv-tree-step, 12px))` }
+        }
         onSubmit={(name) =>
           tree.apply({ inlineEditor: null }, () => {
             if (name && canCreateChildAtDepth(parentDepth)) {
@@ -178,15 +213,65 @@ export function ConversationRow({
   measure,
 }: ItemRowProps<ConversationNode>) {
   const { conversation: conv, bucketId, folderDepth } = node;
+  const { actions, site } = tree;
   const untitled = t('floatingPanelUntitled');
-  const remove = () => tree.actions.onRemoveConversation?.(bucketId, conv.conversationId);
-  const active =
-    !!tree.site?.activeConversationId && tree.site.activeConversationId === conv.conversationId;
+  const remove = () => actions.onRemoveConversation?.(bucketId, conv.conversationId);
+  const active = site?.isActiveConversation
+    ? site.isActiveConversation(conv, bucketId)
+    : !!site?.activeConversationId && site.activeConversationId === conv.conversationId;
+  const selected = !!site?.isConversationSelected?.(conv, bucketId);
   const shell = rowShell(index, folderDepth + 1);
+  const atRoot = bucketId === tree.rootBucketId;
+  const placementOf: PlacementOf | undefined = site?.reorder?.conversations
+    ? (e) => {
+        const position = edgeOf(e, 0.5);
+        return position
+          ? { kind: 'conversation', bucketId, conversationId: conv.conversationId, position }
+          : undefined;
+      }
+    : undefined;
   // With folder-body drops, a row is part of its folder's block and takes the
-  // drop for that folder. A root row has no folder block.
+  // drop for that folder. A root row has no folder block, but a drop beside it
+  // still reorders the root.
   const drops =
-    tree.site?.folderBodyDrop && bucketId !== tree.rootBucketId ? dropHandlers(tree, bucketId) : {};
+    (site?.folderBodyDrop && !atRoot) || (placementOf && atRoot)
+      ? dropHandlers(tree, bucketId, placementOf)
+      : {};
+  const classes = [cls('conv')];
+  if (active) classes.push(cls('conv--active'));
+  if (selected) classes.push(cls('conv--selected'));
+  const href = site?.conversationHref?.(conv);
+  const icon = site?.conversationIcon?.(conv);
+  const onTitleClick = (e: MouseEvent) => {
+    const row = (e.currentTarget as HTMLElement).closest<HTMLElement>(`.${cls('conv')}`);
+    if (row && actions.interceptConversationClick?.(e, conv, bucketId, row)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    // A link leaves modified and non-primary clicks to the browser: a new tab, say.
+    if (href && (e.button !== 0 || e.altKey || !isPlainClick(e))) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (isPlainClick(e)) actions.onNavigate?.(conv);
+  };
+  const titleProps = {
+    class: cls('conv-title'),
+    // Its own direction, so a name in the other script truncates at its end.
+    dir: 'auto' as const,
+    title: conv.title || '',
+    'aria-current': active ? ('page' as const) : undefined,
+    onClick: onTitleClick,
+    onDblClick: actions.onRenameConversation
+      ? (e: MouseEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          actions.onRenameConversation?.(conv);
+        }
+      : undefined,
+  };
+  const label = conv.title || untitled;
+  const press = actions.onConversationPress;
   return (
     <div
       class={shell.class}
@@ -195,10 +280,11 @@ export function ConversationRow({
       ref={measure}
       style={shell.guideStyle}
     >
+      {/* oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- a treeitem (role from Headless Tree's props); the pointer handlers only report presses and menus */}
       <div
         {...treeItemProps(item)}
-        class={active ? `${cls('conv')} ${cls('conv--active')}` : cls('conv')}
-        style={{ paddingInlineStart: `${24 + folderDepth * 12}px` }}
+        class={classes.join(' ')}
+        style={{ paddingInlineStart: `calc(24px + ${folderDepth} * var(--gv-tree-step, 12px))` }}
         data-folder-id={bucketId}
         data-conversation-id={conv.conversationId}
         draggable
@@ -214,24 +300,39 @@ export function ConversationRow({
             e.dataTransfer.setData('text/plain', conv.title || untitled);
           }
           e.currentTarget.classList.add(DRAGGING);
+          actions.onConversationDragStart?.(e, conv, bucketId);
         }}
-        onDragEnd={(e) => e.currentTarget.classList.remove(DRAGGING)}
+        onDragEnd={(e) => {
+          e.currentTarget.classList.remove(DRAGGING);
+          actions.onConversationDragEnd?.();
+        }}
+        onMouseDown={press && ((e) => press(e, conv, bucketId))}
+        onMouseUp={press && (() => press(null, conv, bucketId))}
+        onMouseLeave={press && (() => press(null, conv, bucketId))}
+        onContextMenu={
+          actions.onConversationMenu &&
+          ((e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            actions.onConversationMenu?.(e, conv);
+          })
+        }
         {...drops}
       >
-        <button
-          type="button"
-          class={cls('conv-title')}
-          // Its own direction, so a name in the other script truncates at its end.
-          dir="auto"
-          title={conv.title || ''}
-          aria-current={active ? 'page' : undefined}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (isPlainClick(e)) tree.actions.onNavigate?.(conv);
-          }}
-        >
-          {conv.title || untitled}
-        </button>
+        {icon && (
+          <span class={cls('conv-icon')} aria-hidden="true">
+            {icon}
+          </span>
+        )}
+        {href ? (
+          <a {...titleProps} href={href} draggable={false}>
+            {label}
+          </a>
+        ) : (
+          <button type="button" {...titleProps}>
+            {label}
+          </button>
+        )}
         <IconButton
           modifier="star"
           labelKey={
@@ -241,7 +342,7 @@ export function ConversationRow({
           active={conv.starred}
           onClick={(e) => {
             e.stopPropagation();
-            tree.actions.onToggleStar?.(bucketId, conv.conversationId);
+            actions.onToggleStar?.(bucketId, conv.conversationId);
           }}
         />
         <IconButton
@@ -250,7 +351,7 @@ export function ConversationRow({
           text="×"
           onClick={(e) => {
             e.stopPropagation();
-            const confirm = tree.actions.confirmConversationRemoval;
+            const confirm = actions.confirmConversationRemoval;
             if (confirm) confirm(conv.title || untitled, e.currentTarget as HTMLElement, remove);
             else remove();
           }}
@@ -261,13 +362,28 @@ export function ConversationRow({
 }
 
 export function FolderRow({ tree, node, item, index, measure, hidden }: ItemRowProps<FolderNode>) {
-  const { inlineEditor, apply, actions } = tree;
+  const { inlineEditor, apply, actions, site } = tree;
   const { folder, depth } = node;
   const expanded = tree.isExpanded(folder);
   const renaming = inlineEditor?.mode === 'rename' && inlineEditor.folderId === folder.id;
   const toggle = () => apply({ expand: { folderId: folder.id, expanded: !expanded } });
-  const menuButton = tree.site?.folderMenuButton;
+  const menuButton = site?.folderMenuButton;
   const shell = rowShell(index, depth, { extraClass: cls('folder'), hidden });
+  const draggable = !!site?.folderDrag && !folder.pinned && !renaming;
+  const placementOf: PlacementOf | undefined = site?.reorder?.folders
+    ? (e) => {
+        if (!e.dataTransfer?.types.includes(FOLDER_DRAG_TYPE)) return undefined;
+        const position = edgeOf(e, 0.25);
+        return position ? { kind: 'folder', folderId: folder.id, position } : undefined;
+      }
+    : undefined;
+  // A delayed toggle waits out a double-click, which renames instead.
+  const pendingToggleRef = useRef<number | null>(null);
+  const cancelToggle = () => {
+    if (pendingToggleRef.current !== null) window.clearTimeout(pendingToggleRef.current);
+    pendingToggleRef.current = null;
+  };
+  useEffect(() => cancelToggle, []);
 
   const onHeaderClick = (e: MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -275,7 +391,18 @@ export function FolderRow({ tree, node, item, index, measure, hidden }: ItemRowP
     if (target.closest(`.${cls('icon-button')}`)) return;
     if (target.closest(`.${cls('caret')}`)) return;
     e.stopPropagation();
-    if (isPlainClick(e)) toggle();
+    if (!isPlainClick(e)) return;
+    const delay = site?.folderToggleDelayMs;
+    if (delay === undefined) {
+      toggle();
+      return;
+    }
+    cancelToggle();
+    if (e.detail > 1) return;
+    pendingToggleRef.current = window.setTimeout(() => {
+      pendingToggleRef.current = null;
+      toggle();
+    }, delay);
   };
 
   return (
@@ -292,8 +419,26 @@ export function FolderRow({ tree, node, item, index, measure, hidden }: ItemRowP
       <div
         {...treeItemProps(item)}
         class={cls('folder-header')}
-        style={{ paddingInlineStart: `${8 + depth * 12}px` }}
+        style={{ paddingInlineStart: `calc(8px + ${depth} * var(--gv-tree-step, 12px))` }}
         data-folder-id={folder.id}
+        draggable={draggable || undefined}
+        onDragStart={
+          draggable
+            ? (e) => {
+                e.stopPropagation();
+                if (e.dataTransfer) {
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData(
+                    'application/json',
+                    JSON.stringify({ type: 'folder', folderId: folder.id, title: folder.name }),
+                  );
+                  e.dataTransfer.setData(FOLDER_DRAG_TYPE, folder.id);
+                }
+                e.currentTarget.classList.add(FOLDER_DRAGGING);
+              }
+            : undefined
+        }
+        onDragEnd={draggable ? (e) => e.currentTarget.classList.remove(FOLDER_DRAGGING) : undefined}
         onClick={onHeaderClick}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -308,7 +453,7 @@ export function FolderRow({ tree, node, item, index, measure, hidden }: ItemRowP
             },
           });
         }}
-        {...dropHandlers(tree, folder.id)}
+        {...dropHandlers(tree, folder.id, placementOf)}
       >
         <button
           type="button"
@@ -346,6 +491,7 @@ export function FolderRow({ tree, node, item, index, measure, hidden }: ItemRowP
               title={folder.name}
               onDblClick={(e) => {
                 e.stopPropagation();
+                cancelToggle();
                 apply({ inlineEditor: { mode: 'rename', folderId: folder.id }, contextMenu: null });
               }}
             >

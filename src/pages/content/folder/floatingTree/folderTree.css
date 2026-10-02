@@ -18,18 +18,18 @@
 }
 
 /* One 1px line per enclosing folder, under that folder's caret: the same
- * 14px + depth * 12px the folder body's line used. */
+ * 14px + depth * step (12px unless a site sets --gv-tree-step), as the rows indent. */
 .gv-floating-folder-panel__tree-row[data-guides]::before {
   content: '';
   position: absolute;
   top: 0;
   bottom: 0;
   left: 14px;
-  width: calc(var(--gv-tree-guides, 0) * 12px);
+  width: calc(var(--gv-tree-guides, 0) * var(--gv-tree-step, 12px));
   background-image: repeating-linear-gradient(
     to right,
     rgba(255, 255, 255, 0.09) 0 1px,
-    transparent 1px 12px
+    transparent 1px var(--gv-tree-step, 12px)
   );
   pointer-events: none;
 }
@@ -40,7 +40,7 @@
   background-image: repeating-linear-gradient(
     to left,
     rgba(255, 255, 255, 0.09) 0 1px,
-    transparent 1px 12px
+    transparent 1px var(--gv-tree-step, 12px)
   );
 }
 
@@ -48,7 +48,7 @@
   background-image: repeating-linear-gradient(
     to right,
     rgba(15, 23, 42, 0.1) 0 1px,
-    transparent 1px 12px
+    transparent 1px var(--gv-tree-step, 12px)
   );
 }
 
@@ -57,7 +57,7 @@
   background-image: repeating-linear-gradient(
     to left,
     rgba(15, 23, 42, 0.1) 0 1px,
-    transparent 1px 12px
+    transparent 1px var(--gv-tree-step, 12px)
   );
 }
 
