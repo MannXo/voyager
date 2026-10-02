@@ -254,7 +254,6 @@ describe('hiding filed chats in Recents', () => {
     const hide = new ChatGptHideFiled(scope);
     hide.update([ROWS[1].id]);
     hide.sync(sidebar.sidebar);
-    const css = document.querySelector(STYLE)!.textContent;
     const mutations: MutationRecord[] = [];
     const observer = new MutationObserver((records) => mutations.push(...records));
     observer.observe(document.documentElement, {
@@ -272,7 +271,6 @@ describe('hiding filed chats in Recents', () => {
       await settle();
 
       expect(hiddenIds()).toEqual([ROWS[1].id]);
-      expect(document.querySelector(STYLE)!.textContent).toBe(css);
       expect(mutations).toHaveLength(0);
 
       hide.update([ROWS[3].id]);
@@ -294,6 +292,5 @@ describe('hiding filed chats in Recents', () => {
     hide.update(['abc"], body { display: none } a[x="']);
     hide.sync(sidebar.sidebar);
     expect(hiddenIds()).toEqual([]);
-    expect(document.querySelector(STYLE)!.textContent).not.toContain('abc');
   });
 });

@@ -44,10 +44,11 @@ export class ChatGptHideFiled {
   }
 
   sync(sidebar: HTMLElement | null): void {
-    // Include cloned marks, and tracked rows that React has already detached.
+    // Include cloned marks and tracked rows React has detached. A row pass only
+    // sweeps the sidebar (marks elsewhere are inert); teardown sweeps the page.
     const stale = new Set([
       ...this.marked,
-      ...this.doc.querySelectorAll<HTMLElement>(`[${FILED_ROW_ATTRIBUTE}]`),
+      ...(sidebar ?? this.doc).querySelectorAll<HTMLElement>(`[${FILED_ROW_ATTRIBUTE}]`),
     ]);
     this.marked = new Set();
     for (const row of sidebar?.querySelectorAll<HTMLElement>(HISTORY_ROW) ?? []) {
