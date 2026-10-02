@@ -182,18 +182,29 @@ function getUniquePathToId(paths: {
   return uniquePathToId;
 }
 
-function buildFolderPathIndex<TFolder extends MergeableFolder>(
+/**
+ * Each folder's name path from its root, joined by `\u001f`. A folder under a
+ * parent cycle, a missing parent or a blank name has none. The last record of a
+ * repeated id wins the id lookup.
+ */
+export function buildFolderPathIndex<TFolder extends MergeableFolder>(
   folders: TFolder[],
 ): {
   pathById: Map<string, string>;
   idsByPath: Map<string, string[]>;
 } {
   const foldersById = new Map(folders.map((folder) => [folder.id, folder]));
+  const resolveIndexedPath = createFolderPathResolver(foldersById);
   const pathById = new Map<string, string>();
   const idsByPath = new Map<string, string[]>();
 
   folders.forEach((folder) => {
-    const path = resolveFolderPath(folder, foldersById);
+    // An earlier record of a repeated id is not the one its children resolve
+    // to, so it walks its own parents.
+    const path =
+      foldersById.get(folder.id) === folder
+        ? resolveIndexedPath(folder.id)
+        : resolveFolderPath(folder, foldersById);
     if (!path) return;
 
     pathById.set(folder.id, path);
@@ -203,6 +214,49 @@ function buildFolderPathIndex<TFolder extends MergeableFolder>(
   });
 
   return { pathById, idsByPath };
+}
+
+/**
+ * `resolveFolderPath` for the records `foldersById` holds. It remembers every
+ * folder's path, so a deep legacy tree walks each parent link once instead of
+ * once per descendant. A path is the parent's path plus the folder's name, and
+ * none when the parent has none: an ancestor in a cycle, missing or blank.
+ */
+function createFolderPathResolver<TFolder extends MergeableFolder>(
+  foldersById: Map<string, TFolder>,
+): (id: string) => string | null {
+  const paths = new Map<string, string | null>();
+  return (id) => {
+    const chain: TFolder[] = [];
+    const onChain = new Set<string>();
+    let above: string | null = null;
+    let reachedRoot = false;
+    let current = foldersById.get(id);
+    while (current) {
+      if (paths.has(current.id)) {
+        above = paths.get(current.id) ?? null;
+        break;
+      }
+      if (onChain.has(current.id)) break; // a cycle: no folder that reaches it has a path
+      onChain.add(current.id);
+      chain.push(current);
+      if (!current.name.trim()) break;
+      if (!current.parentId) {
+        reachedRoot = true;
+        break;
+      }
+      current = foldersById.get(current.parentId);
+    }
+    for (let index = chain.length - 1; index >= 0; index--) {
+      const name = chain[index].name.trim();
+      let path: string | null = null;
+      if (name && reachedRoot && index === chain.length - 1) path = name;
+      else if (name && above !== null) path = `${above}\u001f${name}`;
+      paths.set(chain[index].id, path);
+      above = path;
+    }
+    return paths.get(id) ?? null;
+  };
 }
 
 function resolveFolderPath<TFolder extends MergeableFolder>(
