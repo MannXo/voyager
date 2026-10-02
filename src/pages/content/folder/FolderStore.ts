@@ -70,7 +70,7 @@ export interface FolderStoreOptions {
   };
   onChange: (reason: FolderStoreChange) => void;
   onArchive: () => void;
-  onRecovery: (result: 'recovered' | 'lost') => void;
+  onRecovery: (result: 'recovered' | 'lost' | 'unreadable') => void;
 }
 
 /** Owns Gemini folder commands, title sync and activity; persistence lives in FolderRepository. */

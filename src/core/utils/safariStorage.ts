@@ -9,7 +9,7 @@
  *
  * Solution:
  * - Use browser.storage.local (persistent; quota depends on Safari version and permissions)
- * - Fallback to localStorage if storage API unavailable
+ * - Writes fall back to localStorage if the storage API fails; reads reject instead
  */
 import browser from 'webextension-polyfill';
 
@@ -33,12 +33,9 @@ export class SafariStorage implements SafariStorageAdapter {
       return result[key] ?? null;
     } catch (error) {
       console.error('[SafariStorage] Failed to get item:', key, error);
-      // Fallback to localStorage
-      try {
-        return localStorage.getItem(key);
-      } catch {
-        return null;
-      }
+      // No page fallback: a stale or empty page copy would read as the stored value
+      // or as an absent key, and callers decide what to write from that.
+      throw error;
     }
   }
 

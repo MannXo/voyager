@@ -463,14 +463,14 @@ export class AIStudioFolderManager {
     if (reason === 'loaded' || reason === 'data' || reason === 'availability') this.render();
   }
 
-  private announceRecovery(result: 'recovered' | 'kept' | 'lost'): void {
-    if (result === 'recovered') {
-      this.showNotification('Folder data recovered from backup', 'warning');
-    } else if (result === 'kept') {
-      this.showErrorNotification('Failed to load folder data, using cached version');
-    } else {
-      this.showErrorNotification('Failed to load folder data. All folders have been reset.');
-    }
+  private announceRecovery(result: 'recovered' | 'kept' | 'lost' | 'unreadable'): void {
+    const message = {
+      recovered: 'Folder data recovered from backup',
+      kept: 'Failed to load folder data, using cached version',
+      lost: 'Failed to load folder data. All folders have been reset.',
+      unreadable: 'Failed to load folder data, folders are read-only for now',
+    }[result];
+    this.showNotification(message, result === 'recovered' ? 'warning' : 'error');
   }
 
   private async handleAccountIsolationToggle(enabled: boolean): Promise<void> {

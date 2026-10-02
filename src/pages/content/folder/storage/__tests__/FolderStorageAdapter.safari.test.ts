@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import browser from 'webextension-polyfill';
 
 import type { FolderData } from '../../types';
 import { SafariFolderAdapter } from '../FolderStorageAdapter';
@@ -60,5 +61,18 @@ describe('SafariFolderAdapter', () => {
     );
 
     expect(storageState.values.gvFolderData).toEqual(folderData);
+  });
+
+  it('rejects a failed read instead of answering from the page copy or as absent', async () => {
+    const adapter = new SafariFolderAdapter();
+    const unavailable = new Error('storage unavailable');
+    vi.mocked(browser.storage.local.get)
+      .mockRejectedValueOnce(unavailable)
+      .mockRejectedValueOnce(unavailable);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(adapter.loadData('gvFolderData')).rejects.toThrow('storage unavailable');
+    localStorage.setItem('gvFolderData', JSON.stringify(folderData));
+    await expect(adapter.loadData('gvFolderData')).rejects.toThrow('storage unavailable');
   });
 });

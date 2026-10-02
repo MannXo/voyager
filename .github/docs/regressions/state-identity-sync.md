@@ -123,8 +123,9 @@ off a ChatGPT tab`).
   observed external write (`externalWrites`), never when a reload is merely requested, so a read
   discarded by a scope refresh, a save or a newer load leaves it set. `tryReconcile()` calls the
   owner's reload hook for the active session once no write, replacement or read is in flight;
-  persist, `replaceData`, `loadData` and rebinding call it again. A load that ran backup recovery
-  is not a discarded read: if the recovery write landed, memory equals storage and the flag clears;
+  persist, `replaceData`, `loadData` and rebinding call it again. A read that fails applies
+  nothing and runs no recovery ("A failed folder read is not an absent bucket"); the flag stays
+  for its retry. A load that ran backup recovery (absent or invalid data) is not a discarded read: if the recovery write landed, memory equals storage and the flag clears;
   if it failed, the flag stays but waits for the next storage event or settled local write, since
   rereading would rewrite the same failing snapshot in an unbounded loop. A failed local write
   proves nothing about storage, so it reconciles only for an external write observed since the
@@ -416,12 +417,14 @@ off a ChatGPT tab`).
   echo still shows the write. There is no exactly-once guarantee: do not retry an op on failure
   without checking the stored library first.
   These whole-key writers stay on purpose; do not route them through the owner without a plan
-  for what replaces their atomicity: the cloud restore in
-  `src/pages/popup/components/CloudSyncSettings.tsx`, the folder Drive merge in
-  `src/pages/content/folder/FolderTransferController.ts` and the AI Studio folder save
-  (`persistDataSession` in `src/pages/content/folder/aistudio.ts`) write prompts in one
-  `chrome.storage.local.set` together with folders, starred messages or the timeline hierarchy.
-  They are rare bulk operations, and keeping those keys consistent with each other is worth more
+  for what replaces their atomicity: the popup cloud restore (`applyCloudRestore` in
+  `src/pages/popup/components/cloudRestore.ts`) and the AI Studio Drive merge (`replaceData` in
+  `src/pages/content/folder/aistudio.ts`, whose prompts ride in the folder write as
+  `AIStudioFolderStorageAdapter` companions) write prompts in one `chrome.storage.local.set`
+  together with folders. Gemini's Drive merge in
+  `src/pages/content/folder/FolderTransferController.ts` is two writes: folders through
+  `replaceData`, then prompts, starred messages and the timeline hierarchy in one `set`, so a
+  failure between them lands the folders alone. They are rare bulk operations, and keeping those keys consistent with each other is worth more
   than the lock. Splitting prompts into an owner op would let the other keys land without them.
 - **Guard:** `src/features/prompt/library/__tests__/promptLibraryOwner.test.ts`,
   `src/pages/content/prompt/__tests__/promptLibraryInterleaving.test.ts` (`keeps a Prompt Manager
@@ -574,3 +577,30 @@ is merged again`, the pin and unpin round trips), `src/utils/mergePrompts.test.t
   `src/core/services/__tests__/StorageQuotaService.test.ts` (headroom limits) and
   `src/pages/content/folder/__tests__/folderBackupQuota.test.ts` (1k folders / 10k refs recovery,
   saves while a backup write hangs, and the live mirror's room near the quota).
+
+## A failed folder read is not an absent bucket
+
+- **Trap:** The folder adapters caught a failed storage read (an invalidated extension context, a
+  transient storage error, Safari's `browser.storage` read falling back to an empty page copy) and
+  returned `null`, the same answer as "nothing stored". Gemini then started empty and editable, so
+  the next edit wrote a near-empty bucket over the real one; a scoped account bound an empty bucket
+  and never ran its legacy migration; a rejected read went through backup recovery, which wrote an
+  older backup over newer data. A full page localStorage turned a good read into a failed one
+  through the page-mirror `setItem`, and a rejected `chrome.storage.local` write still reported
+  success although loads read that store first.
+- **Rule:** `IFolderStorageAdapter.loadData` rejects when storage cannot be read, resolves `null`
+  only when nothing is stored, and returns the stored value unvalidated (unparseable JSON comes
+  back as is, so validation sends it to corrupt-data recovery). Safari reads have no page fallback.
+  A failed page-mirror `setItem` after a good read still returns the data; a failed
+  `chrome.storage.local` write fails the save. `FolderRepository.loadData` classifies a rejection
+  of the bucket read or the legacy read: no migration, recovery, empty state or write. A session
+  that never loaded stays not ready (`canEdit` false) and reports `unreadable`; a loaded one keeps
+  memory and reports `kept`, once per outage. The owner's reload hook retries with backoff
+  (1 s → 30 s, repeating) until a read lands, except for an invalidated extension context; the
+  timer is cleared on account switch, suspend and destroy.
+- **Guard:** `src/pages/content/folder/__tests__/folderStorePersistenceCharacterization.test.ts`
+  (`stays read-only and writes nothing when the first read fails, until a retry reads`, `leaves
+newer stored data alone when a reload cannot read it, and reads it on retry`),
+  `src/pages/content/folder/storage/__tests__/FolderStorageAdapter.test.ts` and
+  `src/pages/content/folder/storage/__tests__/FolderStorageAdapter.safari.test.ts` (`rejects a
+failed read instead of answering from the page copy or as absent`).

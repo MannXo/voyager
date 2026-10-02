@@ -81,6 +81,7 @@ export class FolderManager {
           'Folder data has been recovered from a backup.',
           'warning',
         );
+      else if (result === 'unreadable') this.feedback.showReadFailureNotification();
       else this.feedback.showDataLossNotification();
     },
   });

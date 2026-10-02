@@ -21,6 +21,18 @@ import { safariStorage } from '@/core/utils/safariStorage';
 import type { FolderData } from '../types';
 
 /**
+ * Parses a JSON string bucket. Unparseable text is returned as found, so the
+ * caller's validation treats it as corrupt data (backup recovery), not as absent.
+ */
+function parseStoredFolderData(stored: string): FolderData {
+  try {
+    return JSON.parse(stored) as FolderData;
+  } catch {
+    return stored as unknown as FolderData;
+  }
+}
+
+/**
  * Unified storage interface for folder data
  * All implementations must provide async methods
  */
@@ -33,8 +45,10 @@ export interface IFolderStorageAdapter {
   init(key: string): Promise<void>;
 
   /**
-   * Load folder data from storage
-   * @returns FolderData or null if no data exists
+   * Load folder data from storage, as stored: callers validate it.
+   * @returns the stored value, or null only when nothing is stored
+   * @throws when storage cannot be read. A failed read is not an absent bucket:
+   *   treating it as one lets recovery or the next save overwrite real data.
    */
   loadData(key: string): Promise<FolderData | null>;
 
@@ -93,26 +107,25 @@ export class LocalStorageFolderAdapter implements IFolderStorageAdapter {
   }
 
   async loadData(key: string): Promise<FolderData | null> {
-    try {
-      // First check chrome.storage.local (for synced data from popup/download)
-      const chromeResult = await chrome.storage.local.get(key);
-      if (chromeResult[key]) {
-        console.log('[LocalStorageFolderAdapter] Loaded data from chrome.storage.local');
-        // Also sync to localStorage for consistency
+    // First check chrome.storage.local (for synced data from popup/download)
+    const chromeResult = await chrome.storage.local.get(key);
+    if (chromeResult[key]) {
+      console.log('[LocalStorageFolderAdapter] Loaded data from chrome.storage.local');
+      // Also sync to localStorage for consistency. A full localStorage must not fail the read.
+      try {
         localStorage.setItem(key, JSON.stringify(chromeResult[key]));
-        return chromeResult[key] as FolderData;
+      } catch (error) {
+        console.warn('[LocalStorageFolderAdapter] Failed to mirror to localStorage:', error);
       }
+      return chromeResult[key] as FolderData;
+    }
 
-      // Fallback to localStorage
-      const stored = localStorage.getItem(key);
-      if (!stored) {
-        return null;
-      }
-      return JSON.parse(stored) as FolderData;
-    } catch (error) {
-      console.error('[LocalStorageFolderAdapter] Failed to load data:', error);
+    // Fallback to localStorage
+    const stored = localStorage.getItem(key);
+    if (!stored) {
       return null;
     }
+    return parseStoredFolderData(stored);
   }
 
   async saveData(key: string, data: FolderData): Promise<boolean> {
@@ -126,15 +139,9 @@ export class LocalStorageFolderAdapter implements IFolderStorageAdapter {
         throw new Error('Save verification failed - data mismatch');
       }
 
-      // Also mirror to chrome.storage.local for popup/sync access
-      try {
-        await chrome.storage.local.set({ [key]: data });
-      } catch (storageError) {
-        console.warn(
-          '[LocalStorageFolderAdapter] Failed to mirror to chrome.storage.local:',
-          storageError,
-        );
-      }
+      // Also write chrome.storage.local for popup/sync access. Loads read it first,
+      // so a save it missed would be rolled back on the next load: report it failed.
+      await chrome.storage.local.set({ [key]: data });
 
       return true;
     } catch (error) {
@@ -176,20 +183,13 @@ export class SafariFolderAdapter implements IFolderStorageAdapter {
   }
 
   async loadData(key: string): Promise<FolderData | null> {
-    try {
-      const stored = await safariStorage.getItem(key);
-      if (!stored) {
-        return null;
-      }
-      // Older Safari builds stored JSON strings; cloud sync writes the same
-      // structured object shape used by the other browsers.
-      return typeof stored === 'string'
-        ? (JSON.parse(stored) as FolderData)
-        : (stored as FolderData);
-    } catch (error) {
-      console.error('[SafariFolderAdapter] Failed to load data:', error);
+    const stored = await safariStorage.getItem(key);
+    if (!stored) {
       return null;
     }
+    // Older Safari builds stored JSON strings; cloud sync writes the same
+    // structured object shape used by the other browsers.
+    return typeof stored === 'string' ? parseStoredFolderData(stored) : (stored as FolderData);
   }
 
   async saveData(key: string, data: FolderData): Promise<boolean> {

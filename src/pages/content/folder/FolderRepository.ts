@@ -7,6 +7,7 @@ import {
   buildScopedStorageKey,
   detectAccountContextFromDocument,
 } from '@/core/services/AccountIsolationService';
+import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
 import { cloneFolderData, validateFolderData } from '@/features/folder/model/folderData';
 
 import { FolderDataSession } from './FolderDataSession';
@@ -22,6 +23,8 @@ import type { FolderData } from './types';
 
 /** Growing gaps between account-scope retries, in ms. Length caps the attempts. */
 const ACCOUNT_SCOPE_RETRY_DELAYS = [400, 1200, 3000] as const;
+/** Growing gaps between reads after a failed one, in ms. The last gap repeats until a read lands. */
+const READ_RETRY_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000] as const;
 const IS_DEBUG = false;
 const SAVE_DEBOUNCE_MS = 300;
 
@@ -36,9 +39,15 @@ export type FolderStoreChange =
 
 export interface FolderRepositoryHooks {
   onChange: (reason: FolderStoreChange) => void;
-  /** A failed load restored backup data, kept in-memory data, or reset to empty. */
-  onRecovery: (result: 'recovered' | 'kept' | 'lost') => void;
-  /** Another context wrote the active bucket. Resolved at call time by the owner. */
+  /**
+   * A failed load restored backup data, kept in-memory data, or reset to empty;
+   * or storage could not be read before any load, which leaves editing disabled.
+   */
+  onRecovery: (result: 'recovered' | 'kept' | 'lost' | 'unreadable') => void;
+  /**
+   * Reload the active bucket: another context wrote it, or a failed read is retried.
+   * Resolved at call time by the owner.
+   */
   onExternalChange: () => void;
   /** The active account was released; runs before the `account` change. */
   onAccountReleased: () => void;
@@ -86,6 +95,8 @@ export class FolderRepository {
   private accountScopeRetry: number | null = null;
   private accountScopeRetryAttempt = 0;
   private accountScopeRetrying = false;
+  private readRetry: number | null = null;
+  private readRetryAttempt = 0;
   private isolationEnabled = false;
   private resolvedAccountScope: AccountScope | null = null;
   private activeStorageKey: string;
@@ -184,6 +195,7 @@ export class FolderRepository {
    */
   suspend(): void {
     this.clearAccountScopeRetry();
+    this.clearReadRetry();
     this.dataSession?.deactivate();
     this.accountScopeRequest += 1;
   }
@@ -194,6 +206,7 @@ export class FolderRepository {
     this.flushPendingSaveData();
     this.destroyed = true;
     this.clearAccountScopeRetry();
+    this.clearReadRetry();
     this.dataSession?.deactivate();
     this.accountScopeRequest += 1;
     browser.storage.onChanged.removeListener(this.storageChangeHandler);
@@ -243,12 +256,24 @@ export class FolderRepository {
     let applied = false; // memory now holds what storage holds
     let recovering = false; // recovery's own write supersedes this read; it is not discarded
     try {
-      let loadedData = await this.storage.loadData(session.storageKey);
-      if (!isCurrent()) return;
-
-      if (!loadedData && session.accountScope) {
-        loadedData = await this.migrateLegacyFolderDataToScopedStorage(session, version);
+      let loadedData: FolderData | null;
+      try {
+        loadedData = await this.storage.loadData(session.storageKey);
         if (!isCurrent()) return;
+        if (!loadedData && session.accountScope) {
+          loadedData = await this.migrateLegacyFolderDataToScopedStorage(session, version);
+          if (!isCurrent()) return;
+        }
+      } catch (error) {
+        // The read itself failed, so storage may still hold real data. Recovery or
+        // empty data would overwrite it: keep storage and memory, and read again later.
+        if (!isCurrent()) return;
+        console.error(`${this.tag} Failed to read folder data; storage left untouched:`, error);
+        // Report the first failure only, not each retry.
+        if (this.readRetryAttempt === 0)
+          this.hooks.onRecovery(session.ready ? 'kept' : 'unreadable');
+        if (!isExtensionContextInvalidatedError(error)) this.scheduleReadRetry(session);
+        return;
       }
 
       if (loadedData && validateFolderData(loadedData)) {
@@ -312,6 +337,7 @@ export class FolderRepository {
       applied = await this.attemptDataRecovery(error, session);
     } finally {
       session.loadsInFlight -= 1;
+      if (applied && this.dataSession === session) this.clearReadRetry();
       // Only a read that started after every observed external write settles them.
       if (applied && session.externalWrites === externalWrites) session.reconcilePending = false;
       // Authoritative data replaced a failed edit made before this read; merged debounced
@@ -333,8 +359,9 @@ export class FolderRepository {
     session: FolderDataSession,
     version: number,
   ): Promise<FolderData | null> {
+    // A failed read rejects: binding an empty account bucket would end this migration for good.
+    const legacyData = await this.storage.loadData(this.config.storageKey);
     try {
-      const legacyData = await this.storage.loadData(this.config.storageKey);
       if (
         this.dataSession !== session ||
         session.loadVersion !== version ||
@@ -605,7 +632,8 @@ export class FolderRepository {
         Object.keys(snapshot.folderContents).length === 0
       ) {
         // Check if we're about to overwrite non-empty data
-        const existingData = await this.storage.loadData(session.storageKey);
+        // Diagnostic only: an unreadable bucket must not fail the save.
+        const existingData = await this.storage.loadData(session.storageKey).catch(() => null);
         if (
           existingData &&
           (existingData.folders.length > 0 || Object.keys(existingData.folderContents).length > 0)
@@ -698,6 +726,7 @@ export class FolderRepository {
   async refreshAccountScope(): Promise<void> {
     const request = ++this.accountScopeRequest;
     this.clearAccountScopeRetry();
+    this.clearReadRetry();
     if (!this.accountScopeRetrying) this.accountScopeRetryAttempt = 0;
     const previous = this.dataSession;
     // Flush the old account's pending debounce before releasing its data owner.
@@ -805,5 +834,23 @@ export class FolderRepository {
     if (this.accountScopeRetry === null) return;
     window.clearTimeout(this.accountScopeRetry);
     this.accountScopeRetry = null;
+  }
+
+  /** Read `session`'s bucket again through the owner's reload, so a recovered read repaints. */
+  private scheduleReadRetry(session: FolderDataSession): void {
+    if (this.destroyed || this.readRetry !== null) return;
+    const delay = READ_RETRY_DELAYS[Math.min(this.readRetryAttempt, READ_RETRY_DELAYS.length - 1)];
+    this.readRetryAttempt += 1;
+    this.readRetry = window.setTimeout(() => {
+      this.readRetry = null;
+      if (!this.destroyed && this.dataSession === session) this.hooks.onExternalChange();
+    }, delay);
+  }
+
+  private clearReadRetry(): void {
+    this.readRetryAttempt = 0;
+    if (this.readRetry === null) return;
+    window.clearTimeout(this.readRetry);
+    this.readRetry = null;
   }
 }

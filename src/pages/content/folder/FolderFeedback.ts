@@ -123,6 +123,14 @@ export class FolderFeedback {
     );
   }
 
+  /** Storage could not be read: nothing was reset, and editing waits for a read. */
+  showReadFailureNotification(): void {
+    this.showNotificationByLevel(
+      'Failed to load folder data, folders are read-only for now.',
+      'error',
+    );
+  }
+
   showNotificationByLevel(message: string, level: 'info' | 'warning' | 'error' = 'error'): void {
     if (this.destroyed) return;
     try {

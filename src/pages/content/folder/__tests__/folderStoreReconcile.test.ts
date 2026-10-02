@@ -83,7 +83,7 @@ describe('FolderStore reconciles external writes after local work settles', () =
   let stored: FolderData | undefined;
   let adapter: IFolderStorageAdapter;
   let store: FolderStore;
-  let onRecovery: ReturnType<typeof vi.fn<(result: 'recovered' | 'lost') => void>>;
+  let onRecovery: ReturnType<typeof vi.fn<(result: 'recovered' | 'lost' | 'unreadable') => void>>;
 
   /** Delivers a storage.onChanged event for the bucket, as chrome.storage would. */
   function emit(value: FolderData | undefined): void {
@@ -107,7 +107,7 @@ describe('FolderStore reconciles external writes after local work settles', () =
     vi.spyOn(accountIsolationService, 'isIsolationEnabled').mockResolvedValue(false);
     vi.spyOn(console, 'log').mockImplementation(() => {});
     stored = folders('Alpha');
-    onRecovery = vi.fn<(result: 'recovered' | 'lost') => void>();
+    onRecovery = vi.fn<(result: 'recovered' | 'lost' | 'unreadable') => void>();
     adapter = {
       init: vi.fn(async () => {}),
       loadData: vi.fn(async () => structuredClone(stored ?? null)),

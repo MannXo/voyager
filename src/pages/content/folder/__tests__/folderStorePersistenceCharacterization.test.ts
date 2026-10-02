@@ -146,7 +146,7 @@ describe('FolderStore persistence characterization', () => {
   let saved: Map<string, unknown>;
   let adapter: IFolderStorageAdapter;
   let onChange: ReturnType<typeof vi.fn<(reason: FolderStoreChange) => void>>;
-  let onRecovery: ReturnType<typeof vi.fn<(result: 'recovered' | 'lost') => void>>;
+  let onRecovery: ReturnType<typeof vi.fn<(result: 'recovered' | 'lost' | 'unreadable') => void>>;
   let store: FolderStore | null;
 
   function createStore(): FolderStore {
@@ -380,17 +380,42 @@ describe('FolderStore persistence characterization', () => {
       expect(folderStore.canEdit).toBe(true);
     });
 
-    it('recovers from the backup a load created when a later reload throws', async () => {
+    it('leaves newer stored data alone when a reload cannot read it, and reads it on retry', async () => {
       saved.set(GLOBAL_KEY, storedFixture());
       const folderStore = createStore();
       await folderStore.init();
+      // Another tab saves; this tab's reload then fails to read, with its own load's backup on hand.
+      const newer: FolderData = { folders: [beta], folderContents: { 'f-b': [c222] } };
+      saved.set(GLOBAL_KEY, newer);
       vi.mocked(adapter.loadData).mockRejectedValueOnce(new Error('storage unavailable'));
 
       await folderStore.loadData();
 
-      expect(onRecovery).toHaveBeenCalledWith('recovered');
+      expect(adapter.saveData).not.toHaveBeenCalled();
+      expect(bytes(saved.get(GLOBAL_KEY))).toBe(bytes(newer));
       expect(bytes(folderStore.data)).toBe(bytes(expectedGlobalLoad()));
-      expect(bytes(saved.get(GLOBAL_KEY))).toBe(bytes(expectedGlobalLoad()));
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(folderStore.data.folders.map(({ id }) => id)).toEqual([beta.id]);
+      expect(adapter.saveData).not.toHaveBeenCalled();
+    });
+
+    it('stays read-only and writes nothing when the first read fails, until a retry reads', async () => {
+      seedPrimaryBackup({ folders: [beta], folderContents: { 'f-b': [c222] } });
+      saved.set(GLOBAL_KEY, storedFixture());
+      vi.mocked(adapter.loadData).mockRejectedValueOnce(new Error('storage unavailable'));
+      const folderStore = createStore();
+      await folderStore.init();
+
+      expect(onRecovery).toHaveBeenCalledWith('unreadable');
+      expect(folderStore.canEdit).toBe(false);
+      expect(folderStore.createFolder('During the outage')).toBeNull();
+      expect(adapter.saveData).not.toHaveBeenCalled();
+      expect(bytes(saved.get(GLOBAL_KEY))).toBe(bytes(storedFixture()));
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(folderStore.canEdit).toBe(true);
+      expect(bytes(folderStore.data)).toBe(bytes(expectedGlobalLoad()));
+      expect(adapter.saveData).not.toHaveBeenCalled();
     });
   });
 
