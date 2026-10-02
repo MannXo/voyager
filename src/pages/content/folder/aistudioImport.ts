@@ -5,6 +5,7 @@ import {
   findRepeatedFolderId,
   ownBucket,
   setBucket,
+  validateFolderData,
 } from '@/features/folder/model/folderData';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
 import type { ImportResult } from '@/features/folder/types/import-export';
@@ -39,31 +40,31 @@ export function readAIStudioImportFile(json: unknown): AIStudioImportFile {
 }
 
 /**
- * Merge folder data left in `chrome.storage.sync` by old versions into local
- * data on migration. Local wins: sync adds only the folders and conversations
- * local lacks.
+ * Import the legacy sync bucket at most once for this target. Valid local data
+ * is authoritative: missing legacy items may be deletions. Keep the sync bytes
+ * untouched for recovery, including when an existing local bucket skips import.
  */
-export function mergeLegacySyncFolderData(local: FolderData, sync: FolderData): FolderData {
-  const localFolderIds = new Set(local.folders.map((f) => f.id));
-  const mergedFolders = [
-    ...local.folders,
-    ...sync.folders.filter((folder) => !localFolderIds.has(folder.id)),
-  ];
-  const mergedContents = { ...local.folderContents };
-  for (const [folderId, conversations] of Object.entries(sync.folderContents)) {
-    // A malformed local bucket is not replaced: `.map` throws and the
-    // migration leaves storage as it was.
-    if (!Object.hasOwn(mergedContents, folderId) || !mergedContents[folderId]) {
-      setBucket(mergedContents, folderId, conversations);
-      continue;
+export async function migrateAIStudioLegacySync(targetKey: string): Promise<void> {
+  const markerKey = `${targetKey}:legacySyncImported`;
+  const migrate = async () => {
+    const local = await chrome.storage.local.get([targetKey, markerKey]);
+    if (local[markerKey] === true) return;
+    if (!validateFolderData(local[targetKey])) {
+      const sync = await chrome.storage.sync.get(targetKey);
+      if (!validateFolderData(sync[targetKey])) return;
+      // A different tab may have saved or deleted items while sync was read.
+      const latest = await chrome.storage.local.get([targetKey, markerKey]);
+      if (latest[markerKey] === true) return;
+      if (!validateFolderData(latest[targetKey])) {
+        await chrome.storage.local.set({ [targetKey]: sync[targetKey] });
+      }
     }
-    const existing = mergedContents[folderId];
-    const existingIds = new Set(existing.map((c) => c.conversationId));
-    for (const conv of conversations) {
-      if (!existingIds.has(conv.conversationId)) existing.push(conv);
-    }
-  }
-  return { folders: mergedFolders, folderContents: mergedContents };
+    // Separate from the data write: never mark a failed import as complete.
+    await chrome.storage.local.set({ [markerKey]: true });
+  };
+  // ponytail: Web Locks serialize per origin; cross-origin writers need a background owner.
+  if (navigator.locks?.request) await navigator.locks.request(markerKey, migrate);
+  else await migrate();
 }
 
 /**

@@ -317,6 +317,23 @@ off a ChatGPT tab`).
   `saves exactly the loaded content, keeping orphan, root and duplicate buckets`) and
   `src/pages/content/folder/__tests__/aistudioFolderSync.test.ts`.
 
+## AI Studio must consume legacy sync folders only once per target key
+
+- **Trap:** AI Studio init merged the legacy `chrome.storage.sync` folder bucket into the global
+  local key on every page load, before account binding. Its union merge restored folders and
+  prompts the user had deleted, and a later global-to-scoped seed copied those resurrected items.
+- **Rule:** `migrateAIStudioLegacySync` records `${targetKey}:legacySyncImported` in
+  `chrome.storage.local`. An existing valid local bucket, including an empty one, is authoritative:
+  mark it without merging, because missing legacy items may be intentional deletions. Otherwise
+  copy validated legacy bytes unchanged, then record completion only after the data write succeeds.
+  Never delete or rewrite the sync source. Retry failed reads/writes without recording completion;
+  a saved copy with a failed marker write is authoritative on retry. Keep the manager's global
+  migration before account binding and its scoped seed policy unchanged. Use the native per-key
+  lock when available and re-read the local target after reading sync to preserve intervening saves.
+- **Guard:** `src/pages/content/folder/__tests__/aistudioPersistenceCharacterization.test.ts`
+  (`sync to local migration`), including real-manager deletion/re-init/scoped-seed coverage,
+  delayed and failed writes, durable independent markers and untouched legacy sources.
+
 ## A native feature's stop must remove everything its start registered
 
 - **Trap:** `initI18n()` added a fresh anonymous `storage.onChanged` listener on every call and

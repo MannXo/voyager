@@ -10,12 +10,7 @@ import { StorageKeys } from '@/core/types/common';
 import type { PromptItem, SyncAccountScope } from '@/core/types/sync';
 import { isSafari } from '@/core/utils/browser';
 import { AISTUDIO_ROOT_BUCKET_ID } from '@/features/folder/constants';
-import {
-  cloneFolderData,
-  ownBucket,
-  setBucket,
-  validateFolderData,
-} from '@/features/folder/model/folderData';
+import { cloneFolderData, ownBucket, setBucket } from '@/features/folder/model/folderData';
 import { placeConversations } from '@/features/folder/model/placeConversations';
 import { createTranslator, initI18n } from '@/utils/i18n';
 import {
@@ -28,7 +23,7 @@ import type { FolderDataSession } from './FolderDataSession';
 import { FolderRepository, type FolderStoreChange } from './FolderRepository';
 import {
   mergeAIStudioImport,
-  mergeLegacySyncFolderData,
+  migrateAIStudioLegacySync,
   readAIStudioImportFile,
 } from './aistudioImport';
 import { openLibraryInApp, openPromptInApp } from './aistudioNavigation';
@@ -302,7 +297,6 @@ export class AIStudioFolderManager {
   private libraryMultiSelectHostElement: HTMLElement | null = null;
   private libraryBatchDeleteInProgress: boolean = false;
   private libraryBatchDeleteProgressElement: HTMLElement | null = null;
-  private readonly STORAGE_KEY = AISTUDIO_FOLDER_CONFIG.storageKey;
   private folderEnabled: boolean = true; // Whether folder feature is enabled
   private hideArchivedEnabled: boolean = false; // AI Studio-scoped — hide filed convs in /library table
   private hideArchivedNudgeShown: boolean = false; // AI Studio-scoped — nudge dismissed/enabled before
@@ -346,7 +340,12 @@ export class AIStudioFolderManager {
     this.t = createTranslator();
 
     // Migrate data from chrome.storage.sync to chrome.storage.local (one-time)
-    await this.migrateFromSyncToLocal();
+    try {
+      await migrateAIStudioLegacySync(AISTUDIO_FOLDER_CONFIG.storageKey);
+    } catch (error) {
+      // Leave the source and marker untouched on failure; normal loading can continue.
+      console.warn('[AIStudioFolderManager] Migration from sync to local failed:', error);
+    }
 
     // Only enable on prompts, library, or root pages
     // Root path (/) is where the main playground is, prompts are saved chats, library is history
@@ -382,45 +381,6 @@ export class AIStudioFolderManager {
 
     // Initialize folder UI
     await this.initializeFolderUI();
-  }
-
-  /**
-   * Migrate folder data from chrome.storage.sync to chrome.storage.local
-   * This is a one-time migration for users upgrading from older versions
-   * Benefits: No 100KB quota limit, consistent with Gemini storage
-   */
-  private async migrateFromSyncToLocal(): Promise<void> {
-    try {
-      // Check if there's data in chrome.storage.sync
-      const syncResult = await chrome.storage.sync.get(this.STORAGE_KEY);
-      const syncData = syncResult[this.STORAGE_KEY];
-
-      if (syncData && validateFolderData(syncData)) {
-        // Check if chrome.storage.local already has data
-        const localResult = await chrome.storage.local.get(this.STORAGE_KEY);
-        const localData = localResult[this.STORAGE_KEY];
-
-        if (!localData || !validateFolderData(localData)) {
-          // Migrate sync data to local storage
-          await chrome.storage.local.set({ [this.STORAGE_KEY]: syncData });
-          console.log('[AIStudioFolderManager] Migrated folder data from sync to local storage');
-
-          // Optionally clear sync storage after successful migration
-          // await chrome.storage.sync.remove(this.STORAGE_KEY);
-        } else {
-          // Both have data - merge them (local takes priority for conflicts)
-          const mergedFolders = mergeLegacySyncFolderData(
-            localData as FolderData,
-            syncData as FolderData,
-          );
-          await chrome.storage.local.set({ [this.STORAGE_KEY]: mergedFolders });
-          console.log('[AIStudioFolderManager] Merged sync and local folder data');
-        }
-      }
-    } catch (error) {
-      console.warn('[AIStudioFolderManager] Migration from sync to local failed:', error);
-      // Don't throw - migration failure should not block normal operation
-    }
   }
 
   private toSyncAccountScope(scope: AccountScope | null): SyncAccountScope | undefined {
