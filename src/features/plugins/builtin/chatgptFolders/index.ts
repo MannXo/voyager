@@ -312,21 +312,22 @@ export async function activateChatGptFolders(
     busy: () => view.sectionBusy(),
   });
   scope.effect(() => () => moveMenu.cancel(), 'chatgpt-folders:move-menu');
+  const hideFiled = settings[HIDE_FILED_SETTING] === true ? new ChatGptHideFiled(scope) : null;
   sidebar.onChange((nav) => {
     view.placeSection(nav);
+    hideFiled?.sync(nav);
     titles.sync(nav);
     guide.check();
     if (moveMenu.check(nav)) sidebar.schedule();
   });
   scope.effect(() => store.subscribe(() => sidebar.schedule()), 'chatgpt-folders:sidebar-sync');
-  sidebar.start();
-  const hideFiled = settings[HIDE_FILED_SETTING] === true ? new ChatGptHideFiled(scope) : null;
   if (hideFiled) {
     scope.effect(
       () => store.subscribe(() => hideFiled.update(store.filedIds())),
       'chatgpt-folders:hide-filed-sync',
     );
   }
+  sidebar.start();
   await store.init();
   if (scope.isDisposed) return;
   view.refresh();

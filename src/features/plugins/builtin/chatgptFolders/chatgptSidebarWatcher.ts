@@ -1,5 +1,6 @@
 import type { Dispose, PluginScope } from '@/features/plugins/runtime/pluginScope';
 
+import { FILED_ROW_ATTRIBUTE } from './chatgptHideFiled';
 import { findChatGptSidebar } from './chatgptSidebarDom';
 
 export type SidebarListener = (sidebar: HTMLElement | null) => void;
@@ -14,7 +15,14 @@ const SIDEBAR_OBSERVER_OPTIONS: MutationObserverInit = {
   subtree: true,
   characterData: true,
   attributes: true,
-  attributeFilter: ['href', 'aria-expanded'],
+  attributeFilter: [
+    'href',
+    'target',
+    'role',
+    'data-sidebar-project-container-id',
+    'aria-expanded',
+    FILED_ROW_ATTRIBUTE,
+  ],
 };
 
 /**

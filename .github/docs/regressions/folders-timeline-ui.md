@@ -877,12 +877,17 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
 - **Trap:** A rule that hides every filed row also hides the conversation the user has open, so the
   sidebar loses its current-page marker. A selector over every `listitem` also reaches rows under a
   Project, which are not part of Recents. Stored ids end up inside a CSS selector, so an id
-  containing a quote or bracket could break out of it.
+  containing a quote or bracket could break out of it. Expanding a selector with every filed id
+  also makes style recalculation scale with the whole folder store, even for a short sidebar.
 - **Rule:** The single `style[data-gv-chatgpt-hide-filed]` rule is scoped to
   `[data-sidebar-project-container-id="chats"]` and excludes rows that contain
-  `[aria-current="page"]`. It only takes ids that match `^[A-Za-z0-9_-]+$`, and the rule is removed
-  when the setting or the plugin turns off. The `:has()` form was checked live on chatgpt.com
-  (2026-10-01).
+  `[aria-current="page"]` (or carry it themselves). It only takes ids that match
+  `^[A-Za-z0-9_-]+$`. The sidebar watcher's row pass reconciles only Voyager's
+  `data-gv-chatgpt-filed` marker against a filed-id set; CSS stays constant as that set grows.
+  Write markers only when membership changes, clear stale marks on recycled, detached, cloned
+  or moved rows, and reconcile storage notifications from other tabs. Remove the rule and all
+  markers when the setting or the plugin turns off. The current-page `:has()` exception was
+  checked live on chatgpt.com (2026-10-01); the marker implementation has fixture coverage.
 - **Guard:** `src/features/plugins/builtin/chatgptFolders/__tests__/hideFiled.test.ts`.
 
 ## A cloned ChatGPT menu item must stay out of Radix's keyboard collection

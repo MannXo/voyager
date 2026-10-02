@@ -8,7 +8,7 @@ import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import { PluginScope } from '@/features/plugins/runtime/pluginScope';
 import { initI18n } from '@/utils/i18n';
 
-import { HIDE_FILED_SETTING, hideFiledRowsCss } from '../chatgptHideFiled';
+import { ChatGptHideFiled, FILED_ROW_ATTRIBUTE, HIDE_FILED_SETTING } from '../chatgptHideFiled';
 import { activateChatGptFolders } from '../index';
 import { type SidebarFixture, makeRows, mountSidebarFixture } from './chatgptSidebarFixture';
 import { type MemoryStorage, createMemoryStorage, settle } from './memoryStorage';
@@ -59,6 +59,13 @@ function hiddenIds(): string[] {
   );
 }
 
+/** Lets storage reloads, the sidebar observer and its coalesced frame settle. */
+async function nextPass(): Promise<void> {
+  await settle(30);
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  await settle(20);
+}
+
 beforeAll(async () => {
   memory = createMemoryStorage();
   originalStorage = globalThis.chrome.storage;
@@ -89,7 +96,7 @@ describe('hiding filed chats in Recents', () => {
     sidebar.setActive(ROWS[3].id);
 
     await activateChatGptFolders(scope, { [HIDE_FILED_SETTING]: true });
-    await settle(20);
+    await nextPass();
 
     expect(hiddenIds()).toEqual([ROWS[1].id]);
   });
@@ -97,14 +104,20 @@ describe('hiding filed chats in Recents', () => {
   it('follows filing and covers rows from later history pages', async () => {
     memory.values.local.set(StorageKeys.FOLDER_DATA_CHATGPT, filed(ROWS[1]));
     await activateChatGptFolders(scope, { [HIDE_FILED_SETTING]: true });
-    await settle(20);
+    await nextPass();
     const later = makeRows(2, 40);
 
     memory.external('local', StorageKeys.FOLDER_DATA_CHATGPT, filed(ROWS[1], later[1]));
-    await settle(30);
+    await nextPass();
     sidebar.appendPage(later);
+    await nextPass();
 
     expect(hiddenIds().sort()).toEqual([ROWS[1].id, later[1].id].sort());
+
+    memory.external('local', StorageKeys.FOLDER_DATA_CHATGPT, filed());
+    await nextPass();
+    expect(hiddenIds()).toEqual([]);
+    expect(document.querySelectorAll(`[${FILED_ROW_ATTRIBUTE}]`)).toHaveLength(0);
   });
 
   it('keeps a filed chat visible inside its Project', async () => {
@@ -117,7 +130,7 @@ describe('hiding filed chats in Recents', () => {
     project.append(inProject);
 
     await activateChatGptFolders(scope, { [HIDE_FILED_SETTING]: true });
-    await settle(20);
+    await nextPass();
 
     expect(hiddenIds()).toEqual([ROWS[2].id]);
     expect(project.contains(document.querySelectorAll(hiddenSelector())[0])).toBe(false);
@@ -126,21 +139,161 @@ describe('hiding filed chats in Recents', () => {
   it('hides nothing unless the setting is on, and removes its rule when turned off', async () => {
     memory.values.local.set(StorageKeys.FOLDER_DATA_CHATGPT, filed(ROWS[1]));
     await activateChatGptFolders(scope);
-    await settle(20);
+    await nextPass();
     expect(document.querySelector(STYLE)).toBeNull();
+    expect(document.querySelectorAll(`[${FILED_ROW_ATTRIBUTE}]`)).toHaveLength(0);
 
     await scope.dispose();
     scope = new PluginScope();
     await activateChatGptFolders(scope, { [HIDE_FILED_SETTING]: true });
-    await settle(20);
+    await nextPass();
     expect(hiddenIds()).toEqual([ROWS[1].id]);
 
     await scope.dispose();
     expect(document.querySelector(STYLE)).toBeNull();
+    expect(document.querySelectorAll(`[${FILED_ROW_ATTRIBUTE}]`)).toHaveLength(0);
   });
 
-  it('never writes an id that could break out of the selector', () => {
-    expect(hideFiledRowsCss(['abc"], body { display: none } a[x="'])).toBe('');
-    expect(hideFiledRowsCss([])).toBe('');
+  it('follows the open chat immediately, including aria-current on the row itself', async () => {
+    memory.values.local.set(StorageKeys.FOLDER_DATA_CHATGPT, filed(ROWS[1], ROWS[3]));
+    await activateChatGptFolders(scope, { [HIDE_FILED_SETTING]: true });
+    await nextPass();
+    expect(hiddenIds()).toEqual([ROWS[1].id, ROWS[3].id]);
+
+    sidebar.setActive(ROWS[1].id);
+    expect(hiddenIds()).toEqual([ROWS[3].id]);
+    sidebar.setActive(ROWS[3].id);
+    expect(hiddenIds()).toEqual([ROWS[1].id]);
+    sidebar.setActive(null);
+    sidebar.row(ROWS[1].id).setAttribute('aria-current', 'page');
+    expect(hiddenIds()).toEqual([ROWS[3].id]);
+  });
+
+  it('clears stale marks when a native row is recycled or stops linking to a chat', async () => {
+    memory.values.local.set(StorageKeys.FOLDER_DATA_CHATGPT, filed(ROWS[1]));
+    await activateChatGptFolders(scope, { [HIDE_FILED_SETTING]: true });
+    await nextPass();
+    const row = sidebar.row(ROWS[1].id);
+    expect(hiddenIds()).toEqual([ROWS[1].id]);
+
+    sidebar.move(ROWS[1].id, `/c/${ROWS[2].id}`);
+    await nextPass();
+    expect(row.hasAttribute(FILED_ROW_ATTRIBUTE)).toBe(false);
+    expect(hiddenIds()).toEqual([]);
+
+    sidebar.move(ROWS[1].id, `/g/g-p-test/c/${ROWS[1].id}`);
+    await nextPass();
+    expect(hiddenIds()).toEqual([ROWS[1].id]);
+    sidebar.move(ROWS[1].id, '/settings');
+    await nextPass();
+    expect(row.hasAttribute(FILED_ROW_ATTRIBUTE)).toBe(false);
+
+    sidebar.move(ROWS[1].id, `/c/${ROWS[1].id}`);
+    await nextPass();
+    expect(hiddenIds()).toEqual([ROWS[1].id]);
+    row.querySelector('a')!.setAttribute('target', '_blank');
+    await nextPass();
+    expect(hiddenIds()).toEqual([]);
+  });
+
+  it('reconciles rerenders, remounts, and cloned or moved rows outside Recents', async () => {
+    memory.values.local.set(StorageKeys.FOLDER_DATA_CHATGPT, filed(ROWS[1]));
+    await activateChatGptFolders(scope, { [HIDE_FILED_SETTING]: true });
+    await nextPass();
+    const original = sidebar.row(ROWS[1].id);
+    const project = sidebar.sidebar.querySelector(
+      '[data-app-action-sidebar-section-heading="Projects"] [role="list"]',
+    )!;
+    const clone = original.cloneNode(true) as HTMLElement;
+    project.append(clone);
+    await nextPass();
+    expect(clone.hasAttribute(FILED_ROW_ATTRIBUTE)).toBe(false);
+    expect(hiddenIds()).toEqual([ROWS[1].id]);
+
+    original.removeAttribute(FILED_ROW_ATTRIBUTE);
+    await nextPass();
+    expect(hiddenIds()).toEqual([ROWS[1].id]);
+
+    sidebar.rerenderList();
+    await nextPass();
+    expect(original.hasAttribute(FILED_ROW_ATTRIBUTE)).toBe(false);
+    expect(hiddenIds()).toEqual([ROWS[1].id]);
+
+    const beforeRemount = sidebar.row(ROWS[1].id);
+    sidebar.replaceSidebar();
+    await nextPass();
+    expect(beforeRemount.hasAttribute(FILED_ROW_ATTRIBUTE)).toBe(false);
+    expect(hiddenIds()).toEqual([ROWS[1].id]);
+
+    const moved = sidebar.row(ROWS[1].id);
+    sidebar.sidebar
+      .querySelector('[data-app-action-sidebar-section-heading="Projects"]')!
+      .append(moved);
+    await nextPass();
+    expect(moved.hasAttribute(FILED_ROW_ATTRIBUTE)).toBe(false);
+    expect(hiddenIds()).toEqual([]);
+  });
+
+  it('cleans tracked detached rows and connected clones on teardown', async () => {
+    memory.values.local.set(StorageKeys.FOLDER_DATA_CHATGPT, filed(ROWS[1]));
+    await activateChatGptFolders(scope, { [HIDE_FILED_SETTING]: true });
+    await nextPass();
+    const row = sidebar.row(ROWS[1].id);
+    const clone = row.cloneNode(true) as HTMLElement;
+    document.body.append(clone);
+    row.remove();
+    expect(row.hasAttribute(FILED_ROW_ATTRIBUTE)).toBe(true);
+    expect(clone.hasAttribute(FILED_ROW_ATTRIBUTE)).toBe(true);
+
+    await scope.dispose();
+    expect(row.hasAttribute(FILED_ROW_ATTRIBUTE)).toBe(false);
+    expect(clone.hasAttribute(FILED_ROW_ATTRIBUTE)).toBe(false);
+  });
+
+  it('keeps CSS and unchanged row markers untouched as filed ids grow to 10k', async () => {
+    const hide = new ChatGptHideFiled(scope);
+    hide.update([ROWS[1].id]);
+    hide.sync(sidebar.sidebar);
+    const css = document.querySelector(STYLE)!.textContent;
+    const mutations: MutationRecord[] = [];
+    const observer = new MutationObserver((records) => mutations.push(...records));
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: [FILED_ROW_ATTRIBUTE],
+    });
+
+    try {
+      hide.update([ROWS[1].id, ...makeRows(9999, 40).map(({ id }) => id)]);
+      hide.sync(sidebar.sidebar);
+      hide.sync(sidebar.sidebar);
+      await settle();
+
+      expect(hiddenIds()).toEqual([ROWS[1].id]);
+      expect(document.querySelector(STYLE)!.textContent).toBe(css);
+      expect(mutations).toHaveLength(0);
+
+      hide.update([ROWS[3].id]);
+      hide.sync(sidebar.sidebar);
+      await settle();
+      expect(hiddenIds()).toEqual([ROWS[3].id]);
+      expect(mutations.map(({ type }) => type)).toEqual(['attributes', 'attributes']);
+    } finally {
+      observer.disconnect();
+    }
+  });
+
+  it('accepts only safe ids and never treats stored ids as CSS', () => {
+    const hide = new ChatGptHideFiled(scope);
+    hide.update([ROWS[1].id, 'abc"], body { display: none } a[x="']);
+    hide.sync(sidebar.sidebar);
+    expect(hiddenIds()).toEqual([ROWS[1].id]);
+
+    hide.update(['abc"], body { display: none } a[x="']);
+    hide.sync(sidebar.sidebar);
+    expect(hiddenIds()).toEqual([]);
+    expect(document.querySelector(STYLE)!.textContent).not.toContain('abc');
   });
 });
