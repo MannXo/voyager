@@ -69,7 +69,7 @@ export type ReadyState = Extract<OwnerState, { kind: 'ready' }>;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-function isMeta(value: unknown): value is FolderOwnerMeta {
+export function isMeta(value: unknown): value is FolderOwnerMeta {
   return (
     isRecord(value) &&
     value.v === 1 &&
@@ -95,7 +95,7 @@ function isIntent(value: unknown): value is DataIntent {
   );
 }
 
-function isFolderData(value: unknown): value is FolderData {
+export function isFolderData(value: unknown): value is FolderData {
   return (
     isRecord(value) &&
     Array.isArray(value.folders) &&

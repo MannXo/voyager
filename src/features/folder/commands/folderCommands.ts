@@ -23,6 +23,7 @@ export type EditOutcome =
   | { kind: 'unconfirmed' };
 
 export type FolderCommandsStatus =
+  | 'reconciling'
   | 'loading'
   | 'ready'
   | 'delayed'

@@ -34,6 +34,15 @@ export function createFaultyStorage(initial: Record<string, unknown> = {}) {
   let calls = 0;
   let dead = false;
   let before: ((call: number, op: StorageOp, keys: string[]) => void) | null = null;
+  type Changes = Record<string, { newValue?: unknown; oldValue?: unknown }>;
+  const listeners = new Set<(changes: Changes) => void>();
+  let held: Changes[] | null = null;
+  /** Like `storage.onChanged`: one event per call for the keys that landed, after the call. */
+  const emit = (changes: Changes): void => {
+    if (Object.keys(changes).length === 0) return;
+    if (held) held.push(changes);
+    else queueMicrotask(() => listeners.forEach((listener) => listener(clone(changes))));
+  };
 
   const enter = async (op: StorageOp, keys: string[]): Promise<Fault | undefined> => {
     await Promise.resolve();
@@ -64,14 +73,24 @@ export function createFaultyStorage(initial: Record<string, unknown> = {}) {
     },
     async set(items) {
       const fault = await enter('set', Object.keys(items));
+      const changes: Changes = {};
       for (const [key, value] of Object.entries(items)) {
-        if (!fault || lands(fault, key)) store.set(key, clone(value));
+        if (fault && !lands(fault, key)) continue;
+        changes[key] = { newValue: clone(value), oldValue: clone(store.get(key)) };
+        store.set(key, clone(value));
       }
+      emit(changes);
       if (fault) fail(fault);
     },
     async remove(keys) {
       const fault = await enter('remove', keys);
-      for (const key of keys) if (!fault || lands(fault, key)) store.delete(key);
+      const changes: Changes = {};
+      for (const key of keys) {
+        if ((fault && !lands(fault, key)) || !store.has(key)) continue;
+        changes[key] = { oldValue: clone(store.get(key)) };
+        store.delete(key);
+      }
+      emit(changes);
       if (fault) fail(fault);
     },
   };
@@ -96,6 +115,20 @@ export function createFaultyStorage(initial: Record<string, unknown> = {}) {
     },
     onCall(hook: typeof before): void {
       before = hook;
+    },
+    /** Subscribes to change events of calls made through `area` (not `write`). */
+    subscribe(listener: (changes: Changes) => void): () => void {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
+    },
+    /** Holds change events until `releaseEvents`, to deliver them late. */
+    holdEvents(): void {
+      held ??= [];
+    },
+    releaseEvents(): void {
+      const pending = held ?? [];
+      held = null;
+      pending.forEach(emit);
     },
     restart(): void {
       dead = false;
