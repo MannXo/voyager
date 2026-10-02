@@ -249,9 +249,10 @@ export function reorderConversations(
   insertIndex: number,
   mode: ConversationSortMode = 'manual',
 ): FolderData {
-  const uniqueIds = [...new Set(conversationIds)];
+  const removeSet = new Set(conversationIds);
+  const uniqueIds = [...removeSet];
   const source = ownBucket(data.folderContents, sourceParentId) ?? [];
-  if (!source.some((conversation) => uniqueIds.includes(conversation.conversationId))) return data;
+  if (!source.some((conversation) => removeSet.has(conversation.conversationId))) return data;
 
   const folderContents = {
     ...data.folderContents,
@@ -266,11 +267,11 @@ export function reorderConversations(
       })),
     );
   }
+  // The first record of each id, as a per-id `find` took it, from one pass.
+  const firstById = firstIndexById(folderContents[sourceParentId], removeSet);
   const moving = uniqueIds.flatMap((id) => {
-    const conversation = folderContents[sourceParentId].find(
-      (candidate) => candidate.conversationId === id,
-    );
-    return conversation ? [conversation] : [];
+    const index = firstById.get(id);
+    return index === undefined ? [] : [folderContents[sourceParentId][index]];
   });
   const isStarred = moving[0].starred ?? false;
 
@@ -279,17 +280,15 @@ export function reorderConversations(
       folderContents[targetParentId].filter((conversation) => !!conversation.starred === isStarred),
       mode,
     );
+    const originalIndices = firstIndexById(originalSorted, removeSet);
     let adjustment = 0;
     for (const id of uniqueIds) {
-      const originalIndex = originalSorted.findIndex(
-        (conversation) => conversation.conversationId === id,
-      );
+      const originalIndex = originalIndices.get(id) ?? -1;
       if (originalIndex >= 0 && originalIndex < insertIndex) adjustment++;
     }
     insertIndex -= adjustment;
   }
 
-  const removeSet = new Set(conversationIds);
   setBucket(
     folderContents,
     sourceParentId,
@@ -323,6 +322,19 @@ export function reorderConversations(
   });
   setBucket(folderContents, targetParentId, [...sameGroup, ...otherGroup]);
   return { ...data, folderContents };
+}
+
+/** Where each of `ids` first occurs in `conversations`, the index a `findIndex` would return. */
+function firstIndexById(
+  conversations: readonly ConversationReference[],
+  ids: ReadonlySet<string>,
+): Map<string, number> {
+  const indices = new Map<string, number>();
+  conversations.forEach((conversation, index) => {
+    const id = conversation.conversationId;
+    if (ids.has(id) && !indices.has(id)) indices.set(id, index);
+  });
+  return indices;
 }
 
 /** Repairs the existing persistence invariants without pruning legacy buckets or rewriting IDs/parents. */
