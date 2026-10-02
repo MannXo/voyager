@@ -6,7 +6,7 @@ import { FolderImportExportService } from '@/features/folder/services/FolderImpo
 import type { FolderOpBody } from '../folderOps';
 import type { FolderOwnerCore } from '../folderOwnerCore';
 import { ownerBackupKey } from '../folderOwnerState';
-import { ROTATE_LAST_MS, ROTATE_PRIOR_MS } from '../ownerBackups';
+import { ROTATE_LAST_MS, ROTATE_PRIOR_MS, readSlot } from '../ownerBackups';
 import { type FaultyStorage, createFaultyStorage } from './faultyStorage';
 import {
   KEY,
@@ -24,8 +24,13 @@ import {
 const MINUTE = 60_000;
 const G = folderData([folder('F', 'Good'), folder('W', 'Work')], { W: [conversation('c1')] });
 
-const slot = (storage: FaultyStorage, name: 'last' | 'prior' | 'preBulk') =>
-  (storage.read(ownerBackupKey(KEY, name)) as { value: FolderData } | undefined)?.value;
+/** The copy a slot name refers to: `last` and `prior` through the slot meta names. */
+function slot(storage: FaultyStorage, name: 'last' | 'prior' | 'preBulk') {
+  const named = name === 'preBulk' ? null : storedMeta(storage).backups?.[name];
+  if (named === undefined) return undefined;
+  const physical = ownerBackupKey(KEY, named ? named.slot : name);
+  return (storage.read(physical) as { value: FolderData } | undefined)?.value;
+}
 
 async function world(data: FolderData = G) {
   const storage = createFaultyStorage({ [KEY]: data });
@@ -83,12 +88,80 @@ describe('backup rotation (T7a)', () => {
 
   it('commits an edit whose last copy cannot be written (T7b)', async () => {
     const { storage, world: w, tab } = await world();
-    storage.failWhen((op, keys) => op === 'set' && keys.includes(ownerBackupKey(KEY, 'last')));
+    const rotation = (['a', 'b', 'c'] as const).map((name) => ownerBackupKey(KEY, name));
+    storage.failWhen((op, keys) => op === 'set' && keys.some((k) => rotation.includes(k)));
 
     await expect(edit(w, tab, rename('F', 'B'))).resolves.toMatchObject({ kind: 'ok' });
 
     expect(storedData(storage).folders[0].name).toBe('B');
     expect(slot(storage, 'last')).toBeUndefined();
+  });
+
+  /** G is `last`, K = B, both deadlines due: the next edit rotates both names. */
+  async function dueRotation() {
+    const { storage, world: w, tab } = await world();
+    w.advance(MINUTE);
+    await edit(w, tab, rename('F', 'B'));
+    expect(slot(storage, 'last')).toEqual(G);
+    w.advance(ROTATE_PRIOR_MS);
+    return { storage, w, tab };
+  }
+
+  /** Copies meta names (`last` or `prior`) whose slot holds exactly the value with that hash. */
+  async function namedCopies(storage: FaultyStorage) {
+    const meta = storedMeta(storage);
+    const copies = [];
+    for (const name of ['last', 'prior'] as const) {
+      const data = await readSlot(storage.area, KEY, name, meta);
+      if (data) copies.push(data);
+    }
+    return copies;
+  }
+
+  it('refuses to restore a named copy whose slot no longer holds the value meta names', async () => {
+    const { storage, w } = await dueRotation();
+    const named = storedMeta(storage).backups!.last!;
+    storage.write(ownerBackupKey(KEY, named.slot), { value: folderData([folder('X', 'Half')]) });
+    const before = storedData(storage);
+
+    const { reply } = await bulk(w, { kind: 'restoreBackup', slot: 'last' });
+
+    expect(reply).toMatchObject({
+      outcomes: { 1: { kind: 'rejected', reason: 'invalid_payload' } },
+    });
+    expect(storedData(storage)).toEqual(before);
+  });
+
+  it('never loses the good copy to a crash anywhere in a rotation (addendum P0 §3)', async () => {
+    const probe = await dueRotation();
+    const first = probe.storage.calls();
+    probe.tab.accept(rename('F', 'C'));
+    await probe.w.process().drain(KEY);
+    const turnCalls = probe.storage.calls() - first;
+    expect(turnCalls).toBeGreaterThan(3);
+
+    for (let call = 1; call <= turnCalls; call++) {
+      for (const land of ['none', 'all'] as const) {
+        const { storage, w, tab } = await dueRotation();
+        tab.accept(rename('F', 'C'));
+        storage.inject({ call: storage.calls() + call, land, crash: true });
+        await w
+          .process()
+          .drain(KEY)
+          .catch(() => undefined);
+        storage.restart();
+
+        const where = `call ${call}, land ${land}`;
+        expect(await namedCopies(storage), where).toContainEqual(G);
+        // Two more rotations within the day: G stays named as `prior` (or still `last`).
+        for (const name of ['D', 'E']) {
+          w.advance(ROTATE_LAST_MS);
+          tab.accept(rename('F', name));
+          await w.process().drain(KEY);
+        }
+        expect(await namedCopies(storage), where).toContainEqual(G);
+      }
+    }
   });
 });
 

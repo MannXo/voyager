@@ -22,8 +22,17 @@ export const ownerIntentKey = (key: string): string => `gvFolderOwner:intent:${k
 export const pendingOpKey = (clientId: string, seq: number): string =>
   `gvFolderOwner:pending:${clientId}:${seq}`;
 export type BackupSlot = 'last' | 'prior' | 'preBulk' | 'foreign' | 'quarantine';
-export const ownerBackupKey = (key: string, slot: BackupSlot): string =>
+/** The fixed rotation slots; meta names which one holds `last` and which `prior` (addendum P0 §3). */
+export type RotationSlot = 'a' | 'b' | 'c';
+export const ownerBackupKey = (key: string, slot: BackupSlot | RotationSlot): string =>
   `gvFolderOwner:backup:${key}:${slot}`;
+
+/** A rotation copy named by meta: its slot and the hash its value must have. */
+export interface RotationRef {
+  slot: RotationSlot;
+  hash: string;
+  savedAt: number;
+}
 
 export interface ClientRecord {
   /** Highest seq processed: applied, unchanged or rejected. */
@@ -44,7 +53,7 @@ export interface FolderOwnerMeta {
   dataHash: string;
   foreignAt?: number;
   /** When `last` and `prior` were last written (§6.6); kept here so restarts do not rotate. */
-  backups?: { lastAt?: number; priorAt?: number };
+  backups?: { lastAt?: number; priorAt?: number; last?: RotationRef; prior?: RotationRef };
   clients: Record<string, ClientRecord>;
   /** Every retired client's watermark, so its late pending keys or requests revive it (addendum P0 §1). */
   retired: Record<string, { applied: number; at: number }>;

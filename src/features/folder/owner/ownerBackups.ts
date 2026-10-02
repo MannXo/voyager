@@ -11,6 +11,9 @@ import {
   type FolderOwnerMeta,
   type FolderOwnerStorageArea,
   type ReadyState,
+  type RotationRef,
+  type RotationSlot,
+  hashStored,
   ownerBackupKey,
   parseStoredData,
 } from './folderOwnerState';
@@ -49,21 +52,37 @@ async function writeSlot(
   }
 }
 
-/** The slot's data; `null` when it is absent or not folder data, `undefined` when unreadable. */
-export async function readSlot(
+/** A slot's entry; `null` when absent or malformed, `undefined` when unreadable. */
+async function readEntry(
   area: FolderOwnerStorageArea,
-  key: string,
-  slot: BackupSlot,
-): Promise<FolderData | null | undefined> {
-  const slotKey = ownerBackupKey(key, slot);
+  slotKey: string,
+): Promise<Partial<BackupEntry> | null | undefined> {
   let stored: Record<string, unknown>;
   try {
     stored = await area.get([slotKey]);
   } catch {
     return undefined;
   }
-  const entry = stored[slotKey] as Partial<BackupEntry> | undefined;
-  return entry && typeof entry === 'object' ? parseStoredData(entry.value) : null;
+  const entry = stored[slotKey];
+  return entry && typeof entry === 'object' ? (entry as Partial<BackupEntry>) : null;
+}
+
+/**
+ * The slot's data; `null` when it is absent, not folder data, or (for `last`
+ * and `prior`) not the copy meta names; `undefined` when unreadable.
+ */
+export async function readSlot(
+  area: FolderOwnerStorageArea,
+  key: string,
+  slot: BackupSlot,
+  meta: FolderOwnerMeta,
+): Promise<FolderData | null | undefined> {
+  const named = slot === 'last' || slot === 'prior' ? meta.backups?.[slot] : null;
+  if (named === undefined) return null;
+  const entry = await readEntry(area, ownerBackupKey(key, named ? named.slot : slot));
+  if (!entry) return entry;
+  if (named && (await hashStored(entry.value)) !== named.hash) return null;
+  return parseStoredData(entry.value);
 }
 
 const entryOf = (state: ReadyState, reason: BackupEntry['reason'], now: number): BackupEntry => ({
@@ -85,10 +104,37 @@ export function writePreBulk(
   return writeSlot(area, admitCopy, key, 'preBulk', entryOf(state, 'preBulk', now));
 }
 
+const ROTATION_SLOTS: readonly RotationSlot[] = ['a', 'b', 'c'];
+
+/** Writes `entry` to the rotation slot and reads it back; the hash it verified, else `null`. */
+async function writeVerified(
+  area: FolderOwnerStorageArea,
+  admitCopy: AdmitCopy,
+  key: string,
+  slot: RotationSlot,
+  entry: BackupEntry,
+): Promise<string | null> {
+  const hash = await hashStored(entry.value);
+  try {
+    if (!(await admitCopy(key, 'last', JSON.stringify(entry).length))) return null;
+    await area.set({ [ownerBackupKey(key, slot)]: entry });
+  } catch {
+    return null;
+  }
+  const back = await readEntry(area, ownerBackupKey(key, slot));
+  return back && (await hashStored(back.value)) === hash ? hash : null;
+}
+
 /**
  * Time-based rotation before a data commit: `last` at most every 10 min and
- * `prior` (the old `last`) at most daily. The deadlines live in meta, so a
- * worker restart neither forces nor skips a rotation. Returns the meta to commit.
+ * `prior` (the old `last`) at most daily; the deadlines live in meta, so a
+ * worker restart neither forces nor skips a rotation (§6.6).
+ *
+ * Crash safety (addendum P0 §3): the new copy goes only into the slot meta
+ * names neither `last` nor `prior`, and `prior` takes over the old `last` by
+ * name, without a copy. The names flip in the returned meta, which commits
+ * with the edit, so until that commit lands meta still names the untouched
+ * copies; a half-written free slot is simply rewritten by the next rotation.
  */
 export async function rotateBackups(
   area: FolderOwnerStorageArea,
@@ -98,18 +144,19 @@ export async function rotateBackups(
   meta: FolderOwnerMeta,
   now: number,
 ): Promise<FolderOwnerMeta> {
-  const backups = { ...meta.backups };
+  const backups = meta.backups ?? {};
   if (!state.data || now < (backups.lastAt ?? -Infinity) + ROTATE_LAST_MS) return meta;
-  if (now >= (backups.priorAt ?? -Infinity) + ROTATE_PRIOR_MS) {
-    const lastKey = ownerBackupKey(key, 'last');
-    const old = await area.get([lastKey]).catch(() => ({}) as Record<string, unknown>);
-    const last = (old as Record<string, unknown>)[lastKey] as BackupEntry | undefined;
-    if (last && (await writeSlot(area, admitCopy, key, 'prior', last))) backups.priorAt = now;
-  }
-  if (await writeSlot(area, admitCopy, key, 'last', entryOf(state, 'rotation', now))) {
-    backups.lastAt = now;
-  }
-  return { ...meta, backups };
+  const named = new Set([backups.last?.slot, backups.prior?.slot]);
+  const free = ROTATION_SLOTS.find((slot) => !named.has(slot)) ?? 'a';
+  const hash = await writeVerified(area, admitCopy, key, free, entryOf(state, 'rotation', now));
+  if (!hash) return meta; // optional: the edit commits without it
+  const last: RotationRef = { slot: free, hash, savedAt: now };
+  const priorDue = now >= (backups.priorAt ?? -Infinity) + ROTATE_PRIOR_MS;
+  const next =
+    priorDue && backups.last
+      ? { ...backups, prior: backups.last, priorAt: now, last, lastAt: now }
+      : { ...backups, last, lastAt: now };
+  return { ...meta, backups: next };
 }
 
 /**

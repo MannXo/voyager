@@ -104,7 +104,7 @@ async function targetOf(
     return { ok: true, data: imported.data, outcome: { kind: 'saved', stats: imported.stats } };
   }
   if (body.kind === 'restoreBackup') {
-    const data = await readSlot(ctx.area, key, body.slot);
+    const data = await readSlot(ctx.area, key, body.slot, state.meta);
     if (data === undefined) return 'read_failed';
     if (data === null) return { ok: false, outcome: rejected('invalid_payload') };
     return { ok: true, data, outcome: { kind: 'saved', restoredFrom: body.slot } };
