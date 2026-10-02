@@ -428,7 +428,8 @@ local bucket with null contents by the legacy copy before marking it`.
   `src/pages/content/folder/aistudio.ts`, whose prompts ride in the folder write as
   `AIStudioFolderStorageAdapter` companions) write prompts in one `chrome.storage.local.set`
   together with folders. Gemini's Drive merge in
-  `src/pages/content/folder/FolderTransferController.ts` is two writes: folders through
+  `src/pages/content/folder/folderCloudSync.ts` (`syncFolders`, behind
+  `FolderTransferController.sync`) is two writes: folders through
   `replaceData`, then prompts, starred messages and the timeline hierarchy in one `set`, so a
   failure between them lands the folders alone. They are rare bulk operations, and keeping those keys consistent with each other is worth more
   than the lock. Splitting prompts into an owner op would let the other keys land without them.
