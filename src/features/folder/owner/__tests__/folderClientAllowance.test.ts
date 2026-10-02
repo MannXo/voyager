@@ -10,7 +10,15 @@ import { FOLDER_SITE_POLICIES } from '../folderOwnerPolicy';
 import { dispatchFolderOwnerRequest } from '../folderOwnerRequests';
 import type { FolderOwnerStorageArea } from '../folderOwnerState';
 import { createFaultyStorage } from './faultyStorage';
-import { KEY, createWorld, folder, folderData, pendingKeys } from './ownerHarness';
+import {
+  KEY,
+  TestClient,
+  createWorld,
+  folder,
+  folderData,
+  pendingKeys,
+  storedMeta,
+} from './ownerHarness';
 
 const until = (check: () => void) => vi.waitFor(check, { timeout: 2000, interval: 1 });
 const MINUTE = 60_000;
@@ -22,7 +30,7 @@ function allowanceWorld() {
   const owner: FolderOwnerCore = world.process();
   let monotonic = 0;
   const log: string[] = [];
-  let held: { until: Promise<void> } | null = null;
+  let held: { type: string; until: Promise<void> } | null = null;
   const area: FolderOwnerStorageArea = {
     ...storage.area,
     set: (items) => {
@@ -37,7 +45,7 @@ function allowanceWorld() {
     send: async (request: FolderOwnerRequest): Promise<FolderOwnerResponse> => {
       log.push(request.type.replace('gv.folderOwner.', ''));
       const reply = await dispatchFolderOwnerRequest(request, owner);
-      if (request.type === 'gv.folderOwner.apply' && held) await held.until;
+      if (held?.type === request.type) await held.until;
       return reply;
     },
     subscribe: storage.subscribe,
@@ -48,6 +56,8 @@ function allowanceWorld() {
   });
   return {
     storage,
+    world,
+    owner,
     client,
     log,
     /** Moves the wall clock and the monotonic clock by their own amounts. */
@@ -55,9 +65,10 @@ function allowanceWorld() {
       world.advance(wallMs);
       monotonic += monotonicMs;
     },
-    holdApplyReplies() {
+    /** Holds the replies to every request of `type` until the returned release runs. */
+    holdReplies(type: 'gv.folderOwner.open' | 'gv.folderOwner.apply') {
       let open!: () => void;
-      held = { until: new Promise<void>((resolve) => (open = resolve)) };
+      held = { type, until: new Promise<void>((resolve) => (open = resolve)) };
       return () => {
         held = null;
         open();
@@ -84,11 +95,11 @@ describe('FolderClient pending allowance (addendum P3P4 R3.2)', () => {
   });
 
   it('T26c: dates the allowance from the send, so a reply held past the TTL grants nothing', async () => {
-    const { client, log, advance, holdApplyReplies } = allowanceWorld();
+    const { storage, client, log, advance, holdReplies } = allowanceWorld();
     await client.open();
-    const release = holdApplyReplies();
+    const release = holdReplies('gv.folderOwner.apply');
     const first = client.run(create('X'));
-    await until(() => expect(log).toContain('apply'));
+    await until(() => expect(storedMeta(storage).clients['client-1'].applied).toBe(1));
     advance(31 * MINUTE);
     release();
     await expect(first).resolves.toMatchObject({ kind: 'saved' });
@@ -96,6 +107,26 @@ describe('FolderClient pending allowance (addendum P3P4 R3.2)', () => {
 
     await expect(client.run(create('Y'))).resolves.toMatchObject({ kind: 'saved' });
     expect(after(log, mark).slice(0, 2)).toEqual(['open', 'set']);
+  });
+
+  it('T26g: a ready held past the retirement of its client grants nothing', async () => {
+    const { storage, world, owner, client, log, advance, holdReplies } = allowanceWorld();
+    const release = holdReplies('gv.folderOwner.open');
+    const opening = client.open();
+    // The owner registers C at t0; only its reply is held.
+    await until(() => expect(storedMeta(storage).clients['client-1']).toBeDefined());
+    advance(61 * MINUTE);
+    // Another tab's turn runs GC, which retires the silent client and releases its allowance.
+    await new TestClient(world, 'other').open(owner);
+    expect(storedMeta(storage).retired['client-1']).toBeDefined();
+    advance(4 * MINUTE);
+    release();
+    await opening;
+    const mark = log.length;
+
+    await expect(client.run(create('X'))).resolves.toMatchObject({ kind: 'saved' });
+    expect(after(log, mark).slice(0, 2)).toEqual(['open', 'set']);
+    expect(storedMeta(storage).clients['client-1']).toBeDefined();
   });
 
   it.each([
@@ -124,9 +155,9 @@ describe('FolderClient pending allowance (addendum P3P4 R3.2)', () => {
   });
 
   it('keeps an op pending past 16 KiB of unapplied pending keys, then saves it once room frees', async () => {
-    const { storage, client, log, holdApplyReplies } = allowanceWorld();
+    const { storage, client, log, holdReplies } = allowanceWorld();
     await client.open();
-    const release = holdApplyReplies();
+    const release = holdReplies('gv.folderOwner.apply');
     const name = 'n'.repeat(Math.floor(ALLOWANCE_BYTES / 3));
     const runs: Array<Promise<EditOutcome>> = [];
     for (const id of ['A1', 'A2', 'A3']) runs.push(client.run(create(id, name)));
