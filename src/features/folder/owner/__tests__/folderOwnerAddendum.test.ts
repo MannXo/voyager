@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { CLIENT_IDLE_MS, TOMBSTONE_TTL_MS } from '../folderOwnerCore';
 import { pendingOpKey } from '../folderOwnerState';
+import { CLIENT_IDLE_MS, TOMBSTONE_TTL_MS } from '../ownerCollect';
 import { createFaultyStorage } from './faultyStorage';
 import {
   KEY,

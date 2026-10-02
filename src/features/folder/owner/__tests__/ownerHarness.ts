@@ -1,12 +1,8 @@
 import type { ConversationReference, Folder, FolderData } from '@/core/types/folder';
 
 import type { FolderOpBody, OpOutcome } from '../folderOps';
-import {
-  type ApplyReply,
-  type FolderOwnerCore,
-  MAX_BATCH_OPS,
-  createFolderOwnerCore,
-} from '../folderOwnerCore';
+import { type FolderOwnerCore, MAX_BATCH_OPS, createFolderOwnerCore } from '../folderOwnerCore';
+import type { ApplyReply } from '../folderOwnerMessages';
 import { type FolderOwnerMeta, ownerMetaKey, pendingOpKey } from '../folderOwnerState';
 import type { FaultyStorage } from './faultyStorage';
 

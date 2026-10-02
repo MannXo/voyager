@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { CLIENT_IDLE_MS, DRAIN_CHUNK } from '../folderOwnerCore';
+import { CLIENT_IDLE_MS } from '../ownerCollect';
+import { DRAIN_CHUNK } from '../ownerDrain';
 import { createFaultyStorage } from './faultyStorage';
 import {
   KEY,
