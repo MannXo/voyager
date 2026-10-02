@@ -3,7 +3,7 @@ import type { FolderData } from '@/core/types/folder';
 import type { FolderAuthority } from './authority';
 import { resolveBundleIntent } from './bundleIntent';
 import { canonicalJson, hashValue } from './canonicalHash';
-import type { OpOutcome } from './folderOps';
+import type { StoredOutcome } from './folderOps';
 import type { FolderSite } from './folderOwnerPolicy';
 import { orphanedClients } from './ownerEpochScan';
 
@@ -40,7 +40,7 @@ export interface ClientRecord {
   /** Highest seq whose outcome the client confirmed seeing. */
   acked: number;
   /** Outcomes for `acked < seq <= applied`. */
-  outcomes: Record<number, OpOutcome>;
+  outcomes: Record<number, StoredOutcome>;
   lastSeenAt: number;
   held?: { from: number; reason: 'foreign_write' | 'epoch_changed' };
 }

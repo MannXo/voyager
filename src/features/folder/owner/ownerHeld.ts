@@ -4,7 +4,13 @@
  * watermark, so an op that was already applied is a duplicate, and a
  * destructive op is never re-applied from either source.
  */
-import { DESTRUCTIVE_OP_KINDS, type FolderOpBody, type OpOutcome, rejected } from './folderOps';
+import {
+  DESTRUCTIVE_OP_KINDS,
+  type FolderOpBody,
+  type OpOutcome,
+  type StoredOutcome,
+  rejected,
+} from './folderOps';
 import type { FolderSitePolicy } from './folderOwnerPolicy';
 import { type ReadyState, pendingOpKey } from './folderOwnerState';
 import { drainClient, isPendingEntry } from './ownerDrain';
@@ -22,11 +28,11 @@ export const HELD_CHUNK = 32;
 export type HeldDecision = 'apply' | 'discard';
 
 export type HeldReply =
-  | { kind: 'resolved'; applied: number; outcomes: Record<number, OpOutcome> }
+  | { kind: 'resolved'; applied: number; outcomes: Record<number, StoredOutcome> }
   | { kind: 'refused'; reason: 'not_held' | TurnRefusal };
 
 export type AdoptJournalReply =
-  | { kind: 'adopted'; clientId: string; outcomes: Record<number, OpOutcome> }
+  | { kind: 'adopted'; clientId: string; outcomes: Record<number, StoredOutcome> }
   | { kind: 'seq_gap'; applied: number }
   | { kind: 'bad_batch' }
   | { kind: 'refused'; reason: TurnRefusal };
@@ -78,7 +84,7 @@ export async function resolveHeld(
   const { held: _cleared, ...unheld } = held;
   let state = start;
   let meta = withClient(start.meta, clientId, unheld);
-  const outcomes: Record<number, OpOutcome> = {};
+  const outcomes: Record<number, StoredOutcome> = {};
   for (;;) {
     const ops = await readPending(ctx, key, clientId, meta.clients[clientId].applied + 1);
     if (!ops) return { kind: 'refused', reason: 'read_failed' };

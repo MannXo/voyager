@@ -678,6 +678,10 @@
     "message": "クラウド同期",
     "description": "Tooltip for the merged cloud button that opens an upload/sync popover"
   },
+  "folder_cloud_merge_interrupted": {
+    "message": "Google ドライブとの統合が中断されました。もう一度実行してください。",
+    "description": "Shown when a Google Drive merge of folders was interrupted before it was applied"
+  },
   "folder_settings": {
     "message": "フォルダ設定",
     "description": "Tooltip for the gear icon that opens folder-scoped settings"

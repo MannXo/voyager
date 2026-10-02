@@ -678,6 +678,10 @@
     "message": "Облачная синхронизация",
     "description": "Tooltip for the merged cloud button that opens an upload/sync popover"
   },
+  "folder_cloud_merge_interrupted": {
+    "message": "Слияние с Google Диском прервано. Запустите его снова.",
+    "description": "Shown when a Google Drive merge of folders was interrupted before it was applied"
+  },
   "folder_settings": {
     "message": "Настройки папок",
     "description": "Tooltip for the gear icon that opens folder-scoped settings"

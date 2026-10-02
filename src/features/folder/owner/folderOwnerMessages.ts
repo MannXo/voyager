@@ -1,6 +1,6 @@
 import type { FolderData } from '@/core/types/folder';
 
-import type { OpOutcome } from './folderOps';
+import type { StoredOutcome } from './folderOps';
 import type { AdoptJournalReply, HeldDecision, HeldReply } from './ownerHeld';
 
 /** `gvFolderOwner:pending:<clientId>:<seq>`: written once by the client, deleted once by the owner. */
@@ -38,7 +38,13 @@ export type OpenReply =
   | { kind: 'refused'; reason: 'read_failed' | 'not_owner' | 'write_failed' };
 
 export type ApplyReply =
-  | { kind: 'ok'; epoch: string; rev: number; applied: number; outcomes: Record<number, OpOutcome> }
+  | {
+      kind: 'ok';
+      epoch: string;
+      rev: number;
+      applied: number;
+      outcomes: Record<number, StoredOutcome>;
+    }
   | { kind: 'seq_gap'; applied: number }
   | { kind: 'bad_batch' }
   | { kind: 'unknown_client'; epoch: string }

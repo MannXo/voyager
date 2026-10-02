@@ -3,7 +3,7 @@ import { createWriteQueue } from '@/features/storage/writeQueue';
 
 import type { FolderAuthority } from './authority';
 import { canonicalJson } from './canonicalHash';
-import type { OpOutcome } from './folderOps';
+import type { StoredOutcome } from './folderOps';
 import type {
   AckRequest,
   AdoptJournalRequest,
@@ -122,7 +122,7 @@ function registered(meta: FolderOwnerMeta, request: OpenRequest, at: number) {
 
 /** Outcomes for every seq of a batch: fresh ones, then stored ones, else `expired`. */
 function replyOutcomes(ops: ApplyRequest['ops'], processed: Processed, stored: ClientRecord) {
-  const outcomes: Record<number, OpOutcome> = {};
+  const outcomes: Record<number, StoredOutcome> = {};
   for (const { seq } of ops) {
     outcomes[seq] = processed.outcomes[seq] ?? stored.outcomes[seq] ?? { kind: 'expired' };
   }

@@ -1,7 +1,7 @@
 import type { ConversationReference, Folder, FolderData } from '@/core/types/folder';
 
 import type { FolderAuthority } from '../authority';
-import type { FolderOpBody, OpOutcome } from '../folderOps';
+import type { FolderOpBody, StoredOutcome } from '../folderOps';
 import {
   type FolderOwnerCore,
   type FolderOwnerCoreOptions,
@@ -140,7 +140,7 @@ export class TestClient {
 
   /** Highest seq whose outcome this client has seen. */
   acked = 0;
-  readonly outcomes = new Map<number, OpOutcome>();
+  readonly outcomes = new Map<number, StoredOutcome>();
 
   /** Sends every accepted op it has no outcome for yet, as a tab does after any wake-up. */
   async flush(owner: FolderOwnerCore): Promise<ApplyReply | null> {

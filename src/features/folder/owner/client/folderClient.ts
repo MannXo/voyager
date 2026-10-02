@@ -21,7 +21,7 @@ import {
 } from '@/features/folder/commands/folderCommands';
 
 import { canonicalJson } from '../canonicalHash';
-import type { OpOutcome } from '../folderOps';
+import { type StoredOutcome, isTerminal } from '../folderOps';
 import { MAX_BATCH_BYTES, MAX_BATCH_OPS } from '../folderOwnerCore';
 import type { FolderOwnerRequest, FolderOwnerResponse } from '../folderOwnerMessages';
 import type { FolderSitePolicy } from '../folderOwnerPolicy';
@@ -236,8 +236,9 @@ export class FolderClient implements FolderCommands {
     this.sending = false;
     if (!reply || this.stopped()) return;
     if (reply.kind === 'ok') {
-      this.onOutcomes(reply.outcomes, reply.rev);
-      void this.sendBatch();
+      // An op inside an open bundle has no outcome yet: ask again later, not at once.
+      if (this.onOutcomes(reply.outcomes, reply.rev)) void this.sendBatch();
+      else this.later(() => void this.sendBatch(), this.retry.next());
       return;
     }
     if (reply.kind === 'bad_batch') return this.onBadBatch(batch);
@@ -245,17 +246,22 @@ export class FolderClient implements FolderCommands {
     this.onRefusal(reply, () => void this.sendBatch());
   }
 
-  private onOutcomes(outcomes: Record<number, OpOutcome>, rev: number): void {
+  /** Delivers terminal outcomes; `false` when an op is still `bundle_pending` (R4.1). */
+  private onOutcomes(outcomes: Record<number, StoredOutcome>, rev: number): boolean {
+    let settled = true;
     for (const op of this.ops) {
       const outcome = outcomes[op.seq];
-      if (outcome && !op.outcome) deliver(op, outcome);
+      if (!outcome || op.outcome) continue;
+      if (isTerminal(outcome)) deliver(op, outcome);
+      else settled = false;
     }
     this.acked = settledPrefix(this.ops, this.acked);
     this.batchLimit = MAX_BATCH_OPS;
     if (this.state === 'delayed') this.state = this.settledState();
-    this.retry.reset();
+    if (settled) this.retry.reset();
     this.prune();
     if (this.base && this.base.rev < rev) this.awaitEcho(rev);
+    return settled;
   }
 
   /** Halves the batch; a single op the owner refuses means this client is out of step. */

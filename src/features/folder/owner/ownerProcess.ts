@@ -1,7 +1,13 @@
 import type { FolderData } from '@/core/types/folder';
 
 import { applyFolderOp } from './applyFolderOp';
-import { type FolderOpBody, type OpOutcome, parseFolderOpBody, rejected } from './folderOps';
+import {
+  type FolderOpBody,
+  type OpOutcome,
+  type StoredOutcome,
+  parseFolderOpBody,
+  rejected,
+} from './folderOps';
 import type { FolderSitePolicy } from './folderOwnerPolicy';
 import type {
   ClientRecord,
@@ -17,7 +23,7 @@ export const INVALID_BODY = Symbol('invalid pending body');
 export interface Processed {
   data: FolderData | null;
   meta: FolderOwnerMeta;
-  outcomes: Record<number, OpOutcome>;
+  outcomes: Record<number, StoredOutcome>;
   /** A bulk op already wrote `preBulk` for this commit. */
   preBulkWritten?: boolean;
   /** Some op of the turn removes enough to need a `preBulk` copy first (§6.6). */
@@ -67,11 +73,16 @@ export function revive(meta: FolderOwnerMeta, clientId: string, now: number): Fo
   return { ...meta, retired, clients: { ...meta.clients, [clientId]: client } };
 }
 
-/** Drops outcomes the client has delivered and records the contact. */
+/**
+ * Drops outcomes the client has delivered and records the contact. A
+ * `bundle_pending` outcome was never delivered, so an ack never drops it (R4.1).
+ */
 export function acknowledge(client: ClientRecord, ackedThrough: number, at: number): ClientRecord {
   const acked = Math.max(client.acked, Math.min(ackedThrough, client.applied));
   const outcomes = Object.fromEntries(
-    Object.entries(client.outcomes).filter(([seq]) => Number(seq) > acked),
+    Object.entries(client.outcomes).filter(
+      ([seq, outcome]) => Number(seq) > acked || outcome.kind === 'bundle_pending',
+    ),
   );
   return { ...client, acked, outcomes, lastSeenAt: at };
 }
@@ -103,7 +114,7 @@ export function processOps(
 ): Processed {
   const client: ClientRecord = { ...meta.clients[clientId] };
   const stored = { ...client.outcomes };
-  const outcomes: Record<number, OpOutcome> = {};
+  const outcomes: Record<number, StoredOutcome> = {};
   let data = state.data;
   let destructive = false;
   for (const op of ops) {

@@ -678,6 +678,10 @@
     "message": "클라우드 동기화",
     "description": "Tooltip for the merged cloud button that opens an upload/sync popover"
   },
+  "folder_cloud_merge_interrupted": {
+    "message": "Google Drive 병합이 중단되었습니다. 다시 실행하세요.",
+    "description": "Shown when a Google Drive merge of folders was interrupted before it was applied"
+  },
   "folder_settings": {
     "message": "폴더 설정",
     "description": "Tooltip for the gear icon that opens folder-scoped settings"

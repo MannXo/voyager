@@ -103,12 +103,30 @@ export type RejectReason =
   /** A kind this build's owner does not apply yet (the cloudMerge bundle, P3). */
   | 'unsupported';
 
-/** Stored by the owner per processed seq until the client acknowledges it. */
+/** A terminal outcome: what the client delivers to the edit's caller. */
 export type OpOutcome =
   | { kind: 'saved'; stats?: ImportResult; restoredFrom?: string }
   | { kind: 'unchanged'; reason: 'noop' | 'present' }
   | { kind: 'rejected'; reason: RejectReason; messageKey: TranslationKey }
+  /** A bundle (cloud merge) abandoned before all of it landed; never replayed (addendum P3P4 R4.2). */
+  | { kind: 'interrupted'; messageKey: TranslationKey }
   | { kind: 'expired' };
+
+/**
+ * Stored by the owner per processed seq until the client acknowledges it. A
+ * seq inside an open bundle stays `bundle_pending` until the bundle settles as
+ * `saved` or `interrupted` (R4.1); it is never terminal, so it is never
+ * delivered and never dropped by an ack.
+ */
+export type StoredOutcome = OpOutcome | { kind: 'bundle_pending'; txId: string };
+
+export const INTERRUPTED: OpOutcome = {
+  kind: 'interrupted',
+  messageKey: 'folder_cloud_merge_interrupted',
+};
+
+export const isTerminal = (outcome: StoredOutcome): outcome is OpOutcome =>
+  outcome.kind !== 'bundle_pending';
 
 export function rejected(reason: RejectReason): OpOutcome {
   // Specific notices per reason arrive with the UI that shows them (P2); until then one generic key.

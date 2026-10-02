@@ -678,6 +678,10 @@
     "message": "المزامنة السحابية",
     "description": "Tooltip for the merged cloud button that opens an upload/sync popover"
   },
+  "folder_cloud_merge_interrupted": {
+    "message": "تمت مقاطعة الدمج مع Google Drive. شغّله مرة أخرى.",
+    "description": "Shown when a Google Drive merge of folders was interrupted before it was applied"
+  },
   "folder_settings": {
     "message": "إعدادات المجلدات",
     "description": "Tooltip for the gear icon that opens folder-scoped settings"

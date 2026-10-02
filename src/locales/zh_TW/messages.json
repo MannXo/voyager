@@ -638,6 +638,10 @@
     "message": "雲端同步",
     "description": "合併後的雲端按鈕提示，點擊彈出上傳/同步選項"
   },
+  "folder_cloud_merge_interrupted": {
+    "message": "Google 雲端硬碟合併已中斷，請重新執行。",
+    "description": "Shown when a Google Drive merge of folders was interrupted before it was applied"
+  },
   "folder_settings": {
     "message": "資料夾設定",
     "description": "齒輪圖示提示，開啟資料夾相關設定"

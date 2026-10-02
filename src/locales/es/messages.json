@@ -678,6 +678,10 @@
     "message": "Sincronización en la nube",
     "description": "Tooltip for the merged cloud button that opens an upload/sync popover"
   },
+  "folder_cloud_merge_interrupted": {
+    "message": "La combinación con Google Drive se interrumpió. Vuelve a ejecutarla.",
+    "description": "Shown when a Google Drive merge of folders was interrupted before it was applied"
+  },
   "folder_settings": {
     "message": "Ajustes de carpetas",
     "description": "Tooltip for the gear icon that opens folder-scoped settings"
