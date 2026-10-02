@@ -291,7 +291,7 @@ turn on a route without a conversation id`),
   `src/utils/merge.test.ts` `src/pages/content/folder/__tests__/FolderTransferController.test.ts`
   `src/pages/content/folder/__tests__/aistudioAuditFixes.test.ts`
   `src/pages/content/prompt/__tests__/promptName.test.ts`
-  `src/pages/content/prompt/__tests__/slashPrompt.test.ts`
+  `src/pages/content/prompt/__tests__/slashMatch.test.ts`
   `src/pages/background/__tests__/runtimeMessageRouting.test.ts`
 
 ## Prompt Manager coverage on plugin platforms listens before it mounts

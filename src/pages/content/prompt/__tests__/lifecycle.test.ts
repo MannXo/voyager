@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createSlashPromptLifecycle } from '../slashPrompt';
+import { createSlashPromptLifecycle } from '../slashPromptFeature';
 
 describe('prompt manager lifecycle', () => {
   it('destroys slash completion while hidden and starts one fresh controller when restored', async () => {

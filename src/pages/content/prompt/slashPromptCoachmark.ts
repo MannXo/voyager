@@ -13,7 +13,7 @@ import {
   type CoachmarkSequenceStep,
   showCoachmark,
 } from '../coachmark';
-import { hasSlashEligiblePrompts, isGeminiSlashPromptSurface } from './slashPrompt';
+import { hasSlashEligiblePrompts, isGeminiSlashPromptSurface } from './slashMatch';
 
 export const SLASH_PROMPT_COACHMARK_ID = 'slash-prompt-insertion-intro';
 export const SLASH_PROMPT_COACHMARK_DEBUG_EVENT = 'gv:debug:slashPromptCoachmark';

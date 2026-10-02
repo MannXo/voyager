@@ -42,7 +42,7 @@ vi.mock('../../coachmark', () => ({
   showCoachmark: mocks.showCoachmark,
 }));
 
-vi.mock('../slashPrompt', () => ({
+vi.mock('../slashMatch', () => ({
   hasSlashEligiblePrompts: mocks.hasSlashEligiblePrompts,
   isGeminiSlashPromptSurface: mocks.isGeminiSlashPromptSurface,
 }));

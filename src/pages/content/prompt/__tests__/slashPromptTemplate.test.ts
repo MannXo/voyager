@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { PromptItem } from '@/core/types/sync';
 
-import { expandAllPromptTokens, startPromptSlashCommand } from '../slashPrompt';
+import { expandAllPromptTokens } from '../slashPlacements';
+import { startPromptSlashCommand } from '../slashPrompt';
 
 const prompts: PromptItem[] = [
   {

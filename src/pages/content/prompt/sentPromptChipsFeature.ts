@@ -6,7 +6,7 @@ import { StorageKeys } from '@/core/types/common';
 import type { PromptIdentity } from '@/features/prompt/model/promptTextMatch';
 
 import { type SentPromptChipsController, startSentPromptChips } from './SentPromptChips';
-import { isGeminiSlashPromptSurface } from './slashPrompt';
+import { isGeminiSlashPromptSurface } from './slashMatch';
 
 const sentPromptChipsLogger = logger.createChild('SentPromptChips');
 

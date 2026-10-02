@@ -3,18 +3,63 @@ import browser from 'webextension-polyfill';
 import { logger } from '@/core/services/LoggerService';
 import { StorageKeys } from '@/core/types/common';
 
-import {
-  type SlashPromptController,
-  createSlashPromptLifecycle,
-  isGeminiSlashPromptSurface,
-  startStoredPromptSlashCommand,
-} from './slashPrompt';
+import { isGeminiSlashPromptSurface } from './slashMatch';
+import { type SlashPromptController, startStoredPromptSlashCommand } from './slashPrompt';
 
 const slashPromptFeatureLogger = logger.createChild('SlashPromptFeature');
 
 export interface SlashPromptFeatureOptions {
   pageUrl?: string;
   start?: () => Promise<SlashPromptController>;
+}
+
+export interface SlashPromptLifecycle {
+  setEnabled: (enabled: boolean) => Promise<void>;
+  destroy: () => void;
+}
+
+/** Keeps one slash controller alive while enabled and safely absorbs async enable/disable races. */
+export function createSlashPromptLifecycle(
+  start: () => Promise<SlashPromptController>,
+): SlashPromptLifecycle {
+  let enabled = false;
+  let controller: SlashPromptController | null = null;
+  let pendingStart: Promise<void> | null = null;
+
+  const stopController = (): void => {
+    controller?.destroy();
+    controller = null;
+  };
+
+  const setEnabled = async (nextEnabled: boolean): Promise<void> => {
+    enabled = nextEnabled;
+    if (!enabled) {
+      stopController();
+      return;
+    }
+    if (controller) return;
+    if (pendingStart) return pendingStart;
+
+    const startAttempt = (async () => {
+      const nextController = await start();
+      if (enabled && !controller) controller = nextController;
+      else nextController.destroy();
+    })();
+    pendingStart = startAttempt;
+    try {
+      await startAttempt;
+    } finally {
+      if (pendingStart === startAttempt) pendingStart = null;
+    }
+  };
+
+  return {
+    setEnabled,
+    destroy: () => {
+      enabled = false;
+      stopController();
+    },
+  };
 }
 
 /**
