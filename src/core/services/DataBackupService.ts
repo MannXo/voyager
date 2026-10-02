@@ -83,6 +83,8 @@ export class DataBackupService<T = unknown> {
   private readonly slotVersions = new Map<string, number>();
   /** Last measured extension-storage use, raised by each copy accepted since. */
   private headroom: { bytesInUse: number; limitBytes: number } | null = null;
+  /** Bytes each slot holds in extension storage, as last measured or written. */
+  private readonly slotBytes = new Map<string, number>();
 
   constructor(
     private readonly namespace: string,
@@ -167,6 +169,7 @@ export class DataBackupService<T = unknown> {
       const measured = await storageQuotaService.getLocalHeadroom(key);
       this.headroom = { bytesInUse: measured.bytesInUse, limitBytes: measured.limitBytes };
       replacedBytes = measured.keyBytes;
+      this.slotBytes.set(key, replacedBytes);
     } catch (error) {
       this.headroom = null;
       console.warn(`[BackupService:${this.namespace}] Extension storage unmeasurable:`, error);
@@ -199,7 +202,10 @@ export class DataBackupService<T = unknown> {
   private async issueExtensionWrite(key: string, value: string, version: number): Promise<boolean> {
     try {
       await browser.storage.local.set({ [key]: value });
-      if (this.slotVersions.get(key) === version) this.durableBackups.set(key, value);
+      if (this.slotVersions.get(key) === version) {
+        this.durableBackups.set(key, value);
+        this.slotBytes.set(key, storedBytes(key, value));
+      }
       return true;
     } catch (error) {
       console.warn(`[BackupService:${this.namespace}] Durable mirror write failed:`, error);
@@ -210,7 +216,10 @@ export class DataBackupService<T = unknown> {
   private async removeExtensionCopy(key: string, version: number): Promise<boolean> {
     try {
       await browser.storage.local.remove(key);
-      if (this.slotVersions.get(key) === version) this.durableBackups.delete(key);
+      if (this.slotVersions.get(key) === version) {
+        this.durableBackups.delete(key);
+        this.slotBytes.set(key, 0);
+      }
       return true;
     } catch (error) {
       console.warn(`[BackupService:${this.namespace}] Durable copy removal failed:`, error);
@@ -226,8 +235,7 @@ export class DataBackupService<T = unknown> {
     const version = this.nextVersion(key);
     const replaced = this.queuedWrites.get(key);
     this.queuedWrites.delete(key);
-    const cached = this.durableBackups.get(key);
-    const write = this.claimHeadroom(key, value, cached ? storedBytes(key, cached) : 0)
+    const write = this.claimHeadroom(key, value, this.slotBytes.get(key) ?? 0)
       ? this.issueExtensionWrite(key, value, version)
       : Promise.resolve(false);
     for (const settle of replaced?.settle ?? []) void write.then(settle);
@@ -346,11 +354,14 @@ export class DataBackupService<T = unknown> {
       window.removeEventListener('beforeunload', this.beforeUnloadHandler);
     }
 
-    // The unload copy cannot await a measurement, so take one now if none exists.
-    if (!this.headroom) {
-      void storageQuotaService.getLocalHeadroom(this.beforeUnloadKey).then(
-        ({ bytesInUse, limitBytes }) => {
+    // The unload copy cannot await a measurement, so take one now, including the
+    // bytes its slot already holds: replacing a copy reuses that space.
+    if (!this.headroom || !this.slotBytes.has(this.beforeUnloadKey)) {
+      const key = this.beforeUnloadKey;
+      void storageQuotaService.getLocalHeadroom(key).then(
+        ({ bytesInUse, keyBytes, limitBytes }) => {
           this.headroom ??= { bytesInUse, limitBytes };
+          if (!this.slotBytes.has(key)) this.slotBytes.set(key, keyBytes);
         },
         () => {},
       );

@@ -397,6 +397,35 @@ describe('DataBackupService quota fallback', () => {
     service.destroy();
     expect(JSON.parse(durableStore[BEFORE_UNLOAD_KEY] as string).data).toEqual(latest);
   });
+  it('lets a Safari unload copy replace a same-size slot that only fits by reuse', async () => {
+    isSafariValue = true;
+    const unloadAt = async (service: DataBackupService<Sample>, data: Sample) => {
+      service.setupBeforeUnloadBackup(() => data);
+      // Let the measurement the unload copy decides from land.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      window.dispatchEvent(new Event('beforeunload'));
+      await service.ensureHydrated();
+      service.destroy();
+    };
+    await unloadAt(new DataBackupService<Sample>('test-ns'), {
+      folders: Array(750_000).fill(1),
+    });
+
+    // A later page: storage now fits that slot again, but not a second copy of it.
+    extension.area.QUOTA_BYTES = 10 * MiB;
+    const used = Object.entries(durableStore).reduce(
+      (sum, [key, value]) => sum + extension.itemBytes(key, value),
+      0,
+    );
+    durableStore.gvOtherFeature = 'x'.repeat(7 * MiB - used);
+    const later = new DataBackupService<Sample>('test-ns');
+    await later.createPrimaryBackup({ folders: [0] });
+    await unloadAt(later, { folders: Array(750_000).fill(2) });
+
+    // Compare a marker: a failing deep diff of 750k items would stall the reporter.
+    expect(JSON.parse(durableStore[BEFORE_UNLOAD_KEY] as string).data.folders[0]).toBe(2);
+  });
+
   it('recovers the copy that landed when a later backup write hangs', async () => {
     vi.useFakeTimers();
     limitLocalStorage(700);
