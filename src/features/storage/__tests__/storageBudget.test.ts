@@ -145,4 +145,21 @@ describe('storageBudget', () => {
     broken = false;
     expect((await copy(budget, store, 'a', 1024)).admitted).toBe(true);
   });
+
+  it('writes user data under no quota even with allowances held and the area unmeasurable', async () => {
+    const store = createByteStore();
+    const budget = createStorageBudget({
+      measure: async () => Promise.reject(new Error('measure failed')),
+      quota: async () => null,
+      barrier: async () => undefined,
+      reserved: async () => Promise.reject(new Error('meta unreadable')),
+    });
+
+    const admission = await budget.run({ kind: 'data', keys: ['k'], bytes: 10 }, () =>
+      store.area.set({ k: 'v' }),
+    );
+
+    expect(admission.admitted).toBe(true);
+    expect(store.used()).toBeGreaterThan(0);
+  });
 });

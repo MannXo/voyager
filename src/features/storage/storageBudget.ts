@@ -58,8 +58,11 @@ export interface StorageBudgetDeps {
    */
   barrier(): Promise<unknown>;
   /** Bytes held by standing reservations (pending allowances, R3.2). */
-  reserved?: () => number;
+  reserved?: ReservationSource;
 }
+
+/** Must not wait on the budget or the write queue: a step awaits it. */
+export type ReservationSource = () => number | Promise<number>;
 
 export interface StorageBudget {
   /** Admits `request` against a fresh measurement and, if admitted, runs `write` in the same step. */
@@ -67,7 +70,7 @@ export interface StorageBudget {
   /** A step whose own check decides (the highlights' soft cap, F2); it gets the standing reservations. */
   runChecked<T>(step: (reservedBytes: number) => Promise<T>): Promise<T>;
   /** Registers the source of standing reservations (the owner's pending allowances), or clears it. */
-  setReservations(source: (() => number) | null): void;
+  setReservations(source: ReservationSource | null): void;
 }
 
 const encoder = new TextEncoder();
@@ -98,7 +101,7 @@ export function createStorageBudget(deps: StorageBudgetDeps): StorageBudget {
   let tail: Promise<unknown> = Promise.resolve();
   let barrier: Promise<unknown> | null = null;
   let reservations = deps.reserved ?? null;
-  const reserved = () => reservations?.() ?? 0;
+  const reserved = async () => (reservations ? await reservations() : 0);
 
   const chain = <T>(step: () => Promise<T>): Promise<T> => {
     const run = async () => {
@@ -113,11 +116,13 @@ export function createStorageBudget(deps: StorageBudgetDeps): StorageBudget {
 
   async function admit(request: BudgetRequest): Promise<Admission<void>> {
     try {
-      if (request.kind === 'data' && reserved() === 0 && !request.margin) {
-        if ((await deps.quota()) === null) return { admitted: true, value: undefined };
+      // Only a hard quota refuses `data`, so under none nothing is measured or reserved.
+      if (request.kind === 'data' && (await deps.quota()) === null) {
+        return { admitted: true, value: undefined };
       }
+      const held = await reserved();
       const measured = await deps.measure(request.keys);
-      return admits(request, measured, reserved())
+      return admits(request, measured, held)
         ? { admitted: true, value: undefined }
         : { admitted: false, reason: 'quota' };
     } catch {
@@ -132,7 +137,7 @@ export function createStorageBudget(deps: StorageBudgetDeps): StorageBudget {
         if (!admission.admitted) return admission;
         return { admitted: true as const, value: await write() };
       }),
-    runChecked: (step) => chain(() => step(reserved())),
+    runChecked: (step) => chain(async () => step(await reserved())),
     setReservations(source) {
       reservations = source;
     },

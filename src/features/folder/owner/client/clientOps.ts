@@ -6,6 +6,8 @@ export interface ClientOp {
   /** pending: in memory only; accepted: its pending key is stored; then settled by an outcome. */
   state: 'pending' | 'accepted' | 'committed' | 'rejected';
   outcome?: EditOutcome;
+  /** Bytes its stored pending key holds, counted against the allowance until it is applied. */
+  bytes?: number;
   waiters: Array<(outcome: EditOutcome) => void>;
 }
 

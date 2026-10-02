@@ -17,6 +17,7 @@ import {
   checkFolderOwnerSender,
 } from '@/features/folder/owner/folderOwnerSenderGate';
 import type { FolderOwnerStorageArea } from '@/features/folder/owner/folderOwnerState';
+import { createAllowanceLedger } from '@/features/folder/owner/ownerAllowances';
 import { drainOwnedKeys, hasOwnerSite } from '@/features/folder/owner/ownerStartup';
 /**
  * Background owner of folder writes (DESIGN-v2 §6). Dormant: while every site
@@ -64,12 +65,16 @@ export function handleFolderOwnerMessage(
 }
 
 export function startFolderOwner(authority: Authority = FOLDER_WRITE_AUTHORITY): FolderOwnerCore {
+  const allowances = createAllowanceLedger(localFolderArea, authority);
   const core = createFolderOwnerCore({
     area: localFolderArea,
     authority,
     serialize: backgroundWriteQueue,
     budget: storageBudget,
+    allowances,
   });
+  // Every registered client's pending allowance is reserved (R3.2); none while every site is legacy.
+  if (hasOwnerSite(authority)) storageBudget.setReservations(() => allowances.reservedBytes());
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const reply = handleFolderOwnerMessage(message, sender, { core, authority });
     if (!reply) return undefined;

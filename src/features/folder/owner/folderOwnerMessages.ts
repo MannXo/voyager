@@ -27,6 +27,8 @@ interface OpenBase {
   applied: number;
   held: HeldClient[];
   legacySync: boolean;
+  /** The pending allowance's lifetime, counted from when the client sent this request (R3.2). */
+  allowanceTtlMs: number;
 }
 
 export type OpenReply =
@@ -44,6 +46,7 @@ export type ApplyReply =
       rev: number;
       applied: number;
       outcomes: Record<number, StoredOutcome>;
+      allowanceTtlMs: number;
     }
   | { kind: 'seq_gap'; applied: number }
   | { kind: 'bad_batch' }

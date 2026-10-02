@@ -18,6 +18,7 @@ import {
   storedMeta,
 } from './ownerHarness';
 
+const TTL = 30 * 60 * 1000;
 const PENDING: StoredOutcome = { kind: 'bundle_pending', txId: 'tx-1' };
 
 describe('bundle_pending is never terminal (addendum P3P4 R4.1)', () => {
@@ -61,10 +62,25 @@ describe('bundle_pending is never terminal (addendum P3P4 R4.1)', () => {
       },
       send: async (request: FolderOwnerRequest): Promise<FolderOwnerResponse> => {
         if (request.type === 'gv.folderOwner.open') {
-          return { kind: 'empty', epoch: 'e', rev: 1, applied: 0, held: [], legacySync: false };
+          return {
+            kind: 'empty',
+            epoch: 'e',
+            rev: 1,
+            applied: 0,
+            held: [],
+            legacySync: false,
+            allowanceTtlMs: TTL,
+          };
         }
         const outcome = answers[Math.min(applies++, answers.length - 1)];
-        return { kind: 'ok', epoch: 'e', rev: 1, applied: 1, outcomes: { 1: outcome } };
+        return {
+          kind: 'ok',
+          epoch: 'e',
+          rev: 1,
+          applied: 1,
+          outcomes: { 1: outcome },
+          allowanceTtlMs: TTL,
+        };
       },
     });
     await client.open();

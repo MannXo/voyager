@@ -26,6 +26,16 @@ import { MAX_BATCH_BYTES, MAX_BATCH_OPS } from '../folderOwnerCore';
 import type { FolderOwnerRequest, FolderOwnerResponse } from '../folderOwnerMessages';
 import type { FolderSitePolicy } from '../folderOwnerPolicy';
 import { type FolderOwnerStorageArea, pendingOpKey } from '../folderOwnerState';
+import {
+  ALLOWANCE_BYTES,
+  type Allowance,
+  type AllowanceClocks,
+  type SentAt,
+  granted,
+  isFresh,
+  pendingKeyBytes,
+  sentNow,
+} from './clientAllowance';
 import { type ClientBase, type StorageChange, classifyChange, overlay } from './clientBase';
 import { type ClientOp, createBackoff, deliver, sendable, settledPrefix } from './clientOps';
 
@@ -40,6 +50,8 @@ export interface FolderClientOptions {
   send(request: FolderOwnerRequest): Promise<FolderOwnerResponse>;
   subscribe(listener: StorageListener): () => void;
   now?: () => number;
+  /** A monotonic clock (`performance.now`), checked with `now` for the allowance's age. */
+  monotonic?: () => number;
   newId?: () => string;
   setTimer?: (run: () => void, ms: number) => () => void;
 }
@@ -80,11 +92,18 @@ export class FolderClient implements FolderCommands {
   private readonly newId: () => string;
   private readonly setTimer: (run: () => void, ms: number) => () => void;
   private readonly retry = createBackoff();
+  private readonly clocks: AllowanceClocks;
+  /** The owner's pending allowance, dated from the request that granted it (R3.2). */
+  private allowance: Allowance | null = null;
+  private reopening = false;
+  /** A re-open happened since the last pending-key `set` succeeded. */
+  private reopened = false;
 
   constructor(private readonly options: FolderClientOptions) {
     this.now = options.now ?? Date.now;
     this.newId = options.newId ?? (() => crypto.randomUUID());
     this.setTimer = options.setTimer ?? defaultTimer;
+    this.clocks = { wall: this.now, monotonic: options.monotonic ?? (() => performance.now()) };
     this.clientId = this.newId();
     this.unsubscribe = options.subscribe((changes) => this.onStorageChange(changes));
   }
@@ -123,6 +142,7 @@ export class FolderClient implements FolderCommands {
   }
 
   async open(): Promise<void> {
+    const sent = sentNow(this.clocks);
     const reply = await this.request({
       type: 'gv.folderOwner.open',
       key: this.options.key,
@@ -135,6 +155,7 @@ export class FolderClient implements FolderCommands {
       const data = reply.kind === 'ready' ? reply.data : null;
       const dataHash = reply.kind === 'ready' ? reply.dataHash : (this.base?.dataHash ?? '');
       this.base = { data, epoch: reply.epoch, rev: reply.rev, dataHash, applied: reply.applied };
+      this.grant(sent, 'allowanceTtlMs' in reply ? reply.allowanceTtlMs : undefined);
       // An invalid K waits for the recovery panel (P3); edits stay queued, never applied to it.
       this.state = reply.kind === 'invalid' ? 'read_only' : this.settledState();
       this.retry.reset();
@@ -184,8 +205,14 @@ export class FolderClient implements FolderCommands {
           at: this.now(),
           op: op.body,
         };
+        const pendingKey = pendingOpKey(this.clientId, op.seq);
+        const bytes = pendingKeyBytes(pendingKey, entry);
+        // Over the allowance the op stays pending ("Not saved") until applied ops free room.
+        if (this.heldBytes() + bytes > ALLOWANCE_BYTES) return this.holdPending();
+        // Checked right before each `set`: an expired allowance re-opens first (R3.2).
+        if (!isFresh(this.allowance, this.clocks)) return this.reopen();
         try {
-          await this.options.area.set({ [pendingOpKey(this.clientId, op.seq)]: entry });
+          await this.options.area.set({ [pendingKey]: entry });
         } catch {
           // Quota or storage failure: the op stays pending and visible; "Not saved" (§7.5).
           this.storageFailing = true;
@@ -195,6 +222,8 @@ export class FolderClient implements FolderCommands {
         }
         if (this.stopped()) return;
         op.state = 'accepted';
+        op.bytes = bytes;
+        this.reopened = false;
         this.storageFailing = false;
         if (this.state === 'delayed') this.state = 'ready';
       }
@@ -203,6 +232,30 @@ export class FolderClient implements FolderCommands {
     }
     if (this.allAccepted) return this.allAccepted();
     void this.sendBatch();
+  }
+
+  /** Pending-key bytes of accepted ops with no outcome yet: the owner removes a key as it applies it. */
+  private heldBytes(): number {
+    return this.ops.reduce((sum, op) => (op.state === 'accepted' ? sum + (op.bytes ?? 0) : sum), 0);
+  }
+
+  private holdPending(): void {
+    this.state = 'delayed';
+    void this.sendBatch();
+  }
+
+  /** Re-opens for a fresh allowance; again only after a back-off if that one was not fresh either. */
+  private reopen(): void {
+    if (this.reopening) return;
+    this.reopening = true;
+    const run = () => void this.open().finally(() => (this.reopening = false));
+    if (this.reopened) this.later(run, this.retry.next());
+    else run();
+    this.reopened = true;
+  }
+
+  private grant(sent: SentAt, ttlMs: unknown): void {
+    this.allowance = granted(sent, ttlMs, this.allowance);
   }
 
   /** The next op to publish; one that already failed (for example after a stop) never is. */
@@ -225,6 +278,7 @@ export class FolderClient implements FolderCommands {
     const batch = sendable(this.ops, this.acked, this.batchLimit);
     if (batch.length === 0) return;
     this.sending = true;
+    const sent = sentNow(this.clocks);
     const reply = await this.request({
       type: 'gv.folderOwner.apply',
       key: this.options.key,
@@ -236,6 +290,9 @@ export class FolderClient implements FolderCommands {
     this.sending = false;
     if (!reply || this.stopped()) return;
     if (reply.kind === 'ok') {
+      this.grant(sent, reply.allowanceTtlMs);
+      // Applied ops free allowance room and refresh it for ops still pending.
+      if (this.nextPending()) void this.publish();
       // An op inside an open bundle has no outcome yet: ask again later, not at once.
       if (this.onOutcomes(reply.outcomes, reply.rev)) void this.sendBatch();
       else this.later(() => void this.sendBatch(), this.retry.next());

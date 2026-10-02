@@ -33,6 +33,7 @@ import {
   pendingOpKey,
   resolveOwnerState,
 } from './folderOwnerState';
+import { ALLOWANCE_TTL_MS, type AllowanceLedger } from './ownerAllowances';
 import {
   directCopy,
   keepForeignCopy,
@@ -78,6 +79,8 @@ export interface FolderOwnerCoreOptions {
    * `copy` step and each commit a `data` step. Without it nothing is budgeted.
    */
   budget?: Pick<StorageBudget, 'run'>;
+  /** Told each durable meta, so the budget reserves every registered client's allowance (R3.2). */
+  allowances?: Pick<AllowanceLedger, 'observe'>;
   /** The shared in-process write queue; defaults to a private one. */
   serialize?: <T>(turn: () => Promise<T>) => Promise<T>;
 }
@@ -140,6 +143,7 @@ function openReply(
     applied: committed.meta.clients[clientId].applied,
     held: heldClients(committed.meta),
     legacySync: false,
+    allowanceTtlMs: ALLOWANCE_TTL_MS,
   };
   if (state.kind === 'invalid') return { kind: 'invalid', ...base };
   return committed.data
@@ -167,8 +171,13 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
     return site && options.authority[site] === 'owner' ? FOLDER_SITE_POLICIES[site] : null;
   };
 
-  const resolve = (key: string): Promise<OwnerState> =>
-    resolveOwnerState(area, key, now(), newId, options.authority);
+  const resolve = async (key: string): Promise<OwnerState> => {
+    const state = await resolveOwnerState(area, key, now(), newId, options.authority);
+    if (state.kind === 'ready' || state.kind === 'invalid') {
+      options.allowances?.observe(key, state.meta);
+    }
+    return state;
+  };
 
   /**
    * Commits `processed` and returns the durable state, or `null` when nothing
@@ -187,6 +196,7 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
       gate,
     );
     if (result.kind === 'committed') {
+      options.allowances?.observe(key, result.state.meta);
       remember(key, result.state.hash);
       forgetAcks(key, pending);
       await removeFreedSlot(area, key, state.meta.backups, result.state.meta.backups);
@@ -336,6 +346,7 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
       rev: durable.meta.rev,
       applied: stored.applied,
       outcomes: replyOutcomes(ops, processed, stored),
+      allowanceTtlMs: ALLOWANCE_TTL_MS,
     };
   }
 
