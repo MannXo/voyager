@@ -1,11 +1,13 @@
 /**
- * Keeps other floating surfaces off the Prompt Manager ball.
+ * Keeps default floating surfaces off the Prompt Manager ball and composer.
  *
  * The folder FAB and the floating folder panel default to the same
  * bottom-right corner as the ball, and the FAB stacks above it, so the ball
  * could not be clicked. Only default spots go through here: a spot the user
  * saved by dragging is theirs.
  */
+
+import { findChatInput } from '../chatInput';
 
 export const PROMPT_TRIGGER_ELEMENT_ID = 'gv-pm-trigger';
 
@@ -54,8 +56,25 @@ function fitsViewport(box: Box): boolean {
   );
 }
 
+/** The input's control surface, using the same anchors as native composer integrations. */
+function composerElement(): HTMLElement | null {
+  const input = findChatInput();
+  return (
+    input?.closest<HTMLElement>(
+      'form, .text-input-field, input-area-v2, input-container, .input-area, ms-prompt-input-wrapper, chat-message',
+    ) ?? input
+  );
+}
+
+function composerBox(): Box | null {
+  const rect = composerElement()?.getBoundingClientRect();
+  return rect && rect.width > 0 && rect.height > 0
+    ? { x: rect.left, y: rect.top, w: rect.width, h: rect.height }
+    : null;
+}
+
 /**
- * Moves a default spot off the ball. The first spot that fits wins: beside the
+ * Moves a default spot off the ball and composer. The first clear spot that fits wins: beside the
  * ball towards the page (left of it in LTR), then above it, then on its other
  * side. Beside the ball, the box is centred on it when it fits and otherwise
  * keeps its own height. The slot above the ball is tried second because the
@@ -63,7 +82,10 @@ function fitsViewport(box: Box): boolean {
  */
 export function clearOfPromptTrigger(box: Box): Point {
   const ball = promptTriggerBox();
-  if (!boxesOverlap(box, ball)) return { x: box.x, y: box.y };
+  const composer = composerBox();
+  const clear = (candidate: Box) =>
+    !boxesOverlap(candidate, ball) && (!composer || !boxesOverlap(candidate, composer));
+  if (clear(box)) return { x: box.x, y: box.y };
 
   const centred = ball.y + (ball.h - box.h) / 2;
   const besideY = fitsViewport({ ...box, y: centred }) ? centred : box.y;
@@ -72,10 +94,13 @@ export function clearOfPromptTrigger(box: Box): Point {
   const after = { x: ball.x + ball.w + GAP, y: besideY };
   const above = { x: box.x, y: ball.y - GAP - box.h };
   const candidates = towardsPage ? [before, above, after] : [after, above, before];
+  if (composer) {
+    candidates.push({ x: above.x, y: Math.min(ball.y, composer.y) - GAP - box.h });
+  }
 
   for (const spot of candidates) {
     const moved = { ...box, ...spot };
-    if (fitsViewport(moved) && !boxesOverlap(moved, ball)) {
+    if (fitsViewport(moved) && clear(moved)) {
       return { x: Math.round(spot.x), y: Math.round(spot.y) };
     }
   }
@@ -83,7 +108,7 @@ export function clearOfPromptTrigger(box: Box): Point {
 }
 
 /**
- * Calls `onChange` once a frame after the ball mounts, unmounts, moves, shows
+ * Calls `onChange` once a frame after the ball or composer mounts, moves, shows
  * or hides. The Prompt Manager moves its ball next to Gemini's composer up to
  * 350ms after load, after a default-placed surface may already have been
  * placed. Returns the cleanup.
@@ -94,11 +119,21 @@ export function watchPromptTrigger(onChange: () => void): () => void {
     if (frame !== null) return;
     frame = requestAnimationFrame(() => {
       frame = null;
+      bindComposer();
       onChange();
     });
   };
 
   let watched: HTMLElement | null = null;
+  let watchedComposer: HTMLElement | null = null;
+  const composerResize = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null;
+  const bindComposer = () => {
+    const current = composerElement();
+    if (current === watchedComposer) return;
+    composerResize?.disconnect();
+    watchedComposer = current;
+    if (current) composerResize?.observe(current);
+  };
   const ballObserver = new MutationObserver(schedule);
   const bind = () => {
     const current = document.getElementById(PROMPT_TRIGGER_ELEMENT_ID);
@@ -113,16 +148,35 @@ export function watchPromptTrigger(onChange: () => void): () => void {
     }
     return true;
   };
-  // The ball is a direct child of body: only its arrival or removal matters here.
-  const mountObserver = new MutationObserver(() => {
-    if (bind()) schedule();
+  // Streaming nodes outside the composer need no selector or layout pass.
+  const mountObserver = new MutationObserver((records) => {
+    if (
+      bind() ||
+      records.some((record) => {
+        if (record.type === 'childList' && !watchedComposer?.isConnected) return true;
+        return (
+          watchedComposer &&
+          record.target instanceof Element &&
+          record.target.contains(watchedComposer)
+        );
+      })
+    )
+      schedule();
   });
   bind();
-  if (document.body) mountObserver.observe(document.body, { childList: true });
+  bindComposer();
+  if (document.body)
+    mountObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['style', 'class', 'hidden'],
+    });
 
   return () => {
     mountObserver.disconnect();
     ballObserver.disconnect();
+    composerResize?.disconnect();
     if (frame !== null) cancelAnimationFrame(frame);
     frame = null;
   };

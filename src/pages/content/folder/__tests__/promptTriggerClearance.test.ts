@@ -44,6 +44,20 @@ function placeBall(box: Box): void {
   document.body.appendChild(ball);
 }
 
+function placeComposer(
+  box: Box,
+  markup = '<form><textarea id="prompt-textarea"></textarea></form>',
+): HTMLElement {
+  const holder = document.createElement('main');
+  holder.innerHTML = markup;
+  const composer = holder.firstElementChild as HTMLElement;
+  const input = composer.querySelector<HTMLElement>('textarea, [contenteditable]')!;
+  composer.getBoundingClientRect = input.getBoundingClientRect = () =>
+    new DOMRect(box.x, box.y, box.w, box.h);
+  document.body.append(holder);
+  return composer;
+}
+
 /** Lets the ball's mutation records arrive, then the frame they schedule run. */
 function nextFrame(): Promise<void> {
   return new Promise((done) => setTimeout(() => requestAnimationFrame(() => done()), 0));
@@ -92,6 +106,113 @@ afterEach(() => {
 });
 
 describe('floating folder surfaces stay off the Prompt Manager ball', () => {
+  it.each([
+    '<form><textarea id="prompt-textarea"></textarea></form>',
+    '<form data-chatgpt-composer><div contenteditable="true" role="textbox"></div></form>',
+  ])('stacks above the ball when a beside spot would cover the ChatGPT composer (%s)', (markup) => {
+    setWindowSize(1209, 846);
+    const ball = { x: 1145, y: 782, w: 46, h: 46 };
+    const composer = { x: 430, y: 740, w: 681, h: 88 };
+    placeBall(ball);
+    placeComposer(composer, markup);
+
+    const fab = fabBox(mountFab());
+    expect(overlaps(fab, ball)).toBe(false);
+    expect(overlaps(fab, composer)).toBe(false);
+    expect(fab.y + fab.h).toBeLessThan(ball.y);
+    expect(insideViewport(fab)).toBe(true);
+  });
+
+  it('avoids a composer even when the original default does not overlap the ball', () => {
+    setWindowSize(1209, 846);
+    const ball = { x: 760, y: 780, w: 46, h: 46 };
+    const composer = { x: 1080, y: 700, w: 110, h: 132 };
+    placeBall(ball);
+    placeComposer(composer);
+
+    const fab = fabBox(mountFab());
+    expect(overlaps(fab, composer)).toBe(false);
+    expect(overlaps(fab, ball)).toBe(false);
+    expect(insideViewport(fab)).toBe(true);
+  });
+
+  it('moves a default button clear when ChatGPT mounts its composer after the FAB', async () => {
+    setWindowSize(1209, 846);
+    placeBall(cornerBall());
+    const fab = mountFab();
+    const composer = { x: 430, y: 740, w: 681, h: 88 };
+    expect(overlaps(fabBox(fab), composer)).toBe(true);
+
+    placeComposer(composer);
+    await nextFrame();
+    expect(overlaps(fabBox(fab), composer)).toBe(false);
+    expect(overlaps(fabBox(fab), cornerBall())).toBe(false);
+  });
+
+  it('follows a composer moving from the new-chat centre to the bottom during navigation', async () => {
+    setWindowSize(1209, 846);
+    placeBall(cornerBall());
+    const centred = { x: 430, y: 250, w: 681, h: 88 };
+    const composer = placeComposer(centred);
+    const fab = mountFab();
+    const bottom = { ...centred, y: 740 };
+    expect(overlaps(fabBox(fab), bottom)).toBe(true);
+
+    composer.getBoundingClientRect = () => new DOMRect(bottom.x, bottom.y, bottom.w, bottom.h);
+    composer.classList.add('bottom-composer');
+    await nextFrame();
+    expect(overlaps(fabBox(fab), bottom)).toBe(false);
+    expect(overlaps(fabBox(fab), cornerBall())).toBe(false);
+  });
+
+  it('clears the whole composer when the ball itself sits inside a tall composer', () => {
+    setWindowSize(1209, 846);
+    const ball = { x: 1145, y: 782, w: 46, h: 46 };
+    const composer = { x: 600, y: 660, w: 600, h: 170 };
+    placeBall(ball);
+    placeComposer(composer);
+
+    const fab = fabBox(mountFab());
+    expect(overlaps(fab, ball)).toBe(false);
+    expect(overlaps(fab, composer)).toBe(false);
+    expect(insideViewport(fab)).toBe(true);
+  });
+
+  it('keeps Gemini beside-the-ball placement when the ball sits left of its composer', () => {
+    setWindowSize(1200, 800);
+    const composer = { x: 730, y: 690, w: 400, h: 96 };
+    const ball = { x: 670, y: 720, w: 46, h: 46 };
+    placeBall(ball);
+    placeComposer(
+      composer,
+      '<div class="text-input-field"><rich-textarea><div contenteditable="true" role="textbox"></div></rich-textarea></div>',
+    );
+
+    const fab = fabBox(mountFab());
+    expect(overlaps(fab, composer)).toBe(false);
+    expect(overlaps(fab, ball)).toBe(false);
+    expect(fab.y + fab.h).toBeGreaterThan(ball.y);
+  });
+
+  it('avoids AI Studio input-area controls while keeping a saved spot unchanged', async () => {
+    setWindowSize(1209, 846);
+    placeBall(cornerBall());
+    const composer = { x: 430, y: 740, w: 681, h: 88 };
+    placeComposer(
+      composer,
+      '<div class="input-area"><textarea></textarea><button>Send</button></div>',
+    );
+    const defaultFab = fabBox(mountFab());
+    expect(overlaps(defaultFab, composer)).toBe(false);
+    unmountFloatingFab();
+
+    const saved = { x: 1089, y: 783 };
+    const fab = mountFab(saved);
+    document.getElementById(PROMPT_TRIGGER_ELEMENT_ID)!.style.bottom = '19px';
+    await nextFrame();
+    expect([fab.style.left, fab.style.top]).toEqual(['1089px', '783px']);
+  });
+
   it.each([
     [967, 800],
     [1440, 900],

@@ -225,9 +225,12 @@ drop, or hover layout.
   button and panel.
 - **Rule:** Default spots in `floatingModeFab.ts` and `floatingPanel.ts` go through
   `clearOfPromptTrigger` (`src/pages/content/prompt/triggerClearance.ts`): the ball's live box
-  when it is on screen, else its default slot mirrored for RTL; beside it towards the page first,
-  since the Research Pack launcher sits above it. A default button follows the corner on resize,
-  and `watchPromptTrigger` re-places it when the ball mounts or moves: Prompt Manager moves the
+  when it is on screen, else its default slot mirrored for RTL. Candidate spots must also clear
+  the visible chat input's containing control surface (`form` on ChatGPT, native input wrappers
+  on Gemini/AI Studio). Prefer beside the ball towards the page when clear, then above it; if
+  the ball is inside a tall composer, try above both. Keep Gemini's ball-next-to-composer
+  placement when it leaves room beside the ball. A default button follows the corner on resize,
+  and `watchPromptTrigger` re-places it when the ball or composer mounts, moves or resizes: Prompt Manager moves the
   ball next to Gemini's composer up to 350ms after load, after the button may already be placed.
   A position the user saved by dragging is never moved.
 - **Guard:** `src/pages/content/folder/__tests__/promptTriggerClearance.test.ts`.
