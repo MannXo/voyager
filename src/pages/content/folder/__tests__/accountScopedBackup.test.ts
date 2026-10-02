@@ -50,7 +50,6 @@ type Internals = {
   data: FolderData;
   container: HTMLElement | null;
   tree: AIStudioTree | null;
-  floatingPanelHandle: FloatingPanelHandle | null;
   accountScope: AccountScope | null;
   activeStorageKey: string;
   initializeFolderUI(): Promise<void>;
@@ -889,7 +888,9 @@ it('Gemini resets a focused floating draft on account switch and renders the loa
   extensionLocal[bKeys.live] = privateData('b');
   const harness = await makeHarness('gemini', 'a');
   const panel = mountFloatingPanel({ data: harness.data });
-  harness.manager.floatingPanelHandle = panel;
+  (
+    harness.manager as unknown as { floatingUI: { handle: FloatingPanelHandle | null } }
+  ).floatingUI.handle = panel;
   const geometry = panel.element.style.cssText;
   panel.element
     .shadowRoot!.querySelector<HTMLButtonElement>('.gv-floating-folder-panel__icon-button--create')!
