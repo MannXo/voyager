@@ -90,17 +90,17 @@ export async function resolveHeld(
       }),
     );
     const settled = await ctx.settle(key, state, next);
-    if (!settled) return { kind: 'refused', reason: 'write_failed' };
-    Object.assign(outcomes, next.outcomes);
+    const durable = settled?.meta.clients[clientId];
+    const seqs = ops.map((op) => op.seq);
+    // Only outcomes the durable watermark covers are reported (as in `drainClient`).
+    if (!settled || !durable || durable.applied < (seqs[seqs.length - 1] ?? 0)) {
+      return { kind: 'refused', reason: 'write_failed' };
+    }
+    for (const seq of seqs) outcomes[seq] = durable.outcomes[seq] ?? { kind: 'expired' };
     state = settled;
     meta = state.meta;
-    const applied = meta.clients[clientId]?.applied ?? 0;
-    await ctx.removePending(
-      clientId,
-      ops.map((op) => op.seq),
-      applied,
-    );
-    if (ops.length < HELD_CHUNK) return { kind: 'resolved', applied, outcomes };
+    await ctx.removePending(clientId, seqs, durable.applied);
+    if (ops.length < HELD_CHUNK) return { kind: 'resolved', applied: durable.applied, outcomes };
   }
 }
 

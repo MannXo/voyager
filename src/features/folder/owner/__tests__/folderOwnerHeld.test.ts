@@ -89,6 +89,41 @@ describe('held ops (§6.5, §7.8)', () => {
     expect(storedMeta(storage).clients.A.held).toBeUndefined();
   });
 
+  it.each([
+    ['one held op', 1],
+    ['a full chunk of held ops', 40],
+  ])(
+    'refuses with write_failed, never a saved outcome, when the commit of %s fails',
+    async (_name, count) => {
+      const storage = createFaultyStorage({ [KEY]: START });
+      const world = createWorld(storage);
+      const tab = new TestClient(world, 'A');
+      await tab.open(world.process());
+      tab.accept(...Array.from({ length: count }, (_, n) => rename('F', `n${n}`)));
+      world.advance(1000);
+      storage.write(
+        KEY,
+        folderData([...START.folders, folder('X', 'Foreign')], START.folderContents),
+      );
+      await world.process().drain(KEY);
+      // Every K + meta write fails after its intent landed.
+      storage.failWhen((op, keys) => op === 'set' && keys.includes(ownerMetaKey(KEY)));
+
+      const reply = await world.process().held({
+        key: KEY,
+        clientId: 'panel',
+        heldClientId: 'A',
+        decision: 'apply',
+      });
+
+      expect(reply).toEqual({ kind: 'refused', reason: 'write_failed' });
+      storage.failWhen(null);
+      expect(storedData(storage).folders[0].name).toBe('A');
+      expect(storedMeta(storage).clients.A).toMatchObject({ applied: 0 });
+      expect(pendingKeys(storage)).toHaveLength(count);
+    },
+  );
+
   it('T9: an accepted op 40 days old with no foreign write since is drained and applied', async () => {
     const storage = createFaultyStorage({ [KEY]: START });
     const world = createWorld(storage);
