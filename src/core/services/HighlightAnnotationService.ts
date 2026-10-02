@@ -1,10 +1,5 @@
-import {
-  DEFAULT_STORAGE_SOFT_CAP_MB,
-  STORAGE_QUOTA_SOFT_CAP_KEY,
-  STORAGE_SOFT_CAP_OPTIONS_MB,
-  type StorageSoftCapMb,
-  storageQuotaService,
-} from '@/core/services/StorageQuotaService';
+import { storageQuotaService } from '@/core/services/StorageQuotaService';
+import { measureSoftCap, utf8Bytes } from '@/core/services/highlightSoftCap';
 import type {
   HighlightAccountScope,
   HighlightClearMarkerV1,
@@ -27,10 +22,7 @@ import {
   isHighlightRecordV1,
 } from '@/core/types/highlight';
 import { hashString } from '@/core/utils/hash';
-
-const MEBIBYTE = 1024 * 1024;
-const MINIMUM_STORAGE_RESERVE_BYTES = 512 * 1024;
-const STORAGE_RESERVE_RATIO = 0.1;
+import { type StorageBudget, storageBudget } from '@/features/storage/storageBudget';
 
 export type HighlightScope = HighlightAccountScope | HighlightStoredAccountScope;
 
@@ -106,6 +98,8 @@ export interface HighlightAnnotationServiceDependencies {
   storage?: HighlightStorageAdapter;
   now?: () => number;
   randomUUID?: () => string;
+  /** The background's storage budget: each commit checks and writes in one of its steps (F2). */
+  budget?: Pick<StorageBudget, 'runChecked'>;
 }
 
 interface ExtensionStorageAreaLike {
@@ -135,20 +129,6 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
     value !== null &&
     typeof (value as PromiseLike<unknown>).then === 'function'
   );
-}
-
-function utf8Bytes(value: string): number {
-  return new TextEncoder().encode(value).byteLength;
-}
-
-function serializedItemBytes(key: string, value: unknown): number {
-  return utf8Bytes(JSON.stringify({ [key]: value }));
-}
-
-function normalizeSoftCap(value: unknown): StorageSoftCapMb {
-  return STORAGE_SOFT_CAP_OPTIONS_MB.includes(value as StorageSoftCapMb)
-    ? (value as StorageSoftCapMb)
-    : DEFAULT_STORAGE_SOFT_CAP_MB;
 }
 
 function compareStrings(left: string, right: string): number {
@@ -755,65 +735,16 @@ export class HighlightAnnotationService {
 
   private async assertWithinSoftCap(
     setItems: Record<string, unknown>,
-    removeKeys: readonly string[] = [],
-    options: { allowOverCapGrowth?: boolean } = {},
+    removeKeys: readonly string[],
+    options: { allowOverCapGrowth?: boolean },
+    reservedBytes: number,
   ): Promise<void> {
-    const affectedKeys = Array.from(new Set([...Object.keys(setItems), ...removeKeys]));
-    const keysToRead = Array.from(new Set([...affectedKeys, STORAGE_QUOTA_SOFT_CAP_KEY]));
-    let currentItems = await this.storage.get(this.storage.getBytesInUse ? keysToRead : null);
-    let currentBytes: number | null = null;
-    if (this.storage.getBytesInUse) {
-      try {
-        const measured = await this.storage.getBytesInUse(null);
-        if (Number.isFinite(measured) && measured >= 0) currentBytes = measured;
-      } catch {
-        // Fall back to a complete deterministic estimate below.
-      }
-    }
-    if (currentBytes === null) {
-      if (this.storage.getBytesInUse) currentItems = await this.storage.get(null);
-      currentBytes = utf8Bytes(JSON.stringify(currentItems));
-    }
-
-    const softCapMb = normalizeSoftCap(currentItems[STORAGE_QUOTA_SOFT_CAP_KEY]);
-    const configuredSoftCapBytes = softCapMb * MEBIBYTE;
-    const runtimeQuotaBytes = await this.storage.getEffectiveQuotaBytes?.();
-    const softCapBytes =
-      typeof runtimeQuotaBytes === 'number'
-        ? Math.min(configuredSoftCapBytes, runtimeQuotaBytes)
-        : configuredSoftCapBytes;
-    const reserveBytes = Math.max(
-      MINIMUM_STORAGE_RESERVE_BYTES,
-      Math.ceil(softCapBytes * STORAGE_RESERVE_RATIO),
-    );
-    const usableBytes = softCapBytes - reserveBytes;
-    let oldAffectedBytes = 0;
-    for (const key of affectedKeys) {
-      if (key in currentItems) oldAffectedBytes += serializedItemBytes(key, currentItems[key]);
-    }
-    const newAffectedBytes = Object.entries(setItems).reduce(
-      (sum, [key, value]) => sum + serializedItemBytes(key, value),
-      0,
-    );
-    const projectedBytes = Math.max(0, currentBytes - oldAffectedBytes + newAffectedBytes);
-
-    if (
-      projectedBytes > usableBytes &&
-      projectedBytes > currentBytes &&
-      options.allowOverCapGrowth !== true
-    ) {
+    const verdict = await measureSoftCap(this.storage, setItems, removeKeys, reservedBytes);
+    if (verdict.exceeds && options.allowOverCapGrowth !== true) {
       throw new HighlightAnnotationError(
         'SOFT_CAP_REACHED',
         'Highlight was not saved because the local storage safety reserve would be crossed',
-        {
-          currentBytes,
-          projectedBytes,
-          softCapBytes,
-          configuredSoftCapBytes,
-          runtimeQuotaBytes,
-          reserveBytes,
-          softCapMb,
-        },
+        verdict.context,
       );
     }
   }
@@ -823,9 +754,13 @@ export class HighlightAnnotationService {
     removeKeys: readonly string[] = [],
     options: { allowOverCapGrowth?: boolean } = {},
   ): Promise<void> {
-    await this.assertWithinSoftCap(setItems, removeKeys, options);
-    if (Object.keys(setItems).length > 0) await this.storage.set(setItems);
-    if (removeKeys.length > 0) await this.storage.remove(removeKeys);
+    const step = async (reservedBytes: number) => {
+      await this.assertWithinSoftCap(setItems, removeKeys, options, reservedBytes);
+      if (Object.keys(setItems).length > 0) await this.storage.set(setItems);
+      if (removeKeys.length > 0) await this.storage.remove(removeKeys);
+    };
+    const budget = this.dependencies.budget;
+    await (budget ? budget.runChecked(step) : step(0));
   }
 
   private validateRecord(record: HighlightRecordV1): void {
@@ -1412,4 +1347,6 @@ export class HighlightAnnotationService {
   }
 }
 
-export const highlightAnnotationService = new HighlightAnnotationService();
+export const highlightAnnotationService = new HighlightAnnotationService({
+  budget: storageBudget,
+});

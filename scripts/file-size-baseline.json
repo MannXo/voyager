@@ -3,7 +3,7 @@
   "files": {
     "src/core/services/__tests__/GoogleDriveSyncService.test.ts": 1142,
     "src/core/services/GoogleDriveSyncService.ts": 1680,
-    "src/core/services/HighlightAnnotationService.ts": 1415,
+    "src/core/services/HighlightAnnotationService.ts": 1352,
     "src/features/export/services/__tests__/DOMContentExtractor.test.ts": 1960,
     "src/features/export/services/DOMContentExtractor.ts": 1495,
     "src/features/export/services/PDFPrintService.ts": 1188,
