@@ -32,9 +32,10 @@ function devBuildReadyPlugin(): Plugin | null {
   let previousAssets = new Set<string>();
   let canPruneAssets = false;
   let buildLock: DevBuildLock | null = null;
-  const releaseBuildLock = () => {
-    buildLock?.release();
+  const releaseBuildLock = async () => {
+    const lock = buildLock;
     buildLock = null;
+    await lock?.release();
   };
 
   return {
@@ -46,8 +47,10 @@ function devBuildReadyPlugin(): Plugin | null {
       // nodemon watcher rebuilds) would let Chrome reload into a half-written
       // dist, or prune the generation Chrome just loaded. Wait for the other
       // build to commit, then read its manifest below.
-      buildLock = await acquireDevBuildLock(resolve(outDir, '.voyager-build-lock'), {
+      buildLock = await acquireDevBuildLock(outDir, {
         onWait: (pid) => console.warn(`[voyager] Waiting for dev build ${pid} to finish...`),
+        onForeignListener: (port) =>
+          console.warn(`[voyager] Port ${port} is held by another program; building unlocked.`),
       });
       const hadPreviousManifest = existsSync(viteManifestPath);
       previousAssets = readViteManifestAssetPaths(viteManifestPath);
@@ -56,7 +59,7 @@ function devBuildReadyPlugin(): Plugin | null {
       // safe to remove.
       canPruneAssets = shouldPruneDevBuildAssets(hadPreviousManifest, previousAssets.size);
     },
-    writeBundle(_options, bundle) {
+    async writeBundle(_options, bundle) {
       if (canPruneAssets) {
         const currentAssets = collectBundleAssetPaths(Object.keys(bundle));
         const staticAssets = collectStaticAssetPaths(resolve(__dirname, 'public', 'assets'));
@@ -70,7 +73,7 @@ function devBuildReadyPlugin(): Plugin | null {
       // only after Rollup has finished writing every asset and stale generations
       // have been pruned, so Chrome never reloads against a half-written bundle.
       writeFileSync(resolve(outDir, '.voyager-build-ready'), `${Date.now()}\n`);
-      releaseBuildLock();
+      await releaseBuildLock();
     },
     closeBundle: releaseBuildLock,
   };

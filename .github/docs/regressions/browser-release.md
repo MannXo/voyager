@@ -162,8 +162,11 @@ behavior, or bundled public assets.
   and then disable the extension. Single builds, one-off or watcher, were never affected.
 - **Rule:** Serialize Chrome dev builds that share an outDir from `buildStart` until the
   `.voyager-build-ready` marker is written, so each build snapshots the previous committed
-  generation and writes nothing while Chrome reloads into another build.
-- **Guard:** `scripts/dev-build-lock.test.ts` covers waiting for the holder, taking over a dead
-  build's lock and never removing another build's lock. For a live check, start two
-  `__DEV__=true bunx vite build --config vite.config.chrome.ts --mode development` runs about one
-  second apart with a content change and confirm a refreshed matching tab runs the second build.
+  generation and writes nothing while Chrome reloads into another build. Use a lock the OS releases
+  with its holder (a loopback port), not a lock file: a stale file needs a takeover step that two
+  waiters can race on, and a stored PID can be reused by an unrelated process.
+- **Guard:** `scripts/dev-build-lock.test.ts` covers waiting on another process, exactly one waiter
+  entering after the holder is SIGKILLed, and not waiting forever on an unrelated listener. For a
+  live check, start two `__DEV__=true bunx vite build --config vite.config.chrome.ts --mode
+development` runs about one second apart with a content change and confirm a refreshed matching
+  tab runs the second build.
