@@ -83,9 +83,6 @@ export class DataBackupService<T = unknown> {
   private readonly slotVersions = new Map<string, number>();
   /** Last measured extension-storage use, raised by each copy accepted since. */
   private headroom: { bytesInUse: number; limitBytes: number } | null = null;
-  /** Slots that may hold an extension-storage copy: found once per context, or sent since. */
-  private readonly storedSlots = new Set<string>();
-  private slotProbe: Promise<void> | null = null;
 
   constructor(
     private readonly namespace: string,
@@ -137,7 +134,6 @@ export class DataBackupService<T = unknown> {
    */
   private queueExtensionWrite(key: string, value: string | null): Promise<boolean> {
     const version = this.nextVersion(key);
-    if (value !== null) this.storedSlots.add(key);
     const replaced = this.queuedWrites.get(key);
     this.queuedWrites.delete(key);
     return new Promise((resolve) => {
@@ -214,10 +210,7 @@ export class DataBackupService<T = unknown> {
   private async removeExtensionCopy(key: string, version: number): Promise<boolean> {
     try {
       await browser.storage.local.remove(key);
-      if (this.slotVersions.get(key) === version) {
-        this.durableBackups.delete(key);
-        this.storedSlots.delete(key);
-      }
+      if (this.slotVersions.get(key) === version) this.durableBackups.delete(key);
       return true;
     } catch (error) {
       console.warn(`[BackupService:${this.namespace}] Durable copy removal failed:`, error);
@@ -231,7 +224,6 @@ export class DataBackupService<T = unknown> {
    */
   private writeExtensionCopyNow(key: string, value: string): Promise<boolean> {
     const version = this.nextVersion(key);
-    this.storedSlots.add(key);
     const replaced = this.queuedWrites.get(key);
     this.queuedWrites.delete(key);
     const cached = this.durableBackups.get(key);
@@ -242,31 +234,11 @@ export class DataBackupService<T = unknown> {
     return this.track(write);
   }
 
-  /** Remove a slot's extension-storage copy once page storage holds a newer one. */
-  private async dropStaleCopy(key: string): Promise<void> {
-    const version = this.slotVersions.get(key);
-    this.slotProbe ??= this.probeStoredSlots();
-    await this.slotProbe;
-    // A copy queued meanwhile is newer than the page write and owns the slot.
-    if (this.slotVersions.get(key) !== version || !this.storedSlots.has(key)) return;
-    await this.queueExtensionWrite(key, null);
-  }
-
-  /** One read per context: an earlier page may have left fallback copies behind. */
-  private async probeStoredSlots(): Promise<void> {
-    const keys = [this.primaryKey, this.emergencyKey, this.beforeUnloadKey];
-    try {
-      const stored = await browser.storage.local.get(keys);
-      for (const key of keys) if (key in stored) this.storedSlots.add(key);
-    } catch {
-      for (const key of keys) this.storedSlots.add(key);
-    }
-  }
-
   /**
    * Write a slot to localStorage, and to extension storage when Safari mirrors it
-   * or page storage rejected it. A page write that lands supersedes any older
-   * fallback copy, so that copy is removed rather than left for recovery.
+   * or page storage rejected it. An older extension copy left beside a newer page
+   * copy is harmless: recovery takes the newest valid copy of each slot, and
+   * another tab may have just written a newer one there.
    */
   private async writeBackup(key: string, serialized: string, now = false): Promise<boolean> {
     let localSaved = false;
@@ -277,10 +249,7 @@ export class DataBackupService<T = unknown> {
     } catch (error) {
       console.warn(`[BackupService:${this.namespace}] Local backup write failed:`, error);
     }
-    if (localSaved && !this.useDurableMirror) {
-      void this.track(this.dropStaleCopy(key));
-      return true;
-    }
+    if (localSaved && !this.useDurableMirror) return true;
     const durableSaved = await (now
       ? this.writeExtensionCopyNow(key, serialized)
       : this.queueExtensionWrite(key, serialized));

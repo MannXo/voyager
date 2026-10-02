@@ -320,22 +320,26 @@ describe('DataBackupService quota fallback', () => {
     expect(service.recoverFromBackup()).toBeNull();
     expect(Object.keys(durableStore)).toHaveLength(0);
   });
-  it('removes an earlier page fallback copy once a newer page write of the slot lands', async () => {
+  it("recovers another tab's newer fallback beside an older page copy", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:02Z'));
     const pageFull = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
       throw new DOMException('Storage full', 'QuotaExceededError');
     });
-    const earlier = new DataBackupService<Sample>('test-ns');
-    expect(await earlier.createEmergencyBackup({ folders: [1] })).toBe(true);
-    expect(durableStore).toHaveProperty(EMERGENCY_KEY);
+    const newer: Sample = { folders: Array(300).fill(2) };
+    expect(await new DataBackupService<Sample>('test-ns').createEmergencyBackup(newer)).toBe(true);
 
+    // The other tab took its smaller snapshot first; its page write lands afterwards.
     pageFull.mockRestore();
-    const later = new DataBackupService<Sample>('test-ns');
-    const newer: Sample = { folders: [2] };
-    expect(await later.createEmergencyBackup(newer)).toBe(true);
-    await later.ensureHydrated();
+    vi.setSystemTime(new Date('2026-01-01T00:00:01Z'));
+    const olderTab = new DataBackupService<Sample>('test-ns');
+    expect(await olderTab.createEmergencyBackup({ folders: [1] })).toBe(true);
+    await olderTab.ensureHydrated();
 
-    expect(durableStore).not.toHaveProperty(EMERGENCY_KEY);
-    expect(later.recoverFromBackup()).toEqual(newer);
+    vi.setSystemTime(new Date('2026-01-01T00:00:03Z'));
+    const reader = new DataBackupService<Sample>('test-ns');
+    await reader.ensureHydrated();
+    expect(reader.recoverFromBackup()).toEqual(newer);
   });
 
   it('skips a fallback copy that would not leave the reserve free for other data', async () => {

@@ -564,8 +564,9 @@ is merged again`, the pin and unpin round trips), `src/utils/mergePrompts.test.t
   awaiting them inside the save chain lets one hung write stall every later save.
 - **Rule:** Try localStorage first without deleting an older slot for space, then use the same
   serialized slot in extension storage on failure, but only when `getLocalHeadroom` shows the copy
-  still leaves the backup reserve free; otherwise skip it and report `false`. Once a page write of a
-  slot lands, remove that slot's older extension copy. Keep backups out of the save chain (never
+  still leaves the backup reserve free; otherwise skip it and report `false`. Never remove an extension
+  copy because a page write landed: another tab may have just written a newer one there, and
+  recovery already takes the newest valid copy of each slot. Keep backups out of the save chain (never
   await them before a save settles) while the backup service orders its own writes per slot; send
   the unload copy synchronously from the event. Recovery reads validated copies from both stores,
   with a bounded wait for writes in flight, preserving slot priority and account namespaces.
