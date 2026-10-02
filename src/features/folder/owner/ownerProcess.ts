@@ -1,7 +1,7 @@
 import type { FolderData } from '@/core/types/folder';
 
 import { applyFolderOp } from './applyFolderOp';
-import { type OpOutcome, parseFolderOpBody, rejected } from './folderOps';
+import { type FolderOpBody, type OpOutcome, parseFolderOpBody, rejected } from './folderOps';
 import type { FolderSitePolicy } from './folderOwnerPolicy';
 import type {
   ClientRecord,
@@ -80,6 +80,8 @@ export function processOps(
   policy: FolderSitePolicy,
   now: number,
   contact: { ackedThrough: number } | null,
+  /** An outcome that replaces applying a valid body: the user's held/journal decisions (§7.8). */
+  refuse: (body: FolderOpBody) => OpOutcome | null = () => null,
 ): Processed {
   const client: ClientRecord = { ...meta.clients[clientId] };
   const stored = { ...client.outcomes };
@@ -91,9 +93,11 @@ export function processOps(
       continue;
     }
     const body = op.body === INVALID_BODY ? null : parseFolderOpBody(op.body);
-    const result = body
-      ? applyFolderOp(data ?? { folders: [], folderContents: {} }, body, policy, now)
-      : { data, outcome: rejected('invalid_payload') };
+    const refused = body && refuse(body);
+    const result =
+      body && !refused
+        ? applyFolderOp(data ?? { folders: [], folderContents: {} }, body, policy, now)
+        : { data, outcome: refused || rejected('invalid_payload') };
     if (result.outcome.kind === 'saved') data = result.data;
     client.applied = op.seq;
     stored[op.seq] = result.outcome;

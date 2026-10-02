@@ -1,6 +1,7 @@
 import type { FolderData } from '@/core/types/folder';
 
 import type { OpOutcome } from './folderOps';
+import type { AdoptJournalReply, HeldDecision, HeldReply } from './ownerHeld';
 
 /** `gvFolderOwner:pending:<clientId>:<seq>`: written once by the client, deleted once by the owner. */
 export interface PendingOpEntry {
@@ -78,6 +79,22 @@ export type SnapshotReply =
   | ({ kind: 'invalid' } & SnapshotBase)
   | { kind: 'refused'; reason: 'read_failed' | 'not_owner' | 'write_failed' };
 
+/** The user's decision on one held client's ops (§7.8). */
+export interface HeldRequest {
+  key: string;
+  clientId: string;
+  heldClientId: string;
+  decision: HeldDecision;
+}
+
+/** Ops a dead page journaled, which the user chose to apply (§6.5). */
+export interface AdoptJournalRequest {
+  key: string;
+  clientId: string;
+  journalClientId: string;
+  ops: Array<{ seq: number; body: unknown }>;
+}
+
 /** Outcomes the client delivered; held in memory and folded into the next commit of `key`. */
 export interface AckRequest {
   key: string;
@@ -90,13 +107,17 @@ export const FOLDER_OWNER_MESSAGE = {
   apply: 'gv.folderOwner.apply',
   snapshot: 'gv.folderOwner.snapshot',
   ack: 'gv.folderOwner.ack',
+  held: 'gv.folderOwner.held',
+  adoptJournal: 'gv.folderOwner.adoptJournal',
 } as const;
 
 export type FolderOwnerRequest =
   | ({ type: typeof FOLDER_OWNER_MESSAGE.open } & OpenRequest)
   | ({ type: typeof FOLDER_OWNER_MESSAGE.apply } & ApplyRequest)
   | ({ type: typeof FOLDER_OWNER_MESSAGE.snapshot } & SnapshotRequest)
-  | ({ type: typeof FOLDER_OWNER_MESSAGE.ack } & AckRequest);
+  | ({ type: typeof FOLDER_OWNER_MESSAGE.ack } & AckRequest)
+  | ({ type: typeof FOLDER_OWNER_MESSAGE.held } & HeldRequest)
+  | ({ type: typeof FOLDER_OWNER_MESSAGE.adoptJournal } & AdoptJournalRequest);
 
 /** The sender gate's refusal (§6.8), sent before any turn runs. */
 export interface GateRefusal {
@@ -108,6 +129,8 @@ export type FolderOwnerResponse =
   | OpenReply
   | ApplyReply
   | SnapshotReply
+  | HeldReply
+  | AdoptJournalReply
   | { kind: 'acknowledged' }
   /** A message of ours whose fields do not parse. */
   | { kind: 'bad_request' }

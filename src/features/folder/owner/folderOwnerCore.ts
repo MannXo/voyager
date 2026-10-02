@@ -5,9 +5,11 @@ import { canonicalJson } from './canonicalHash';
 import type { OpOutcome } from './folderOps';
 import type {
   AckRequest,
+  AdoptJournalRequest,
   ApplyReply,
   ApplyRequest,
   HeldClient,
+  HeldRequest,
   OpenReply,
   OpenRequest,
   SnapshotReply,
@@ -39,6 +41,13 @@ import {
 import { bulkProcessed, isBulkBody, newBulkOp, runBulkOp } from './ownerBulk';
 import { GC_INTERVAL_MS, collect } from './ownerCollect';
 import { drainKey } from './ownerDrain';
+import {
+  type AdoptJournalReply,
+  type HeldReply,
+  type TurnRefusal,
+  adoptJournal,
+  resolveHeld,
+} from './ownerHeld';
 import {
   type OwnerTurnContext,
   type Processed,
@@ -74,6 +83,8 @@ export interface FolderOwnerCore {
   snapshot(request: SnapshotRequest): Promise<SnapshotReply>;
   /** Never writes on its own: the ack rides on the next commit of its key (§6.3). */
   ack(request: AckRequest): void;
+  held(request: HeldRequest): Promise<HeldReply>;
+  adoptJournal(request: AdoptJournalRequest): Promise<AdoptJournalReply>;
 }
 
 const isContiguous = (ops: ReadonlyArray<{ seq: number }>): boolean =>
@@ -291,6 +302,13 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
     };
   }
 
+  /** A resolved, valid state for a recovery-panel turn, or why there is none. */
+  async function readyFor(key: string): Promise<ReadyState | TurnRefusal> {
+    const state = await resolve(key);
+    if (state.kind === 'invalid') return 'invalid_state';
+    return state.kind === 'ready' ? state : state.kind;
+  }
+
   async function snapshotTurn(request: SnapshotRequest): Promise<SnapshotReply> {
     const state = await resolve(request.key);
     if (state.kind === 'read_failed' || state.kind === 'write_failed') {
@@ -326,6 +344,25 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
       const policy = policyFor(request.key);
       if (!policy) return Promise.resolve({ kind: 'refused', reason: 'not_owner' });
       return serialize(() => applyTurn(request, policy));
+    },
+    held(request) {
+      const policy = policyFor(request.key);
+      if (!policy) return Promise.resolve({ kind: 'refused', reason: 'not_owner' });
+      return serialize(async () => {
+        const state = await readyFor(request.key);
+        if (typeof state === 'string') return { kind: 'refused', reason: state };
+        const { key, heldClientId, decision } = request;
+        return resolveHeld(ctx, key, state, heldClientId, decision, policy);
+      });
+    },
+    adoptJournal(request) {
+      const policy = policyFor(request.key);
+      if (!policy) return Promise.resolve({ kind: 'refused', reason: 'not_owner' });
+      return serialize(async () => {
+        const state = await readyFor(request.key);
+        if (typeof state === 'string') return { kind: 'refused', reason: state };
+        return adoptJournal(ctx, request.key, state, request, policy, newId);
+      });
     },
     async drain(key) {
       const policy = policyFor(key);

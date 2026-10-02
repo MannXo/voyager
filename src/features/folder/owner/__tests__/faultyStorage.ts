@@ -71,6 +71,11 @@ export function createFaultyStorage(initial: Record<string, unknown> = {}) {
       for (const key of keys) if (store.has(key)) result[key] = clone(store.get(key));
       return result;
     },
+    async getAll() {
+      const fault = await enter('get', ['*']);
+      if (fault) fail(fault);
+      return Object.fromEntries([...store].map(([key, value]) => [key, clone(value)]));
+    },
     async set(items) {
       const fault = await enter('set', Object.keys(items));
       const changes: Changes = {};

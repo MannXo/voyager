@@ -28,6 +28,7 @@ type Authority = Readonly<Record<FolderSite, FolderAuthority>>;
 
 export const localFolderArea: FolderOwnerStorageArea = {
   get: (keys) => chrome.storage.local.get(keys),
+  getAll: () => chrome.storage.local.get(null),
   set: (items) => chrome.storage.local.set(items),
   remove: (keys) => chrome.storage.local.remove(keys),
 };

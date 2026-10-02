@@ -53,6 +53,13 @@ describe('running-build authority (R5.1)', () => {
       reason: 'not_owner',
     });
     await rolledBack.drain(AI_STUDIO);
+    const held = { key: AI_STUDIO, clientId: 'S', heldClientId: 'S', decision: 'apply' as const };
+    await expect(rolledBack.held(held)).resolves.toEqual({ kind: 'refused', reason: 'not_owner' });
+    const journal = { key: AI_STUDIO, clientId: 'S', journalClientId: 'S', ops: [] };
+    await expect(rolledBack.adoptJournal(journal)).resolves.toEqual({
+      kind: 'refused',
+      reason: 'not_owner',
+    });
 
     expect(storage.calls()).toBe(calls);
     expect(storage.read(ownerMetaKey(AI_STUDIO))).toEqual(meta);

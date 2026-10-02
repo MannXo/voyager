@@ -61,7 +61,7 @@ function readChunk(
 }
 
 /** Accepted ops of one client, from its watermark on, in chunks; stops at a held op. */
-async function drainClient(
+export async function drainClient(
   ctx: OwnerTurnContext,
   key: string,
   start: ReadyState,

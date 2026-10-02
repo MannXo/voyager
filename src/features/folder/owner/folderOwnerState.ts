@@ -3,10 +3,13 @@ import type { FolderData } from '@/core/types/folder';
 import { resolveBundleIntent } from './bundleIntent';
 import { canonicalJson, hashValue } from './canonicalHash';
 import type { OpOutcome } from './folderOps';
+import { orphanedClients } from './ownerEpochScan';
 
 /** `chrome.storage.local` (`browser.storage.local` on Safari), injected so faults can be simulated. */
 export interface FolderOwnerStorageArea {
   get(keys: string[]): Promise<Record<string, unknown>>;
+  /** Every stored item; only the rare epoch-creation scan uses it (§7.8). */
+  getAll(): Promise<Record<string, unknown>>;
   set(items: Record<string, unknown>): Promise<void>;
   remove(keys: string[]): Promise<void>;
 }
@@ -202,7 +205,8 @@ export async function resolveOwnerState(
       // New epoch. The index entry goes first: an index entry without meta is harmless.
       const index = Array.isArray(stored[OWNER_INDEX_KEY]) ? stored[OWNER_INDEX_KEY] : [];
       if (!index.includes(key)) await area.set({ [OWNER_INDEX_KEY]: [...index, key] });
-      meta = { v: 1, epoch: newId(), rev: 1, dataHash: hash, clients: {}, retired: {} };
+      const clients = orphanedClients(await area.getAll(), key, now);
+      meta = { v: 1, epoch: newId(), rev: 1, dataHash: hash, clients, retired: {} };
       await area.set({ [metaKey]: meta });
     }
   } catch {

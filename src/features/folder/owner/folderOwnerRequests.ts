@@ -45,6 +45,25 @@ export function parseFolderOwnerRequest(message: unknown): FolderOwnerRequest | 
         ackedThrough: m.ackedThrough,
         ...(m.epoch === undefined ? {} : { epoch: m.epoch }),
       };
+    case FOLDER_OWNER_MESSAGE.held:
+      if (!isId(m.heldClientId) || (m.decision !== 'apply' && m.decision !== 'discard'))
+        return null;
+      return {
+        type: FOLDER_OWNER_MESSAGE.held,
+        key,
+        clientId,
+        heldClientId: m.heldClientId,
+        decision: m.decision,
+      };
+    case FOLDER_OWNER_MESSAGE.adoptJournal:
+      if (!isId(m.journalClientId) || !Array.isArray(m.ops) || !m.ops.every(isSeqOp)) return null;
+      return {
+        type: FOLDER_OWNER_MESSAGE.adoptJournal,
+        key,
+        clientId,
+        journalClientId: m.journalClientId,
+        ops: m.ops.map(({ seq, body }) => ({ seq, body })),
+      };
     default:
       if (!isWatermark(m.ackedThrough) || !isId(m.epoch)) return null;
       if (!Array.isArray(m.ops) || !m.ops.every(isSeqOp)) return null;
@@ -74,5 +93,9 @@ export async function dispatchFolderOwnerRequest(
     case FOLDER_OWNER_MESSAGE.ack:
       core.ack(request);
       return { kind: 'acknowledged' };
+    case FOLDER_OWNER_MESSAGE.held:
+      return core.held(request);
+    case FOLDER_OWNER_MESSAGE.adoptJournal:
+      return core.adoptJournal(request);
   }
 }
