@@ -5,6 +5,7 @@ import {
   resetFolderViewBrowserMocks,
 } from './__tests__/folderViewHarness';
 import { mountSidebar } from './__tests__/sidebarRuntimeHarness';
+import { sidebarTree } from './__tests__/sidebarTreeDriver';
 
 vi.mock('webextension-polyfill', () => ({ default: chrome }));
 vi.mock('@/utils/i18n', () => ({
@@ -15,6 +16,9 @@ vi.mock('@/utils/i18n', () => ({
     key === 'folder_multi_select_count' ? '{count} selected' : key,
   initI18n: () => Promise.resolve(),
 }));
+
+/** A folder chat the selection marks as selected shows it on its row. */
+const SELECTED_FOLDER_ROW = 'gv-floating-folder-panel__conv--selected';
 
 function pointer(target: EventTarget, type: string, x: number, y: number): void {
   target.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: y }));
@@ -54,7 +58,7 @@ describe('FolderSelection toolbar lifetime', () => {
   });
 
   async function selectFolderConversation(): Promise<void> {
-    const row = harness.runtime.panel!.querySelector<HTMLElement>('.gv-folder-conversation')!;
+    const row = sidebarTree(harness.runtime.panel).conversationRow('root', 'Saved conversation');
     pointer(row, 'mousedown', 0, 0);
     await vi.advanceTimersByTimeAsync(500);
     pointer(row, 'mouseup', 0, 0);
@@ -136,7 +140,7 @@ describe('FolderSelection toolbar lifetime', () => {
         });
       const first =
         source === 'folder'
-          ? harness.runtime.panel!.querySelector<HTMLElement>('.gv-folder-conversation')!
+          ? sidebarTree(harness.runtime.panel).conversationRow('root', 'Saved conversation')
           : nativeRows(harness.runtime.sidebar!)[0];
       pointer(first, 'mousedown', 0, 0);
       await vi.advanceTimersByTimeAsync(500);
@@ -154,18 +158,19 @@ describe('FolderSelection toolbar lifetime', () => {
       expect(panel.querySelector('[data-selection-count="true"]')?.textContent).toBe('1 selected');
       expect(panel.querySelector('.gv-multi-select-delete-btn')).not.toBeNull();
       expect(panel.querySelector('.gv-multi-select-exit-btn')).not.toBeNull();
-      const rows =
-        source === 'folder'
-          ? Array.from(panel.querySelectorAll<HTMLElement>('.gv-folder-conversation'))
-          : replacementNativeRows;
-      expect(
-        rows[0].classList.contains(
-          source === 'folder' ? 'gv-folder-conversation-selected' : 'gv-conversation-selected',
-        ),
-      ).toBe(true);
+      const tree = () => sidebarTree(panel);
+      if (source === 'folder') {
+        expect(
+          tree()
+            .conversationRow('root', 'Saved conversation')
+            .classList.contains(SELECTED_FOLDER_ROW),
+        ).toBe(true);
+      } else {
+        expect(replacementNativeRows[0].classList.contains('gv-conversation-selected')).toBe(true);
+      }
       const navigate = vi.spyOn(harness.navigation, 'navigate').mockImplementation(() => {});
-      if (source === 'folder') rows[1].querySelector<HTMLAnchorElement>('a')!.click();
-      else rows[1].click();
+      if (source === 'folder') tree().titleButton('root', 'Second conversation').click();
+      else replacementNativeRows[1].click();
       expect(navigate).not.toHaveBeenCalled();
       expect(panel.querySelector('[data-selection-count="true"]')?.textContent).toBe('2 selected');
       panel.querySelector<HTMLButtonElement>('.gv-multi-select-exit-btn')!.click();

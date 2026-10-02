@@ -1061,6 +1061,19 @@ verdict while the tab is hidden`) and `src/pages/content/nativeHealth/__tests__/
   `src/pages/content/folder/__tests__/FolderTransferController.test.ts` and
   `src/pages/content/folder/__tests__/aistudioPersistence.test.ts`.
 
+## Site filters must walk the cycle-cut layout, not stored parents
+
+- **Trap:** Gemini's old sidebar tree started from folders with `parentId === null` and found
+  children by stored parent, so folders whose parents form a cycle had no root and vanished. A
+  search or account filter that walks stored parents the same way hides them again, even though the
+  shared tree lays them out.
+- **Rule:** A tree site filter (`TreeSiteOptions.filter`) receives the projection's `FolderLayout`
+  and walks `layout.roots` and `layout.children` only (`sidebarFilter.ts`). Never derive roots or
+  children from `parentId` in a view.
+- **Guard:** `src/pages/content/folder/__tests__/sidebarFolderCycles.test.ts` (unfiltered and
+  searched) and `src/pages/content/folder/__tests__/folderTreeSiteOptions.test.ts`
+  (`keeps folders whose parents form a cycle`).
+
 ## Headless Tree keeps hotkeys pressed when a keyup never reaches `document`
 
 - **Trap:** Headless Tree's `hotkeysCoreFeature` adds keys to its pressed set on the tree's keydown

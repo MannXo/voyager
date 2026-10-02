@@ -73,8 +73,9 @@ The ChatGPT surfaces get the same datasets with ChatGPT ids (`chatgpt:conv:<uuid
   counts samples over 50 ms instead.
 - **DOM elements** are counted after mount, including elements inside open shadow roots.
 - **Surfaces:**
-  - **Gemini sidebar:** the real `FolderTreeView` and `FolderSidebarRuntime`, mounted in a fake
-    Gemini sidebar.
+  - **Gemini sidebar:** the real `FolderSidebarView` and `FolderSidebarRuntime`, mounted in a fake
+    Gemini sidebar. The baseline tables below predate the switch to the shared tree and were taken
+    on its predecessor, `FolderTreeView`.
   - **Floating panel:** `mountFloatingPanel`. The AI Studio sidebar uses the same shared
     `FolderTree`, so these numbers cover it too.
   - **ChatGPT:** `ChatGptFolderSection`, `openFolderPicker`, and `ChatGptHideFiled` (its

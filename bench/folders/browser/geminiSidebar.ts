@@ -1,5 +1,5 @@
 /**
- * Gemini's sidebar folder panel (`FolderTreeView`), composed from the
+ * Gemini's sidebar folder panel (`FolderSidebarView`), composed from the
  * production owners the way the content script composes them, over in-memory
  * storage. Mirrors `src/pages/content/folder/__tests__/folderViewHarness.ts`
  * without vitest.
@@ -9,9 +9,9 @@ import { FolderFeedback } from '@/pages/content/folder/FolderFeedback';
 import { FolderNavigation } from '@/pages/content/folder/FolderNavigation';
 import { FolderSelection } from '@/pages/content/folder/FolderSelection';
 import { FolderSidebarRuntime } from '@/pages/content/folder/FolderSidebarRuntime';
+import { FolderSidebarView } from '@/pages/content/folder/FolderSidebarView';
 import { FolderStore, type FolderStoreChange } from '@/pages/content/folder/FolderStore';
 import { FolderTransferController } from '@/pages/content/folder/FolderTransferController';
-import { FolderTreeView } from '@/pages/content/folder/FolderTreeView';
 import { NativeConversationMenus } from '@/pages/content/folder/NativeConversationMenus';
 import { NativeSidebarObserver } from '@/pages/content/folder/NativeSidebarObserver';
 import { createFolderDialogs } from '@/pages/content/folder/folderDialogs';
@@ -40,7 +40,7 @@ function mountGeminiSidebar(): { host: HTMLElement; sidebar: HTMLElement } {
 
 export interface GeminiSidebar {
   readonly store: FolderStore;
-  readonly treeView: FolderTreeView;
+  readonly treeView: FolderSidebarView;
   readonly runtime: FolderSidebarRuntime;
   /** Mounts the panel into the sidebar: the timed part of a page load. */
   start(): Promise<void>;
@@ -67,7 +67,7 @@ export async function createGeminiSidebar(data: FolderData): Promise<GeminiSideb
     getBackendName: () => 'bench-memory',
   };
   // Assigned below: the owners reference each other.
-  let treeView: FolderTreeView;
+  let treeView: FolderSidebarView;
   let runtime: FolderSidebarRuntime;
   let selection: FolderSelection;
   const refresh = () => {
@@ -108,6 +108,7 @@ export async function createGeminiSidebar(data: FolderData): Promise<GeminiSideb
     onOpened: (id) => store.markConversationAsRecentlyOpened(id),
     onTitleChange: (id, title) => store.updateConversationTitle(id, title),
     onGemDetected: (id, gemId) => store.updateConversationGem(id, gemId),
+    onActiveChange: () => treeView.refreshSite(),
   });
   const nativeMenus = new NativeConversationMenus({
     getContext: () => ({
@@ -153,6 +154,7 @@ export async function createGeminiSidebar(data: FolderData): Promise<GeminiSideb
     navigation,
     feedback,
     nativeMenus,
+    onFolderSelectionChange: () => treeView.refreshSite(),
     getContext: () => ({
       sortMode: treeView.sortMode,
       accountIsolationEnabled: store.accountIsolationEnabled,
@@ -169,7 +171,7 @@ export async function createGeminiSidebar(data: FolderData): Promise<GeminiSideb
     refresh,
     notify: (message, type) => feedback.showNotification(message, type),
   });
-  treeView = new FolderTreeView({
+  treeView = new FolderSidebarView({
     store,
     runtime,
     selection,

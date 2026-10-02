@@ -176,8 +176,8 @@ off a ChatGPT tab`).
   when the folder is visible again; reloads never expand folders to show it. `releaseAccountUi`
   discards held and open drafts. Drafts record their folder id when opened, because a collapsed
   parent has no content box. Editors resolve their folder and header when saving or cancelling,
-  and remove themselves before re-rendering. Gemini's `FolderTreeView.render()` still closes
-  inline editors on every rebuild.
+  and remove themselves before re-rendering. Gemini's sidebar uses the shared tree, which keeps a
+  focused name field through background updates and drops it only when its folder is gone.
 - **Guard:** `src/pages/content/folder/__tests__/aistudioFolderSync.test.ts` ("AI Studio inline folder drafts across reloads")
 
 ## Folder recovery and pending writes belong to an account session

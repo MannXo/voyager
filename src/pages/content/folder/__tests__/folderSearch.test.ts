@@ -5,6 +5,7 @@ import { StorageKeys } from '@/core/types/common';
 import * as nativeSidebarDom from '../nativeSidebarDom';
 import type { FolderData } from '../types';
 import { createFolderViewHarness, resetFolderViewBrowserMocks } from './folderViewHarness';
+import { sidebarTree } from './sidebarTreeDriver';
 
 const coachmarkMocks = vi.hoisted(() => ({
   hasSeenCoachmark: vi.fn(async () => false),
@@ -30,16 +31,21 @@ vi.mock('@/utils/i18n', () => ({
 
 vi.mock('../../coachmark', () => coachmarkMocks);
 
-function getFolderNames(root: HTMLElement): string[] {
-  return [...root.querySelectorAll<HTMLElement>('.gv-folder-name')].map(
-    (node) => node.textContent ?? '',
-  );
+function getFolderNames(panel: HTMLElement): string[] {
+  return sidebarTree(panel).folderNames();
 }
 
-function getConversationTitles(root: HTMLElement): string[] {
-  return [...root.querySelectorAll<HTMLElement>('.gv-conversation-title')].map(
-    (node) => node.textContent ?? '',
-  );
+/** The conversation titles the tree shows, in order. */
+function getConversationTitles(panel: HTMLElement): string[] {
+  return sidebarTree(panel)
+    .outline()
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('· '))
+    .map((line) => line.slice(2));
+}
+
+function treeText(panel: HTMLElement): string {
+  return sidebarTree(panel).text();
 }
 
 const folderData: FolderData = {
@@ -134,7 +140,7 @@ describe('folder sidebar search', () => {
     const panel = await search('alpha');
     expect(getFolderNames(panel)).toEqual(['Research', 'Papers']);
     expect(getConversationTitles(panel)).toEqual(['Alpha signals']);
-    expect(panel.querySelector('.gv-folder-empty')).toBeNull();
+    expect(treeText(panel)).not.toContain('folder_search_empty');
   });
 
   it('filters by folder title without showing unrelated conversations', async () => {
@@ -151,8 +157,13 @@ describe('folder sidebar search', () => {
 
   it('shows the full subtree when a parent folder matches folder:', async () => {
     const panel = await search('folder:research');
-    expect(getFolderNames(panel)).toEqual(['Research', 'Papers']);
-    expect(getConversationTitles(panel)).toEqual(['Research overview', 'Alpha signals']);
+    // The shared tree lists a folder's subfolders before its own conversations.
+    expect(sidebarTree(panel).outline()).toEqual([
+      'Research',
+      '  Papers',
+      '    · Alpha signals',
+      '  · Research overview',
+    ]);
   });
 
   it('keeps only the ancestor path when a nested folder matches f:', async () => {
@@ -221,7 +232,7 @@ describe('folder sidebar search', () => {
     const panel = await search('missing');
     expect(getFolderNames(panel)).toEqual([]);
     expect(getConversationTitles(panel)).toEqual([]);
-    expect(panel.querySelector('.gv-folder-empty')?.textContent).toBe('folder_search_empty');
+    expect(treeText(panel)).toContain('folder_search_empty');
   });
 
   it('does not filter the tree when folder search is disabled', async () => {

@@ -31,7 +31,11 @@ function applyGeminiSpacing(clamped: number, style: HTMLStyleElement) {
   //   At spacing 0 → 4px, spacing 2 → 5px, spacing 16 → 12px
   const vPad = Math.max(4, Math.round(4 + clamped * 0.5));
 
+  // The sidebar tree renders in a shadow root and reads the row padding property.
   style.textContent = `
+    .gv-folder-container {
+      --gv-folder-row-padding: ${vPad}px;
+    }
     .gv-folder-list {
       gap: ${clamped}px !important;
     }

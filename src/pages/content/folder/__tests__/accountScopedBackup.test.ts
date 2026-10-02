@@ -10,15 +10,17 @@ import { StorageKeys } from '@/core/types/common';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
 
 import type { FolderSidebarRuntime } from '../FolderSidebarRuntime';
+import type { FolderSidebarView } from '../FolderSidebarView';
 import type { FolderStore } from '../FolderStore';
 import type { FolderTransferController } from '../FolderTransferController';
-import type { FolderTreeView } from '../FolderTreeView';
 import { AIStudioFolderManager } from '../aistudio';
 import { type AIStudioTree, mountAIStudioTree } from '../aistudioTree';
 import { type FloatingPanelHandle, mountFloatingPanel } from '../floatingPanel';
+import { menuItem } from '../floatingTree/__tests__/treeDriver';
 import { FolderManager } from '../manager';
 import * as storageAdapters from '../storage/FolderStorageAdapter';
 import type { FolderData } from '../types';
+import { sidebarTree } from './sidebarTreeDriver';
 
 const { mockBrowser } = vi.hoisted(() => ({
   mockBrowser: {
@@ -58,7 +60,7 @@ type Internals = {
   transfer: FolderTransferController;
   store: FolderStore;
   sidebarRuntime: FolderSidebarRuntime;
-  treeView: FolderTreeView;
+  treeView: FolderSidebarView;
   refreshScopedDataOnAccountContextChange(): Promise<void>;
   destroy(): void;
 };
@@ -755,9 +757,9 @@ describe.each<Platform>(['gemini', 'aistudio'])('%s backup account ownership', (
       harness.manager.container = container;
       harness.manager.tree = tree;
     }
-    // The AI Studio tree renders in a shadow root under the container.
-    const shown = () =>
-      `${container.textContent}${container.querySelector('*')?.shadowRoot?.textContent ?? ''}`;
+    const host = () =>
+      container.querySelector(platform === 'gemini' ? '.gv-folder-tree-host' : '*');
+    const shown = () => `${container.textContent}${host()?.shadowRoot?.textContent ?? ''}`;
     expect(shown()).toContain('Private a');
     const pending = deferred<void>();
     vi.spyOn(accountIsolationService, 'resolveAccountScope').mockImplementationOnce(async () => {
@@ -919,12 +921,9 @@ it('Gemini closes the old instructions editor on account change and ignores its 
     'sync',
   );
   const panel = await mountGeminiPanel(harness);
-  panel.querySelector<HTMLButtonElement>('.gv-folder-actions-btn')!.click();
-  const item = Array.from(document.querySelectorAll<HTMLElement>('.gv-folder-menu-item')).find(
-    (element) => element.textContent === 'folderAsProject_setInstructions',
-  );
-  expect(item).toBeDefined();
-  item!.click();
+  const tree = sidebarTree(panel);
+  tree.openMenuByButton('Private a');
+  menuItem('folderAsProject_setInstructions').click();
   const editor = document.querySelector<HTMLTextAreaElement>('.gv-fi-textarea')!;
   editor.value = 'Private instructions from A';
   const oldSave = document.querySelector<HTMLButtonElement>('.gv-fi-btn-save')!;

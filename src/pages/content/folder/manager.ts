@@ -11,9 +11,9 @@ import { FolderFeedback } from './FolderFeedback';
 import { FolderNavigation } from './FolderNavigation';
 import { FolderSelection } from './FolderSelection';
 import { FolderSidebarRuntime } from './FolderSidebarRuntime';
+import { FolderSidebarView } from './FolderSidebarView';
 import { FolderStore, type FolderStoreChange } from './FolderStore';
 import { FolderTransferController } from './FolderTransferController';
-import { FolderTreeView } from './FolderTreeView';
 import { NativeConversationMenus } from './NativeConversationMenus';
 import { NativeSidebarObserver } from './NativeSidebarObserver';
 import { type FloatingFabPos, mountFloatingFab, unmountFloatingFab } from './floatingModeFab';
@@ -110,6 +110,7 @@ export class FolderManager {
     onOpened: (id) => this.store.markConversationAsRecentlyOpened(id),
     onTitleChange: (id, title) => this.store.updateConversationTitle(id, title),
     onGemDetected: (id, gemId) => this.store.updateConversationGem(id, gemId),
+    onActiveChange: () => this.treeView.refreshSite(),
   });
   private folderEnabled: boolean = true;
   private hideArchivedConversations: boolean = false; // Whether to hide conversations in folders
@@ -186,13 +187,14 @@ export class FolderManager {
     navigation: this.navigation,
     feedback: this.feedback,
     nativeMenus: this.nativeConversationMenus,
+    onFolderSelectionChange: () => this.treeView.refreshSite(),
     getContext: () => ({
       sortMode: this.treeView.sortMode,
       accountIsolationEnabled: this.store.accountIsolationEnabled,
       isDestroyed: this.isDestroyed,
     }),
   });
-  private readonly treeView: FolderTreeView = new FolderTreeView({
+  private readonly treeView: FolderSidebarView = new FolderSidebarView({
     store: this.store,
     runtime: this.sidebarRuntime,
     selection: this.selection,
@@ -211,11 +213,8 @@ export class FolderManager {
     onSortModeChange: (mode) => this.floatingPanelHandle?.update(this.store.data, mode),
   });
 
-  // Floating-mode state — an opt-in "always use a floating window for folders"
-  // switch exposed in the popup. When on, we never attempt to inject the
-  // folder panel into Gemini's sidebar; we mount the body-level floating
-  // panel (or its FAB) + native ⋮ menu observer and call it a day. When off, normal
-  // sidebar injection; a failure is a silent no-op.
+  // Floating mode (a popup opt-in): never inject into Gemini's sidebar; mount the
+  // body-level floating panel (or its FAB) and the native ⋮ menu observer instead.
   private floatingPanelHandle: FloatingPanelHandle | null = null;
   private floatingModeEnabled: boolean = false;
   private floatingOpenOnStart: boolean = true;

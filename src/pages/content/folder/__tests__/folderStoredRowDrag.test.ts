@@ -9,6 +9,7 @@ import { FolderImportExportService } from '@/features/folder/services/FolderImpo
 
 import type { ConversationReference, Folder } from '../types';
 import { createFolderViewHarness, resetFolderViewBrowserMocks } from './folderViewHarness';
+import { sidebarTree } from './sidebarTreeDriver';
 
 vi.mock('webextension-polyfill', () => ({ default: chrome }));
 
@@ -79,20 +80,19 @@ describe('dragging stored folder rows', () => {
     vi.restoreAllMocks();
   });
 
+  const tree = () => sidebarTree(harness!.runtime.panel);
+
+  /** The row of a conversation, found in whichever folder shows it. */
   function row(conversationId: string): HTMLElement {
-    const element = harness!.runtime.panel!.querySelector<HTMLElement>(
-      `.gv-folder-conversation[data-conversation-id="${conversationId}"]`,
-    );
-    expect(element).not.toBeNull();
+    const element = Array.from(
+      tree().root.querySelectorAll<HTMLElement>('[data-conversation-id]'),
+    ).find((candidate) => candidate.dataset.conversationId === conversationId);
+    expect(element).toBeDefined();
     return element!;
   }
 
   function folderHeader(folderId: string): HTMLElement {
-    const element = harness!.runtime.panel!.querySelector<HTMLElement>(
-      `.gv-folder-item[data-folder-id="${folderId}"] > .gv-folder-item-header`,
-    );
-    expect(element).not.toBeNull();
-    return element!;
+    return tree().folderRow(folderId);
   }
 
   async function dragRowTo(conversationId: string, targetFolderId: string): Promise<void> {
@@ -157,8 +157,8 @@ describe('dragging stored folder rows', () => {
     await vi.advanceTimersByTimeAsync(600);
     row('c_1111').dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     for (const ref of refs.slice(1)) {
-      row(ref.conversationId)
-        .querySelector<HTMLAnchorElement>('.gv-folder-conversation-link')!
+      tree()
+        .titleButton('source', ref.title)
         .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
     }
 

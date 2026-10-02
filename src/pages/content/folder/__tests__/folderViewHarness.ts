@@ -7,9 +7,9 @@ import { FolderFeedback } from '../FolderFeedback';
 import { FolderNavigation } from '../FolderNavigation';
 import { FolderSelection } from '../FolderSelection';
 import { FolderSidebarRuntime } from '../FolderSidebarRuntime';
+import { FolderSidebarView } from '../FolderSidebarView';
 import { FolderStore, type FolderStoreChange } from '../FolderStore';
 import { FolderTransferController } from '../FolderTransferController';
-import { FolderTreeView } from '../FolderTreeView';
 import { NativeConversationMenus } from '../NativeConversationMenus';
 import { NativeSidebarObserver } from '../NativeSidebarObserver';
 import { createFolderDialogs } from '../folderDialogs';
@@ -35,7 +35,7 @@ export async function createFolderViewHarness(data: FolderData) {
     }),
     getBackendName: () => 'test-memory',
   };
-  let treeView: FolderTreeView;
+  let treeView: FolderSidebarView;
   let runtime: FolderSidebarRuntime;
   let selection: FolderSelection;
   const onRefresh = vi.fn(() => {
@@ -90,6 +90,7 @@ export async function createFolderViewHarness(data: FolderData) {
     onOpened: (id) => store.markConversationAsRecentlyOpened(id),
     onTitleChange: (id, title) => store.updateConversationTitle(id, title),
     onGemDetected: (id, gemId) => store.updateConversationGem(id, gemId),
+    onActiveChange: () => treeView.refreshSite(),
   });
   const nativeMenus = new NativeConversationMenus({
     getContext: () => ({
@@ -142,6 +143,7 @@ export async function createFolderViewHarness(data: FolderData) {
     navigation,
     feedback,
     nativeMenus,
+    onFolderSelectionChange: () => treeView.refreshSite(),
     getContext: () => ({
       sortMode: treeView.sortMode,
       accountIsolationEnabled: store.accountIsolationEnabled,
@@ -159,7 +161,7 @@ export async function createFolderViewHarness(data: FolderData) {
     notify: (message, type) => feedback.showNotification(message, type),
   });
   const onRenameNative = vi.fn(async () => true);
-  treeView = new FolderTreeView({
+  treeView = new FolderSidebarView({
     store,
     runtime,
     selection,

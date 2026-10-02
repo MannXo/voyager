@@ -1,5 +1,4 @@
 import { extractRouteUserIdFromPath } from '@/core/services/AccountIsolationService';
-import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import type { ConversationSortMode } from '@/features/folder/model/folderData';
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
@@ -8,21 +7,13 @@ import type { FolderNavigation } from './FolderNavigation';
 import type { FolderSidebarRuntime } from './FolderSidebarRuntime';
 import type { FolderStore } from './FolderStore';
 import type { NativeConversationMenus } from './NativeConversationMenus';
-import { readDragPayload } from './dragPayload';
 import {
   extractConversationData,
   extractConversationId,
   extractNativeDragTitle,
   getNativeConversationElements,
 } from './nativeSidebarDom';
-import type { ConversationReference, DragData, Folder } from './types';
-
-type ConversationReorderPlacement = 'above' | 'below';
-
-interface ConversationReorderTarget {
-  element: HTMLElement;
-  placement: ConversationReorderPlacement;
-}
+import type { ConversationReference, DragData } from './types';
 
 interface FolderSelectionOptions {
   store: FolderStore;
@@ -35,6 +26,8 @@ interface FolderSelectionOptions {
     accountIsolationEnabled: boolean;
     isDestroyed: boolean;
   };
+  /** Folder chats joined or left the selection: the tree shows them again. */
+  onFolderSelectionChange(): void;
 }
 
 function debug(level: 'log' | 'warn', ...args: unknown[]): void {
@@ -53,9 +46,9 @@ export class FolderSelection {
   private multiSelectFolderId: string | null = null;
   private longPressTimeout: number | null = null;
   private longPressThreshold: number = 500;
-  private pendingConversationReorderTarget: ConversationReorderTarget | null = null;
-  private activeConversationReorderTarget: ConversationReorderTarget | null = null;
-  private conversationReorderRafId: number | null = null;
+  /** A long press on a folder chat entered multi-select; its click must not navigate. */
+  /** The folder chat whose long press entered multi-select; its own release click is swallowed. */
+  private longPressRow: { conversationId: string; folderId: string } | null = null;
   private outsideClickHandler: ((e: MouseEvent) => void) | null = null;
   private readonly MAX_BATCH_DELETE_COUNT = 50;
   private batchDeleteController: AbortController | null = null;
@@ -120,7 +113,6 @@ export class FolderSelection {
     this.dragImages.clear();
     if (this.longPressTimeout !== null) this.clearTimer(this.longPressTimeout);
     this.longPressTimeout = null;
-    this.clearConversationReorderIndicator();
     this.exitMultiSelectMode();
     this.removeFloatingHost();
   }
@@ -269,255 +261,6 @@ export class FolderSelection {
     }
 
     return this.multiSelectHostElement?.isConnected ? this.multiSelectHostElement : null;
-  }
-
-  setupDropZone(element: HTMLElement, folderId: string): void {
-    element.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      e.stopPropagation(); // Prevent root drop zone from also highlighting
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      element.classList.add('gv-folder-dragover');
-    });
-
-    element.addEventListener('dragleave', (e) => {
-      // Only remove highlight when cursor truly leaves the element (not just entering a child)
-      const rect = element.getBoundingClientRect();
-      const x = (e as DragEvent).clientX;
-      const y = (e as DragEvent).clientY;
-
-      if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
-        element.classList.remove('gv-folder-dragover');
-      }
-    });
-
-    element.addEventListener('drop', (e) => {
-      e.preventDefault();
-      e.stopPropagation(); // CRITICAL: Prevent event bubbling to root drop zone
-      element.classList.remove('gv-folder-dragover');
-
-      const dragData = readDragPayload(e.dataTransfer);
-      if (!dragData) return;
-
-      try {
-        if (
-          this.options.getContext().sortMode === 'recent' &&
-          dragData.type !== 'folder' &&
-          dragData.sourceFolderId === folderId
-        ) {
-          this.options.feedback.showNotification(t('folder_sort_recent_drag_hint'), 'info');
-          this.exitMultiSelectMode();
-          return;
-        }
-
-        // Pre-cleanup: Restore opacity immediately before processing drop
-        // This prevents visual artifacts if dragend doesn't fire properly
-        this.selectedConversations.forEach((id) => {
-          const el = this.findConversationElement(id);
-          if (el) el.style.opacity = '1';
-        });
-
-        // Handle different drag types
-        if (dragData.type === 'folder') {
-          // Handle folder drop
-          debug('log', 'Dropping folder into folder:', dragData.title, '→', folderId);
-          this.options.store.addFolderToFolder(folderId, dragData);
-        } else {
-          // Handle conversation drop - supports both single and multiple conversations
-          if (dragData.conversations && dragData.conversations.length > 0) {
-            // Multi-select drag
-            debug('log', 'Dropping multiple conversations:', dragData.conversations.length);
-            this.options.store.addConversationsToFolder(
-              folderId,
-              dragData.conversations,
-              dragData.sourceFolderId,
-            );
-          } else {
-            // Legacy single conversation drag (backward compatibility)
-            this.options.store.addConversationToFolder(folderId, dragData);
-          }
-        }
-
-        // Clear selection and exit multi-select mode after successful drop
-        this.exitMultiSelectMode();
-      } catch (error) {
-        console.error('[FolderManager] Drop error:', error);
-      }
-    });
-  }
-
-  setupRootDropZone(element: HTMLElement): void {
-    element.addEventListener('dragover', (e) => {
-      // Allow both folder and conversation drops on the root zone
-      const data = e.dataTransfer?.types.includes('application/json');
-      if (!data) return;
-
-      e.preventDefault();
-      e.stopPropagation(); // Prevent parent handlers from firing
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      element.classList.add('gv-folder-list-dragover');
-    });
-
-    element.addEventListener('dragleave', (e) => {
-      // Check if we're leaving this element (not just entering a child)
-      const rect = element.getBoundingClientRect();
-      const x = (e as DragEvent).clientX;
-      const y = (e as DragEvent).clientY;
-
-      if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
-        element.classList.remove('gv-folder-list-dragover');
-      }
-    });
-
-    element.addEventListener('drop', (e) => {
-      e.preventDefault();
-      e.stopPropagation(); // Prevent parent handlers from firing
-      element.classList.remove('gv-folder-list-dragover');
-
-      const dragData = readDragPayload(e.dataTransfer);
-      if (!dragData) return;
-
-      try {
-        if (
-          this.options.getContext().sortMode === 'recent' &&
-          dragData.type !== 'folder' &&
-          dragData.sourceFolderId === ROOT_CONVERSATIONS_ID
-        ) {
-          this.options.feedback.showNotification(t('folder_sort_recent_drag_hint'), 'info');
-          this.exitMultiSelectMode();
-          return;
-        }
-
-        // Pre-cleanup: Restore opacity immediately before processing drop
-        // This prevents visual artifacts if dragend doesn't fire properly
-        this.selectedConversations.forEach((id) => {
-          const el = this.findConversationElement(id);
-          if (el) el.style.opacity = '1';
-        });
-
-        // Handle different drag types at root level
-        if (dragData.type === 'folder') {
-          this.options.store.moveFolderToRoot(dragData);
-        } else {
-          // Handle conversation drop - supports both single and multiple conversations
-          if (dragData.conversations && dragData.conversations.length > 0) {
-            // Multi-select drag
-            debug(
-              'log',
-              'Adding multiple conversations to root level:',
-              dragData.conversations.length,
-            );
-            this.options.store.addConversationsToFolder(
-              ROOT_CONVERSATIONS_ID,
-              dragData.conversations,
-              dragData.sourceFolderId,
-            );
-          } else {
-            // Legacy single conversation drag (backward compatibility)
-            debug('log', 'Adding conversation to root level:', dragData.title);
-            this.options.store.addConversationToFolder(ROOT_CONVERSATIONS_ID, dragData);
-          }
-        }
-
-        // Clear selection and exit multi-select mode after successful drop
-        this.exitMultiSelectMode();
-      } catch (error) {
-        console.error('[FolderManager] Root drop error:', error);
-      }
-    });
-  }
-
-  private canFolderBeDragged(folder: Folder): boolean {
-    return !folder.pinned;
-  }
-
-  applyFolderDraggableBehavior(element: HTMLElement, folder: Folder): void {
-    if (this.canFolderBeDragged(folder)) {
-      this.enableFolderDragging(element, folder);
-    } else {
-      this.disableFolderDragging(element);
-    }
-  }
-
-  private enableFolderDragging(element: HTMLElement, folder: Folder): void {
-    // Mark element as draggable
-    element.draggable = true;
-    element.style.cursor = 'grab';
-
-    // Check if drag listeners are already attached
-    if (element.dataset.dragListenersAttached === 'true') {
-      debug('log', 'Drag listeners already attached for folder:', folder.name);
-      return;
-    }
-
-    // Create named event handler functions for proper cleanup
-    const handleDragStart = (e: Event) => {
-      e.stopPropagation(); // Prevent parent folder from being dragged
-
-      const dragData: DragData = {
-        type: 'folder',
-        folderId: folder.id,
-        title: folder.name,
-      };
-
-      const dt = (e as DragEvent).dataTransfer;
-      if (dt) dt.effectAllowed = 'move';
-      dt?.setData('application/json', JSON.stringify(dragData));
-      element.style.opacity = '0.5';
-
-      debug(
-        'log',
-        'Folder drag start:',
-        folder.name,
-        'canBeDragged:',
-        this.canFolderBeDragged(folder),
-      );
-    };
-
-    const handleDragEnd = () => {
-      element.style.opacity = '1';
-    };
-
-    // Store references for potential cleanup
-    type DragEl = Element & {
-      _dragStartHandler?: (e: Event) => void;
-      _dragEndHandler?: () => void;
-    };
-    (element as DragEl)._dragStartHandler = handleDragStart;
-    (element as DragEl)._dragEndHandler = handleDragEnd;
-
-    // Add drag event listeners
-    element.addEventListener('dragstart', handleDragStart);
-    element.addEventListener('dragend', handleDragEnd);
-
-    // Mark that listeners are attached
-    element.dataset.dragListenersAttached = 'true';
-  }
-
-  private disableFolderDragging(element: HTMLElement): void {
-    element.draggable = false;
-    element.style.cursor = '';
-
-    // Remove drag event listeners if they exist
-    if (element.dataset.dragListenersAttached === 'true') {
-      type DragEl = Element & {
-        _dragStartHandler?: (e: Event) => void;
-        _dragEndHandler?: () => void;
-      };
-      const dragStartHandler = (element as DragEl)._dragStartHandler;
-      const dragEndHandler = (element as DragEl)._dragEndHandler;
-
-      if (dragStartHandler) {
-        element.removeEventListener('dragstart', dragStartHandler);
-        delete (element as DragEl)._dragStartHandler;
-      }
-
-      if (dragEndHandler) {
-        element.removeEventListener('dragend', dragEndHandler);
-        delete (element as DragEl)._dragEndHandler;
-      }
-
-      delete element.dataset.dragListenersAttached;
-    }
   }
 
   makeConversationDraggable(element: HTMLElement): void {
@@ -728,7 +471,6 @@ export class FolderSelection {
         this.clearSelection();
         this.cleanupSelectionArtifacts();
       }
-      this.clearConversationReorderIndicator();
     });
   }
 
@@ -749,158 +491,6 @@ export class FolderSelection {
     }
 
     return null;
-  }
-
-  setupConversationReorderZone(convEl: HTMLElement, folderId: string, groupIndex: number): void {
-    convEl.addEventListener('dragover', (event) => {
-      if (this.options.getContext().sortMode !== 'manual') return;
-      if (!event.dataTransfer?.types.includes('application/json')) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-      event.dataTransfer.dropEffect = 'move';
-      this.scheduleConversationReorderIndicator(
-        convEl,
-        this.getConversationReorderPlacement(convEl, event.clientY),
-      );
-    });
-
-    convEl.addEventListener('dragleave', (event) => {
-      const related = event.relatedTarget as Node | null;
-      if (!related || !convEl.contains(related)) {
-        this.clearConversationReorderIndicator(convEl);
-      }
-    });
-
-    convEl.addEventListener('drop', (event) => {
-      if (this.options.getContext().sortMode !== 'manual') return;
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      const placement = this.getConversationReorderDropPlacement(
-        convEl,
-        this.getConversationReorderPlacement(convEl, event.clientY),
-      );
-      this.clearConversationReorderIndicator();
-
-      const dragData = readDragPayload(event.dataTransfer);
-      if (!dragData) return;
-
-      try {
-        if (dragData.type !== 'conversation') return;
-
-        this.selectedConversations.forEach((id) => {
-          const element = this.findConversationElement(id);
-          if (element) element.style.opacity = '1';
-        });
-
-        const insertIndex = placement === 'above' ? groupIndex : groupIndex + 1;
-        const conversations = dragData.conversations ?? [];
-        const sourceFolderId = dragData.sourceFolderId;
-
-        if (!sourceFolderId) {
-          this.options.store.ensureConversationsInFolder(folderId, dragData);
-        }
-
-        const effectiveSource = sourceFolderId ?? folderId;
-        if (conversations.length > 0) {
-          this.options.store.reorderOrMoveConversations(
-            conversations.map((conversation) => conversation.conversationId),
-            effectiveSource,
-            folderId,
-            insertIndex,
-          );
-        } else if (dragData.conversationId) {
-          this.options.store.reorderOrMoveConversations(
-            [dragData.conversationId],
-            effectiveSource,
-            folderId,
-            insertIndex,
-          );
-        }
-
-        this.exitMultiSelectMode();
-      } catch (error) {
-        console.error('[FolderManager] Conversation reorder drop error:', error);
-      }
-    });
-  }
-
-  private getConversationReorderPlacement(
-    convEl: HTMLElement,
-    clientY: number,
-  ): ConversationReorderPlacement {
-    const rect = convEl.getBoundingClientRect();
-    return clientY < rect.top + rect.height / 2 ? 'above' : 'below';
-  }
-
-  private getConversationReorderDropPlacement(
-    convEl: HTMLElement,
-    fallback: ConversationReorderPlacement,
-  ): ConversationReorderPlacement {
-    if (this.pendingConversationReorderTarget?.element === convEl) {
-      return this.pendingConversationReorderTarget.placement;
-    }
-    if (this.activeConversationReorderTarget?.element === convEl) {
-      return this.activeConversationReorderTarget.placement;
-    }
-    return fallback;
-  }
-
-  private scheduleConversationReorderIndicator(
-    element: HTMLElement,
-    placement: ConversationReorderPlacement,
-  ): void {
-    this.pendingConversationReorderTarget = { element, placement };
-    if (this.conversationReorderRafId !== null) return;
-
-    this.conversationReorderRafId = window.requestAnimationFrame(() => {
-      this.conversationReorderRafId = null;
-      const target = this.pendingConversationReorderTarget;
-      this.pendingConversationReorderTarget = null;
-      if (target) this.applyConversationReorderIndicator(target);
-    });
-  }
-
-  private applyConversationReorderIndicator(target: ConversationReorderTarget): void {
-    if (!target.element.isConnected) {
-      this.clearConversationReorderIndicator(target.element);
-      return;
-    }
-
-    const active = this.activeConversationReorderTarget;
-    if (active && (active.element !== target.element || active.placement !== target.placement)) {
-      active.element.classList.remove('gv-reorder-above', 'gv-reorder-below');
-    }
-
-    target.element.classList.toggle('gv-reorder-above', target.placement === 'above');
-    target.element.classList.toggle('gv-reorder-below', target.placement === 'below');
-    this.activeConversationReorderTarget = target;
-  }
-
-  clearConversationReorderIndicator(element?: HTMLElement): void {
-    if (!element) {
-      if (this.conversationReorderRafId !== null) {
-        window.cancelAnimationFrame(this.conversationReorderRafId);
-        this.conversationReorderRafId = null;
-      }
-      this.pendingConversationReorderTarget = null;
-    } else if (this.pendingConversationReorderTarget?.element === element) {
-      this.pendingConversationReorderTarget = null;
-      if (this.conversationReorderRafId !== null) {
-        window.cancelAnimationFrame(this.conversationReorderRafId);
-        this.conversationReorderRafId = null;
-      }
-    }
-
-    if (!element || this.activeConversationReorderTarget?.element === element) {
-      this.activeConversationReorderTarget?.element.classList.remove(
-        'gv-reorder-above',
-        'gv-reorder-below',
-      );
-      this.activeConversationReorderTarget = null;
-    }
   }
 
   private setLightweightDragImage(event: DragEvent, label: string): void {
@@ -924,86 +514,6 @@ export class FolderSelection {
       dragImage.remove();
       this.dragImages.delete(dragImage);
     }, 0);
-  }
-
-  createReorderGap(
-    parentId: string,
-    itemType: 'folder' | 'conversation',
-    insertIndex: number,
-  ): HTMLElement {
-    const gap = document.createElement('div');
-    gap.className = 'gv-reorder-gap';
-    gap.dataset.parentId = parentId;
-    gap.dataset.itemType = itemType;
-    gap.dataset.insertIndex = insertIndex.toString();
-
-    gap.addEventListener('dragover', (e) => {
-      const data = e.dataTransfer?.types.includes('application/json');
-      if (!data) return;
-
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      gap.classList.add('gv-reorder-gap-active');
-    });
-
-    gap.addEventListener('dragleave', () => {
-      gap.classList.remove('gv-reorder-gap-active');
-    });
-
-    gap.addEventListener('drop', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      gap.classList.remove('gv-reorder-gap-active');
-
-      const dragData = readDragPayload(e.dataTransfer);
-      if (!dragData) return;
-
-      try {
-        // Restore opacity for selected conversations
-        this.selectedConversations.forEach((id) => {
-          const el = this.findConversationElement(id);
-          if (el) el.style.opacity = '1';
-        });
-
-        if (itemType === 'folder' && dragData.type === 'folder' && dragData.folderId) {
-          this.options.store.reorderFolder(dragData.folderId, parentId, insertIndex);
-        } else if (itemType === 'conversation' && dragData.type === 'conversation') {
-          const convs = dragData.conversations ?? [];
-          const singleId = dragData.conversationId;
-          const sourceFolderId = dragData.sourceFolderId;
-
-          // If from outside any folder, add to folder data first
-          if (!sourceFolderId) {
-            this.options.store.ensureConversationsInFolder(parentId, dragData);
-          }
-
-          const effectiveSource = sourceFolderId ?? parentId;
-
-          if (convs.length > 0) {
-            this.options.store.reorderOrMoveConversations(
-              convs.map((c) => c.conversationId),
-              effectiveSource,
-              parentId,
-              insertIndex,
-            );
-          } else if (singleId) {
-            this.options.store.reorderOrMoveConversations(
-              [singleId],
-              effectiveSource,
-              parentId,
-              insertIndex,
-            );
-          }
-        }
-
-        this.exitMultiSelectMode();
-      } catch (error) {
-        console.error('[FolderManager] Reorder drop error:', error);
-      }
-    });
-
-    return gap;
   }
 
   private batchDeleteConversations(): void {
@@ -1166,21 +676,7 @@ export class FolderSelection {
   private updateConversationSelectionUI(): void {
     // Only update UI for the source where multi-select was initiated
     if (this.multiSelectSource === 'folder') {
-      // Only update folder conversation elements
-      const allConvEls = this.options.runtime.panel?.querySelectorAll('.gv-folder-conversation');
-      allConvEls?.forEach((el) => {
-        const convId = (el as HTMLElement).dataset.conversationId;
-        const elFolderId = (el as HTMLElement).dataset.folderId;
-
-        // Only update conversations in the same folder where multi-select started
-        if (convId && (!this.multiSelectFolderId || elFolderId === this.multiSelectFolderId)) {
-          if (this.selectedConversations.has(convId)) {
-            el.classList.add('gv-folder-conversation-selected');
-          } else {
-            el.classList.remove('gv-folder-conversation-selected');
-          }
-        }
-      });
+      this.options.onFolderSelectionChange();
     } else if (this.multiSelectSource === 'native') {
       // Only update native conversation elements (Recent section)
       const nativeConvs = getNativeConversationElements(this.options.runtime.sidebar);
@@ -1298,12 +794,8 @@ export class FolderSelection {
       (el as HTMLElement).classList.remove('gv-conversation-selected');
       (el as HTMLElement).style.opacity = '1';
     });
-    // Remove selection classes from all folder conversations
-    const folderConvs = this.options.runtime.panel?.querySelectorAll('.gv-folder-conversation');
-    folderConvs?.forEach((el) => {
-      (el as HTMLElement).classList.remove('gv-folder-conversation-selected');
-      (el as HTMLElement).style.opacity = '1';
-    });
+    // Folder chats render from the selection; show them unselected.
+    this.options.onFolderSelectionChange();
 
     // Restore active conversation highlight in folders
     // This ensures that the currently active conversation remains highlighted
@@ -1412,141 +904,89 @@ export class FolderSelection {
     return result;
   }
 
-  bindFolderConversation(
-    convEl: HTMLElement,
-    link: HTMLAnchorElement,
-    conv: ConversationReference,
+  /** Whether a folder chat shows as selected: in folder multi-select, in its scoped folder. */
+  isFolderConversationSelected(conversationId: string, folderId: string): boolean {
+    return (
+      this.multiSelectSource === 'folder' &&
+      (!this.multiSelectFolderId || this.multiSelectFolderId === folderId) &&
+      this.selectedConversations.has(conversationId)
+    );
+  }
+
+  /** Mouse down on a folder chat starts the long press into multi-select; `null` ends it. */
+  pressFolderConversation(e: MouseEvent | null, conversationId: string, folderId: string): void {
+    if (this.longPressTimeout) {
+      this.clearTimer(this.longPressTimeout);
+      this.longPressTimeout = null;
+    }
+    if (!e || e.button !== 0) return;
+    this.longPressRow = null;
+    this.longPressTimeout = this.schedule(() => {
+      this.longPressTimeout = null;
+      this.longPressRow = { conversationId, folderId };
+      this.enterMultiSelectMode(conversationId, 'folder', folderId);
+    }, this.longPressThreshold);
+  }
+
+  /**
+   * A click on a folder chat: the click that ends a long press, or one in
+   * multi-select, which toggles the chat or refuses one from another folder.
+   * Returns whether the selection took it; otherwise it navigates.
+   */
+  clickFolderConversation(conversationId: string, folderId: string, row: HTMLElement): boolean {
+    const pressed = this.longPressRow;
+    this.longPressRow = null;
+    if (pressed?.conversationId === conversationId && pressed.folderId === folderId) return true;
+    if (!this.isMultiSelectMode) return false;
+    if (
+      this.multiSelectSource === 'folder' &&
+      this.multiSelectFolderId &&
+      this.multiSelectFolderId !== folderId
+    ) {
+      this.showInvalidSelectionFeedback(row);
+      return true;
+    }
+    this.toggleConversationSelection(conversationId);
+    this.updateConversationSelectionUI();
+    return true;
+  }
+
+  /** A folder chat drag carries every selected chat, or only itself when it is not selected. */
+  startFolderConversationDrag(
+    e: DragEvent,
+    conversationId: string,
     folderId: string,
-    displayTitle: string,
+    title: string,
   ): void {
-    // Make conversation draggable within folders
-    convEl.draggable = true;
-    convEl.addEventListener('dragstart', (e) => {
-      e.stopPropagation();
+    e.stopPropagation();
+    if (this.longPressTimeout) {
+      this.clearTimer(this.longPressTimeout);
+      this.longPressTimeout = null;
+    }
+    if (!this.selectedConversations.has(conversationId)) {
+      this.clearSelection();
+      this.selectConversation(conversationId);
+      this.updateConversationSelectionUI();
+    }
+    const conversations = this.getSelectedConversationsData();
+    e.dataTransfer?.setData(
+      'application/json',
+      JSON.stringify({ type: 'conversation', conversations, sourceFolderId: folderId }),
+    );
+    this.setLightweightDragImage(
+      e,
+      conversations.length > 1 ? `${conversations.length} conversations` : title,
+    );
+  }
 
-      // If this conversation is not selected, select it exclusively
-      if (!this.selectedConversations.has(conv.conversationId)) {
-        this.clearSelection();
-        this.selectConversation(conv.conversationId);
-        this.updateConversationSelectionUI();
-      }
+  endFolderConversationDrag(): void {
+    if (this.isMultiSelectMode) return;
+    this.clearSelection();
+    this.cleanupSelectionArtifacts();
+  }
 
-      // Cancel long press if drag starts
-      if (this.longPressTimeout) {
-        this.clearTimer(this.longPressTimeout);
-        this.longPressTimeout = null;
-      }
-
-      // Include all selected conversations in the drag data
-      const selectedConvs = this.getSelectedConversationsData();
-      const dragData = {
-        type: 'conversation',
-        conversations: selectedConvs,
-        sourceFolderId: folderId, // Track where they're being dragged from
-      };
-      e.dataTransfer!.effectAllowed = 'move';
-      e.dataTransfer!.setData('application/json', JSON.stringify(dragData));
-      this.setLightweightDragImage(
-        e,
-        selectedConvs.length > 1 ? `${selectedConvs.length} conversations` : displayTitle,
-      );
-
-      // Apply opacity to all selected conversations
-      this.selectedConversations.forEach((id) => {
-        const el = this.options.runtime.panel?.querySelector(
-          `[data-conversation-id="${id}"]`,
-        ) as HTMLElement;
-        if (el) el.style.opacity = '0.5';
-      });
-    });
-
-    convEl.addEventListener('dragend', () => {
-      // Restore opacity for all selected conversations
-      this.selectedConversations.forEach((id) => {
-        const el = this.options.runtime.panel?.querySelector(
-          `[data-conversation-id="${id}"]`,
-        ) as HTMLElement;
-        if (el) el.style.opacity = '1';
-      });
-
-      // If we are not in multi-select mode, clear the temporary selection
-      if (!this.isMultiSelectMode) {
-        this.clearSelection();
-        this.cleanupSelectionArtifacts();
-      }
-      this.clearConversationReorderIndicator();
-    });
-
-    // Long-press detection for entering multi-select mode
-    let longPressTriggered = false;
-
-    convEl.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return; // Only left mouse button
-      longPressTriggered = false;
-
-      this.longPressTimeout = this.schedule(() => {
-        longPressTriggered = true;
-        this.enterMultiSelectMode(conv.conversationId, 'folder', folderId);
-      }, this.longPressThreshold);
-    });
-
-    convEl.addEventListener('mouseup', () => {
-      if (this.longPressTimeout) {
-        this.clearTimer(this.longPressTimeout);
-        this.longPressTimeout = null;
-      }
-    });
-
-    convEl.addEventListener('mouseleave', () => {
-      if (this.longPressTimeout) {
-        this.clearTimer(this.longPressTimeout);
-        this.longPressTimeout = null;
-      }
-    });
-
-    // Plain left clicks keep the existing SPA navigation path. Modified clicks,
-    // middle clicks, and context-menu actions stay native because the row
-    // contains a real anchor.
-    link.addEventListener('click', (e) => {
-      // Prevent navigation if long-press was triggered
-      if (longPressTriggered) {
-        e.preventDefault();
-        longPressTriggered = false;
-        return;
-      }
-
-      if (this.isMultiSelectMode) {
-        // Multi-select mode: validate folder before toggling selection
-        e.preventDefault();
-        e.stopPropagation();
-
-        // Prevent cross-folder selection
-        if (
-          this.multiSelectSource === 'folder' &&
-          this.multiSelectFolderId &&
-          this.multiSelectFolderId !== folderId
-        ) {
-          // Provide visual feedback for invalid selection attempt
-          this.showInvalidSelectionFeedback(convEl);
-          return;
-        }
-
-        this.toggleConversationSelection(conv.conversationId);
-        this.updateConversationSelectionUI();
-      } else {
-        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
-          return;
-        }
-
-        e.preventDefault();
-        e.stopPropagation();
-
-        // Normal mode: navigate to conversation
-        const latest = this.options.store.data.folderContents[folderId]?.find(
-          (item) => item.conversationId === conv.conversationId,
-        );
-        if (latest) this.options.navigation.navigate(latest, folderId);
-      }
-    });
+  /** A drop used the dragged selection. */
+  finishDrop(): void {
+    this.exitMultiSelectMode();
   }
 }

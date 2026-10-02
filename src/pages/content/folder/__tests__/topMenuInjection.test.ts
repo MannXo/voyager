@@ -9,6 +9,7 @@ import { FolderManager } from '../manager';
 import { extractConversationInfoFromPage } from '../nativeSidebarDom';
 import * as storageAdapters from '../storage/FolderStorageAdapter';
 import { mountSidebar, setLayout } from './sidebarRuntimeHarness';
+import { sidebarTree } from './sidebarTreeDriver';
 
 vi.mock('@/utils/i18n', () => ({
   getTranslationSync: (key: string) => key,
@@ -253,9 +254,9 @@ describe('native move menu → folder command', () => {
     ]);
     expect(writes).toHaveLength(1);
     expect(writes[0].folderContents.f1).toEqual(owners.store.data.folderContents.f1);
-    expect(owners.sidebarRuntime.panel?.querySelector('.gv-conversation-title')?.textContent).toBe(
-      'Renamed sidebar title',
-    );
+    expect(
+      sidebarTree(owners.sidebarRuntime.panel).bucketsShowing('Renamed sidebar title'),
+    ).toEqual(['f1']);
     expect(document.querySelector('.gv-folder-dialog-overlay')).toBeNull();
   });
 

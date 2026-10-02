@@ -43,14 +43,14 @@ function typeInto(input: HTMLInputElement, value: string): void {
   input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
 }
 
-// --- Gemini sidebar: FolderTreeView ------------------------------------------
+// --- Gemini sidebar: FolderSidebarView (shared tree in the nav) -------------
 
 export async function benchGeminiSidebar(
   dataset: DatasetName,
   data: FolderData,
   counts: RunCounts,
 ): Promise<BenchResult[]> {
-  const surface = 'gemini-sidebar (FolderTreeView)';
+  const surface = 'gemini-sidebar (FolderSidebarView)';
   const results: BenchResult[] = [];
   const target = pickBusiestFolder(data);
 
@@ -109,11 +109,13 @@ export async function benchGeminiSidebar(
   typeInto(search!, '');
   await sleep(300);
 
+  // The tree renders in a shadow root under the panel's list.
+  const tree = () => panel.querySelector('.gv-folder-tree-host')?.shadowRoot ?? null;
   const rows = () =>
     Array.from(
-      sidebar.runtime.panel!.querySelectorAll<HTMLElement>(
-        `.gv-folder-conversation[data-folder-id="${CSS.escape(target)}"]`,
-      ),
+      tree()?.querySelectorAll<HTMLElement>(
+        `.gv-floating-folder-panel__conv[data-folder-id="${CSS.escape(target)}"]`,
+      ) ?? [],
     );
   const first = rows()[0];
   if (first && rows().length > 1) {
@@ -122,7 +124,7 @@ export async function benchGeminiSidebar(
     await sleep(650);
     first.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
     const others = rows().slice(1);
-    const engaged = panel.querySelector('.gv-folder-conversation-selected') !== null;
+    const engaged = tree()?.querySelector('.gv-floating-folder-panel__conv--selected') != null;
     const toggle = await collect({
       surface,
       dataset,
@@ -131,7 +133,7 @@ export async function benchGeminiSidebar(
       setup: () => undefined,
       action: (_state, run) => {
         const row = others[Math.floor(run / 2) % others.length];
-        row.querySelector<HTMLAnchorElement>('a.gv-folder-conversation-link')?.click();
+        row.querySelector<HTMLAnchorElement>('a.gv-floating-folder-panel__conv-title')?.click();
       },
     });
     results.push(engaged ? toggle : { ...toggle, note: 'multi-select did not engage' });

@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
 
+import { SIDEBAR_TREE_HOST_CLASS } from '../sidebarTree';
 import { createFolderViewHarness, resetFolderViewBrowserMocks } from './folderViewHarness';
+import { sidebarTree } from './sidebarTreeDriver';
 
 vi.mock('webextension-polyfill', () => ({ default: chrome }));
 
@@ -42,33 +44,38 @@ describe('folder tree indentation', () => {
     vi.restoreAllMocks();
   });
 
-  it.each([
-    [-40, '0px', '8px', '0px'],
-    [64, '72px', '88px', '120px'],
-    [0, '8px', '24px', '24px'],
-    [16, '40px', '56px', '72px'],
-    ['invalid', '0px', '8px', '0px'],
-  ])('renders safe nested padding when indent is %s', (setting, header, child, deep) => {
-    const originalData = structuredClone(harness.store.data);
-    const originalList = harness.runtime.panel!.querySelector('.gv-folder-list');
+  /** The nesting step each tree level indents by. */
+  const step = () =>
+    harness.runtime
+      .panel!.querySelector<HTMLElement>(`.${SIDEBAR_TREE_HOST_CLASS}`)!
+      .style.getPropertyValue('--gv-tree-step');
 
+  it('starts at the 12px step of the default indent', () => {
+    expect(step()).toBe('12px');
+  });
+
+  // The setting runs from -8 to 32 on top of a 20px base step.
+  it.each([
+    [-40, '12px'],
+    [64, '52px'],
+    [0, '20px'],
+    [16, '36px'],
+    ['invalid', '12px'],
+  ])('clamps indent %s to a %s step without touching data', (setting, expected) => {
+    const originalData = structuredClone(harness.store.data);
     harness.treeView.applySettings(
       { [StorageKeys.GV_FOLDER_TREE_INDENT]: { newValue: setting } },
       'sync',
     );
 
-    const panel = harness.runtime.panel!;
-    expect(
-      panel.querySelector<HTMLElement>('[data-folder-id="legacy-deep"] > .gv-folder-item-header')!
-        .style.paddingLeft,
-    ).toBe(header);
-    expect(panel.querySelector<HTMLElement>('[data-conversation-id="a"]')!.style.paddingLeft).toBe(
-      child,
-    );
-    expect(panel.querySelector<HTMLElement>('[data-conversation-id="b"]')!.style.paddingLeft).toBe(
-      deep,
-    );
+    expect(step()).toBe(expected);
+    expect(sidebarTree(harness.runtime.panel).outline()).toEqual([
+      'root',
+      '  child',
+      '    legacy-deep',
+      '      · B',
+      '    · A',
+    ]);
     expect(harness.store.data).toEqual(originalData);
-    if (typeof setting === 'number' && setting >= 0) expect(originalList!.isConnected).toBe(false);
   });
 });

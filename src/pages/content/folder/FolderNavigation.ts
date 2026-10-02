@@ -29,6 +29,8 @@ interface FolderNavigationOptions {
   onOpened(conversationId: string): void;
   onTitleChange(conversationId: string, title: string): void;
   onGemDetected(conversationId: string, gemId: string): void;
+  /** The open conversation may have changed: rows drawn elsewhere mark it again. */
+  onActiveChange?(): void;
 }
 
 function debug(...args: unknown[]): void {
@@ -127,9 +129,15 @@ export class FolderNavigation {
     return `${folderId}:${conversationId}`;
   }
 
+  /** Whether `folderId` is the folder the open conversation was last opened from. */
+  isActiveInstance(folderId: string, conversationId: string): boolean {
+    return this.activeFolderConversationKey === this.getInstanceKey(folderId, conversationId);
+  }
+
   highlightActiveConversation(): void {
     const container = this.options.getContext().container;
     if (!container) return;
+    this.options.onActiveChange?.();
     const hex = getCurrentHexIdFromLocation();
     const currentId = normalizeConversationId(hex);
     const rows = Array.from(container.querySelectorAll<HTMLElement>('.gv-folder-conversation'));

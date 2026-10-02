@@ -27,7 +27,12 @@ function applyFontSize(px: number) {
   // Line-height tracks font-size so taller fonts breathe. Roughly the same ratio
   // (~1.3) Gemini uses for its native sidebar text.
   const lineHeight = Math.round(px * 1.3);
+  // The sidebar tree renders in a shadow root and reads the custom properties.
   style.textContent = `
+    .gv-folder-container:not(.gv-aistudio) {
+      --gv-folder-item-font-size: ${px}px;
+      --gv-folder-item-line-height: ${lineHeight}px;
+    }
     .gv-folder-container:not(.gv-aistudio) .gv-folder-name,
     .gv-folder-container:not(.gv-aistudio) .gv-conversation-title {
       font-size: ${px}px !important;

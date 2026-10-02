@@ -9,6 +9,10 @@ import { historyTimestampStore } from '../../timestamp/historyTimestamps';
 import { FolderManager } from '../manager';
 import * as storageAdapters from '../storage/FolderStorageAdapter';
 import { mountSidebar } from './sidebarRuntimeHarness';
+import { sidebarTree } from './sidebarTreeDriver';
+
+/** The sidebar's folder tree, as the user sees it. */
+const tree = () => sidebarTree(document.querySelector('.gv-folder-container'));
 
 vi.mock('webextension-polyfill', () => ({ default: chrome }));
 
@@ -83,9 +87,7 @@ describe('FolderManager import persistence through the sidebar UI', () => {
     manager = new FolderManager();
     await manager.init();
     expect(manager.getFolders()).toEqual(original.folders);
-    expect(document.querySelector('.gv-folder-list')?.textContent).toContain(
-      'existing conversation',
-    );
+    expect(tree().text()).toContain('existing conversation');
     expect(adapter.saveData).not.toHaveBeenCalled();
   });
 
@@ -140,9 +142,8 @@ describe('FolderManager import persistence through the sidebar UI', () => {
       expect(dialog.isConnected).toBe(false);
       expect.soft(manager.getFolders()).toEqual(original.folders);
       document.querySelector<HTMLButtonElement>('.gv-folder-add-btn')!.click();
-      const input = document.querySelector<HTMLInputElement>('.gv-folder-name-input')!;
-      input.value = 'Created after cancellation';
-      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      tree().typeName('Created after cancellation');
+      tree().pressInInput('Enter');
       await vi.waitFor(() => expect(adapter.saveData).toHaveBeenCalledTimes(3));
 
       expect(persisted.folders.map((folder) => folder.name)).toEqual([
@@ -152,9 +153,7 @@ describe('FolderManager import persistence through the sidebar UI', () => {
       expect(persisted.folderContents.existing).toEqual(original.folderContents.existing);
       expect(persisted.folderContents.imported).toBeUndefined();
       expect(manager.getFolders()).toEqual(persisted.folders);
-      expect(document.querySelector('.gv-folder-list')?.textContent).toContain(
-        'existing conversation',
-      );
+      expect(tree().text()).toContain('existing conversation');
     },
   );
 
