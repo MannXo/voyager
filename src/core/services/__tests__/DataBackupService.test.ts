@@ -1,5 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import browser from 'webextension-polyfill';
+
+import { budgetCopyBridge } from '@/features/storage/__tests__/budgetCopyBridge';
 
 import { DataBackupService } from '../DataBackupService';
 
@@ -41,8 +43,20 @@ const extension = vi.hoisted(() => {
 });
 const durableStore = extension.store;
 
+/** The background end of `runtime.sendMessage`; `null` while the background is unreachable. */
+const runtime = vi.hoisted(() => ({
+  background: null as null | ((message: unknown) => Promise<unknown>),
+}));
+
 vi.mock('webextension-polyfill', () => ({
   default: {
+    runtime: {
+      sendMessage: vi.fn((message: unknown) =>
+        runtime.background
+          ? runtime.background(message)
+          : Promise.reject(new Error('Could not establish connection')),
+      ),
+    },
     storage: {
       local: {
         get: vi.fn((keys) => extension.area.get(keys)),
@@ -69,6 +83,22 @@ function resetStores(): void {
   for (const key of Object.keys(durableStore)) delete durableStore[key];
   extension.area.QUOTA_BYTES = undefined;
   (chrome.storage as { local: unknown }).local = extension.area;
+  runtime.background = budgetCopyBridge((items) => browser.storage.local.set(items));
+}
+
+const usedBytes = (): number =>
+  Object.entries(durableStore).reduce(
+    (sum, [key, value]) => sum + extension.itemBytes(key, value),
+    0,
+  );
+
+/** Chrome and Firefox require `unlimitedStorage`: no practical quota, only the soft cap. */
+function grantUnlimitedStorage(): void {
+  const runtimeApi = chrome.runtime as { getManifest?: () => unknown };
+  runtimeApi.getManifest = () => ({ permissions: ['unlimitedStorage'] });
+  onTestFinished(() => {
+    delete runtimeApi.getManifest;
+  });
 }
 
 interface Sample {
@@ -388,12 +418,13 @@ describe('DataBackupService quota fallback', () => {
     service.setupBeforeUnloadBackup(() => latest);
     window.dispatchEvent(new Event('beforeunload'));
     // Sent within the event itself; an unloading page cannot wait for the held write.
-    expect(browser.storage.local.set).toHaveBeenLastCalledWith({
-      [BEFORE_UNLOAD_KEY]: expect.any(String),
-    });
+    expect(browser.runtime.sendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ key: BEFORE_UNLOAD_KEY }),
+    );
 
     release();
     await primary;
+    await service.ensureHydrated();
     service.destroy();
     expect(JSON.parse(durableStore[BEFORE_UNLOAD_KEY] as string).data).toEqual(latest);
   });
@@ -401,8 +432,6 @@ describe('DataBackupService quota fallback', () => {
     isSafariValue = true;
     const unloadAt = async (service: DataBackupService<Sample>, data: Sample) => {
       service.setupBeforeUnloadBackup(() => data);
-      // Let the measurement the unload copy decides from land.
-      await new Promise((resolve) => setTimeout(resolve, 0));
       window.dispatchEvent(new Event('beforeunload'));
       await service.ensureHydrated();
       service.destroy();
@@ -444,5 +473,63 @@ describe('DataBackupService quota fallback', () => {
 
     expect(recovered).toBe(true);
     expect(service.recoverFromBackup()).toEqual(landed);
+  });
+
+  it('skips the copy when the background cannot be reached, keeping the page copy', async () => {
+    isSafariValue = true;
+    runtime.background = null;
+    const data: Sample = { folders: [1] };
+    const service = new DataBackupService<Sample>('test-ns');
+
+    expect(await service.createPrimaryBackup(data)).toBe(true);
+    expect(durableStore).not.toHaveProperty(PRIMARY_KEY);
+    expect(service.recoverFromBackup()).toEqual(data);
+  });
+
+  it("admits one of three tabs' 3 MiB fallbacks on 15 MiB used (T25a)", async () => {
+    grantUnlimitedStorage();
+    durableStore.gvOtherFeature = 'x'.repeat(15 * MiB);
+    limitLocalStorage(700);
+    const tabs = ['a', 'b', 'c'].map((ns) => new DataBackupService<Sample>(`tab-${ns}`));
+    // About 3 MiB once serialized.
+    const data: Sample = { folders: Array.from({ length: 1_570_000 }, () => 1) };
+
+    const saved = await Promise.all(tabs.map((tab) => tab.createEmergencyBackup(data)));
+
+    expect(saved.filter(Boolean)).toHaveLength(1);
+    expect(usedBytes()).toBeLessThanOrEqual(18.75 * MiB);
+  });
+
+  it('admits an unload copy against the slot bytes when it writes, not when the tab measured (T26e)', async () => {
+    isSafariValue = true;
+    grantUnlimitedStorage();
+    const big: Sample = { folders: Array.from({ length: 2_000_000 }, () => 1) };
+    const small: Sample = { folders: [1] };
+    // Tab A's earlier unload copy fills the shared slot (~4 MiB).
+    const tabA = new DataBackupService<Sample>('test-ns');
+    tabA.setupBeforeUnloadBackup(() => big);
+    window.dispatchEvent(new Event('beforeunload'));
+    await tabA.ensureHydrated();
+    tabA.destroy();
+    durableStore.gvOtherFeature = 'x'.repeat(15 * MiB - usedBytes());
+
+    // Tab B shrinks the slot; other data then grows into the room that freed.
+    const tabB = new DataBackupService<Sample>('test-ns');
+    tabB.setupBeforeUnloadBackup(() => small);
+    window.dispatchEvent(new Event('beforeunload'));
+    await tabB.ensureHydrated();
+    tabB.destroy();
+    delete durableStore.gvOtherFeature;
+    durableStore.gvOtherFeature = 'x'.repeat(18.7 * MiB - usedBytes());
+
+    // Tab A unloads again with its big copy.
+    const again = new DataBackupService<Sample>('test-ns');
+    again.setupBeforeUnloadBackup(() => big);
+    window.dispatchEvent(new Event('beforeunload'));
+    await again.ensureHydrated();
+    again.destroy();
+
+    expect(usedBytes()).toBeLessThanOrEqual(18.75 * MiB);
+    expect(JSON.parse(durableStore[BEFORE_UNLOAD_KEY] as string).data.folders).toHaveLength(1);
   });
 });

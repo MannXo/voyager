@@ -18,16 +18,9 @@
  */
 import browser from 'webextension-polyfill';
 
-import { storageQuotaService } from '@/core/services/StorageQuotaService';
 import { isSafari } from '@/core/utils/browser';
+import { requestBudgetCopy } from '@/features/storage/budgetCopyMessage';
 
-/**
- * Room a backup copy must leave free in extension storage. It exceeds the
- * highlights' own reserve (max(512 KiB, 10%)), so a copy never takes the space
- * live folder data, prompts or highlights write into.
- */
-const EXTENSION_RESERVE_MIN_BYTES = 2 * 1024 * 1024;
-const EXTENSION_RESERVE_RATIO = 0.25;
 /** Recovery waits this long for backup writes in flight, then reads what landed. */
 const PENDING_WRITE_WAIT_MS = 2000;
 
@@ -36,12 +29,6 @@ interface QueuedExtensionWrite {
   value: string | null;
   version: number;
   settle: Array<(saved: boolean) => void>;
-}
-
-/** Bytes chrome.storage counts for a string item: the key plus the JSON-encoded value. */
-function storedBytes(key: string, value: string): number {
-  const encoder = new TextEncoder();
-  return encoder.encode(key).byteLength + encoder.encode(JSON.stringify(value)).byteLength;
 }
 
 export interface BackupMetadata {
@@ -81,10 +68,6 @@ export class DataBackupService<T = unknown> {
   private readonly inFlight = new Set<Promise<unknown>>();
   /** Bumped per write, so a superseded write neither lands late nor updates the cache. */
   private readonly slotVersions = new Map<string, number>();
-  /** Last measured extension-storage use, raised by each copy accepted since. */
-  private headroom: { bytesInUse: number; limitBytes: number } | null = null;
-  /** Bytes each slot holds in extension storage, as last measured or written. */
-  private readonly slotBytes = new Map<string, number>();
 
   constructor(
     private readonly namespace: string,
@@ -162,64 +145,25 @@ export class DataBackupService<T = unknown> {
     this.draining = null;
   }
 
-  /** Measure first: a copy that would not leave the reserve free is skipped. */
+  /**
+   * The background writes the copy inside its storage budget, which skips one
+   * that would not leave the reserve free (addendum P3P4 R6.1). The message is
+   * sent before any await, so an unloading page still dispatches it.
+   */
   private async putExtensionCopy(key: string, value: string, version: number): Promise<boolean> {
-    let replacedBytes: number;
-    try {
-      const measured = await storageQuotaService.getLocalHeadroom(key);
-      this.headroom = { bytesInUse: measured.bytesInUse, limitBytes: measured.limitBytes };
-      replacedBytes = measured.keyBytes;
-      this.slotBytes.set(key, replacedBytes);
-    } catch (error) {
-      this.headroom = null;
-      console.warn(`[BackupService:${this.namespace}] Extension storage unmeasurable:`, error);
+    const saved = await requestBudgetCopy(key, value);
+    if (!saved) {
+      console.warn(`[BackupService:${this.namespace}] Skipped ${key}: extension copy not admitted`);
       return false;
     }
-    // A newer write for this slot took over while this one measured.
-    if (this.slotVersions.get(key) !== version) return true;
-    if (!this.claimHeadroom(key, value, replacedBytes)) return false;
-    return this.issueExtensionWrite(key, value, version);
-  }
-
-  /** Accept a copy only if it leaves the reserve free, and count it as stored. */
-  private claimHeadroom(key: string, value: string, replacedBytes: number): boolean {
-    const headroom = this.headroom;
-    if (!headroom) return false;
-    const reserve = Math.max(
-      EXTENSION_RESERVE_MIN_BYTES,
-      Math.ceil(headroom.limitBytes * EXTENSION_RESERVE_RATIO),
-    );
-    const projected = headroom.bytesInUse - replacedBytes + storedBytes(key, value);
-    if (projected + reserve > headroom.limitBytes) {
-      console.warn(`[BackupService:${this.namespace}] Skipped ${key}: extension storage near cap`);
-      return false;
-    }
-    headroom.bytesInUse = projected;
+    if (this.slotVersions.get(key) === version) this.durableBackups.set(key, value);
     return true;
-  }
-
-  /** Calls `set` synchronously, before any await, so an unloading page still sends it. */
-  private async issueExtensionWrite(key: string, value: string, version: number): Promise<boolean> {
-    try {
-      await browser.storage.local.set({ [key]: value });
-      if (this.slotVersions.get(key) === version) {
-        this.durableBackups.set(key, value);
-        this.slotBytes.set(key, storedBytes(key, value));
-      }
-      return true;
-    } catch (error) {
-      console.warn(`[BackupService:${this.namespace}] Durable mirror write failed:`, error);
-      return false;
-    }
   }
 
   private async removeExtensionCopy(key: string, version: number): Promise<boolean> {
     try {
       await browser.storage.local.remove(key);
-      if (this.slotVersions.get(key) === version) {
-        this.durableBackups.delete(key);
-        this.slotBytes.set(key, 0);
-      }
+      if (this.slotVersions.get(key) === version) this.durableBackups.delete(key);
       return true;
     } catch (error) {
       console.warn(`[BackupService:${this.namespace}] Durable copy removal failed:`, error);
@@ -229,15 +173,13 @@ export class DataBackupService<T = unknown> {
 
   /**
    * Send a copy now, ahead of queued writes, which an unloading page cannot wait
-   * for. It decides from the last measurement because a fresh one would await.
+   * for. The background admits it against the slot's bytes when it writes (F3).
    */
   private writeExtensionCopyNow(key: string, value: string): Promise<boolean> {
     const version = this.nextVersion(key);
     const replaced = this.queuedWrites.get(key);
     this.queuedWrites.delete(key);
-    const write = this.claimHeadroom(key, value, this.slotBytes.get(key) ?? 0)
-      ? this.issueExtensionWrite(key, value, version)
-      : Promise.resolve(false);
+    const write = this.putExtensionCopy(key, value, version);
     for (const settle of replaced?.settle ?? []) void write.then(settle);
     return this.track(write);
   }
@@ -352,19 +294,6 @@ export class DataBackupService<T = unknown> {
   setupBeforeUnloadBackup(getDataFn: () => T): void {
     if (this.beforeUnloadHandler) {
       window.removeEventListener('beforeunload', this.beforeUnloadHandler);
-    }
-
-    // The unload copy cannot await a measurement, so take one now, including the
-    // bytes its slot already holds: replacing a copy reuses that space.
-    if (!this.headroom || !this.slotBytes.has(this.beforeUnloadKey)) {
-      const key = this.beforeUnloadKey;
-      void storageQuotaService.getLocalHeadroom(key).then(
-        ({ bytesInUse, keyBytes, limitBytes }) => {
-          this.headroom ??= { bytesInUse, limitBytes };
-          if (!this.slotBytes.has(key)) this.slotBytes.set(key, keyBytes);
-        },
-        () => {},
-      );
     }
 
     this.beforeUnloadHandler = () => {

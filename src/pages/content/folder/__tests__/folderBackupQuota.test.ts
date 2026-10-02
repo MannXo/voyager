@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import browser from 'webextension-polyfill';
 
 import { accountIsolationService } from '@/core/services/AccountIsolationService';
+import { budgetCopyBridge } from '@/features/storage/__tests__/budgetCopyBridge';
 
 import { FolderRepository } from '../FolderRepository';
 import { GEMINI_FOLDER_CONFIG } from '../platformFolderConfig';
@@ -14,7 +15,7 @@ vi.mock('webextension-polyfill', () => ({
       local: { get: vi.fn(), set: vi.fn(), remove: vi.fn() },
       onChanged: { addListener: vi.fn(), removeListener: vi.fn() },
     },
-    runtime: { id: 'test-extension-id' },
+    runtime: { id: 'test-extension-id', sendMessage: vi.fn() },
   },
 }));
 
@@ -114,6 +115,10 @@ describe('FolderRepository backup quota safety', () => {
     vi.mocked(browser.storage.local.set).mockImplementation(set);
     vi.mocked(chrome.storage.local.get).mockImplementation(get);
     vi.mocked(chrome.storage.local.set).mockImplementation(set);
+    // Copies reach extension storage through the background's budget.
+    vi.mocked(browser.runtime.sendMessage).mockImplementation(
+      budgetCopyBridge((items) => browser.storage.local.set(items)),
+    );
     vi.spyOn(accountIsolationService, 'isIsolationEnabled').mockResolvedValue(false);
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
