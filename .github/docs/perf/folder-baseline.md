@@ -16,7 +16,7 @@ the two results.
 ## Re-run
 
 ```sh
-bun bench/folders/run.ts                      # everything, about 4 minutes
+bun run bench:folders                         # everything, about 4 minutes
 bun bench/folders/run.ts --only=node          # data cases only, in node
 bun bench/folders/run.ts --only=browser --datasets=normal,large
 bun bench/folders/run.ts --cpu-throttle=4     # a slower machine, via CDP

@@ -33,6 +33,7 @@
     "format:check": "oxfmt --check",
     "clean:build": "find .build -mindepth 1 -maxdepth 1 ! -name sparkle-source-packages -exec rm -rf {} + && echo 'Cleared Xcode derived data (kept .build/sparkle-source-packages).'",
     "i18n:check": "node scripts/check-locale-keys.mjs",
+    "bench:folders": "bun bench/folders/run.ts",
     "regressions:check": "node scripts/validate-regression-notes.mjs",
     "filesize:check": "node scripts/check-file-size.mjs",
     "filesize:update": "node scripts/check-file-size.mjs --update",
