@@ -20,9 +20,12 @@ const outDirName =
       ? 'dist_chrome_dev'
       : 'dist_chrome';
 const outDir = resolve(__dirname, outDirName);
+// Only the unpacked dist_chrome_dev build reloads itself when its build id
+// changes; see src/pages/background/devAutoReload.ts.
+const isChromeDevBuild = isDev && outDirName === 'dist_chrome_dev';
 
 function devBuildReadyPlugin(): Plugin | null {
-  if (!isDev || outDirName !== 'dist_chrome_dev') return null;
+  if (!isChromeDevBuild) return null;
 
   const viteManifestPath = resolve(outDir, '.vite', 'manifest.json');
   let previousAssets = new Set<string>();
@@ -49,7 +52,8 @@ function devBuildReadyPlugin(): Plugin | null {
           new Set([...previousAssets, ...currentAssets, ...staticAssets]),
         );
       }
-      // This is the commit marker consumed by launch-chrome.cjs. It is written
+      // This is the commit marker consumed by launch-chrome.cjs and, as the
+      // build id, by the dev background's auto-reload. It is written
       // only after Rollup has finished writing every asset and stale generations
       // have been pruned, so Chrome never reloads against a half-written bundle.
       writeFileSync(resolve(outDir, '.voyager-build-ready'), `${Date.now()}\n`);
@@ -99,6 +103,9 @@ export const chromeManifest = {
 export default mergeConfig(
   baseConfig,
   defineConfig({
+    define: {
+      'import.meta.env.VOYAGER_DEV_AUTO_RELOAD': JSON.stringify(isChromeDevBuild),
+    },
     plugins: [
       crx({
         manifest: chromeManifest,

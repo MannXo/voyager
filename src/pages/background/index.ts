@@ -93,6 +93,7 @@ import { getTranslation } from '@/utils/i18n';
 import type { TranslationKey } from '@/utils/translations';
 
 import { unregisterRegisteredContentScripts } from './contentScriptRegistration';
+import { startDevAutoReload } from './devAutoReload';
 import { loadEnabledPlugins } from './enabledPlugins';
 import { resolveOptionalHighlightSetting } from './highlightOptionalSetting';
 import { handlePluginRuntimeMessage } from './pluginRuntimeMessages';
@@ -147,6 +148,7 @@ let nativeOpenConversationPort: ReturnType<typeof browser.runtime.connectNative>
 const remoteAnnouncementService = startRemoteAnnouncementBackgroundService();
 registerWelcomePageOnInstall();
 registerWatermarkDefaultMigrationOnInstall();
+if (import.meta.env.VOYAGER_DEV_AUTO_RELOAD) startDevAutoReload();
 // Remote plugin catalog: the only network writer. Content scripts and the popup
 // only ever ask; this decides (interval, switch, backoff, single flight).
 const hostCatalogRefresher = new HostCatalogRefresher();
