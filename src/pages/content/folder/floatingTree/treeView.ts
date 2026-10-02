@@ -1,7 +1,7 @@
 import type { ItemInstance } from '@headless-tree/core';
 
 import { ROOT_ITEM_KEY, type TreeNode, type TreeProjection, folderKey } from './projection';
-import type { TreeProps } from './shared';
+import { type TreeProps, cls } from './shared';
 import { type TreeEngine, type TreeEngineHost, createTreeEngine } from './treeEngine';
 import { type RowVirtualizer, VIRTUALIZE_AFTER_ROWS, createRowVirtualizer } from './virtualRows';
 
@@ -193,7 +193,14 @@ export function createTreeView(rerender: () => void): TreeView {
       activate: (node) => {
         const tree = current();
         if (node.kind === 'conversation') {
-          tree.actions.onNavigate?.(node.conversation);
+          // Enter clicks the title, as it would a link, so a site that takes a
+          // click (a selection mode) takes this one too.
+          const title = next.tree
+            .getItemInstance(node.key)
+            .getElement()
+            ?.querySelector<HTMLElement>(`.${cls('conv-title')}`);
+          if (title) title.click();
+          else tree.actions.onNavigate?.(node.conversation);
           return;
         }
         const expanded = tree.isExpanded(node.folder);
