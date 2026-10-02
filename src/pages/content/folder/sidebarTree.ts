@@ -75,6 +75,11 @@ export const SIDEBAR_TREE_CSS = `
   padding-block: var(--gv-folder-row-padding, 3px);
 }
 
+/* The spacing setting's gap, inside the row shell so the virtualizer measures it. */
+.${FLOATING_PANEL_CLASS}__tree-row {
+  padding-block-end: var(--gv-folder-row-gap, 0px);
+}
+
 .${FLOATING_PANEL_CLASS}__empty {
   padding: 8px 12px;
 }
