@@ -3,15 +3,9 @@ import { type ComponentChild, render } from 'preact';
 import { useLayoutEffect, useState } from 'preact/hooks';
 
 import { ContextMenu } from './ContextMenu';
+import { ConversationRow } from './conversationRow';
 import { buildTreeProjection } from './projection';
-import {
-  ConversationRow,
-  CreateFolderRow,
-  EmptyState,
-  FolderRow,
-  RootDropRow,
-  RootTitleRow,
-} from './rows';
+import { CreateFolderRow, EmptyState, FolderRow, RootDropRow, RootTitleRow } from './rows';
 import { type TreeProps, cls, t } from './shared';
 import { retainTreeStyle } from './treeStyle';
 import { type ProjectedTree, type Row, createTreeView } from './treeView';
