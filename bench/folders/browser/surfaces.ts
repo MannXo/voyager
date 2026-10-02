@@ -6,7 +6,8 @@
 import type { FolderData } from '@/core/types/folder';
 import { openFolderPicker } from '@/features/plugins/builtin/chatgptFolders/chatgptFolderPicker';
 import { ChatGptFolderSection } from '@/features/plugins/builtin/chatgptFolders/chatgptFolderSection';
-import { hideFiledRowsCss } from '@/features/plugins/builtin/chatgptFolders/chatgptHideFiled';
+import { ChatGptHideFiled } from '@/features/plugins/builtin/chatgptFolders/chatgptHideFiled';
+import { PluginScope } from '@/features/plugins/runtime/pluginScope';
 import { mountFloatingPanel } from '@/pages/content/folder/floatingPanel';
 
 import {
@@ -298,14 +299,14 @@ export async function benchChatGptPicker(
       runs: counts.mount,
       setup: () => ({ handle: null as ReturnType<typeof openFolderPicker> | null }),
       action: (state) => {
-        state.handle = openFolderPicker(data.folders, () => {});
+        state.handle = openFolderPicker(data, () => {});
       },
       after: () => countElements(host()),
       teardown: (state) => state.handle?.close(),
     }),
   );
 
-  const handle = openFolderPicker(data.folders, () => {});
+  const handle = openFolderPicker(data, () => {});
   const search = host()?.shadowRoot?.querySelector<HTMLInputElement>('input.search');
   results.push(
     search
@@ -329,7 +330,7 @@ export async function benchChatGptPicker(
   return results;
 }
 
-// --- ChatGPT hide-filed: the browser matching the generated rule -------------
+// --- ChatGPT hide-filed: row markers under one constant rule -----------------
 
 /** Recents rows as ChatGPT renders them, enough of them to fill a long sidebar. */
 const RECENTS_ROWS = 500;
@@ -340,7 +341,7 @@ export async function benchHideFiledStyle(
   chatgptData: FolderData,
   counts: RunCounts,
 ): Promise<BenchResult[]> {
-  const surface = 'chatgpt hide-filed rule (style matching)';
+  const surface = 'chatgpt hide-filed (row markers + constant rule)';
   const filed = [
     ...new Set(
       Object.values(chatgptData.folderContents).flatMap((bucket) =>
@@ -353,53 +354,86 @@ export async function benchHideFiledStyle(
     Array.from({ length: 32 }, () => Math.floor(random() * 16).toString(16))
       .join('')
       .replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+  // The watcher hands `sync` the whole sidebar; rows match only under Recents.
+  const nav = document.createElement('nav');
   const recents = document.createElement('div');
   recents.setAttribute('data-sidebar-project-container-id', 'chats');
+  nav.append(recents);
   const addRow = (index: number) => {
     const row = document.createElement('div');
     row.setAttribute('role', 'listitem');
     const link = document.createElement('a');
     const id = index % 2 === 0 && filed.length ? filed[index % filed.length] : uuid();
-    link.href = `/c/${id}`;
+    link.setAttribute('href', `/c/${id}`);
     link.textContent = `Conversation ${index}`;
     row.append(link);
     recents.append(row);
   };
   for (let i = 0; i < RECENTS_ROWS; i++) addRow(i);
-  document.body.append(recents);
-  const style = document.createElement('style');
-  document.head.append(style);
-  const rules = [hideFiledRowsCss(filed), hideFiledRowsCss(filed.slice(1))];
+  document.body.append(nav);
+  const scope = new PluginScope();
+  const hideFiled = new ChatGptHideFiled(scope);
+  const style = document.querySelector<HTMLStyleElement>('style[data-gv-chatgpt-hide-filed]')!;
 
   const hiddenRows = () =>
     Array.from(recents.children).filter((row) => getComputedStyle(row).display === 'none').length;
   const results: BenchResult[] = [];
-  const applied = await collect({
+  // A store notification: rebuild the filed set, then a row pass marks every
+  // filed row. The forced layout restyles the newly hidden rows.
+  const marked = await collect({
     surface,
     dataset,
-    metric: `apply rule (${filed.length} ids) to ${RECENTS_ROWS} rows`,
+    metric: `mark rows (${filed.length} ids) in ${RECENTS_ROWS} rows`,
     runs: counts.interaction,
-    setup: () => undefined,
-    action: (_state, run) => {
-      style.textContent = rules[run % 2];
+    setup: () => {
+      hideFiled.update([]);
+      hideFiled.sync(nav);
+    },
+    action: () => {
+      hideFiled.update(filed);
+      hideFiled.sync(nav);
     },
   });
-  // Sanity check that the rule matches the fake rows: about half are filed.
-  results.push({ ...applied, note: `hides ${hiddenRows()} of ${RECENTS_ROWS} rows` });
+  // Sanity check that the markers and rule match the fake rows: about half are filed.
+  results.push({ ...marked, note: `hides ${hiddenRows()} of ${RECENTS_ROWS} rows` });
+  results.push(
+    await collect({
+      surface,
+      dataset,
+      metric: `reconcile unchanged marks (${filed.length} ids) in ${RECENTS_ROWS} rows`,
+      runs: counts.interaction,
+      setup: () => undefined,
+      action: () => hideFiled.sync(nav),
+    }),
+  );
+  results.push(
+    await collect({
+      surface,
+      dataset,
+      metric: `restyle ${RECENTS_ROWS} marked rows under the constant rule`,
+      runs: counts.interaction,
+      setup: () => undefined,
+      action: () => {
+        style.disabled = !style.disabled;
+      },
+    }),
+  );
+  style.disabled = false;
   let next = RECENTS_ROWS;
   results.push(
     await collect({
       surface,
       dataset,
-      metric: `append a page of ${PAGE_ROWS} rows under the rule`,
+      metric: `append a page of ${PAGE_ROWS} rows and reconcile marks`,
       runs: counts.interaction,
       setup: () => undefined,
       action: () => {
         for (let i = 0; i < PAGE_ROWS; i++) addRow(next++);
+        hideFiled.sync(nav);
       },
     }),
   );
-  style.remove();
-  recents.remove();
+  await scope.dispose();
+  nav.remove();
   return results;
 }

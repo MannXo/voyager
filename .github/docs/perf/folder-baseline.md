@@ -35,10 +35,10 @@ its default macOS or Linux location. Set `NODE_BIN` to choose the node binary.
 
 ## Where each number comes from
 
-| Source                         | What                                                                                                                                                                                                                                   |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Real browser (headless Chrome) | All UI surfaces: mount, rename re-render, search typing, selection, folder toggle, DOM element counts, and the ChatGPT hide-filed style rule. Also every data case again, under the `data (chrome)` heading, with real `localStorage`. |
-| Node (`node`, V8)              | Data cases only: `normalizeFolderData`, `FolderRepository` save, `reorderConversations`, `conversationMembership` and `hideFiledRowsCss`. `localStorage` is an in-memory shim with a 5 Mi-character quota, like Chrome's.              |
+| Source                         | What                                                                                                                                                                                                                                                        |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Real browser (headless Chrome) | All UI surfaces: mount, rename re-render, search typing, selection, folder toggle, DOM element counts, and ChatGPT hide-filed (row-marker pass and constant rule). Also every data case again, under the `data (chrome)` heading, with real `localStorage`. |
+| Node (`node`, V8)              | Data cases only: `normalizeFolderData`, `FolderRepository` save, `reorderConversations` and `conversationMembership`. `localStorage` is an in-memory shim with a 5 Mi-character quota, like Chrome's.                                                       |
 
 None of the numbers come from jsdom.
 
@@ -77,7 +77,8 @@ The ChatGPT surfaces get the same datasets with ChatGPT ids (`chatgpt:conv:<uuid
     Gemini sidebar.
   - **Floating panel:** `mountFloatingPanel`. The AI Studio sidebar uses the same shared
     `FolderTree`, so these numbers cover it too.
-  - **ChatGPT:** `ChatGptFolderSection`, `openFolderPicker`, and the hide-filed rule.
+  - **ChatGPT:** `ChatGptFolderSection`, `openFolderPicker`, and `ChatGptHideFiled` (its
+    `data-gv-chatgpt-filed` row-marker pass and the constant rule).
   - **Selection:** a long-press enters multi-select, then each click on a row link toggles a row.
   - **Search:** typing `p`, `pr`, `pro`, `proj`, then clearing. The cost is reported per
     keystroke.
@@ -136,7 +137,10 @@ an idle machine and compare ratios.
 4. **The ChatGPT hide-filed rule is the largest single cost, and it is outside the tree.** It is
    one `:has(:is(a[href$=…], …))` rule. Style matching scales with filed ids × rows: 82 ms at
    500 ids and 1.6 s at 10k ids, for only 500 minimal fake rows. Appending a 28-row page under
-   the rule costs 44 ms at `large`. Real ChatGPT rows are deeper, so expect worse.
+   the rule costs 44 ms at `large`. Real ChatGPT rows are deeper, so expect worse. `ed3ce3a0`
+   replaced this rule with one constant rule over `data-gv-chatgpt-filed` row markers. The
+   hide-filed numbers in this baseline predate that change; the bench now measures the marker
+   pass.
 5. **The emergency backup silently stops fitting in `localStorage` at `large`.** The library is
    2.0 MiB as JSON. The folder key, primary backup and metadata take 4.26M characters, and a
    third copy does not fit in the remaining quota (about 5.2M characters). `createEmergencyBackup`

@@ -7,7 +7,6 @@
  */
 import type { FolderData } from '@/core/types/folder';
 import { reorderConversations, normalizeFolderData } from '@/features/folder/model/folderData';
-import { hideFiledRowsCss } from '@/features/plugins/builtin/chatgptFolders/chatgptHideFiled';
 import { FolderRepository } from '@/pages/content/folder/FolderRepository';
 import { createConversationMembershipLookup } from '@/pages/content/folder/conversationMembership';
 import { GEMINI_FOLDER_CONFIG } from '@/pages/content/folder/platformFolderConfig';
@@ -227,17 +226,6 @@ export async function runDataBenchmarks(options: DataBenchOptions): Promise<Benc
         for (const id of rows) if (lookup(data.folderContents).has(id)) filed++;
         return filed;
       }),
-    );
-
-    // 5. ChatGPT hide-filed: the one CSS rule rebuilt from every filed id on each
-    //    store notification.
-    const chatgpt = generateFolderData(spec, 'chatgpt');
-    const filedIds = new Set<string>();
-    for (const refs of Object.values(chatgpt.folderContents)) {
-      for (const ref of refs) filedIds.add(ref.conversationId.replace(/^chatgpt:conv:/, ''));
-    }
-    await record(dataset, `hideFiledRowsCss (${filedIds.size} filed ids)`, () =>
-      sample({ runs: runs(dataset, scale, 40, 20), warmup: 3 }, () => hideFiledRowsCss(filedIds)),
     );
   }
   return results;
