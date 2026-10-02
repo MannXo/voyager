@@ -125,7 +125,7 @@ class ChatGptFoldersView {
   pickFolderFor(conversation: ConversationReference): void {
     if (this.scope.isDisposed || !this.store.ready) return;
     this.picker?.close();
-    this.picker = openFolderPicker(this.store.data.folders, (folderId) => {
+    this.picker = openFolderPicker(this.store.data, (folderId) => {
       this.picker = null;
       const outcome = this.store.addConversation(folderId, conversation);
       if (outcome !== 'closed') this.flashTree(t(ADD_OUTCOME_KEYS[outcome]));

@@ -4,8 +4,9 @@
  * cannot restyle it. The plugin's dynamic registration does inject
  * `contentStyle.css` on chatgpt.com, alongside the content script.
  */
-import type { Folder } from '@/core/types/folder';
+import type { Folder, FolderData } from '@/core/types/folder';
 import { sortFolders } from '@/features/folder/model/folderData';
+import { type FolderIndex, buildFolderIndex } from '@/features/folder/model/folderIndex';
 import { attachShadowSurface } from '@/pages/content/folder/shadowHost';
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
@@ -17,6 +18,8 @@ interface FolderOption {
   readonly folder: Folder;
   readonly level: number;
   readonly path: string;
+  /** `path` as the search compares it. */
+  readonly searchKey: string;
 }
 
 function normalizePath(value: string): string {
@@ -26,14 +29,18 @@ function normalizePath(value: string): string {
     .replace(/\s*\/\s*/g, '/');
 }
 
-/** Folders in tree order with their depth and full path; cycles are cut. */
-function listFolders(folders: readonly Folder[]): FolderOption[] {
+/**
+ * Folders in tree order with their depth and full path; cycles are cut. Only a
+ * `null` parent is a root here, and each record of a repeated id is listed
+ * under its own parent, as the picker always has.
+ */
+function listFolders(index: FolderIndex): FolderOption[] {
   const options: FolderOption[] = [];
   const visit = (parentId: string | null, level: number, parentPath: string, seen: Set<string>) => {
-    for (const folder of sortFolders(folders.filter((item) => item.parentId === parentId))) {
+    for (const folder of sortFolders(index.recordsWithParent(parentId))) {
       if (seen.has(folder.id)) continue;
       const path = parentPath ? `${parentPath} / ${folder.name}` : folder.name;
-      options.push({ folder, level, path });
+      options.push({ folder, level, path, searchKey: normalizePath(path) });
       visit(folder.id, level + 1, path, new Set([...seen, folder.id]));
     }
   };
@@ -47,7 +54,7 @@ export interface FolderPickerHandle {
 
 /** Opens the picker over the page; `onSelect` runs once with the chosen folder. */
 export function openFolderPicker(
-  folders: readonly Folder[],
+  data: FolderData,
   onSelect: (folderId: string) => void,
 ): FolderPickerHandle {
   for (const stale of document.querySelectorAll(`.${FOLDER_PICKER_CLASS}`)) stale.remove();
@@ -88,12 +95,17 @@ export function openFolderPicker(
     if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
   };
 
-  const options = listFolders(folders);
+  const options = listFolders(buildFolderIndex(data));
+  // Each row is built once, when a search first shows it, and reused after.
+  const items = new Map<FolderOption, HTMLButtonElement>();
   const render = (): void => {
     const query = normalizePath(search.value);
-    const visible = options.filter((option) => normalizePath(option.path).includes(query));
+    const visible = options.filter((option) => option.searchKey.includes(query));
     list.replaceChildren(
-      ...visible.map(({ folder, level, path }) => {
+      ...visible.map((option) => {
+        const cached = items.get(option);
+        if (cached) return cached;
+        const { folder, level, path } = option;
         const item = document.createElement('button');
         item.type = 'button';
         item.className = 'item';
@@ -114,6 +126,7 @@ export function openFolderPicker(
           close();
           onSelect(folder.id);
         });
+        items.set(option, item);
         return item;
       }),
     );
