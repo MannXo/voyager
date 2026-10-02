@@ -13,6 +13,7 @@ import { isSafari } from '@/core/utils/browser';
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
 import type { FolderTransferController } from './FolderTransferController';
+import { KEEPS_INLINE_FORM_ATTR } from './floatingTree/shared';
 import type { createFolderHeaderMenus } from './headerMenus';
 
 export type SidebarHeaderOptions = {
@@ -141,6 +142,8 @@ function createActions(options: SidebarHeaderOptions): HTMLElement {
   settings.addEventListener('click', (event) => options.onOpenSettings(event));
 
   const add = actionButton('gv-folder-add-btn', createPlusIcon(18), 'folder_create');
+  // A second press refocuses the open name field, so it must not dismiss it first.
+  add.setAttribute(KEEPS_INLINE_FORM_ATTR, '');
   add.addEventListener('click', () => options.onCreateFolder());
 
   actions.append(settings, add);

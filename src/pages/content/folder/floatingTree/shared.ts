@@ -20,6 +20,12 @@ export function cls(part: string): string {
 
 export const MENU_SELECTOR = `.${cls('context-menu')}`;
 
+/**
+ * Marks a control outside the tree that reopens the name editor (a site's "+"):
+ * pressing it leaves an open editor and its draft in place for the control to refocus.
+ */
+export const KEEPS_INLINE_FORM_ATTR = 'data-gv-keeps-inline-form';
+
 export function t(key: string): string {
   return getTranslationSyncUnsafe(key);
 }

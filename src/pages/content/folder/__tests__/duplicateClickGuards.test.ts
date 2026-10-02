@@ -96,6 +96,31 @@ describe('folder duplicate click guards', () => {
     expect(deepActiveElement()).toBe(input);
   });
 
+  it('keeps the typed draft when "+" is pressed again with the mouse', async () => {
+    harness = await createFolderViewHarness({ folders: [], folderContents: {} });
+    const addButton =
+      harness.runtime.panel!.querySelector<HTMLButtonElement>('.gv-folder-add-btn')!;
+    const press = () => {
+      for (const type of ['mousedown', 'mouseup', 'click']) {
+        addButton.dispatchEvent(
+          new MouseEvent(type, { bubbles: true, cancelable: true, composed: true, button: 0 }),
+        );
+      }
+    };
+
+    press();
+    const input = sidebarTree(harness.runtime.panel).nameInput()!;
+    input.value = 'Draft';
+    addButton.focus();
+
+    press();
+
+    expect(nameInputs()).toHaveLength(1);
+    expect(sidebarTree(harness.runtime.panel).nameInput()).toBe(input);
+    expect(input.value).toBe('Draft');
+    expect(deepActiveElement()).toBe(input);
+  });
+
   it('clears stale folder input state during reinitialize so creation stays usable', async () => {
     harness = await createFolderViewHarness({ folders: [], folderContents: {} });
 

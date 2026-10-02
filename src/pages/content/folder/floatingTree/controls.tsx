@@ -3,7 +3,7 @@ import type { CSSProperties } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
 
 import { eventPassedThrough } from '../shadowHost';
-import { MAX_FOLDER_NAME_LENGTH, MENU_SELECTOR, cls, t } from './shared';
+import { KEEPS_INLINE_FORM_ATTR, MAX_FOLDER_NAME_LENGTH, MENU_SELECTOR, cls, t } from './shared';
 
 type IconButtonProps = {
   modifier: string;
@@ -38,15 +38,19 @@ type InlineFormProps = {
   onCancel: () => void;
 };
 
+const KEEPS_FORM_SELECTOR = `${MENU_SELECTOR}, [${KEEPS_INLINE_FORM_ATTR}]`;
+
 // The panel lives in a shadow root, where a document listener sees the host as
 // the target; the composed path still names the real element.
-function isInsideContextMenu(e: Event): boolean {
-  return e.composedPath().some((node) => node instanceof Element && node.matches(MENU_SELECTOR));
+function keepsFormOpen(e: Event): boolean {
+  return e
+    .composedPath()
+    .some((node) => node instanceof Element && node.matches(KEEPS_FORM_SELECTOR));
 }
 
 /**
  * Name editor for create and rename. A mousedown anywhere outside it (except the
- * context menu) cancels. The listener lives exactly as long as the form is
+ * context menu and controls marked with KEEPS_INLINE_FORM_ATTR) cancels. The listener lives exactly as long as the form is
  * mounted, so re-rendering the tree around it keeps it working.
  */
 export function InlineForm({
@@ -79,7 +83,7 @@ export function InlineForm({
     const form = formRef.current;
     if (!form) return;
     const onOutsideMouseDown = (e: MouseEvent) => {
-      if (eventPassedThrough(e, form) || isInsideContextMenu(e)) return;
+      if (eventPassedThrough(e, form) || keepsFormOpen(e)) return;
       e.preventDefault();
       e.stopPropagation();
       onCancel();
