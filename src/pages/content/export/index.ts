@@ -6,8 +6,7 @@ import {
   buildLegacyConversationIdFromUrl,
   buildRouteConversationIdFromUrl,
 } from '@/core/utils/conversationIdentity';
-import { type AppLanguage, normalizeLanguage } from '@/utils/language';
-import { extractMessageDictionary } from '@/utils/localeMessages';
+import type { AppLanguage } from '@/utils/language';
 import type { TranslationKey } from '@/utils/translations';
 
 import { ConversationExportService } from '../../../features/export/services/ConversationExportService';
@@ -48,11 +47,22 @@ import {
   injectConversationMenuExportButton,
   injectResponseMenuExportButton,
 } from './conversationMenuInjection';
+import { waitForAnyElement, waitForElement } from './domWait';
 import { isAbortError, throwIfExportCancelled } from './exportCancellation';
 import { withExportCollectingBanner } from './exportCollectingBanner';
 import { startExportEntryGate } from './exportEntryGate';
 import { noteExportTurns } from './exportHealth';
+import {
+  languageFromStorageChanges,
+  loadExportDictionaries,
+  readExportLanguage,
+} from './exportLocale';
 import { resolveExportLogoAnchor } from './exportLogoAnchor';
+import {
+  captureGeneratedUiScreenshots,
+  ensureGeneratedUiScreenshotPermission,
+  removeGeneratedUiScreenshotSections,
+} from './generatedUiScreenshots';
 import {
   type PendingExportState,
   advancePendingExportState,
@@ -80,7 +90,10 @@ import {
   resolveInitialSelectedMessageIds,
   shouldRefreshSelectionUi,
 } from './selectionUtils';
-import { resolveSidebarConversationTarget } from './sidebarConversationTarget';
+import {
+  geminiConversationIdFromLocation,
+  openSidebarConversationForExport,
+} from './sidebarConversationNavigation';
 import {
   computeConversationFingerprint,
   waitForConversationFingerprintChangeOrTimeout,
@@ -102,10 +115,6 @@ const EXPORT_PRELOAD_WAIT_OPTIONS = {
   maxSamples: 10,
 } as const;
 const FINAL_EXPORT_PREPARE_DELAY_MS = 120;
-const GENERATED_UI_FRAME_SELECTOR = 'iframe[src*="gemini-code-immersive"]';
-const GENERATED_UI_SCREENSHOT_MESSAGE_TYPE = 'gv.generatedUi.captureVisibleTab';
-const GENERATED_UI_CAPTURE_PERMISSION_MESSAGE_TYPE = 'gv.generatedUi.ensureCapturePermission';
-const GENERATED_UI_SCREENSHOT_SECTION_CLASS = 'gv-generated-ui-screenshot-section';
 // Platform adapter — resolved once per page load
 const exportAdapter: ExportPlatformAdapter = resolveExportAdapter();
 ConversationExportService.setExportAdapter(exportAdapter);
@@ -142,212 +151,6 @@ function cancelActiveExportOperation(): void {
 /** Remove all injected Canvas export sections from the DOM after export completes */
 function removeCanvasExportSections(): void {
   document.querySelectorAll('.gv-canvas-export-section').forEach((el) => el.remove());
-}
-
-function removeGeneratedUiScreenshotSections(): void {
-  document.querySelectorAll(`.${GENERATED_UI_SCREENSHOT_SECTION_CLASS}`).forEach((el) => {
-    // PDFPrintService owns the print container lifecycle after window.print().
-    if (el.closest('#gv-pdf-print-container')) return;
-    el.remove();
-  });
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('image_load_failed'));
-    img.src = src;
-  });
-}
-
-async function cropViewportScreenshot(dataUrl: string, rect: DOMRect): Promise<string | null> {
-  const img = await loadImage(dataUrl);
-  const scaleX = img.naturalWidth / window.innerWidth;
-  const scaleY = img.naturalHeight / window.innerHeight;
-  const left = Math.max(0, rect.left);
-  const top = Math.max(0, rect.top);
-  const right = Math.min(window.innerWidth, rect.right);
-  const bottom = Math.min(window.innerHeight, rect.bottom);
-  const width = Math.floor((right - left) * scaleX);
-  const height = Math.floor((bottom - top) * scaleY);
-  if (width <= 0 || height <= 0) return null;
-
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext('2d');
-  if (!context) return null;
-  context.drawImage(img, left * scaleX, top * scaleY, width, height, 0, 0, width, height);
-  return canvas.toDataURL('image/png');
-}
-
-function insertGeneratedUiScreenshot(frame: HTMLIFrameElement, dataUrl: string): void {
-  const section = document.createElement('div');
-  section.className = GENERATED_UI_SCREENSHOT_SECTION_CLASS;
-  const img = document.createElement('img');
-  img.src = dataUrl;
-  img.alt = 'Gemini interactive UI screenshot';
-  section.appendChild(img);
-
-  const anchor =
-    (frame.closest('.attachment-container') as HTMLElement | null) ||
-    (frame.closest('response-element') as HTMLElement | null);
-  if (anchor?.parentElement) {
-    anchor.insertAdjacentElement('afterend', section);
-    return;
-  }
-
-  const container =
-    (frame.closest('message-content') as HTMLElement | null)?.querySelector(
-      '.markdown, .markdown-main-panel',
-    ) ||
-    (frame.closest('.markdown, .markdown-main-panel, message-content') as HTMLElement | null) ||
-    frame.parentElement;
-  container?.appendChild(section);
-}
-
-async function captureVisibleTab(): Promise<string | null> {
-  try {
-    const response = (await chrome.runtime.sendMessage({
-      type: GENERATED_UI_SCREENSHOT_MESSAGE_TYPE,
-    })) as { ok?: boolean; dataUrl?: string; error?: string };
-    if (response?.ok && typeof response.dataUrl === 'string') return response.dataUrl;
-    console.warn(
-      '[Gemini Voyager] Generated UI screenshot capture failed:',
-      response?.error || 'empty_response',
-      response,
-    );
-  } catch (error) {
-    console.warn('[Gemini Voyager] Generated UI screenshot capture failed:', error);
-  }
-  return null;
-}
-
-async function ensureGeneratedUiScreenshotPermission(): Promise<void> {
-  if (!document.querySelector(GENERATED_UI_FRAME_SELECTOR)) return;
-  try {
-    // Must run from export click handlers, before preload/capture awaits erase the gesture.
-    const response = (await chrome.runtime.sendMessage({
-      type: GENERATED_UI_CAPTURE_PERMISSION_MESSAGE_TYPE,
-    })) as { ok?: boolean };
-    if (!response?.ok) {
-      console.warn('[Gemini Voyager] Generated UI screenshot permission was not granted.');
-    }
-  } catch (error) {
-    console.warn('[Gemini Voyager] Generated UI screenshot permission request failed:', error);
-  }
-}
-
-async function captureGeneratedUiScreenshots(): Promise<void> {
-  removeGeneratedUiScreenshotSections();
-  const frames = Array.from(
-    document.querySelectorAll<HTMLIFrameElement>(GENERATED_UI_FRAME_SELECTOR),
-  );
-  if (frames.length === 0) return;
-
-  const hiddenOverlays = Array.from(
-    document.querySelectorAll<HTMLElement>('.gv-export-progress-overlay'),
-  );
-  const previousDisplay = hiddenOverlays.map((overlay) => overlay.style.display);
-  hiddenOverlays.forEach((overlay) => {
-    overlay.style.display = 'none';
-  });
-
-  try {
-    for (const frame of frames) {
-      frame.scrollIntoView({ block: 'center', inline: 'nearest' });
-      await new Promise((resolve) => window.setTimeout(resolve, 120));
-      const screenshot = await captureVisibleTab();
-      if (!screenshot) continue;
-      const rect = frame.getBoundingClientRect();
-      const cropped = await cropViewportScreenshot(screenshot, rect);
-      if (cropped) {
-        insertGeneratedUiScreenshot(frame, cropped);
-      } else {
-        console.warn('[Gemini Voyager] Generated UI screenshot crop failed:', {
-          bottom: rect.bottom,
-          height: rect.height,
-          left: rect.left,
-          right: rect.right,
-          top: rect.top,
-          viewportHeight: window.innerHeight,
-          viewportWidth: window.innerWidth,
-          width: rect.width,
-        });
-      }
-    }
-  } catch (error) {
-    console.warn('[Gemini Voyager] Generated UI screenshot export failed:', error);
-    // Link/text fallback still exports if screenshot capture is unavailable.
-  } finally {
-    hiddenOverlays.forEach((overlay, index) => {
-      overlay.style.display = previousDisplay[index] || '';
-    });
-  }
-}
-
-function waitForElement(selector: string, timeoutMs: number = 6000): Promise<Element | null> {
-  return new Promise((resolve) => {
-    const el = document.querySelector(selector);
-    if (el) return resolve(el);
-    const obs = new MutationObserver(() => {
-      const found = document.querySelector(selector);
-      if (found) {
-        try {
-          obs.disconnect();
-        } catch {}
-        resolve(found);
-      }
-    });
-    try {
-      obs.observe(document.body, { childList: true, subtree: true });
-    } catch {}
-    if (timeoutMs > 0)
-      setTimeout(() => {
-        try {
-          obs.disconnect();
-        } catch {}
-        resolve(null);
-      }, timeoutMs);
-  });
-}
-
-function waitForAnyElement(
-  selectors: string[],
-  timeoutMs: number = 10000,
-): Promise<Element | null> {
-  return new Promise((resolve) => {
-    for (const s of selectors) {
-      const el = document.querySelector(s);
-      if (el) return resolve(el);
-    }
-
-    const obs = new MutationObserver(() => {
-      for (const s of selectors) {
-        const found = document.querySelector(s);
-        if (found) {
-          try {
-            obs.disconnect();
-          } catch {}
-          resolve(found);
-          return;
-        }
-      }
-    });
-
-    try {
-      obs.observe(document.body, { childList: true, subtree: true });
-    } catch {}
-
-    if (timeoutMs > 0)
-      setTimeout(() => {
-        try {
-          obs.disconnect();
-        } catch {}
-        resolve(null);
-      }, timeoutMs);
-  });
 }
 
 function normalizeText(text: string | null): string {
@@ -519,7 +322,7 @@ export function collectChatPairs(): ChatTurn[] {
   const assistants = filterTopLevel(assistantsAll);
 
   const starredSet = readStarredSet();
-  const nativeConversationId = extractConversationIdFromUrl();
+  const nativeConversationId = geminiConversationIdFromLocation();
   const pairs: ChatTurn[] = [];
 
   for (let i = 0; i < users.length; i++) {
@@ -794,215 +597,8 @@ function ensureDropdownInjected(logoElement: Element): HTMLButtonElement | null 
   return btn;
 }
 
-async function loadDictionaries(): Promise<Record<AppLanguage, Record<string, string>>> {
-  try {
-    const [enRaw, zhRaw, zhTWRaw, jaRaw, frRaw, esRaw, ptRaw, arRaw, ruRaw, koRaw] =
-      await Promise.all([
-        import(/* @vite-ignore */ '../../../locales/en/messages.json'),
-        import(/* @vite-ignore */ '../../../locales/zh/messages.json'),
-        import(/* @vite-ignore */ '../../../locales/zh_TW/messages.json'),
-        import(/* @vite-ignore */ '../../../locales/ja/messages.json'),
-        import(/* @vite-ignore */ '../../../locales/fr/messages.json'),
-        import(/* @vite-ignore */ '../../../locales/es/messages.json'),
-        import(/* @vite-ignore */ '../../../locales/pt/messages.json'),
-        import(/* @vite-ignore */ '../../../locales/ar/messages.json'),
-        import(/* @vite-ignore */ '../../../locales/ru/messages.json'),
-        import(/* @vite-ignore */ '../../../locales/ko/messages.json'),
-      ]);
-
-    return {
-      en: extractMessageDictionary(enRaw),
-      zh: extractMessageDictionary(zhRaw),
-      zh_TW: extractMessageDictionary(zhTWRaw),
-      ja: extractMessageDictionary(jaRaw),
-      fr: extractMessageDictionary(frRaw),
-      es: extractMessageDictionary(esRaw),
-      pt: extractMessageDictionary(ptRaw),
-      ar: extractMessageDictionary(arRaw),
-      ru: extractMessageDictionary(ruRaw),
-      ko: extractMessageDictionary(koRaw),
-    };
-  } catch {
-    return {
-      en: {},
-      zh: {},
-      zh_TW: {},
-      ja: {},
-      fr: {},
-      es: {},
-      pt: {},
-      ar: {},
-      ru: {},
-      ko: {},
-    };
-  }
-}
-
-function extractConversationIdFromUrl(): string | null {
-  const appMatch = window.location.pathname.match(/\/app\/([^/?#]+)/);
-  if (appMatch?.[1]) return appMatch[1];
-  const gemMatch = window.location.pathname.match(/\/gem\/[^/]+\/([^/?#]+)/);
-  if (gemMatch?.[1]) return gemMatch[1];
-  return null;
-}
-
-function extractConversationIdFromHref(href: string): string | null {
-  if (!href) return null;
-  try {
-    const parsed = new URL(href, window.location.origin);
-    const appMatch = parsed.pathname.match(/\/app\/([^/?#]+)/);
-    if (appMatch?.[1]) return appMatch[1];
-    const gemMatch = parsed.pathname.match(/\/gem\/[^/]+\/([^/?#]+)/);
-    if (gemMatch?.[1]) return gemMatch[1];
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function escapeCssAttributeValue(value: string): string {
-  const escape = globalThis.CSS?.escape;
-  if (typeof escape === 'function') {
-    return escape(value);
-  }
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}
-
 function getConversationTitleForExport(): string {
   return exportAdapter.extractConversationTitle();
-}
-
-function findSidebarConversationLinkById(conversationId: string): HTMLAnchorElement | null {
-  const escapedConversationId = escapeCssAttributeValue(conversationId);
-  const byJslog = document.querySelector(
-    `[data-test-id="conversation"][jslog*="c_${escapedConversationId}"] a[href]`,
-  ) as HTMLAnchorElement | null;
-  if (byJslog) return byJslog;
-
-  const links = Array.from(
-    document.querySelectorAll<HTMLAnchorElement>(
-      '[data-test-id="conversation"] a[href], a[data-test-id="conversation"][href]',
-    ),
-  );
-  for (const link of links) {
-    if (extractConversationIdFromHref(link.href) === conversationId) {
-      return link;
-    }
-  }
-
-  return null;
-}
-
-function triggerNativeClick(target: HTMLElement): void {
-  const opts = { bubbles: true, cancelable: true, view: window };
-  target.dispatchEvent(new MouseEvent('pointerdown', opts));
-  target.dispatchEvent(new MouseEvent('mousedown', opts));
-  target.dispatchEvent(new MouseEvent('mouseup', opts));
-  target.dispatchEvent(new MouseEvent('click', opts));
-}
-
-async function waitForConversationUrl(
-  conversationId: string,
-  timeoutMs: number = 10000,
-): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (extractConversationIdFromUrl() === conversationId) return true;
-    await new Promise((resolve) => setTimeout(resolve, 120));
-  }
-  return false;
-}
-
-async function navigateToConversationAndWait(
-  conversationId: string,
-  fallbackUrl: string,
-): Promise<boolean> {
-  const currentConversationId = extractConversationIdFromUrl();
-  if (currentConversationId === conversationId) {
-    const existing = await waitForAnyElement(getUserSelectors(), 8000);
-    return !!existing;
-  }
-
-  const link = findSidebarConversationLinkById(conversationId);
-  if (link) {
-    triggerNativeClick(link);
-  } else if (fallbackUrl) {
-    window.location.assign(fallbackUrl);
-  } else {
-    return false;
-  }
-
-  const routeReady = await waitForConversationUrl(conversationId, 12000);
-  if (!routeReady) return false;
-  const contentReady = await waitForAnyElement(getUserSelectors(), 15000);
-  return !!contentReady;
-}
-
-async function exportFromSidebarConversationTrigger(
-  trigger: HTMLElement,
-  dict: Record<AppLanguage, Record<string, string>>,
-  getCurrentLanguage: () => AppLanguage,
-): Promise<void> {
-  const target = resolveSidebarConversationTarget(trigger);
-  if (!target) {
-    alert('Unable to locate the selected conversation. Please open it first, then export.');
-    return;
-  }
-
-  const ready = await navigateToConversationAndWait(target.conversationId, target.url);
-  if (!ready) {
-    alert('Failed to open the selected conversation for export. Please retry.');
-    return;
-  }
-
-  await showExportDialog(dict, getCurrentLanguage());
-}
-
-function normalizeLang(lang: string | undefined): AppLanguage {
-  return normalizeLanguage(lang);
-}
-
-async function getLanguage(): Promise<AppLanguage> {
-  try {
-    // Add timeout to prevent hanging in Firefox
-    const stored = await Promise.race([
-      new Promise<unknown>((resolve) => {
-        try {
-          const win = window as Window & {
-            chrome?: {
-              storage?: {
-                sync?: { get: (key: string, cb: (r: unknown) => void) => void };
-              };
-            };
-            browser?: {
-              storage?: { sync?: { get: (key: string) => Promise<unknown> } };
-            };
-          };
-          if (win.chrome?.storage?.sync?.get) {
-            win.chrome.storage.sync.get(StorageKeys.LANGUAGE, resolve);
-          } else if (win.browser?.storage?.sync?.get) {
-            win.browser.storage.sync
-              .get(StorageKeys.LANGUAGE)
-              .then(resolve)
-              .catch(() => resolve({}));
-          } else {
-            resolve({});
-          }
-        } catch {
-          resolve({});
-        }
-      }),
-      new Promise<unknown>((resolve) => setTimeout(() => resolve({}), 1000)),
-    ]);
-    const rec = stored && typeof stored === 'object' ? (stored as Record<string, unknown>) : {};
-    const v =
-      typeof rec[StorageKeys.LANGUAGE] === 'string'
-        ? (rec[StorageKeys.LANGUAGE] as string)
-        : undefined;
-    return normalizeLang(v || navigator.language || 'en');
-  } catch {
-    return 'en';
-  }
 }
 
 /**
@@ -1977,8 +1573,8 @@ async function checkPendingExport() {
     console.log('[Gemini Voyager] Resuming pending export sequence...');
 
     // We need i18n for final export/alert
-    const dict = await loadDictionaries();
-    const lang = await getLanguage();
+    const dict = await loadExportDictionaries();
+    const lang = await readExportLanguage();
 
     await executeExportSequenceWithProgress(
       state.format,
@@ -2405,9 +2001,9 @@ export async function startExportButton(
     checkPendingExport();
   }
 
-  const dict = await loadDictionaries();
+  const dict = await loadExportDictionaries();
   if (options.signal?.aborted) return noCleanup;
-  let lang = await getLanguage();
+  let lang = await readExportLanguage();
   if (options.signal?.aborted) return noCleanup;
   const t = (key: TranslationKey) => dict[lang]?.[key] ?? dict.en?.[key] ?? key;
 
@@ -2451,9 +2047,8 @@ export async function startExportButton(
       area: string,
     ) => {
       if (area !== 'sync') return;
-      const nextRaw = changes[StorageKeys.LANGUAGE]?.newValue;
-      if (typeof nextRaw === 'string') {
-        const next = normalizeLang(nextRaw);
+      const next = languageFromStorageChanges(changes);
+      if (next) {
         lang = next;
         toolbarHandle?.setText(
           dict[next]?.['pm_export'] ?? dict.en?.['pm_export'] ?? 'Export',
@@ -2479,7 +2074,11 @@ export async function startExportButton(
     getCurrentLanguage: () => lang,
     onExport: (context) => {
       if (context.menuType === 'sidebar' && context.trigger) {
-        void exportFromSidebarConversationTrigger(context.trigger, dict, () => lang);
+        const trigger = context.trigger;
+        void (async () => {
+          if (!(await openSidebarConversationForExport(trigger, getUserSelectors))) return;
+          await showExportDialog(dict, lang);
+        })();
         return;
       }
       if (context.menuType === 'message') {
@@ -2544,9 +2143,8 @@ export async function startExportButton(
       area: string,
     ) => {
       if (area !== 'sync') return;
-      const nextRaw = changes[StorageKeys.LANGUAGE]?.newValue;
-      if (typeof nextRaw === 'string') {
-        const next = normalizeLang(nextRaw);
+      const next = languageFromStorageChanges(changes);
+      if (next) {
         lang = next;
         const lbl = dict[next]?.['pm_export'] ?? dict.en?.['pm_export'] ?? 'Export';
         const ttl =
@@ -2609,9 +2207,8 @@ export async function startExportButton(
     area: string,
   ) => {
     if (area !== 'sync') return;
-    const nextRaw = changes[StorageKeys.LANGUAGE]?.newValue;
-    if (typeof nextRaw === 'string') {
-      const next = normalizeLang(nextRaw);
+    const next = languageFromStorageChanges(changes);
+    if (next) {
       lang = next;
       const ttl =
         dict[next]?.['exportChatJson'] ?? dict.en?.['exportChatJson'] ?? 'Export chat history';
