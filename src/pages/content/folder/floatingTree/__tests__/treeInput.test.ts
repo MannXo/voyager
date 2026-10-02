@@ -128,6 +128,53 @@ describe('keyboard', () => {
     expect(deepActiveElement()).toBe(row);
   });
 
+  it('ignores tree keys pressed with a modifier that went down before the tree had focus', () => {
+    const { view, actions } = mount('panel');
+    const closed = treeitem(view.folderRow('Closed'));
+    const chat = treeitem(view.conversationRow('p', 'In parent'));
+    // Only the modified key reaches the tree: Ctrl/Cmd/Alt/Shift went down elsewhere.
+    const press = (row: HTMLElement, key: string, init: KeyboardEventInit) => {
+      row.focus();
+      const event = new KeyboardEvent('keydown', {
+        key,
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        ...init,
+      });
+      row.dispatchEvent(event);
+      row.dispatchEvent(
+        new KeyboardEvent('keyup', { key, bubbles: true, composed: true, ...init }),
+      );
+      return event;
+    };
+
+    for (const init of [
+      { ctrlKey: true },
+      { metaKey: true },
+      { altKey: true },
+      { shiftKey: true },
+    ]) {
+      for (const [row, key] of [
+        [closed, 'ArrowRight'],
+        [closed, 'Home'],
+        [closed, 'End'],
+        [chat, 'Enter'],
+      ] as const) {
+        expect(press(row, key, init).defaultPrevented).toBe(false);
+        expect(deepActiveElement()).toBe(row);
+      }
+    }
+    expect(actions.onToggleFolderExpanded).not.toHaveBeenCalled();
+    expect(actions.onNavigate).not.toHaveBeenCalled();
+
+    // The same keys unmodified still act.
+    expect(press(closed, 'ArrowRight', {}).defaultPrevented).toBe(true);
+    expect(actions.onToggleFolderExpanded.mock.calls).toEqual([['q']]);
+    press(chat, 'Enter', {});
+    expect(actions.onNavigate).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps arrow keys working after F2 renames, though the field kept its keyup inside', async () => {
     const { view } = mount('panel');
     const parent = treeitem(view.folderRow('Parent'));

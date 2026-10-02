@@ -54,6 +54,10 @@ const onRowItself = (e: KeyboardEvent, tree: TreeInstance<string>): boolean =>
  *   field, like F2 into the rename input, would stay pressed and block every
  *   later hotkey. Keyups on the tree element are forwarded too, and the state
  *   resets when focus leaves the tree or the window.
+ * - Keydown gate: the library matches only the keys it saw go down inside the
+ *   tree, so a modifier pressed before focus arrived is invisible to it and
+ *   Ctrl+ArrowRight would expand like ArrowRight. No tree hotkey takes a
+ *   modifier, so a modified keydown never reaches the library.
  */
 function voyagerFeature(host: TreeEngineHost): FeatureImplementation<string> {
   let teardown: (() => void) | null = null;
@@ -76,6 +80,16 @@ function voyagerFeature(host: TreeEngineHost): FeatureImplementation<string> {
     },
     onTreeMount: (tree, element) => {
       const data = tree.getDataRef<HotkeysCoreDataRef>();
+      // hotkeys-core mounted first (our dependency); put the gate in its place.
+      const dispatch = data.current.keydownHandler;
+      const keydown = (e: KeyboardEvent) => {
+        if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+        dispatch?.(e);
+      };
+      if (dispatch) element.removeEventListener('keydown', dispatch);
+      element.addEventListener('keydown', keydown);
+      // hotkeys-core removes whatever handler it finds here on unmount.
+      data.current.keydownHandler = keydown;
       const keyup = (e: KeyboardEvent) => data.current.keyupHandler?.(e);
       const reset = () => {
         data.current.pressedKeys = new Set();
@@ -88,6 +102,7 @@ function voyagerFeature(host: TreeEngineHost): FeatureImplementation<string> {
       element.addEventListener('focusout', focusOut);
       window.addEventListener('blur', reset);
       teardown = () => {
+        element.removeEventListener('keydown', keydown);
         element.removeEventListener('keyup', keyup);
         element.removeEventListener('focusout', focusOut);
         window.removeEventListener('blur', reset);
