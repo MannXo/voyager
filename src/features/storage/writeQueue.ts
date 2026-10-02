@@ -6,14 +6,36 @@
  */
 export type Serialize = <T>(turn: () => Promise<T>) => Promise<T>;
 
-export function createWriteQueue(): Serialize {
+/** A step every turn runs first; a throw fails that turn without running it. */
+export type QueuePrelude = () => Promise<void>;
+
+export interface WriteQueue extends Serialize {
+  /** Registers or clears the prelude. With none, a turn runs exactly as it was given. */
+  setPrelude(prelude: QueuePrelude | null): void;
+}
+
+export function createWriteQueue(): WriteQueue {
   let queue: Promise<unknown> = Promise.resolve();
-  return <T>(turn: () => Promise<T>): Promise<T> => {
-    const next = queue.then(turn, turn);
+  let prelude: QueuePrelude | null = null;
+  const serialize = <T>(turn: () => Promise<T>): Promise<T> => {
+    const run = prelude ? withPrelude(prelude, turn) : turn;
+    const next = queue.then(run, run);
     queue = next.catch(() => undefined);
     return next;
   };
+  return Object.assign(serialize, {
+    setPrelude(next: QueuePrelude | null) {
+      prelude = next;
+    },
+  });
 }
 
+const withPrelude =
+  <T>(prelude: QueuePrelude, turn: () => Promise<T>) =>
+  async (): Promise<T> => {
+    await prelude();
+    return turn();
+  };
+
 /** The background's one queue, shared by the prompt-library and folder owners. */
-export const backgroundWriteQueue: Serialize = createWriteQueue();
+export const backgroundWriteQueue: WriteQueue = createWriteQueue();

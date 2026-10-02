@@ -1,9 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createFaultyStorage } from '@/features/folder/owner/__tests__/faultyStorage';
 import { type FolderAuthority, FOLDER_WRITE_AUTHORITY } from '@/features/folder/owner/authority';
+import { BUNDLE_INTENT_KEY } from '@/features/folder/owner/bundleIntent';
 import { createFolderOwnerCore } from '@/features/folder/owner/folderOwnerCore';
 import type { FolderSite } from '@/features/folder/owner/folderOwnerPolicy';
+import { backgroundWriteQueue } from '@/features/storage/writeQueue';
 
 import { handleFolderOwnerMessage, startFolderOwner } from '../folderOwner';
 
@@ -68,6 +70,28 @@ describe('startFolderOwner', () => {
     vi.mocked(chrome.storage.local.get).mockClear();
     vi.mocked(chrome.storage.local.set).mockClear();
     vi.mocked(chrome.runtime.onMessage.addListener).mockClear();
+    vi.mocked(chrome.storage.onChanged.addListener).mockClear();
+  });
+  afterEach(() => backgroundWriteQueue.setPrelude(null));
+
+  it('leaves prompt-owner turns reading nothing extra while every site is legacy', async () => {
+    startFolderOwner();
+
+    await backgroundWriteQueue(async () => 'prompt turn');
+
+    expect(chrome.storage.local.get).not.toHaveBeenCalled();
+    expect(chrome.storage.onChanged.addListener).not.toHaveBeenCalled();
+  });
+
+  it('resolves the bundle before a prompt-owner turn once a site is owned', async () => {
+    vi.mocked(chrome.storage.local.get).mockResolvedValue({} as never);
+    startFolderOwner(GEMINI_OWNER);
+    await Promise.resolve();
+    vi.mocked(chrome.storage.local.get).mockClear();
+
+    await backgroundWriteQueue(async () => 'prompt turn');
+
+    expect(chrome.storage.local.get).toHaveBeenCalledWith([BUNDLE_INTENT_KEY]);
   });
 
   it('listens for requests but reads no storage at startup while every site is legacy', async () => {

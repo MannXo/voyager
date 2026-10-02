@@ -28,6 +28,7 @@ import {
   type OwnerState,
   type ReadyState,
   commitOwnerState,
+  hashStored,
   pendingOpKey,
   resolveOwnerState,
 } from './folderOwnerState';
@@ -35,6 +36,7 @@ import {
   type AdmitCopy,
   admitEveryCopy,
   dropsEnoughForPreBulk,
+  keepForeignCopy,
   rotateBackups,
   writePreBulk,
 } from './ownerBackups';
@@ -59,6 +61,7 @@ import {
 
 export const MAX_BATCH_OPS = 256;
 export const MAX_BATCH_BYTES = 32 * 1024 * 1024;
+const OWN_HASHES_KEPT = 8;
 
 export interface FolderOwnerCoreOptions {
   area: FolderOwnerStorageArea;
@@ -85,6 +88,8 @@ export interface FolderOwnerCore {
   ack(request: AckRequest): void;
   held(request: HeldRequest): Promise<HeldReply>;
   adoptJournal(request: AdoptJournalRequest): Promise<AdoptJournalReply>;
+  /** `storage.onChanged` for K: copies a foreign value, then resolves K (the detector, §6.4). */
+  observe(key: string, value: unknown): Promise<void>;
 }
 
 const isContiguous = (ops: ReadonlyArray<{ seq: number }>): boolean =>
@@ -146,6 +151,10 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
   const admitCopy = options.admitCopy ?? admitEveryCopy;
   const lastGcAt = new Map<string, number>();
   const acks = new Map<string, Map<string, number>>();
+  /** Hashes of K this process committed recently: their change events are not foreign. */
+  const ownHashes = new Map<string, string[]>();
+  const remember = (key: string, hash: string) =>
+    ownHashes.set(key, [hash, ...(ownHashes.get(key) ?? [])].slice(0, OWN_HASHES_KEPT));
 
   /** The policy of `key`'s site when this build owns it; `null` refuses with no storage access. */
   const policyFor = (key: string): FolderSitePolicy | null => {
@@ -165,6 +174,7 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
     const folded = await backUp(key, state, next, foldAcks(pending, next.meta));
     const result = await commitOwnerState(area, key, state, { ...next, meta: folded }, newId());
     if (result.kind === 'committed') {
+      remember(key, result.state.hash);
       forgetAcks(key, pending);
       return result.state;
     }
@@ -362,6 +372,16 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
         const state = await readyFor(request.key);
         if (typeof state === 'string') return { kind: 'refused', reason: state };
         return adoptJournal(ctx, request.key, state, request, policy, newId);
+      });
+    },
+    observe(key, value) {
+      if (!policyFor(key)) return Promise.resolve();
+      return serialize(async () => {
+        const hash = await hashStored(value);
+        if (value !== undefined && !ownHashes.get(key)?.includes(hash)) {
+          await keepForeignCopy(area, key, value, hash, now());
+        }
+        await resolve(key);
       });
     },
     async drain(key) {

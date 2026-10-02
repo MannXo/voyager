@@ -5,12 +5,13 @@
  */
 import { logger } from '@/core/services/LoggerService';
 import { FOLDER_WRITE_AUTHORITY, type FolderAuthority } from '@/features/folder/owner/authority';
+import { resolveBundleIntent } from '@/features/folder/owner/bundleIntent';
 import {
   type FolderOwnerCore,
   createFolderOwnerCore,
 } from '@/features/folder/owner/folderOwnerCore';
 import type { FolderOwnerResponse } from '@/features/folder/owner/folderOwnerMessages';
-import type { FolderSite } from '@/features/folder/owner/folderOwnerPolicy';
+import { type FolderSite, siteOfFolderKey } from '@/features/folder/owner/folderOwnerPolicy';
 import {
   dispatchFolderOwnerRequest,
   isFolderOwnerMessage,
@@ -21,7 +22,7 @@ import {
   checkFolderOwnerSender,
 } from '@/features/folder/owner/folderOwnerSenderGate';
 import type { FolderOwnerStorageArea } from '@/features/folder/owner/folderOwnerState';
-import { drainOwnedKeys } from '@/features/folder/owner/ownerStartup';
+import { drainOwnedKeys, hasOwnerSite } from '@/features/folder/owner/ownerStartup';
 import { backgroundWriteQueue } from '@/features/storage/writeQueue';
 
 type Authority = Readonly<Record<FolderSite, FolderAuthority>>;
@@ -77,5 +78,26 @@ export function startFolderOwner(authority: Authority = FOLDER_WRITE_AUTHORITY):
   void drainOwnedKeys(localFolderArea, core, authority).catch((error: unknown) =>
     logger.warn('Folder owner startup drain failed', { error: String(error) }),
   );
+  if (hasOwnerSite(authority)) watchOwnedKeys(core);
   return core;
+}
+
+/**
+ * Only a build that owns a site: the foreign-write detector, and bundle
+ * resolution before every queue turn of both owners (§9). With every site
+ * legacy neither exists, so prompt-owner turns read exactly what they read today.
+ * Hook: the reviewed bundle rules (addendum P3P4 R5.2) replace the P0 resolver here.
+ */
+function watchOwnedKeys(core: FolderOwnerCore): void {
+  backgroundWriteQueue.setPrelude(async () => {
+    const bundle = await resolveBundleIntent(localFolderArea);
+    if (bundle !== 'ok') throw new Error(`Folder bundle resolution: ${bundle}`);
+  });
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local') return;
+    for (const [key, change] of Object.entries(changes)) {
+      // `observe` refuses keys of legacy sites without touching storage.
+      if (siteOfFolderKey(key)) void core.observe(key, change.newValue);
+    }
+  });
 }

@@ -112,6 +112,26 @@ export async function rotateBackups(
   return { ...meta, backups };
 }
 
+/**
+ * Keeps a copy of a value a foreign writer put in K (§6.4, T1c). The event's
+ * value is captured before the owner's next commit can overwrite it; an owner
+ * commit, recognised by its hash, is never copied.
+ */
+export async function keepForeignCopy(
+  area: FolderOwnerStorageArea,
+  key: string,
+  value: unknown,
+  sourceHash: string,
+  now: number,
+): Promise<void> {
+  const entry: BackupEntry = { savedAt: now, rev: -1, reason: 'foreign', sourceHash, value };
+  try {
+    await area.set({ [ownerBackupKey(key, 'foreign')]: entry });
+  } catch {
+    // Best effort: the next resolution still adopts or quarantines what K holds.
+  }
+}
+
 const referenceCount = (data: FolderData): number =>
   Object.values(data.folderContents).reduce((sum, bucket) => sum + bucket.length, 0);
 
