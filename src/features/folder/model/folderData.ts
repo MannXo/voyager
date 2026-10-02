@@ -410,7 +410,10 @@ export function normalizeFolderData(data: FolderData): FolderData {
 export function validateFolderData(data: unknown): boolean {
   if (typeof data !== 'object' || data === null) return false;
   const d = data as Record<string, unknown>;
-  return Array.isArray(d.folders) && typeof d.folderContents === 'object';
+  // `typeof null` is 'object': null contents would pass and break every bucket lookup.
+  return (
+    Array.isArray(d.folders) && typeof d.folderContents === 'object' && d.folderContents !== null
+  );
 }
 
 /**

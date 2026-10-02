@@ -370,6 +370,20 @@ describe('AI Studio persistence characterization', () => {
       expect(mockBrowser.storage.sync.set).not.toHaveBeenCalled();
     });
 
+    it('replaces a local bucket with null contents by the legacy copy before marking it', async () => {
+      local[GLOBAL_KEY] = { folders: [], folderContents: null };
+      sync[GLOBAL_KEY] = fixture();
+
+      await migrateAIStudioLegacySync(GLOBAL_KEY);
+
+      expect(local[GLOBAL_KEY]).toEqual(fixture());
+      expect(local[MIGRATION_MARKER]).toBe(true);
+      const writtenKeys = mockBrowser.storage.local.set.mock.calls.map(([values]) =>
+        Object.keys(values as Record<string, unknown>),
+      );
+      expect(writtenKeys).toEqual([[GLOBAL_KEY], [MIGRATION_MARKER]]);
+    });
+
     it('treats a valid empty local bucket as an intentional deletion', async () => {
       const empty = { folders: [], folderContents: {} };
       local[GLOBAL_KEY] = empty;

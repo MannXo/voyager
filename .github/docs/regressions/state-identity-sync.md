@@ -323,6 +323,9 @@ off a ChatGPT tab`).
 - **Trap:** AI Studio init merged the legacy `chrome.storage.sync` folder bucket into the global
   local key on every page load, before account binding. Its union merge restored folders and
   prompts the user had deleted, and a later global-to-scoped seed copied those resurrected items.
+- **Trap 2:** `validateFolderData` accepted `folderContents: null` because `typeof null` is
+  `'object'`, so a local `{ folders: [], folderContents: null }` counted as authoritative: the
+  import was skipped and marked done for good, and the shared tree threw on `Object.hasOwn(null)`.
 - **Rule:** `migrateAIStudioLegacySync` records `${targetKey}:legacySyncImported` in
   `chrome.storage.local`. An existing valid local bucket, including an empty one, is authoritative:
   mark it without merging, because missing legacy items may be intentional deletions. Otherwise
@@ -331,9 +334,12 @@ off a ChatGPT tab`).
   a saved copy with a failed marker write is authoritative on retry. Keep the manager's global
   migration before account binding and its scoped seed policy unchanged. Use the native per-key
   lock when available and re-read the local target after reading sync to preserve intervening saves.
+  A valid bucket has an array `folders` and a non-null object `folderContents`; anything else is
+  replaced by the legacy copy before the marker is written.
 - **Guard:** `src/pages/content/folder/__tests__/aistudioPersistenceCharacterization.test.ts`
   (`sync to local migration`), including real-manager deletion/re-init/scoped-seed coverage,
-  delayed and failed writes, durable independent markers and untouched legacy sources.
+  delayed and failed writes, durable independent markers, untouched legacy sources and `replaces a
+local bucket with null contents by the legacy copy before marking it`.
 
 ## A native feature's stop must remove everything its start registered
 
