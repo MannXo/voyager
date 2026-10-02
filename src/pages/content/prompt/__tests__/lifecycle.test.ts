@@ -1,35 +1,8 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createSlashPromptLifecycle } from '../slashPrompt';
 
 describe('prompt manager lifecycle', () => {
-  it('drives slash completion only from its independent sync setting', () => {
-    const slashFeatureCode = readFileSync(
-      resolve(process.cwd(), 'src/pages/content/prompt/slashPromptFeature.ts'),
-      'utf8',
-    );
-    const promptManagerCode = readFileSync(
-      resolve(process.cwd(), 'src/pages/content/prompt/index.ts'),
-      'utf8',
-    );
-
-    expect(slashFeatureCode).toContain('StorageKeys.SLASH_PROMPT_ENABLED');
-    expect(slashFeatureCode).not.toContain('gvHidePromptManager');
-    expect(slashFeatureCode).not.toContain('HIDE_PROMPT_MANAGER');
-    expect(promptManagerCode).not.toContain('SLASH_PROMPT_ENABLED');
-    expect(promptManagerCode).not.toContain('setSlashPromptEnabled');
-  });
-
-  it('marks duplicate-name prompts with a persistent non-blocking badge', () => {
-    const code = readFileSync(resolve(process.cwd(), 'src/pages/content/prompt/index.ts'), 'utf8');
-
-    expect(code).toContain('const nameConflictIds = getPromptNameConflictIds(library.items);');
-    expect(code).toContain("createEl('span', 'gv-pm-chip gv-pm-name-conflict')");
-    expect(code).toContain("i18n.t('pm_name_conflict_badge')");
-  });
-
   it('destroys slash completion while hidden and starts one fresh controller when restored', async () => {
     const firstDestroy = vi.fn();
     const secondDestroy = vi.fn();

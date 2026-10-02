@@ -221,8 +221,8 @@ drop, or hover layout.
 - **Rule:** After sanitising rendered Markdown into any surface that floats over the host page,
   rewrite `a[href]` to `target="_blank"` with `rel="noopener noreferrer"`. Sanitising the markup is
   not the same as making it safe to click.
-- **Guard:** `src/pages/content/prompt/index.ts` (`openTooltipLinksInNewTab`, called from the
-  tooltip's `paint`).
+- **Guard:** `src/pages/content/prompt/__tests__/promptManagerSurface.test.ts`
+  (`opens links in the hover preview in a new tab`).
 
 ## A template fill action must match the button the user opened
 

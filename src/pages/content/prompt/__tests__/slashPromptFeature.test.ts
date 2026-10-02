@@ -138,6 +138,23 @@ describe('slash prompt feature lifecycle', () => {
     feature.destroy();
   });
 
+  it('keeps completion running when the Prompt Manager is hidden', async () => {
+    const destroyController = vi.fn();
+    const start = vi.fn().mockResolvedValue({ destroy: destroyController });
+    const feature = await startSlashPromptFeature({
+      pageUrl: 'https://gemini.google.com/app',
+      start,
+    });
+    expect(start).toHaveBeenCalledTimes(1);
+
+    getStorageListener()({ gvHidePromptManager: { oldValue: false, newValue: true } }, 'sync');
+    await flushRuntimeChange();
+
+    expect(destroyController).not.toHaveBeenCalled();
+    expect(start).toHaveBeenCalledTimes(1);
+    feature.destroy();
+  });
+
   it('treats removing the setting as restoring the enabled default', async () => {
     storageMocks.get.mockResolvedValue({ [StorageKeys.SLASH_PROMPT_ENABLED]: false });
     const destroyController = vi.fn();
