@@ -18,25 +18,55 @@ describe('chart fullscreen behavior', () => {
     vi.restoreAllMocks();
   });
 
-  it('keeps Mermaid local zoom controls active during the fade without document panning', () => {
-    openFullscreen('<svg/>');
-    const modal = document.querySelector<HTMLElement>('.gv-mermaid-modal')!;
-    const content = modal.querySelector<HTMLElement>('.gv-mermaid-modal-content')!;
-    vi.advanceTimersToNextFrame();
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    const fit = Math.min((window.innerWidth - 160) / 2000, (window.innerHeight - 160) / 1000);
-    const wheel = new WheelEvent('wheel', { deltaY: -1, cancelable: true });
-    modal.dispatchEvent(wheel);
-    expect(wheel.defaultPrevented).toBe(true);
-    expect(content.style.transform).toBe(`translate(0px, 0px) scale(${fit * 1.1})`);
-    content.dispatchEvent(new MouseEvent('mousedown', { clientX: 0, clientY: 0 }));
-    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 40, clientY: 50 }));
-    expect(content.style.transform).toBe(`translate(0px, 0px) scale(${fit * 1.1})`);
-    vi.advanceTimersByTime(299);
-    expect(modal.isConnected).toBe(true);
-    vi.advanceTimersByTime(1);
-    expect(modal.isConnected).toBe(false);
-  });
+  it.each(['mermaid', 'wavedrom', 'echarts'] as const)(
+    'stops zoom, pan and keyboard handling on close, then removes %s after 300ms',
+    (chart) => {
+      const outside = document.createElement('button');
+      document.body.appendChild(outside);
+      const echartsContent = document.createElement('div');
+      echartsContent.className = 'gv-echarts-diagram';
+      const echarts = createEChartsFullscreen(() => {});
+      const wavedrom = createWaveDromFullscreen();
+      const open = {
+        mermaid: () => openFullscreen('<svg/>'),
+        wavedrom: () => wavedrom.open('<svg viewBox="0 0 800 200"/>', '#f9fafb'),
+        echarts: () => echarts.open(echartsContent),
+      }[chart];
+      open();
+      const modal = document.querySelector<HTMLElement>(`.gv-${chart}-modal`)!;
+      const content = modal.querySelector<HTMLElement>(
+        `.gv-${chart}-modal-content, .gv-echarts-diagram`,
+      )!;
+      const buttons = modal.querySelectorAll('button');
+      vi.advanceTimersToNextFrame();
+      content.dispatchEvent(new MouseEvent('mousedown', { clientX: 0, clientY: 0 }));
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 10, clientY: 20 }));
+      modal.dispatchEvent(new WheelEvent('wheel', { deltaY: -1 }));
+      const transform = content.style.transform;
+      buttons[buttons.length - 1].click();
+
+      buttons.forEach((button) => button.click());
+      const wheel = new WheelEvent('wheel', { deltaY: -1, cancelable: true });
+      modal.dispatchEvent(wheel);
+      content.dispatchEvent(new MouseEvent('mousedown', { clientX: 0, clientY: 0 }));
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 40, clientY: 50 }));
+      expect(wheel.defaultPrevented).toBe(false);
+      expect(content.style.transform).toBe(transform);
+      expect(content.classList.contains('dragging')).toBe(false);
+      expect(modal.classList.contains('visible')).toBe(false);
+
+      outside.focus();
+      const tab = new KeyboardEvent('keydown', { key: 'Tab', cancelable: true });
+      document.dispatchEvent(tab);
+      expect(tab.defaultPrevented).toBe(false);
+      expect(document.activeElement).toBe(outside);
+      vi.advanceTimersByTime(299);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(modal.isConnected).toBe(true);
+      vi.advanceTimersByTime(1);
+      expect(modal.isConnected).toBe(false);
+    },
+  );
 
   it('zooms and pans WaveDrom relative to its fitted SVG and resets to 1×', () => {
     const fullscreen = createWaveDromFullscreen();
@@ -66,20 +96,11 @@ describe('chart fullscreen behavior', () => {
     fullscreen.close();
   });
 
-  it('stops every WaveDrom gesture immediately on close and waits 300ms before reopening', () => {
+  it('waits for the close animation before opening another WaveDrom viewer', () => {
     const fullscreen = createWaveDromFullscreen();
     fullscreen.open('<svg viewBox="0 0 800 200"/>', '#f9fafb');
     const modal = document.querySelector<HTMLElement>('.gv-wavedrom-modal')!;
-    const content = modal.querySelector<HTMLElement>('.gv-wavedrom-modal-content')!;
-    content.dispatchEvent(new MouseEvent('mousedown', { clientX: 0, clientY: 0 }));
     modal.querySelectorAll('button')[3].click();
-    modal.querySelectorAll('button')[0].click();
-    const wheel = new WheelEvent('wheel', { deltaY: -1, cancelable: true });
-    modal.dispatchEvent(wheel);
-    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 40, clientY: 50 }));
-    expect(wheel.defaultPrevented).toBe(false);
-    expect(content.style.transform).toBe('translate(0px, 0px) scale(1)');
-    expect(content.classList.contains('dragging')).toBe(false);
     fullscreen.open('<svg/>', '#f9fafb');
     expect(document.querySelectorAll('.gv-wavedrom-modal')).toHaveLength(1);
     vi.advanceTimersByTime(300);
@@ -88,7 +109,7 @@ describe('chart fullscreen behavior', () => {
     fullscreen.close();
   });
 
-  it('keeps ECharts focus trapped during the fade and restores its live canvas and focus', () => {
+  it('restores the live ECharts canvas and trigger focus after the fade', () => {
     const trigger = document.createElement('button');
     const wrapper = document.createElement('div');
     wrapper.className = 'gv-echarts-wrapper';
@@ -107,7 +128,6 @@ describe('chart fullscreen behavior', () => {
     fullscreen.open(chart);
     vi.advanceTimersToNextFrame();
     const modal = document.querySelector<HTMLElement>('.gv-echarts-modal')!;
-    const closeButton = modal.querySelector('button')!;
     expect(canvas.width).toBe(800);
     expect(fullscreen.findContainer(wrapper)).toBe(chart);
     expect(fullscreen.ownerOf(chart)).toBe(wrapper);
@@ -116,11 +136,6 @@ describe('chart fullscreen behavior', () => {
     expect(wheel.defaultPrevented).toBe(false);
     expect(chart.style.transform).toBe('');
     modal.click();
-    trigger.focus();
-    expect(document.activeElement).toBe(closeButton);
-    const tab = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, cancelable: true });
-    document.dispatchEvent(tab);
-    expect(tab.defaultPrevented).toBe(true);
     vi.advanceTimersByTime(299);
     expect(chart.parentElement?.className).toBe('gv-echarts-modal-card');
     vi.advanceTimersByTime(1);
@@ -128,9 +143,6 @@ describe('chart fullscreen behavior', () => {
     expect(chart.firstChild).toBe(canvas);
     expect(canvas.width).toBe(200);
     expect(document.activeElement).toBe(trigger);
-    const tabAfterClose = new KeyboardEvent('keydown', { key: 'Tab', cancelable: true });
-    document.dispatchEvent(tabAfterClose);
-    expect(tabAfterClose.defaultPrevented).toBe(false);
   });
 
   it('restores ECharts when closed before reveal without resizing a later modal from old work', () => {

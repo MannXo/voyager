@@ -12,7 +12,6 @@ export const openFullscreen = (svgHtml: string) => {
       body: content,
       closeLabel: 'Close (ESC)',
       hint: 'Scroll to zoom • Drag to pan • ESC to close',
-      listenersDuringFade: 'local',
       panZoom: {
         content,
         labels: ['Zoom In', 'Zoom Out', 'Reset'],

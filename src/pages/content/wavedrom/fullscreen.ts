@@ -73,7 +73,6 @@ export const createWaveDromFullscreen = () => {
           body: card,
           closeLabel: t('wavedromCloseFullscreen', 'Close (ESC)'),
           hint: t('wavedromFullscreenHint', 'Scroll to zoom • Drag to pan • ESC to close'),
-          listenersDuringFade: 'none',
           panZoom: {
             content,
             labels: [

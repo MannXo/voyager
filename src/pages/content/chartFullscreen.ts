@@ -9,7 +9,6 @@ interface ChartFullscreenOptions {
     labels: readonly [string, string, string];
     fit: () => number | null;
   };
-  listenersDuringFade: 'local' | 'none' | 'all';
   onReveal?: () => void;
   onDestroy?: () => void;
 }
@@ -36,7 +35,7 @@ export function createChartFullscreen() {
     toolbar.className = `${prefix}-modal-toolbar`;
     const button = (text: string, title: string) => {
       const element = document.createElement('button');
-      element.innerHTML = text;
+      element.textContent = text;
       element.title = title;
       toolbar.appendChild(element);
       return element;
@@ -62,7 +61,7 @@ export function createChartFullscreen() {
     document.body.appendChild(modal);
     currentModal = modal;
 
-    const listeners: Array<{ document: boolean; remove: () => void }> = [];
+    const listeners: Array<() => void> = [];
     const on = <K extends keyof DocumentEventMap>(
       target: EventTarget,
       type: K,
@@ -71,18 +70,10 @@ export function createChartFullscreen() {
     ) => {
       const listener = handler as EventListener;
       target.addEventListener(type, listener, listenerOptions);
-      listeners.push({
-        document: target === document,
-        remove: () => target.removeEventListener(type, listener, listenerOptions),
-      });
+      listeners.push(() => target.removeEventListener(type, listener, listenerOptions));
     };
-    const removeListeners = (documentOnly = false) => {
-      for (let i = listeners.length - 1; i >= 0; i--) {
-        if (!documentOnly || listeners[i].document) {
-          listeners[i].remove();
-          listeners.splice(i, 1);
-        }
-      }
+    const removeListeners = () => {
+      listeners.splice(0).forEach((remove) => remove());
     };
 
     let scale = 1;
@@ -121,10 +112,8 @@ export function createChartFullscreen() {
     const close = () => {
       if (closing) return;
       closing = true;
-      if (options.listenersDuringFade !== 'all') {
-        removeListeners(options.listenersDuringFade === 'local');
-        endDrag();
-      }
+      removeListeners();
+      endDrag();
       modal.classList.remove('visible');
       closeTimer = setTimeout(destroy, 300);
     };

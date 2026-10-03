@@ -30,7 +30,6 @@ export function createEChartsFullscreen(resize: (container: HTMLElement) => void
         closeLabel: t('echartsCloseFullscreen', 'Close (ESC)'),
         hint: t('echartsFullscreenHint', 'Press ESC to close'),
         dialogLabel: t('echartsFullscreenButton', 'Fullscreen'),
-        listenersDuringFade: 'all',
         onReveal: () => resize(chartContainer),
         onDestroy: () => {
           if (fullscreenWrapper) {
