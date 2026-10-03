@@ -189,6 +189,26 @@ describe('createNativeFeatureToggle', () => {
     expect(start).toHaveBeenCalledOnce();
   });
 
+  it('stops a mounted feature once when page teardown also destroys its toggle', async () => {
+    const stop = vi.fn();
+    const manager = new CleanupManager();
+    const toggle = createNativeFeatureToggle(
+      manager,
+      feature(() => stop),
+    );
+    await toggle.applyInitial(true);
+    // The storage listener's disposal destroys the toggle during the same teardown.
+    manager.registerCleanupFunction(
+      () => toggle.destroy(),
+      CleanupPositions.RemoveStorageOnChangedListener,
+    );
+
+    manager.executeCleanups();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(stop).toHaveBeenCalledOnce();
+  });
+
   it('refuses a feature without a toggle', () => {
     expect(() =>
       createNativeFeatureToggle(new CleanupManager(), {

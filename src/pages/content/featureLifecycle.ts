@@ -69,8 +69,10 @@ export interface NativeFeatureToggleController {
   applyInitial(enabled: boolean): Promise<void>;
   isMounted(): boolean;
   /**
-   * Stop following storage and stop the feature, including a start still in
-   * flight: page teardown cannot reach a stop that is registered after it ran.
+   * Stop following storage and stop a start still in flight once it finishes:
+   * page teardown cannot reach a stop that is registered after it ran. A
+   * feature that is already mounted is left to the cleanup manager, which owns
+   * its registered stop.
    */
   destroy(): void;
 }
@@ -95,23 +97,30 @@ export function createNativeFeatureToggle(
   let destroyed = false;
   const areas = toggle.areas ?? ['sync', 'local'];
 
+  const stopMounted = (): void => {
+    if (!stop) return;
+    const current = stop;
+    stop = null;
+    try {
+      current();
+    } finally {
+      // Even when stop throws (e.g. an invalidated extension context), the
+      // registration must go: page teardown must not call it a second time,
+      // and a later enable must not stack another entry at this position.
+      manager.withdrawCleanupFunctionsByPositionNumber(feature.position);
+    }
+  };
+
   const settle = async (): Promise<void> => {
-    if (desired === null) return;
+    if (desired === null || destroyed) return;
     const enabled = desired;
     desired = null;
     if (enabled && !stop) {
       stop = await mountNativeFeature(manager, feature);
-    } else if (!enabled && stop) {
-      const current = stop;
-      stop = null;
-      try {
-        current();
-      } finally {
-        // Even when stop throws (e.g. an invalidated extension context), the
-        // registration must go: page teardown must not call it a second time,
-        // and a later enable must not stack another entry at this position.
-        manager.withdrawCleanupFunctionsByPositionNumber(feature.position);
-      }
+      // Registered after page teardown ran, so nothing else will call it.
+      if (destroyed) stopMounted();
+    } else if (!enabled) {
+      stopMounted();
     }
   };
 
@@ -146,9 +155,7 @@ export function createNativeFeatureToggle(
       return stop !== null;
     },
     destroy() {
-      if (destroyed) return;
       destroyed = true;
-      requestFromEvent(false);
     },
   };
 }
