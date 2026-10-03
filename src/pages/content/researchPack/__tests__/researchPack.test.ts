@@ -7,6 +7,7 @@ import {
 } from '@/features/researchPack/services/packStore';
 import type { ResearchPack } from '@/features/researchPack/services/types';
 import { confirmDriver } from '@/tests/confirmDriver';
+import { toastDriver } from '@/tests/toastDriver';
 import { getTranslationSync } from '@/utils/i18n';
 
 import { findChatInput, insertTextIntoChatInput } from '../../chatInput';
@@ -225,9 +226,9 @@ describe('research pack on Gemini', () => {
     clickAdd(host);
     await flush();
 
-    const toast = document.querySelector<HTMLElement>('.gv-rp-toast')!;
-    expect(toast.hidden).toBe(false);
-    expect(toast.textContent).toBe(getTranslationSync('researchPackSaveFailed'));
+    expect(toastDriver.all()).toMatchObject([
+      { message: getTranslationSync('researchPackSaveFailed'), tone: 'error' },
+    ]);
     expect(host.querySelector<HTMLElement>(`.${ADD_BUTTON_CLASS}`)!.dataset.state).toBeUndefined();
     expect(stored()).toEqual(newer);
   });

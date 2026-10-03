@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { HANDOFF_MESSAGES, type HandoffMessage } from '@/features/researchPack/services/handoff';
+import { toastDriver } from '@/tests/toastDriver';
 
 import { insertTextIntoChatInput } from '../../chatInput';
 import {
@@ -57,7 +58,7 @@ describe('research pack receiver on ChatGPT and Claude', () => {
   };
 
   const sent = () => send.mock.calls.map(([message]) => message.type);
-  const toast = () => document.querySelector<HTMLElement>('.gv-rp-root .gv-rp-toast');
+  const toast = () => toastDriver.all()[0];
 
   function start(pageUrl = 'https://chatgpt.com/', isTopFrame = true): void {
     url = pageUrl;
@@ -125,14 +126,14 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     expect(submitted).not.toHaveBeenCalled();
     expect(sendClicked).not.toHaveBeenCalled();
     expect(enterPressed).not.toHaveBeenCalled();
-    expect(toast()?.textContent).toBe(
+    expect(toast()?.message).toBe(
       'Research pack added from Gemini. Review it, then send it yourself.',
     );
-    expect(toast()?.dataset.tone).toBe('ok');
+    expect(toast()?.tone).toBe('success');
 
     await vi.advanceTimersByTimeAsync(RECEIVER_COMPOSER_TIMEOUT_MS);
     expect(sent()).toEqual([HANDOFF_MESSAGES.peek, HANDOFF_MESSAGES.claim]);
-    expect(toast()).toBeNull();
+    expect(toast()).toBeUndefined();
   });
 
   it('fills the main Claude composer', async () => {
@@ -164,7 +165,7 @@ describe('research pack receiver on ChatGPT and Claude', () => {
 
     expect(sent()).toEqual([HANDOFF_MESSAGES.peek]);
     expect(vi.getTimerCount()).toBe(0);
-    expect(toast()).toBeNull();
+    expect(toast()).toBeUndefined();
   });
 
   it('leaves the pack unclaimed and says so when no composer ever appears', async () => {
@@ -172,8 +173,8 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     await vi.advanceTimersByTimeAsync(RECEIVER_COMPOSER_TIMEOUT_MS + SETTLE_MS);
 
     expect(sent()).toEqual([HANDOFF_MESSAGES.peek]);
-    expect(toast()?.dataset.tone).toBe('error');
-    expect(toast()?.textContent).toBe(
+    expect(toast()?.tone).toBe('error');
+    expect(toast()?.message).toBe(
       "Couldn't add the research pack here. Go back to Gemini and copy it.",
     );
   });
@@ -185,7 +186,7 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     await vi.advanceTimersByTimeAsync(SETTLE_MS);
 
     expect(composer.textContent).toBe('');
-    expect(toast()).toBeNull();
+    expect(toast()).toBeUndefined();
   });
 
   it('stops waiting on teardown and never claims afterwards', async () => {
@@ -198,14 +199,14 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     await vi.advanceTimersByTimeAsync(RECEIVER_COMPOSER_TIMEOUT_MS + SETTLE_MS);
     expect(sent()).toEqual([HANDOFF_MESSAGES.peek]);
     expect(vi.getTimerCount()).toBe(0);
-    expect(toast()).toBeNull();
+    expect(toast()).toBeUndefined();
   });
 
   it('removes its toast on teardown', async () => {
     chatgptComposer();
     start();
     await vi.advanceTimersByTimeAsync(SETTLE_MS);
-    expect(toast()).not.toBeNull();
+    expect(toast()).toBeDefined();
 
     stop!();
     stop = null;
@@ -256,7 +257,7 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     expect(sent()).toEqual([HANDOFF_MESSAGES.peek, HANDOFF_MESSAGES.claim]);
     expect(insert).not.toHaveBeenCalled();
     expect(composer.textContent).toBe('');
-    expect(toast()?.dataset.tone).toBe('error');
+    expect(toast()?.tone).toBe('error');
   });
 
   it('ignores a canvas or edit box and fills only the main ChatGPT composer', async () => {
@@ -291,7 +292,7 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     expect(sent()).toEqual([HANDOFF_MESSAGES.peek]);
     expect(insert).not.toHaveBeenCalled();
     expect(composer.textContent).toBe('My own draft');
-    expect(toast()?.textContent).toBe(
+    expect(toast()?.message).toBe(
       "Couldn't add the research pack here. Go back to Gemini and copy it.",
     );
   });
@@ -311,7 +312,7 @@ describe('research pack receiver on ChatGPT and Claude', () => {
 
     expect(insert).not.toHaveBeenCalled();
     expect(composer.textContent).toBe('Typed meanwhile');
-    expect(toast()?.dataset.tone).toBe('error');
+    expect(toast()?.tone).toBe('error');
   });
 
   it('inserts at a collapsed caret inside the composer, whatever was selected on the page', async () => {
@@ -352,7 +353,7 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     expect(sent()).toEqual([HANDOFF_MESSAGES.peek, HANDOFF_MESSAGES.claim]);
     expect(insert).not.toHaveBeenCalled();
     expect(composer.textContent).toBe('');
-    expect(toast()?.dataset.tone).toBe('error');
+    expect(toast()?.tone).toBe('error');
   });
 
   it('stops polling for the composer the moment the tab leaves', async () => {
@@ -492,7 +493,7 @@ describe('research pack receiver on ChatGPT and Claude', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(insert).not.toHaveBeenCalled();
-    expect(toast()?.dataset.tone).toBe('error');
+    expect(toast()?.tone).toBe('error');
   });
 
   it.each([

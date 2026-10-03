@@ -11938,23 +11938,6 @@ html[data-gv-scheme='dark'] .gv-rp-root {
   font-weight: 700;
 }
 
-.gv-rp-toast {
-  position: fixed;
-  inset-block-end: 140px;
-  inset-inline-end: 20px;
-  z-index: 2147483100;
-  max-inline-size: min(320px, calc(100vw - 40px));
-  padding: 8px 12px;
-  border: 1px solid var(--gv-rp-border);
-  border-radius: 10px;
-  background: var(--gv-rp-bg);
-  color: var(--gv-rp-fg);
-  font-size: 13px;
-  line-height: 1.4;
-  box-shadow: 0 6px 20px oklch(0 0 0 / 0.16);
-}
-
-.gv-rp-toast[data-tone='error'],
 .gv-rp-status[data-tone='error'] {
   color: var(--gv-rp-error);
 }

@@ -6,6 +6,7 @@ import {
   type HandoffMessage,
   type HandoffStatus,
 } from '@/features/researchPack/services/handoff';
+import { toastDriver } from '@/tests/toastDriver';
 
 import { startResearchPack } from '../index';
 import { clickAdd, flush, sharedStorage, turn } from './fixtures';
@@ -18,7 +19,7 @@ function continueButton(target: 'chatgpt' | 'claude'): HTMLButtonElement {
 
 function shownMessage(): string {
   const status = document.querySelector('.gv-rp-status')?.textContent ?? '';
-  return status || (document.querySelector('.gv-rp-toast')?.textContent ?? '');
+  return status || (toastDriver.all()[0]?.message ?? '');
 }
 
 describe('research pack: continue in ChatGPT / Claude', () => {

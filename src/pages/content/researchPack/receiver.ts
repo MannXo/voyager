@@ -1,3 +1,4 @@
+import { createToaster } from '@/core/ui/toast/toaster';
 /**
  * Receiving end of "Continue in ChatGPT / Claude", on the new chat tab the
  * background opened (see `features/researchPack/services/handoff.ts`).
@@ -190,7 +191,7 @@ export function startResearchPackReceiver(deps: ResearchPackReceiverDeps = {}): 
   // Teardown is synchronous: every timer, the composer wait and the toast go at once.
   let stopped = false;
   const timers = new Set<ReturnType<typeof setTimeout>>();
-  const toasts = new Set<HTMLElement>();
+  const toaster = createToaster();
   let abandonWait: (() => void) | null = null;
 
   // Watched from the first peek until the pack is in or given up on.
@@ -217,24 +218,8 @@ export function startResearchPackReceiver(deps: ResearchPackReceiverDeps = {}): 
     return timer;
   };
 
-  const toast = (key: TranslationKey, tone: 'ok' | 'error'): void => {
-    if (stopped || !document.body) return;
-    // Inside .gv-rp-root so the research pack's theme variables apply here too.
-    const root = document.createElement('div');
-    root.className = 'gv-rp-root';
-    const message = document.createElement('div');
-    message.className = 'gv-rp-toast';
-    message.setAttribute('role', 'status');
-    message.setAttribute('aria-live', 'polite');
-    message.dataset.tone = tone;
-    message.textContent = t(key);
-    root.append(message);
-    document.body.append(root);
-    toasts.add(root);
-    later(() => {
-      toasts.delete(root);
-      root.remove();
-    }, RECEIVER_TOAST_MS);
+  const toast = (key: TranslationKey, tone: 'success' | 'error'): void => {
+    toaster.show({ message: t(key), tone, durationMs: RECEIVER_TOAST_MS });
   };
 
   /** Resolve with the composer once it has held still, or null on timeout or teardown. */
@@ -300,7 +285,7 @@ export function startResearchPackReceiver(deps: ResearchPackReceiverDeps = {}): 
       toast('researchPackHandoffFailed', 'error');
       return;
     }
-    toast('researchPackHandoffReady', 'ok');
+    toast('researchPackHandoffReady', 'success');
   };
 
   void receive()
@@ -311,8 +296,7 @@ export function startResearchPackReceiver(deps: ResearchPackReceiverDeps = {}): 
     stopped = true;
     for (const timer of timers) clearTimeout(timer);
     timers.clear();
-    for (const root of toasts) root.remove();
-    toasts.clear();
+    toaster.destroy();
     unwatchRoute();
     abandonWait?.();
   };

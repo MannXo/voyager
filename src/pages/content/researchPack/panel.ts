@@ -1,4 +1,5 @@
 import { askConfirm } from '@/core/ui/confirm';
+import { createToaster } from '@/core/ui/toast/toaster';
 /**
  * Research Pack panel: a floating launcher plus a side panel that lists the
  * pack, edits the instruction, previews the Markdown and offers the actions.
@@ -64,7 +65,7 @@ export interface ResearchPackPanel {
   instructionDraft: () => string;
   /** Cancel the debounced save and return its text, or null when none is pending. */
   takePendingInstruction: () => string | null;
-  /** Feedback in the panel's status line, or as a toast by the launcher while closed. */
+  /** Feedback in the panel's status line, or as a stack toast while the panel is closed. */
   notify: (message: string, tone?: 'ok' | 'error') => void;
   /** Re-read every label after a language change. */
   relabel: () => void;
@@ -75,6 +76,7 @@ export interface ResearchPackPanel {
 
 const INSTRUCTION_SAVE_DELAY_MS = 400;
 const STATUS_CLEAR_DELAY_MS = 3500;
+const STATUS_CHANNEL = 'status';
 const SNIPPET_CHARS = 220;
 
 type Translate = (key: TranslationKey) => string;
@@ -176,11 +178,9 @@ export function createResearchPackPanel(
   const body = el('div', 'gv-rp-body');
   body.append(loadError, empty, list, instructionLabel, instruction, preview);
   panel.append(header, body, status, continueRow, footer);
-  const toast = el('div', 'gv-rp-toast');
-  toast.hidden = true;
-  toast.setAttribute('role', 'status');
-  toast.setAttribute('aria-live', 'polite');
-  root.append(launcher, toast, panel);
+  // While the panel is closed, feedback goes to the shared toast stack.
+  const toaster = createToaster();
+  root.append(launcher, panel);
 
   // Owns any open confirm: closing, locking or destroying the panel answers it
   // with null, so a confirm opened for one pack never acts on another.
@@ -267,7 +267,7 @@ export function createResearchPackPanel(
 
   const open = (): void => {
     panel.hidden = false;
-    toast.hidden = true;
+    toaster.dismiss(STATUS_CHANNEL);
     syncLauncher();
     templates.refresh();
     closeButton.focus({ preventScroll: true });
@@ -405,17 +405,24 @@ export function createResearchPackPanel(
   };
 
   const notify = (message: string, tone: 'ok' | 'error' = 'ok'): void => {
-    const target = panel.hidden ? toast : status;
     status.textContent = '';
-    toast.hidden = true;
-    target.textContent = message;
-    target.dataset.tone = tone;
-    if (target === toast) toast.hidden = false;
+    toaster.dismiss(STATUS_CHANNEL);
     if (statusTimer !== null) clearTimeout(statusTimer);
+    statusTimer = null;
+    if (panel.hidden) {
+      toaster.show({
+        channel: STATUS_CHANNEL,
+        message,
+        tone: tone === 'ok' ? 'success' : 'error',
+        durationMs: STATUS_CLEAR_DELAY_MS,
+      });
+      return;
+    }
+    status.textContent = message;
+    status.dataset.tone = tone;
     statusTimer = setTimeout(() => {
       statusTimer = null;
       status.textContent = '';
-      toast.hidden = true;
     }, STATUS_CLEAR_DELAY_MS);
   };
 
@@ -485,6 +492,7 @@ export function createResearchPackPanel(
       flushInstruction();
       if (statusTimer !== null) clearTimeout(statusTimer);
       statusTimer = null;
+      toaster.destroy();
       templates.destroy();
       confirmOwner.abort();
       root.remove();

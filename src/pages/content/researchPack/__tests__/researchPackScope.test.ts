@@ -8,6 +8,7 @@ import {
   createResearchPackOwner,
 } from '@/features/researchPack/services/packStore';
 import type { ResearchPack } from '@/features/researchPack/services/types';
+import { toastDriver } from '@/tests/toastDriver';
 
 import { startResearchPack } from '../index';
 import type { ResearchPackScopeContext } from '../scope';
@@ -253,7 +254,7 @@ describe('research pack account scope', () => {
     expect(chrome.storage.sync.get).not.toHaveBeenCalled();
     expect(store.load).not.toHaveBeenCalled();
     expect(store.apply).not.toHaveBeenCalled();
-    expect(document.querySelector('.gv-rp-toast')!.getAttribute('data-tone')).toBe('error');
+    expect(toastDriver.all().map((toast) => toast.tone)).toEqual(['error']);
   });
 
   it('reads and writes nothing when the scope cannot be resolved', async () => {
@@ -273,7 +274,7 @@ describe('research pack account scope', () => {
 
     expect(store.load).not.toHaveBeenCalled();
     expect(store.apply).not.toHaveBeenCalled();
-    expect(document.querySelector('.gv-rp-toast')!.getAttribute('data-tone')).toBe('error');
+    expect(toastDriver.all().map((toast) => toast.tone)).toEqual(['error']);
   });
 
   describe('when the account email shows up after the scope was bound', () => {
@@ -423,7 +424,7 @@ describe('research pack account scope', () => {
       expect(resolveKey).toHaveBeenCalledWith(expect.objectContaining({ email: 'b@example.com' }));
       expect(shownItems()).toEqual(['global item']);
       expect(textarea.value).toBe('Still typing');
-      expect(document.querySelector<HTMLElement>('.gv-rp-toast')!.hidden).toBe(true);
+      expect(toastDriver.all()).toEqual([]);
     });
 
     it('still shows the first load when the email appears while it is in flight', async () => {

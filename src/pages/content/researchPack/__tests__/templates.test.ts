@@ -12,6 +12,7 @@ import {
   createTemplateLibrary,
 } from '@/features/researchPack/services/templates';
 import { confirmDriver } from '@/tests/confirmDriver';
+import { toastDriver } from '@/tests/toastDriver';
 
 import { startResearchPack } from '../index';
 import { emitStorageChange, flush, packOf, readBlob, sharedStorage } from './fixtures';
@@ -156,7 +157,7 @@ describe('research pack templates in the panel', () => {
     expect(instructionBox().value).toBe('');
     expect(shared.instruction(KEY)).toBe('');
     expect(createObjectURL).not.toHaveBeenCalled();
-    expect($('.gv-rp-toast').hidden).toBe(false);
+    expect(toastDriver.all()).toHaveLength(1);
   });
 
   it('fills the instruction with the checked text, not padding that would crowd it out', async () => {
@@ -185,7 +186,7 @@ describe('research pack templates in the panel', () => {
     await flush();
 
     expect(instructionBox().value).toBe('Typed first');
-    expect($('.gv-rp-toast').hidden).toBe(false);
+    expect(toastDriver.all()).toHaveLength(1);
   });
 
   it('saves the typed instruction as a named template in the prompt library', async () => {
@@ -304,7 +305,7 @@ describe('research pack templates in the panel', () => {
     }
 
     chooseFile(JSON.stringify([{ name: 'A', text: 'B', tags: [TAG] }]));
-    await vi.waitFor(() => expect($('.gv-rp-toast').textContent).not.toBe(''));
+    await vi.waitFor(() => expect(toastDriver.all()).toHaveLength(1));
     expect($('.gv-rp-template-preview').hidden).toBe(true);
     expect(lib.writes()).toBe(0);
   });
