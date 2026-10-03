@@ -1,3 +1,6 @@
+// Consume only image hosts, or their wrapper's prose and captions disappear.
+// Lazy image URLs and figure captions must reach HTML for copy-as-image.
+// Sweep images beside markdown, skipping walked hosts so they stay in DOM order.
 import {
   DOMContentExtractor,
   type ExtractedContent,

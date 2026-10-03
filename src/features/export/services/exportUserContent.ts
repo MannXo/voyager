@@ -64,7 +64,7 @@ export function extractUserContent(
   }
   result.text = allTextParts.join('\n\n');
 
-  // Add text paragraphs to HTML
+  // Browsers collapse raw newlines; escape first, then add breaks without changing plain text.
   textParts.forEach((text) => {
     htmlParts.push(`<p>${escapeHtml(text).replace(/\n/g, '<br />')}</p>`);
   });

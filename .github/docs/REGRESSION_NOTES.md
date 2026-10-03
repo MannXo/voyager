@@ -23,7 +23,6 @@ details only when the introduction point changes how a maintainer should reason 
 
 | Topic                                                           | Read when changing                                                                               |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| [Rendering and export](regressions/rendering-export.md)         | Mermaid, KaTeX, rendered previews, Quote Reply, or conversation exports.                         |
 | [Watermark and media](regressions/watermark-media.md)           | Watermark detection or removal, image downloads, full-size media, or native media handoffs.      |
 | [Providers and plugins](regressions/providers-plugins.md)       | ChatGPT or Claude adapters, plugin lifecycles, temporary chat handoff, or prompt commands.       |
 | [Browser and release](regressions/browser-release.md)           | Browser support, extension permissions or messaging, Safari native behavior, or public assets.   |

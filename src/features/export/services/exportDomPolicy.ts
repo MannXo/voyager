@@ -1,3 +1,4 @@
+// Licensed hero images use action-like buttons and classes; keep those as content.
 export function shouldSkipElement(element: Element): boolean {
   // Skip non-content HTML nodes and interactive/action elements. Some hosts
   // colocate component styles inside message cards; their textContent is CSS,
