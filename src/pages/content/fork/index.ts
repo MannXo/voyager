@@ -102,8 +102,9 @@ export function startFork(): () => void {
     void indicators.inject();
   };
 
-  // Initial injection with delay to let DOM settle
-  setTimeout(setup, 1000);
+  // Initial injection with delay to let DOM settle. Cleared on stop: a stopped
+  // run's setup would otherwise inject buttons wired to its dead controls.
+  const setupTimer = setTimeout(setup, 1000);
 
   // MutationObserver for dynamically loaded messages
   observer = new MutationObserver(() => {
@@ -136,6 +137,7 @@ export function startFork(): () => void {
 
   // Cleanup function
   return () => {
+    clearTimeout(setupTimer);
     if (observer) {
       observer.disconnect();
       observer = null;

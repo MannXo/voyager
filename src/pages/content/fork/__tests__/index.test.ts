@@ -126,6 +126,18 @@ describe('startFork style injection', () => {
     expect(forkButton?.parentElement?.id).toBe('copy-anchor');
   });
 
+  it('a stopped run does not leave fork buttons behind', () => {
+    window.history.replaceState({}, '', '/app/conv-source');
+    document.body.innerHTML = '<div class="user-query-container">A user message</div>';
+
+    cleanup = startFork();
+    cleanup();
+    cleanup = null;
+    vi.advanceTimersByTime(1000);
+
+    expect(document.querySelector('.gv-fork-btn')).toBeNull();
+  });
+
   it('dismisses controls from delayed setup after the feature restarts', async () => {
     window.history.replaceState({}, '', '/app/conv-source');
     document.body.innerHTML = '<div class="user-query-container">A user message</div>';
