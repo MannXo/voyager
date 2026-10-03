@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { formatResetCountdown, formatUpdatedAgo, getUsagePillMode } from '../index';
 import {
   extractUsagePayload,
   formatResetLabel,
@@ -9,6 +8,7 @@ import {
   parseUsageRpcResponse,
   scrapeUsageFromDocument,
 } from '../usageParsing';
+import { formatResetCountdown, formatUpdatedAgo, getUsagePillMode } from '../usagePill';
 import {
   isUsagePathname,
   mergeAutomaticUsageSnapshots,
