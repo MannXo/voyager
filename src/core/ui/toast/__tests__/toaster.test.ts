@@ -161,36 +161,67 @@ describe('createToaster', () => {
     expect(toastDriver.all()).toEqual([]);
   });
 
-  it('shows an owner’s toasts beside its anchor until the anchor goes stale', () => {
-    Object.defineProperty(window, 'innerWidth', { value: 1000, configurable: true });
-    Object.defineProperty(window, 'innerHeight', { value: 700, configurable: true });
-    const anchor = document.createElement('button');
-    document.body.append(anchor);
-    vi.spyOn(anchor, 'getBoundingClientRect').mockReturnValue({
-      left: 100,
-      top: 200,
-      right: 140,
-      bottom: 240,
-      width: 40,
-      height: 40,
-    } as DOMRect);
-    const owner = toaster();
-    const other = toaster();
-    other.show({ message: 'elsewhere', durationMs: null });
+  describe('anchored toasts', () => {
+    let anchor: HTMLButtonElement;
 
-    owner.setAnchor(anchor, 30_000);
-    const handle = owner.show({ message: 'Downloading', durationMs: null });
-    const region = toastDriver.find('Downloading')!.element.parentElement!;
-    expect(region.className).toBe('gv-toast-anchored');
-    expect({ left: region.style.left, top: region.style.top }).toEqual({
-      left: '154px',
-      top: '194px',
+    beforeEach(() => {
+      Object.defineProperty(window, 'innerWidth', { value: 1000, configurable: true });
+      Object.defineProperty(window, 'innerHeight', { value: 700, configurable: true });
+      anchor = document.createElement('button');
+      document.body.append(anchor);
+      vi.spyOn(anchor, 'getBoundingClientRect').mockReturnValue({
+        left: 100,
+        top: 200,
+        right: 140,
+        bottom: 240,
+        width: 40,
+        height: 40,
+      } as DOMRect);
     });
-    expect(toastDriver.find('elsewhere')!.element.parentElement!.className).toBe('gv-toast-stack');
 
-    vi.advanceTimersByTime(30_001);
-    handle.update({ message: 'Done' });
-    expect(toastDriver.find('Done')!.element.parentElement!.className).toBe('gv-toast-stack');
+    /** Where a toast sits: its container's inline viewport coordinates, if it has any. */
+    const placement = (message: string) => {
+      const container = toastDriver.find(message)!.element.parentElement!;
+      return { container, left: container.style.left, top: container.style.top };
+    };
+
+    it('shows an owner’s toasts beside its anchor and others in the stack', () => {
+      const owner = toaster();
+      const other = toaster();
+      other.show({ message: 'elsewhere', durationMs: null });
+
+      owner.setAnchor(anchor, 30_000);
+      owner.show({ message: 'Downloading', durationMs: null });
+
+      expect(placement('Downloading')).toMatchObject({ left: '154px', top: '194px' });
+      expect(placement('elsewhere')).toMatchObject({ left: '', top: '' });
+    });
+
+    it('moves anchored toasts to the stack once the anchor goes stale, with no further update', () => {
+      const owner = toaster();
+      const other = toaster();
+      other.show({ message: 'elsewhere', durationMs: null });
+      owner.setAnchor(anchor, 1000);
+      owner.show({ message: 'Processing', pending: true, durationMs: 5000 });
+
+      vi.advanceTimersByTime(1001);
+
+      expect(placement('Processing').container).toBe(placement('elsewhere').container);
+    });
+
+    it('moves anchored toasts to the stack once the anchor is detached', () => {
+      const owner = toaster();
+      owner.setAnchor(anchor, 30_000);
+      owner.show({ message: 'Processing', pending: true, durationMs: 35_000 });
+
+      vi.advanceTimersByTime(2000);
+      anchor.remove();
+      vi.advanceTimersByTime(500);
+
+      expect(placement('Processing')).toMatchObject({ left: '', top: '' });
+      owner.clear();
+      expect(vi.getTimerCount()).toBe(0);
+    });
   });
 
   it('clear() closes only its owner’s toasts and keeps the toaster usable; destroy() is final', () => {
@@ -211,16 +242,21 @@ describe('createToaster', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('replaces a toast layer left behind by an earlier instance', () => {
-    const stale = document.createElement('div');
-    stale.id = 'gv-toast-layer';
-    document.body.append(stale);
+  it('a second script instance never removes the first instance’s open toasts', async () => {
+    // After an extension update, the orphaned script runs beside the re-injected one.
+    vi.resetModules();
+    const orphan = (await import('../toaster')).createToaster();
+    vi.resetModules();
+    const live = (await import('../toaster')).createToaster();
+    toasters.push(orphan, live);
 
-    toaster().show({ message: 'fresh', durationMs: null });
+    const sticky = live.show({ message: 'Announcement', durationMs: null });
+    orphan.show({ message: 'Copied', durationMs: 2000 });
 
-    expect(document.querySelectorAll('#gv-toast-layer')).toHaveLength(1);
-    expect(stale.isConnected).toBe(false);
-    expect(toastDriver.messages()).toEqual(['fresh']);
+    expect(toastDriver.messages()).toEqual(['Announcement', 'Copied']);
+    vi.advanceTimersByTime(2000);
+    expect(sticky.isOpen).toBe(true);
+    expect(toastDriver.messages()).toEqual(['Announcement']);
   });
 
   it('counts a press on a toast as a Voyager layer event', () => {

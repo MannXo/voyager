@@ -1,8 +1,9 @@
 /**
- * Voyager's toasts. One module-level host owns every open toast on the page, so
- * all owners share one stack at the bottom-end corner (clear of the prompt
- * manager trigger and the research pack launcher), one eviction rule and one
- * z-index. Owners hold a `Toaster`, which scopes channels, an anchor and cleanup.
+ * Voyager's toasts. One module-level host owns every open toast of this script
+ * instance, so all owners share one stack at the bottom-end corner (clear of the
+ * timeline rail, the prompt manager trigger and the research pack launcher), one
+ * eviction rule and one z-index. Owners hold a `Toaster`, which scopes
+ * channels, an anchor and cleanup.
  */
 import { type LayerHost, mountLayerHost } from '../layer';
 import toastCss from './toast.css?raw';
@@ -11,8 +12,8 @@ import { type ToastView, createToastView } from './view';
 
 /** Older toasts that will close on their own make way beyond this many. */
 const MAX_TRANSIENT = 4;
-/** An extension reload leaves the old instance's host behind; the new one replaces it by id. */
-const HOST_ID = 'gv-toast-layer';
+/** How often anchored toasts follow their anchor, and notice it went stale or left. */
+const ANCHOR_RECHECK_MS = 500;
 const ANCHOR_GAP = 14;
 const ANCHOR_PADDING = 12;
 const ESTIMATED_TOAST_HEIGHT = 52;
@@ -20,6 +21,7 @@ const ESTIMATED_TOAST_HEIGHT = 52;
 type OwnerState = {
   anchor: { element: HTMLElement; until: number } | null;
   region: HTMLElement | null;
+  recheck: number | null;
 };
 
 type ToastRecord = {
@@ -33,15 +35,16 @@ type ToastRecord = {
 let layer: { mount: LayerHost; stack: HTMLElement } | null = null;
 let records: ToastRecord[] = [];
 
+// After an extension update the orphaned script keeps running beside the
+// re-injected one, so each instance mounts its own host and never touches
+// another's: removing a live host would drop its toasts without telling it.
 function ensureLayer(): { mount: LayerHost; stack: HTMLElement } {
   if (layer?.mount.host.isConnected) return layer;
   // Toasts whose host left the page are already invisible; let them go.
   for (const record of records) closeRecord(record);
   records = [];
   layer?.mount.remove();
-  document.getElementById(HOST_ID)?.remove();
   const mount = mountLayerHost('toast', toastCss);
-  mount.host.id = HOST_ID;
   const stack = document.createElement('div');
   stack.className = 'gv-toast-stack';
   mount.root.append(stack);
@@ -62,7 +65,14 @@ function isEvictable(record: ToastRecord): boolean {
 function anchorRect(owner: OwnerState): DOMRect | null {
   const anchor = owner.anchor;
   if (!anchor || !anchor.element.isConnected || Date.now() > anchor.until) return null;
-  return anchor.element.getBoundingClientRect();
+  const rect = anchor.element.getBoundingClientRect();
+  // A hidden anchor measures 0×0 at the viewport origin.
+  return rect.width > 0 || rect.height > 0 ? rect : null;
+}
+
+function stopRecheck(owner: OwnerState): void {
+  if (owner.recheck !== null) window.clearTimeout(owner.recheck);
+  owner.recheck = null;
 }
 
 /** Put the owner's toasts beside its anchor while it is fresh, otherwise in the shared stack. */
@@ -70,6 +80,7 @@ function placeOwner(owner: OwnerState): void {
   if (!layer) return;
   const own = records.filter((record) => record.owner === owner);
   const rect = own.length > 0 ? anchorRect(owner) : null;
+  stopRecheck(owner);
   if (!rect) {
     for (const record of own) {
       if (record.view.element.parentElement !== layer.stack)
@@ -102,6 +113,14 @@ function placeOwner(owner: OwnerState): void {
   top = Math.max(ANCHOR_PADDING, Math.min(top, window.innerHeight - height - ANCHOR_PADDING));
   region.style.left = `${left}px`;
   region.style.top = `${top}px`;
+  const untilStale = (owner.anchor?.until ?? 0) - Date.now() + 1;
+  owner.recheck = window.setTimeout(
+    () => {
+      owner.recheck = null;
+      placeOwner(owner);
+    },
+    Math.max(1, Math.min(ANCHOR_RECHECK_MS, untilStale)),
+  );
 }
 
 function remove(record: ToastRecord): void {
@@ -163,13 +182,14 @@ function open(owner: OwnerState, input: ToastInput): ToastRecord {
 }
 
 export function createToaster(): Toaster {
-  const owner: OwnerState = { anchor: null, region: null };
+  const owner: OwnerState = { anchor: null, region: null, recheck: null };
   let destroyed = false;
   const own = () => records.filter((record) => record.owner === owner);
   const closed: ToastHandle = { isOpen: false, update: () => {}, dismiss: () => {} };
 
   const clear = (): void => {
     owner.anchor = null;
+    stopRecheck(owner);
     for (const record of own()) remove(record);
     owner.region?.remove();
     owner.region = null;
