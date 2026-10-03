@@ -6,6 +6,7 @@ import { createStorageBudget } from '@/features/storage/storageBudget';
 import {
   BUNDLE_INTENT_KEY,
   type BundleRequest,
+  type OpenBundle,
   resolveBundleIntent,
   writeBundle,
 } from '../bundleIntent';
@@ -112,6 +113,36 @@ describe('bundle writes (addendum P3P4 R3, R4)', () => {
 
     expect(storage.calls()).toBe(0);
     expect(storage.snapshot()).toEqual(before);
+  });
+
+  it('keeps an earlier open bundle’s unlanded values when a disjoint bundle is written', async () => {
+    const other = 'gvFolderDataChatGPT';
+    const earlier: OpenBundle = {
+      v: 1,
+      txId: 'earlier',
+      status: 'open',
+      site: 'gemini',
+      seq: 2,
+      clientId: 'tab',
+      at: 1,
+      keys: {
+        [PROMPTS]: { prevHash: await hashValue(['prompt']), nextHash: await hashValue(['merged']) },
+      },
+      values: { [PROMPTS]: ['merged'] },
+    };
+    const storage = createFaultyStorage({ [PROMPTS]: ['prompt'], [BUNDLE_INTENT_KEY]: earlier });
+    const before = storage.snapshot();
+
+    expect(
+      await writeBundle(storage.area, {
+        ...request({ [other]: folderData([]), [ownerMetaKey(other)]: metaWith(pending('tx')) }),
+        site: 'chatgpt',
+      }),
+    ).toEqual({ kind: 'refused', reason: 'write_failed' });
+
+    expect(storage.snapshot()).toEqual(before);
+    expect(await resolveBundleIntent(storage.area, ALL_OWNER)).toBe('ok');
+    expect(storage.read(PROMPTS)).toEqual(['merged']);
   });
 
   it.each([{ laterPrompts: ['prompt'] }, { laterPrompts: ['later user edit'] }])(

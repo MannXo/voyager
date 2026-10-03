@@ -280,10 +280,11 @@ async function readKeys(area: FolderOwnerStorageArea, intent: OpenBundle) {
 /**
  * Writes `request` as one bundle. Callers run inside the queue. Its keys are
  * folder keys, their metas and companions such as the prompt library; any
- * other owner key throws. The admission (R3.1) is one `data` step for the
- * intent and every value, which must leave `M` free under a hard quota; a
- * value `set` refused on quota while every key is still at its prev hash
- * aborts with nothing landed (R3.4).
+ * other owner key throws. While an earlier intent is open, nothing is written
+ * and the bundle is refused like a blocked turn. The admission (R3.1) is one
+ * `data` step for the intent and every value, which must leave `M` free under
+ * a hard quota; a value `set` refused on quota while every key is still at its
+ * prev hash aborts with nothing landed (R3.4).
  */
 export async function writeBundle(
   area: FolderOwnerStorageArea,
@@ -298,10 +299,12 @@ export async function writeBundle(
   if (sidecar) throw new Error(`Not a bundle participant: ${sidecar}`);
   let prev: Record<string, unknown>;
   try {
-    prev = await area.get(keyList);
+    prev = await area.get([...keyList, BUNDLE_INTENT_KEY]);
   } catch {
     return { kind: 'refused', reason: 'read_failed' };
   }
+  // A disjoint turn passes a stuck bundle; replacing its intent would lose its unlanded values.
+  if (isOpenStatus(prev[BUNDLE_INTENT_KEY])) return { kind: 'refused', reason: 'write_failed' };
   const keys: OpenBundle['keys'] = {};
   for (const key of keyList) {
     keys[key] = {
