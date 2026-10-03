@@ -1,9 +1,12 @@
+import type { Toaster } from '@/core/ui/toast/types';
+
 import { ModelPicker } from './modelPicker';
 import { DefaultModelPreferences } from './preferences';
 import type { DefaultModelSetting, DefaultThinkingLevel, ThinkingMode } from './preferences';
 
 const MODE_ITEM_SELECTOR = '[role="menuitemradio"], [role="menuitem"]';
-const DEFAULT_MODEL_UI_SELECTOR = '.gv-default-star-btn, .gv-default-model-fail-toast';
+const DEFAULT_MODEL_UI_SELECTOR = '.gv-default-star-btn';
+const CONFIRMATION_TOAST_MS = 3000;
 
 export class DefaultStars {
   private observer: MutationObserver | null = null;
@@ -14,6 +17,7 @@ export class DefaultStars {
   public constructor(
     private readonly preferences: DefaultModelPreferences,
     private readonly picker: ModelPicker,
+    private readonly toaster: Toaster,
   ) {}
 
   // Preferences must be loaded before observation starts.
@@ -72,7 +76,6 @@ export class DefaultStars {
   // get cleaned up too.
   public sweep(root: ParentNode = document) {
     root.querySelectorAll('.gv-default-star-btn').forEach((el) => el.remove());
-    root.querySelectorAll('.gv-default-model-fail-toast').forEach((el) => el.remove());
   }
 
   private mayContainDefaultModelUi(root: HTMLElement): boolean {
@@ -548,26 +551,7 @@ export class DefaultStars {
   }
 
   private showToast(message: string) {
-    const toast = document.createElement('div');
-    toast.style.cssText = `
-      position: fixed;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: #323232;
-      color: white;
-      padding: 12px 24px;
-      border-radius: 4px;
-      font-size: 14px;
-      z-index: 10000;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-      transition: opacity 0.3s;
-    `;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      setTimeout(() => toast.remove(), 300);
-    }, 3000);
+    // One channel: setting, then clearing, a default replaces the earlier note.
+    this.toaster.show({ message, channel: 'default-model', durationMs: CONFIRMATION_TOAST_MS });
   }
 }

@@ -1,3 +1,5 @@
+import type { Toaster } from '@/core/ui/toast/types';
+
 import { watchRouteChanges } from '../utils/routeWatcher';
 import { ModelPicker } from './modelPicker';
 import { DefaultModelPreferences } from './preferences';
@@ -15,6 +17,9 @@ const CHAT_INPUT_SELECTORS = [
 ] as const;
 
 const RECENT_COMPOSER_ACTIVITY_MS = 8000;
+/** Long enough to read and act on, short enough not to camp on the page. */
+const FAILURE_TOAST_MS = 12000;
+export const AUTO_APPLY_FAILURE_CHANNEL = 'default-model-failure';
 
 export class DefaultModelAutoApply {
   private checkTimer: number | null = null;
@@ -59,6 +64,7 @@ export class DefaultModelAutoApply {
   public constructor(
     private readonly preferences: DefaultModelPreferences,
     private readonly picker: ModelPicker,
+    private readonly toaster: Toaster,
   ) {}
 
   public start(): void {
@@ -136,83 +142,33 @@ export class DefaultModelAutoApply {
   }
 
   private showAutoApplyFailureToast() {
-    // Drop any earlier instance so consecutive triggers (shouldn't happen
-    // thanks to `failureToastShown`, but defensive) don't stack.
-    document.querySelectorAll('.gv-default-model-fail-toast').forEach((n) => n.remove());
-
-    const toast = document.createElement('div');
-    toast.className = 'gv-default-model-fail-toast';
-    toast.style.cssText = `
-      position: fixed;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: #323232;
-      color: white;
-      padding: 14px 18px;
-      border-radius: 6px;
-      font-size: 14px;
-      line-height: 1.45;
-      z-index: 10000;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
-      display: flex;
-      gap: 14px;
-      align-items: center;
-      max-width: min(520px, calc(100vw - 48px));
-      transition: opacity 0.3s;
-    `;
-
-    const text = document.createElement('span');
-    text.style.cssText = 'flex: 1; min-width: 0;';
-    text.textContent =
-      chrome.i18n.getMessage('defaultModelAutoApplyFailed') ||
-      'Default model auto-apply failed 3 times in a row. Gemini may have changed its menu layout.';
-
-    const action = document.createElement('button');
-    action.type = 'button';
-    action.style.cssText = `
-      flex: 0 0 auto;
-      background: #1a73e8;
-      color: white;
-      border: none;
-      padding: 8px 14px;
-      border-radius: 4px;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      white-space: nowrap;
-    `;
-    action.textContent =
-      chrome.i18n.getMessage('defaultModelAutoApplyFailedAction') || 'Pause in settings';
-
-    const dismiss = () => {
-      toast.style.opacity = '0';
-      setTimeout(() => toast.remove(), 300);
-    };
-
-    action.addEventListener('click', () => {
-      void this.requestOpenPopup().then((opened) => {
-        if (opened) {
-          dismiss();
-          return;
-        }
-        // Firefox/Safari (or any host that refuses programmatic popup):
-        // swap the text to the manual-fallback instruction and hide the
-        // button — there's nothing useful left for it to do.
-        text.textContent =
-          chrome.i18n.getMessage('defaultModelAutoApplyFailedFallback') ||
-          'Open the extension popup from your toolbar to pause this feature.';
-        action.remove();
-      });
+    this.toaster.show({
+      channel: AUTO_APPLY_FAILURE_CHANNEL,
+      tone: 'warning',
+      durationMs: FAILURE_TOAST_MS,
+      message:
+        chrome.i18n.getMessage('defaultModelAutoApplyFailed') ||
+        'Default model auto-apply failed 3 times in a row. Gemini may have changed its menu layout.',
+      action: {
+        label: chrome.i18n.getMessage('defaultModelAutoApplyFailedAction') || 'Pause in settings',
+        run: (handle) => {
+          void this.requestOpenPopup().then((opened) => {
+            if (opened) {
+              handle.dismiss();
+              return;
+            }
+            // Firefox/Safari (or any host that refuses a programmatic popup):
+            // say how to get there by hand; the button has nothing left to do.
+            handle.update({
+              message:
+                chrome.i18n.getMessage('defaultModelAutoApplyFailedFallback') ||
+                'Open the extension popup from your toolbar to pause this feature.',
+              action: undefined,
+            });
+          });
+        },
+      },
     });
-
-    toast.appendChild(text);
-    toast.appendChild(action);
-    document.body.appendChild(toast);
-
-    // Stay visible long enough to read + act, but auto-dismiss eventually
-    // so it isn't a permanent splash on the page.
-    setTimeout(dismiss, 12000);
   }
 
   private async requestOpenPopup(): Promise<boolean> {

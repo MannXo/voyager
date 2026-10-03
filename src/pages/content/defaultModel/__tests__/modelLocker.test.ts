@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { toastDriver } from '@/tests/toastDriver';
+
 import { setupModelLockerTests } from './modelLockerHarness';
 
 describe('DefaultModelManager lifecycle', () => {
@@ -56,37 +58,38 @@ describe('DefaultModelManager lifecycle', () => {
 
     it('renders a failure toast once across repeated failed navigation sessions', async () => {
       const { triggerClick } = await reachFailureToast();
-      const toast = document.querySelector('.gv-default-model-fail-toast');
+      const toast = toastDriver.find('defaultModelAutoApplyFailed')!.element;
       history.pushState({}, '', '/u/1/app');
       await vi.advanceTimersByTimeAsync(4000);
       expect(triggerClick).toHaveBeenCalledTimes(6);
-      expect(document.querySelectorAll('.gv-default-model-fail-toast')).toHaveLength(1);
-      expect(document.querySelector('.gv-default-model-fail-toast')).toBe(toast);
+      expect(toastDriver.all().map((open) => open.element)).toEqual([toast]);
     });
 
     it('toast action button sends gv.openPopup runtime message', async () => {
       const sendMessageMock = vi.fn().mockResolvedValue({ ok: true });
       chrome.runtime.sendMessage = sendMessageMock;
       await reachFailureToast();
-      const button = document.querySelector<HTMLButtonElement>(
-        '.gv-default-model-fail-toast button',
+      toastDriver.press(
+        toastDriver.find('defaultModelAutoApplyFailed')!,
+        'defaultModelAutoApplyFailedAction',
       );
-      expect(button).not.toBeNull();
-      button!.click();
-      await vi.advanceTimersByTimeAsync(300);
+      await vi.advanceTimersByTimeAsync(0);
       expect(sendMessageMock).toHaveBeenCalledWith({ type: 'gv.openPopup' });
-      expect(document.querySelector('.gv-default-model-fail-toast')).toBeNull();
+      expect(toastDriver.all()).toEqual([]);
     });
 
     it('toast falls back to manual-open text when openPopup is rejected', async () => {
       const sendMessageMock = vi.fn().mockResolvedValue({ ok: false });
       chrome.runtime.sendMessage = sendMessageMock;
       await reachFailureToast();
-      const toast = document.querySelector<HTMLElement>('.gv-default-model-fail-toast')!;
-      toast.querySelector<HTMLButtonElement>('button')!.click();
+      toastDriver.press(
+        toastDriver.find('defaultModelAutoApplyFailed')!,
+        'defaultModelAutoApplyFailedAction',
+      );
       await vi.advanceTimersByTimeAsync(0);
-      expect(toast.querySelector('button')).toBeNull();
-      expect(toast.querySelector('span')?.textContent).toBe('defaultModelAutoApplyFailedFallback');
+      const [toast] = toastDriver.all();
+      expect(toast.message).toBe('defaultModelAutoApplyFailedFallback');
+      expect(toastDriver.labels(toast)).toEqual([]);
     });
 
     it('observer ignores menu mutations when the toggle is off (no scheduled injection)', async () => {
@@ -154,7 +157,7 @@ describe('DefaultModelManager lifecycle', () => {
     it('sweeps the failure toast when the toggle flips off', async () => {
       await reachFailureToast();
       changeAutoApply(false);
-      expect(document.querySelector('.gv-default-model-fail-toast')).toBeNull();
+      expect(toastDriver.all()).toEqual([]);
     });
 
     it('aborts an in-flight lock loop when the toggle flips off', async () => {

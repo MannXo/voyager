@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { toastDriver } from '@/tests/toastDriver';
+
 import { setupModelLockerTests } from './modelLockerHarness';
 
 describe('DefaultModelAutoApply thinking enforcement', () => {
@@ -246,7 +248,7 @@ describe('DefaultModelAutoApply thinking enforcement', () => {
 
     expect(clicksAfterBackoff).toBeGreaterThan(0);
     expect(clicksAfterBackoff).toBeLessThanOrEqual(3);
-    expect(document.querySelectorAll('.gv-default-model-fail-toast').length).toBe(1);
+    expect(toastDriver.messages()).toEqual(['defaultModelAutoApplyFailed']);
 
     await vi.advanceTimersByTimeAsync(10000);
     expect((extended.click as ReturnType<typeof vi.fn>).mock.calls.length).toBe(clicksAfterBackoff);

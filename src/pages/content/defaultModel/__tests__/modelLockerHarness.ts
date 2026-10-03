@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, expect, vi } from 'vitest';
 
+import { toastDriver } from '@/tests/toastDriver';
+
 export function setupModelLockerTests() {
   let stopOwner: (() => void) | null = null;
 
@@ -51,25 +53,32 @@ export function setupModelLockerTests() {
   async function dependencies() {
     const { DefaultModelPreferences } = await import('../preferences');
     const { ModelPicker } = await import('../modelPicker');
+    const { createToaster } = await import('@/core/ui/toast/toaster');
     const preferences = new DefaultModelPreferences();
     await preferences.load();
-    return { preferences, picker: new ModelPicker(preferences) };
+    return { preferences, picker: new ModelPicker(preferences), toaster: createToaster() };
   }
 
   async function startStars() {
     const { DefaultStars } = await import('../defaultStars');
-    const { preferences, picker } = await dependencies();
-    const stars = new DefaultStars(preferences, picker);
+    const { preferences, picker, toaster } = await dependencies();
+    const stars = new DefaultStars(preferences, picker, toaster);
     stars.start();
-    stopOwner = () => stars.stop();
+    stopOwner = () => {
+      stars.stop();
+      toaster.destroy();
+    };
   }
 
   async function startAutoApply() {
     const { DefaultModelAutoApply } = await import('../autoApply');
-    const { preferences, picker } = await dependencies();
-    const autoApply = new DefaultModelAutoApply(preferences, picker);
+    const { preferences, picker, toaster } = await dependencies();
+    const autoApply = new DefaultModelAutoApply(preferences, picker, toaster);
     autoApply.start();
-    stopOwner = () => autoApply.stop();
+    stopOwner = () => {
+      autoApply.stop();
+      toaster.destroy();
+    };
   }
 
   async function selectModel() {
@@ -173,7 +182,7 @@ export function setupModelLockerTests() {
     await startManager();
     await vi.advanceTimersByTimeAsync(4000);
     expect(picker.triggerClick).toHaveBeenCalledTimes(3);
-    expect(document.querySelectorAll('.gv-default-model-fail-toast')).toHaveLength(1);
+    expect(toastDriver.messages()).toEqual(['defaultModelAutoApplyFailed']);
     return picker;
   }
 

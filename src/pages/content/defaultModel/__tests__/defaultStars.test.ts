@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { toastDriver } from '@/tests/toastDriver';
+
 import { setupModelLockerTests } from './modelLockerHarness';
 
 describe('DefaultStars', () => {
@@ -99,6 +101,32 @@ describe('DefaultStars', () => {
     await vi.advanceTimersByTimeAsync(200);
 
     expect(item.querySelector('.gv-default-star-btn')).not.toBeNull();
+  });
+
+  it('confirms setting and then clearing a default in a single toast', async () => {
+    await startStars();
+    const list = document.createElement('mat-action-list');
+    list.className = 'gds-mode-switch-menu-list';
+    list.setAttribute('role', 'group');
+    const item = document.createElement('button');
+    item.setAttribute('role', 'menuitemradio');
+    item.innerHTML = `<div class="title-and-description"><div><span class="gds-title-m">Pro</span></div></div>`;
+    list.appendChild(item);
+    document.body.appendChild(list);
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(200);
+    const star = () => item.querySelector<HTMLButtonElement>('.gv-default-star-btn')!;
+
+    star().click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(toastDriver.messages()).toEqual(['defaultModelSet:Pro']);
+
+    star().click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(toastDriver.messages()).toEqual(['defaultModelCleared']);
+
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(toastDriver.all()).toEqual([]);
   });
 
   it('injects star buttons when menu items use role="menuitem" instead of "menuitemradio"', async () => {
@@ -593,6 +621,7 @@ describe('DefaultStars', () => {
       },
     );
     const setSpy = chrome.storage.sync.set as unknown as ReturnType<typeof vi.fn>;
+    setSpy.mockClear();
 
     await startStars();
 
