@@ -5,7 +5,11 @@ import {
   getAccountIsolationStorageKey,
 } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
-import { FOLDER_PLATFORMS, FOLDER_PLATFORM_IDS } from '@/features/folder/platforms';
+import {
+  FOLDER_PLATFORMS,
+  FOLDER_PLATFORM_IDS,
+  supportsAccountIsolation,
+} from '@/features/folder/platforms';
 
 import type { FolderSettingsValues } from '../components/FolderSettingsCard';
 import { type SettingSetters, applySettingsPatch } from '../utils/settingsPatch';
@@ -71,7 +75,7 @@ export function useFolderPopupSettings({
     };
     setAccountIsolationByPlatform(
       Object.fromEntries(
-        FOLDER_PLATFORM_IDS.filter((platform) => platform !== 'chatgpt').map((platform) => [
+        FOLDER_PLATFORM_IDS.filter(supportsAccountIsolation).map((platform) => [
           platform,
           resolveIsolation(platform),
         ]),

@@ -19,7 +19,7 @@ import type {
   SyncProvider,
 } from '@/core/types/sync';
 import { getPromptNameConflictIds } from '@/core/utils/promptName';
-import { FOLDER_PLATFORMS } from '@/features/folder/platforms';
+import { FOLDER_PLATFORMS, supportsAccountIsolation } from '@/features/folder/platforms';
 import { loadPluginState } from '@/features/plugins/storage/pluginState';
 import type { ForkNode, ForkNodesData } from '@/pages/content/fork/forkTypes';
 import {
@@ -63,7 +63,7 @@ async function resolveAccountScopeForMessage(
   platform: SyncPlatform,
   explicitScope?: SyncAccountScope,
 ): Promise<SyncAccountScope | null> {
-  if (platform === 'chatgpt') return null;
+  if (!supportsAccountIsolation(platform)) return null;
   const enabled = await accountIsolationService.isIsolationEnabled({
     platform,
     pageUrl: sender.tab?.url ?? null,
@@ -124,20 +124,21 @@ async function loadAuthoritativeSyncPayload(
   platform: SyncPlatform,
   accountScope: SyncAccountScope | null,
 ): Promise<{ folders: FolderData; prompts: PromptItem[] }> {
-  const baseFolderStorageKey = FOLDER_PLATFORMS[platform].folderStorageKey;
+  const definition = FOLDER_PLATFORMS[platform];
+  const baseFolderStorageKey = definition.folderStorageKey;
   const folderStorageKey = accountScope
     ? buildScopedStorageKey(baseFolderStorageKey, accountScope.accountKey)
     : baseFolderStorageKey;
   const stored = await chrome.storage.local.get([
     folderStorageKey,
-    ...(platform === 'chatgpt' ? [] : [StorageKeys.PROMPT_ITEMS]),
+    ...(definition.syncsSharedData ? [StorageKeys.PROMPT_ITEMS] : []),
   ]);
   const folders = parseStoredFolderData(stored[folderStorageKey]);
   if (!folders) {
     throw new Error('Local folder data is unavailable or invalid');
   }
 
-  if (platform === 'chatgpt') return { folders, prompts: [] };
+  if (!definition.syncsSharedData) return { folders, prompts: [] };
   const rawPrompts = stored[StorageKeys.PROMPT_ITEMS];
   if (rawPrompts !== undefined && !isPromptItemArray(rawPrompts)) {
     throw new Error('Local prompt data is invalid');
@@ -253,7 +254,7 @@ export function createCloudSyncMessageHandler(readers: {
           return { ok: false, error: 'untrusted_sender' };
         }
         const syncHighlights =
-          platform !== 'chatgpt' &&
+          FOLDER_PLATFORMS[platform].syncsSharedData &&
           (await isHighlightCloudSyncRequested(platform, includeHighlights === true));
         const accountScope = await resolveAccountScopeForMessage(
           sender,
@@ -302,9 +303,12 @@ export function createCloudSyncMessageHandler(readers: {
                 timelineHierarchyAccountScope.routeUserId,
               )
             : timelineHierarchyDataRaw;
-        const settingsPayload =
-          platform === 'chatgpt' ? null : await exportBackupableSyncSettings();
-        const pluginState = platform === 'chatgpt' ? null : await loadPluginState();
+        const settingsPayload = FOLDER_PLATFORMS[platform].syncsSharedData
+          ? await exportBackupableSyncSettings()
+          : null;
+        const pluginState = FOLDER_PLATFORMS[platform].syncsSharedData
+          ? await loadPluginState()
+          : null;
         const success = await googleDriveSyncService.upload(
           folders,
           prompts,
@@ -354,7 +358,7 @@ export function createCloudSyncMessageHandler(readers: {
           return { ok: false, error: 'unsupported_sync_platform' };
         }
         const syncHighlights =
-          platform !== 'chatgpt' &&
+          FOLDER_PLATFORMS[platform].syncsSharedData &&
           (await isHighlightCloudSyncRequested(platform, payload?.includeHighlights === true));
         const rawScope = payload?.accountScope;
         const rawTimelineHierarchyScope = payload?.timelineHierarchyAccountScope;

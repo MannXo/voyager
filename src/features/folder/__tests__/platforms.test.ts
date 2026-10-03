@@ -3,8 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   FOLDER_PLATFORMS,
   FOLDER_PLATFORM_IDS,
-  type FolderPlatform,
-  type FolderPlatformDefinition,
   getFolderPlatformForHost,
   isFolderPlatform,
 } from '../platforms';
@@ -12,7 +10,7 @@ import {
 describe('folder platform map', () => {
   it('keeps the stored Gemini and AI Studio identifiers unchanged', () => {
     // Serialized names: changing any of these orphans existing user data or Drive files.
-    expect(FOLDER_PLATFORMS).toEqual({
+    expect(FOLDER_PLATFORMS).toMatchObject({
       gemini: {
         hosts: ['gemini.google.com', 'business.gemini.google'],
         folderStorageKey: 'gvFolderData',
@@ -40,7 +38,7 @@ describe('folder platform map', () => {
         lastUploadTimeField: 'lastUploadTimeChatGPT',
         lastSyncTimeField: 'lastSyncTimeChatGPT',
       },
-    } satisfies Record<FolderPlatform, FolderPlatformDefinition>);
+    });
     expect(FOLDER_PLATFORM_IDS).toEqual(['gemini', 'aistudio', 'chatgpt']);
   });
 

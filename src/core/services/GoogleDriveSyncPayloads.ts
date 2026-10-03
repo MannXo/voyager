@@ -110,15 +110,15 @@ export class GoogleDriveSyncPayloads {
     );
 
     // Upload folders file (platform-specific)
-    const { driveFoldersFileName } = FOLDER_PLATFORMS[platform];
+    const definition = FOLDER_PLATFORMS[platform];
     const foldersFileName = this.getFileNameForScope(
-      driveFoldersFileName,
-      platform === 'chatgpt' ? null : accountScope,
+      definition.driveFoldersFileName,
+      definition.accountIsolationStorageKey === null ? null : accountScope,
     );
     const foldersFileIdToUse = await this.files.ensure(token, foldersFileName);
     await this.files.upload(token, foldersFileIdToUse, folderPayload);
     logger.info(`[GoogleDriveSyncService] ${platform} folders uploaded successfully`);
-    if (platform === 'chatgpt') return 1;
+    if (!definition.syncsSharedData) return 1;
 
     // Upload prompts file (shared between Gemini and AI Studio)
     if (prompts.length > 0) {
@@ -171,14 +171,15 @@ export class GoogleDriveSyncPayloads {
     accountScope: SyncAccountScope | null,
     timelineHierarchyAccountScope: SyncAccountScope | null,
   ): Promise<GoogleDriveDownload | null> {
+    const definition = FOLDER_PLATFORMS[platform];
     await this.files.prepareDownload(token);
     const folders = await this.readFile<FolderExportPayload>(
       token,
-      FOLDER_PLATFORMS[platform].driveFoldersFileName,
-      platform === 'chatgpt' ? null : accountScope,
+      definition.driveFoldersFileName,
+      definition.accountIsolationStorageKey === null ? null : accountScope,
       `[GoogleDriveSyncService] ${platform} folders downloaded`,
     );
-    if (platform === 'chatgpt') {
+    if (!definition.syncsSharedData) {
       return folders
         ? {
             folders,
@@ -292,12 +293,13 @@ export class GoogleDriveSyncPayloads {
   }
 
   private initialPayloads(snapshot: GoogleDriveUploadSnapshot, now: Date) {
+    const { folderExport } = FOLDER_PLATFORMS[snapshot.platform];
     const folderPayload: FolderExportPayload = {
       format: 'gemini-voyager.folders.v1',
       exportedAt: now.toISOString(),
       version: EXTENSION_VERSION,
       data: snapshot.folders,
-      ...(snapshot.platform === 'chatgpt' ? { platform: 'chatgpt' as const } : {}),
+      ...(folderExport ? { platform: folderExport.platform } : {}),
     };
 
     const promptPayload: PromptExportPayload = {

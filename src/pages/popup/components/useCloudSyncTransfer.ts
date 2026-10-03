@@ -15,8 +15,7 @@ import type {
   SyncPlatform,
 } from '@/core/types/sync';
 import { getPromptNameConflictIds } from '@/core/utils/promptName';
-import { FOLDER_PLATFORMS } from '@/features/folder/platforms';
-import { readChatGptFolderExport } from '@/features/plugins/builtin/chatgptFolders/transfer';
+import { FOLDER_PLATFORMS, supportsAccountIsolation } from '@/features/folder/platforms';
 import {
   getTimelineHierarchyStorageKey,
   getTimelineHierarchyStorageKeysToRead,
@@ -135,7 +134,7 @@ async function resolvePageScope(
   respectIsolationSetting: boolean,
   getTargetTab: TargetTab,
 ): Promise<SyncAccountScope | null> {
-  if (platform === 'chatgpt') return null;
+  if (!supportsAccountIsolation(platform)) return null;
   if (respectIsolationSetting) {
     const isolationEnabled = await accountIsolationService.isIsolationEnabled({ platform });
     if (!isolationEnabled) return null;
@@ -221,6 +220,7 @@ async function readLocalSyncData(
   purpose: 'upload' | 'restore',
 ) {
   const { platform, timelineHierarchyAccountScope } = context.payload;
+  const definition = FOLDER_PLATFORMS[platform];
   let accountScope = context.payload.accountScope;
   let folderStorageKey = context.folderStorageKey;
   let folders: FolderData = { folders: [], folderContents: {} };
@@ -234,7 +234,7 @@ async function readLocalSyncData(
     } | null>(getTargetTab, 'gv.sync.requestData', purpose === 'upload' ? 500 : 2000);
     if (response?.ok && response.data) {
       folders = response.data;
-      if (platform !== 'chatgpt' && response.accountScope) {
+      if (supportsAccountIsolation(platform) && response.accountScope) {
         accountScope = response.accountScope;
         folderStorageKey = buildScopedStorageKey(
           FOLDER_PLATFORMS[platform].folderStorageKey,
@@ -249,8 +249,8 @@ async function readLocalSyncData(
   try {
     const storageResult = await chrome.storage.local.get([
       folderStorageKey,
-      ...(platform === 'chatgpt' ? [] : [StorageKeys.PROMPT_ITEMS]),
-      ...(platform !== 'chatgpt' && purpose === 'restore'
+      ...(definition.syncsSharedData ? [StorageKeys.PROMPT_ITEMS] : []),
+      ...(definition.syncsSharedData && purpose === 'restore'
         ? getTimelineHierarchyStorageKeysToRead(timelineHierarchyAccountScope?.accountKey)
         : []),
     ]);
@@ -281,10 +281,11 @@ async function restoreCloudDownload(
   mode: CloudRestoreMode,
   highlightsRestored: boolean,
 ): Promise<{ foldersMissing: boolean; nameConflicts: number }> {
+  const definition = FOLDER_PLATFORMS[context.payload.platform];
   const local = await readLocalSyncData(context, getTargetTab, 'restore');
   let rawFolders = data.folders?.data;
-  if (context.payload.platform === 'chatgpt' && data.folders) {
-    const validated = readChatGptFolderExport(data.folders);
+  if (definition.folderExport && data.folders) {
+    const validated = definition.folderExport.read(data.folders);
     if (!validated.ok) {
       throw new CloudRestoreError(
         [],
@@ -299,15 +300,14 @@ async function restoreCloudDownload(
   }
   const hasCloudFolderData = isFolderData(rawFolders);
   const cloudFolders = isFolderData(rawFolders) ? rawFolders : { folders: [], folderContents: {} };
-  const cloudPrompts = context.payload.platform === 'chatgpt' ? [] : data.prompts?.items || [];
+  const cloudPrompts = definition.syncsSharedData ? data.prompts?.items || [] : [];
   const cloudStarred = data.starred?.data || { messages: {} };
   const cloudHierarchy = data.timelineHierarchy?.data || { conversations: {} };
   let localStarred: StarredMessagesData = { messages: {} };
   try {
-    const starredResult =
-      context.payload.platform !== 'chatgpt'
-        ? await chrome.storage.local.get(['geminiTimelineStarredMessages'])
-        : {};
+    const starredResult = definition.syncsSharedData
+      ? await chrome.storage.local.get(['geminiTimelineStarredMessages'])
+      : {};
     if (isStarredMessagesData(starredResult.geminiTimelineStarredMessages)) {
       localStarred = starredResult.geminiTimelineStarredMessages;
     }
@@ -336,10 +336,10 @@ async function restoreCloudDownload(
     mode,
     highlightsRestored,
     plugins:
-      context.payload.platform !== 'chatgpt' && data.plugins?.format === 'gemini-voyager.plugins.v1'
+      definition.syncsSharedData && data.plugins?.format === 'gemini-voyager.plugins.v1'
         ? data.plugins.data
         : undefined,
-    settings: context.payload.platform === 'chatgpt' ? undefined : data.settings?.data,
+    settings: definition.syncsSharedData ? data.settings?.data : undefined,
     storageUpdate,
     includesPrompts: context.payload.platform === 'gemini',
     foldersMissing: !hasCloudFolderData,

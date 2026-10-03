@@ -15,6 +15,7 @@ import type {
   HighlightStoredAccountScope,
   HighlightUpdatePatch,
 } from '@/core/types/highlight';
+import type { SyncPlatform } from '@/core/types/sync';
 import {
   HighlightImportExportService,
   highlightImportExportService,
@@ -76,7 +77,7 @@ function shouldKeepHighlightTombstones(platform: HighlightPlatform): boolean {
 }
 
 export async function isHighlightCloudSyncRequested(
-  platform: 'gemini' | 'aistudio',
+  platform: SyncPlatform,
   explicitlyIncluded: boolean,
 ): Promise<boolean> {
   if (platform !== 'gemini') return false;

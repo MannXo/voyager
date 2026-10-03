@@ -3,7 +3,8 @@ import { getVoyagerBuildTarget } from '@/core/utils/browser';
 import { hashString } from '@/core/utils/hash';
 import {
   FOLDER_PLATFORMS,
-  type FolderPlatform,
+  type AccountScopedFolderPlatform,
+  supportsAccountIsolation,
   getFolderPlatformForHost,
 } from '@/features/folder/platforms';
 
@@ -47,7 +48,7 @@ export interface AccountContext {
 }
 
 /** Platforms with their own folder bucket and account isolation switch. */
-export type AccountPlatform = Exclude<FolderPlatform, 'chatgpt'>;
+export type AccountPlatform = AccountScopedFolderPlatform;
 
 interface AccountScopeResolveResponse {
   ok: true;
@@ -88,7 +89,7 @@ export function detectAccountPlatformFromUrl(
   const parsed = parseUrl(pageUrl || '');
   if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) return 'gemini';
   const platform = getFolderPlatformForHost(parsed.hostname);
-  return platform === 'chatgpt' ? null : platform;
+  return platform && supportsAccountIsolation(platform) ? platform : null;
 }
 
 export function getAccountIsolationStorageKey(platform: AccountPlatform): string {
