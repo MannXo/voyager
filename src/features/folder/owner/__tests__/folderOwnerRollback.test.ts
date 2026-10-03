@@ -9,6 +9,7 @@ import { createWriteQueue } from '@/features/storage/writeQueue';
 import { FOLDER_WRITE_AUTHORITY } from '../authority';
 import { AUTHORITY_FENCE_KEY, writeAuthorityFence } from '../authorityFence';
 import { BUNDLE_INTENT_KEY, resolveBundleIntent, writeBundle } from '../bundleIntent';
+import { createBundleRecovery } from '../bundleRecovery';
 import { hashValue } from '../canonicalHash';
 import { INTERRUPTED } from '../folderOps';
 import { createFolderOwnerCore } from '../folderOwnerCore';
@@ -105,6 +106,38 @@ describe('intermediate rollback and re-upgrade (R5.1–R5.3)', () => {
       ...before,
       [BUNDLE_INTENT_KEY]: { v: 1, txId: 'tx', status: 'abandoned', at: world.now() },
     });
+  });
+
+  it('R5.2: a failing abandon write blocks only the turns that read the abandoned bundle’s keys', async () => {
+    const { storage, world } = await openBundle(AI_STUDIO);
+    storage.failWhen((op, keys) => op === 'set' && keys.includes(BUNDLE_INTENT_KEY));
+    const queue = createWriteQueue();
+    const recovery = createBundleRecovery({
+      area: storage.area,
+      authority: AI_LEGACY,
+      serialize: queue,
+      subscribe: () => () => {},
+      setTimer: () => () => {},
+    });
+    queue.setPrelude(recovery.prelude);
+    recovery.start();
+    const gemini = createFolderOwnerCore({
+      area: storage.area,
+      authority: AI_LEGACY,
+      now: world.now,
+      serialize: queue,
+    });
+    const prompts = createPromptLibraryOwner({
+      area: { get: (key) => storage.area.get([key]), set: storage.area.set },
+      serialize: queue,
+    });
+
+    await expect(
+      gemini.open({ key: KEY, clientId: 'tab', ackedThrough: 0 }),
+    ).resolves.toMatchObject({ kind: 'empty' });
+    await expect(prompts.read()).rejects.toThrow('write_failed');
+    expect(storage.read(BUNDLE_INTENT_KEY)).toMatchObject({ status: 'open' });
+    recovery.stop();
   });
 
   it('T24a: freezes the rolled-back site while prompt turns commit, then holds old ops without replay', async () => {

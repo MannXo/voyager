@@ -389,40 +389,39 @@ export async function resolveBundleIntent(
     return 'read_failed';
   }
   if (!isOpenStatus(intent)) return 'ok';
-  try {
-    if (!isOpenBundle(intent) || !ownedBy(intent, authority)) {
-      const txId = isRecord(intent) && typeof intent.txId === 'string' ? intent.txId : '';
-      await area.set(settledStatus(txId, 'abandoned', now()));
-      return 'ok';
-    }
-    const keys = Object.keys(intent.keys);
-    const blocked = (reason: 'read_failed' | 'write_failed') => {
-      options.onBlocked?.();
-      return options.readKeys?.every((key) => !keys.includes(key)) ? 'ok' : reason;
-    };
-    const release = createBundleSpaceRelease(area, authority, keys);
-    for (;;) {
-      let current: Record<string, unknown>;
-      try {
-        current = await readKeys(area, intent);
-      } catch {
-        return blocked('read_failed');
-      }
-      try {
-        await finish(area, intent, current, now());
-        break;
-      } catch (error) {
-        if (!isQuotaError(error)) return blocked('write_failed');
-        try {
-          if (!(await release())) return blocked('write_failed');
-        } catch {
-          return blocked('write_failed');
-        }
-      }
-    }
-  } catch {
+  // An intent left open by a failed abandon still blocks only the turns that read its keys.
+  const keys = isRecord(intent) && isRecord(intent.keys) ? Object.keys(intent.keys) : null;
+  const blocked = (reason: 'read_failed' | 'write_failed') => {
     options.onBlocked?.();
-    return 'write_failed';
+    return keys && options.readKeys?.every((key) => !keys.includes(key)) ? 'ok' : reason;
+  };
+  if (!isOpenBundle(intent) || !ownedBy(intent, authority)) {
+    const txId = isRecord(intent) && typeof intent.txId === 'string' ? intent.txId : '';
+    try {
+      await area.set(settledStatus(txId, 'abandoned', now()));
+    } catch {
+      return blocked('write_failed');
+    }
+    return 'ok';
   }
-  return 'ok';
+  const release = createBundleSpaceRelease(area, authority, Object.keys(intent.keys));
+  for (;;) {
+    let current: Record<string, unknown>;
+    try {
+      current = await readKeys(area, intent);
+    } catch {
+      return blocked('read_failed');
+    }
+    try {
+      await finish(area, intent, current, now());
+      return 'ok';
+    } catch (error) {
+      if (!isQuotaError(error)) return blocked('write_failed');
+      try {
+        if (!(await release())) return blocked('write_failed');
+      } catch {
+        return blocked('write_failed');
+      }
+    }
+  }
 }
