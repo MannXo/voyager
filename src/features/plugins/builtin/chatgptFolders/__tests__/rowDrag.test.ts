@@ -260,16 +260,19 @@ describe('dragging a ChatGPT sidebar row onto a folder', () => {
     expect(transfer.types).toEqual([]);
   });
 
-  it('gives a row link back its draggable when a press ends without a drag', async () => {
-    await activate();
-    const row = link(TARGET.id);
+  it.each(['pointerup', 'pointercancel'])(
+    'gives a row link back its draggable when a press ends in %s without a drag',
+    async (end) => {
+      await activate();
+      const row = link(TARGET.id);
 
-    row.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
-    expect(row.getAttribute('draggable')).toBe('true');
-    row.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0 }));
+      row.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+      expect(row.getAttribute('draggable')).toBe('true');
+      row.dispatchEvent(new PointerEvent(end, { bubbles: true, button: 0 }));
 
-    expect(row.getAttribute('draggable')).toBe('false');
-  });
+      expect(row.getAttribute('draggable')).toBe('false');
+    },
+  );
 
   it('stops making rows draggable and restores a pressed one when turned off', async () => {
     await activate();

@@ -67,6 +67,8 @@ export function bindChatGptRowDrag(scope: PluginScope, untitled: () => string): 
 
   scope.on(document, 'pointerdown', arm, { capture: true });
   scope.on(document, 'pointerup', disarm, { capture: true });
+  // A touch press that turns into a scroll ends with pointercancel, not pointerup.
+  scope.on(document, 'pointercancel', disarm, { capture: true });
   scope.on(document, 'dragend', disarm, { capture: true });
   scope.on(document, 'dragstart', start, { capture: true });
   scope.effect(() => disarm, 'chatgpt-folders:row-drag');
