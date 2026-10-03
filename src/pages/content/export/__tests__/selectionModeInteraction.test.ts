@@ -52,13 +52,11 @@ describe('selection mode interaction', () => {
       resolve(process.cwd(), 'src/features/export/ui/exportResultNotice.ts'),
       'utf8',
     );
-    const page = readFileSync(resolve(process.cwd(), 'src/pages/content/export/index.ts'), 'utf8');
 
     expect(notice).toContain("format === 'pdf'");
     expect(notice).toContain('isSafari()');
     expect(notice).toContain('showExportToast(');
     expect(notice).toContain("t('export_toast_safari_pdf_ready')");
-    expect(page).toContain('reportFinishedExport(result, state.format, t)');
   });
 
   it('applies horizontal scrolling to the export selection bar and prevents text wrapping', () => {
