@@ -1,6 +1,4 @@
 {
   "limit": 1000,
-  "files": {
-    "src/pages/popup/components/__tests__/PluginManager.test.tsx": 1002
-  }
+  "files": {}
 }
