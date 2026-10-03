@@ -285,7 +285,13 @@ describe('dragging a ChatGPT sidebar row onto a folder', () => {
 
   it('dragging a recents row onto a floating panel folder files it', async () => {
     memory.values.local.set(StorageKeys.CHATGPT_FOLDER_PANEL, { open: true });
-    await activate();
+    // The panel stands in only while there is no Recents to put the section
+    // by: here the sidebar lists the rows under a Project instead.
+    sidebar.sidebar
+      .querySelector('[data-sidebar-project-container-id="chats"]')!
+      .setAttribute('data-sidebar-project-container-id', 'g-p-trips');
+    await activateChatGptFolders(scope);
+    await nextPass();
     const panel = treeDriver({
       root: shadowOf('.gv-floating-folder-panel'),
       rootBucketId: ROOT_CONVERSATIONS_ID,

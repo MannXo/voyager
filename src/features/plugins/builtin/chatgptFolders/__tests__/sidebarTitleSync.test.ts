@@ -90,12 +90,12 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-/** Imports `data` the way a user does: the panel's Import button and a chosen file. */
-async function importFromPanel(data: FolderData): Promise<void> {
+/** Imports `data` the way a user does: the section's Import button and a chosen file. */
+async function importFromSection(data: FolderData): Promise<void> {
   // The file picker is never attached to the page; keep its click from opening anything.
   const pick = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
-  const panel = document.querySelector<HTMLElement>('.gv-floating-folder-panel')!.shadowRoot!;
-  panel.querySelector<HTMLButtonElement>('button[aria-label="Import folders"]')!.click();
+  const section = document.querySelector<HTMLElement>('.gv-chatgpt-folder-section')!.shadowRoot!;
+  section.querySelector<HTMLButtonElement>('button[aria-label="Import folders"]')!.click();
   const json = JSON.stringify(exportChatGptFolders(data));
   const file = new File([json], 'folders.json', { type: 'application/json' });
   // jsdom's File has no text().
@@ -220,11 +220,10 @@ describe('ChatGPT sidebar title sync', () => {
 
   it('gives an imported copy with an older title the title the sidebar shows', async () => {
     store([reference(FILED)]);
-    memory.values.local.set(StorageKeys.CHATGPT_FOLDER_PANEL, { open: true });
     await activate();
     const before = folderWrites();
 
-    await importFromPanel({
+    await importFromSection({
       folders: [
         { id: 'f2', name: 'Old', parentId: null, isExpanded: true, createdAt: 1, updatedAt: 1 },
       ],

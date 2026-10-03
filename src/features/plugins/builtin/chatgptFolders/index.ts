@@ -5,6 +5,11 @@
  * shared FolderRepository with ChatGPT's own bucket. Everything this plugin
  * creates is registered on its PluginScope, so turning it off leaves nothing behind.
  */
+import {
+  createBookmarkPlusIcon,
+  createDownloadIcon,
+  createUploadIcon,
+} from '@/core/icons/folderIcons';
 import type { ConversationReference } from '@/core/types/folder';
 import type { EditOutcome, FolderCommands } from '@/features/folder/commands/folderCommands';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
@@ -22,7 +27,7 @@ import { isTemporaryChat } from '../chatgptTemporaryHandoff/handoff';
 import { ChatGptFolderStore } from './ChatGptFolderStore';
 import { ChatGptFolderGuide } from './chatgptFolderGuide';
 import { type FolderPickerHandle, openFolderPicker } from './chatgptFolderPicker';
-import { ChatGptFolderSection } from './chatgptFolderSection';
+import { ChatGptFolderSection, SECTION_ICON_SIZE } from './chatgptFolderSection';
 import { ChatGptHideFiled, HIDE_FILED_SETTING } from './chatgptHideFiled';
 import { ChatGptMoveMenu, MOVE_ENTRY_ATTR } from './chatgptMoveMenu';
 import { openChatGptConversation, readCurrentConversation } from './chatgptPage';
@@ -56,6 +61,7 @@ class ChatGptFoldersView {
   private panel: FloatingPanelHandle | null = null;
   private section: ChatGptFolderSection | null = null;
   private picker: FolderPickerHandle | null = null;
+  private fabShown = false;
   // Gemini's removal confirm; it closes with the panel.
   private readonly dialogs = createFolderDialogs();
 
@@ -67,14 +73,7 @@ class ChatGptFoldersView {
   ) {}
 
   start(): void {
-    this.scope.effect(() => {
-      mountFloatingFab({
-        onClick: () => this.setOpen(!this.panel),
-        storedPos: this.prefs.fabPos,
-        onPosChange: (pos) => this.savePrefs({ fabPos: pos }),
-      });
-      return unmountFloatingFab;
-    }, 'chatgpt-folders:fab');
+    this.scope.effect(() => () => this.showFloatingEntry(false), 'chatgpt-folders:fab');
     this.scope.effect(() => this.store.subscribe(() => this.refresh()), 'chatgpt-folders:sync');
     this.scope.effect(() => () => this.unmountPanel(), 'chatgpt-folders:panel');
     this.scope.effect(() => {
@@ -82,6 +81,26 @@ class ChatGptFoldersView {
         this.store.data,
         CHATGPT_FOLDER_CONFIG.rootBucketId,
         this.treeActions(),
+        [
+          {
+            modifier: 'add-current',
+            labelKey: 'chatgptFoldersAddCurrent',
+            icon: () => createBookmarkPlusIcon(SECTION_ICON_SIZE),
+            onClick: () => this.addCurrent(CHATGPT_FOLDER_CONFIG.rootBucketId),
+          },
+          {
+            modifier: 'import',
+            labelKey: 'folder_import',
+            icon: () => createUploadIcon(SECTION_ICON_SIZE),
+            onClick: () => this.pickImportFile(),
+          },
+          {
+            modifier: 'export',
+            labelKey: 'folder_export',
+            icon: () => createDownloadIcon(SECTION_ICON_SIZE),
+            onClick: () => this.exportFolders(),
+          },
+        ],
       );
       section.setDataReady(this.store.ready);
       this.section = section;
@@ -98,7 +117,6 @@ class ChatGptFoldersView {
       },
       'chatgpt-folders:move-to-folder',
     );
-    if (this.prefs.open) this.mountPanel();
   }
 
   refresh(): void {
@@ -111,6 +129,30 @@ class ChatGptFoldersView {
   /** Keeps the sidebar section in ChatGPT's sidebar; called after every sidebar change. */
   placeSection(sidebar: HTMLElement | null): void {
     this.section?.place(sidebar);
+    this.showFloatingEntry(!this.section?.element.isConnected);
+  }
+
+  /**
+   * The sidebar section is the way in. ChatGPT has no floating-mode setting, so
+   * the floating button (and the panel, if it was left open) stands in only
+   * while the page shows no sidebar for the section; both together would be two
+   * copies of the same tree.
+   */
+  private showFloatingEntry(show: boolean): void {
+    if (show === this.fabShown || (show && this.scope.isDisposed)) return;
+    this.fabShown = show;
+    if (!show) {
+      unmountFloatingFab();
+      // Keeps `prefs.open`, so the panel comes back with its button.
+      this.unmountPanel();
+      return;
+    }
+    mountFloatingFab({
+      onClick: () => this.setOpen(!this.panel),
+      storedPos: this.prefs.fabPos,
+      onPosChange: (pos) => this.savePrefs({ fabPos: pos }),
+    });
+    if (this.prefs.open) this.mountPanel();
   }
 
   /** The section's header while the section is in the page, for the one-time guide. */
@@ -259,7 +301,7 @@ class ChatGptFoldersView {
       exportChatGptFolders(this.store.data),
       chatgptFolderExportFilename(),
     );
-    this.panel?.flash(t('folder_export_success'));
+    this.flashTree(t('folder_export_success'));
   }
 
   private pickImportFile(): void {
@@ -278,7 +320,7 @@ class ChatGptFoldersView {
     const parsed = await FolderImportExportService.readJSONFile(file);
     if (this.scope.isDisposed) return;
     if (!parsed.success) {
-      this.panel?.flash(t('folder_import_invalid_format'));
+      this.flashTree(t('folder_import_invalid_format'));
       return;
     }
     if (!this.store.ready) return;
@@ -290,7 +332,7 @@ class ChatGptFoldersView {
     });
     if (this.scope.isDisposed) return;
     const message = importMessage(outcome);
-    if (message) this.panel?.flash(message);
+    if (message) this.flashTree(message);
   }
 }
 

@@ -162,6 +162,12 @@ export type TreeSiteOptions = {
   conversationHref?: (conv: ConversationReference) => string;
   /** A Google Symbols ligature drawn before each title. */
   conversationIcon?: (conv: ConversationReference) => string;
+  /**
+   * Row controls are line icons (chevron, plus, ellipsis, star, close) and each
+   * folder shows a folder icon, tinted only when it has a colour. For a page
+   * whose fonts lack the text glyphs' look. Default: text glyphs and a colour dot.
+   */
+  lineIcons?: boolean;
   /** The empty state's message. Default: `floatingPanelEmpty`. */
   emptyLabelKey?: string;
   /**

@@ -1,8 +1,12 @@
 /* The folder section inside ChatGPT's sidebar. It reuses the floating panel's
- * shadow sheet for the tree and turns the floating box back into a plain
- * sidebar section. `:host(.gv-chatgpt-folder-section[data-gv-scheme])` outranks
- * the panel's `:host([data-gv-scheme=...])` rules, and this sheet comes after
- * them; host rules stay `!important` (see floatingPanel.css). */
+ * shadow sheet and tree, and turns them into one of ChatGPT's own sidebar
+ * sections: the panel's colour tokens point at ChatGPT's (inherited from the
+ * page, with fallbacks), and rows take ChatGPT's metrics: 14px/20px text, 36px
+ * rows, 6px outer and 10px inner inset, 10px radius.
+ *
+ * `:host(.gv-chatgpt-folder-section[data-gv-scheme])` outranks the panel's
+ * `:host([data-gv-scheme=...])` rules, and this sheet comes after them; host
+ * rules stay `!important` (see floatingPanel.css). */
 :host(.gv-chatgpt-folder-section),
 :host(.gv-chatgpt-folder-section[data-gv-scheme]) {
   position: relative !important;
@@ -18,7 +22,8 @@
   max-width: none !important;
   max-height: none !important;
   resize: none !important;
-  margin: 0 0 8px !important;
+  /* The neighbouring native sections bring their own spacing. */
+  margin: 0 !important;
   background: transparent !important;
   border: 0 !important;
   border-radius: 0 !important;
@@ -31,53 +36,273 @@
   pointer-events: auto !important;
 }
 
+/* ─── Tokens ───────────────────────────────────────────────────────────── */
+:host(.gv-chatgpt-folder-section[data-gv-scheme='light']) {
+  --gv-chatgpt-folder-section__heading: var(--text-tertiary, #8f8f8f);
+  --gv-floating-folder-panel__text: var(--text-primary, #0d0d0d);
+  --gv-floating-folder-panel__text-muted: var(--text-secondary, #5d5d5d);
+  --gv-floating-folder-panel__surface: var(--main-surface-primary, #ffffff);
+  --gv-floating-folder-panel__surface-container: var(--main-surface-primary, #ffffff);
+  --gv-floating-folder-panel__surface-hover: var(
+    --interactive-bg-secondary-hover,
+    rgba(0, 0, 0, 0.05)
+  );
+  --gv-floating-folder-panel__surface-active: var(
+    --interactive-bg-secondary-press,
+    rgba(0, 0, 0, 0.08)
+  );
+  --gv-floating-folder-panel__outline: rgba(0, 0, 0, 0.1);
+  --gv-floating-folder-panel__outline-subtle: rgba(0, 0, 0, 0.06);
+}
+
+:host(.gv-chatgpt-folder-section[data-gv-scheme='dark']) {
+  --gv-chatgpt-folder-section__heading: var(--text-tertiary, rgba(255, 255, 255, 0.5));
+  --gv-floating-folder-panel__text: var(--text-primary, #ffffff);
+  --gv-floating-folder-panel__text-muted: var(--text-secondary, rgba(255, 255, 255, 0.7));
+  --gv-floating-folder-panel__surface: var(--main-surface-secondary, #303030);
+  --gv-floating-folder-panel__surface-container: rgba(255, 255, 255, 0.05);
+  --gv-floating-folder-panel__surface-hover: var(
+    --interactive-bg-secondary-hover,
+    rgba(255, 255, 255, 0.06)
+  );
+  --gv-floating-folder-panel__surface-active: var(
+    --interactive-bg-secondary-press,
+    rgba(255, 255, 255, 0.1)
+  );
+  --gv-floating-folder-panel__outline: rgba(255, 255, 255, 0.12);
+  --gv-floating-folder-panel__outline-subtle: rgba(255, 255, 255, 0.08);
+}
+
+/* One nesting step is the chevron and its gap, so a child's chevron sits
+ * under its parent's folder icon. */
+:host(.gv-chatgpt-folder-section) {
+  --gv-tree-step: 24px;
+}
+
+/* ─── Header: one of ChatGPT's section headings ────────────────────────── */
 .gv-chatgpt-folder-section__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 4px;
+  gap: 2px;
   min-height: 36px;
-  padding: 0 4px 0 10px;
+  margin-inline: 6px;
+  padding-inline: 10px 4px;
   user-select: none;
 }
 
 .gv-chatgpt-folder-section__title {
   flex: 1;
   min-width: 0;
+  margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--gv-floating-folder-panel__text-muted);
-  font-size: 13px;
-  font-weight: 500;
+  color: var(--gv-chatgpt-folder-section__heading);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
 }
 
-.gv-chatgpt-folder-section__header .gv-floating-folder-panel__icon-button {
+.gv-chatgpt-folder-section__actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Muted at rest, the row text colour on hover: Gemini's header buttons. */
+.gv-chatgpt-folder-section__actions .gv-floating-folder-panel__icon-button {
   width: 28px;
   height: 28px;
   min-width: 28px;
   border-radius: 8px;
+  color: var(--gv-floating-folder-panel__text-muted);
+  opacity: 1;
 }
 
-:host(.gv-chatgpt-folder-section) .gv-floating-folder-panel__body {
-  flex: none;
-  overflow: visible;
-  overscroll-behavior: auto;
-  padding: 0 0 4px;
+.gv-chatgpt-folder-section__actions .gv-floating-folder-panel__icon-button svg {
+  width: 18px;
+  height: 18px;
 }
 
-:host(.gv-chatgpt-folder-section) .gv-floating-folder-panel__empty {
-  min-height: 0;
-  gap: 4px;
-  padding: 8px 10px;
+.gv-chatgpt-folder-section__actions .gv-floating-folder-panel__icon-button:hover,
+.gv-chatgpt-folder-section__actions .gv-floating-folder-panel__icon-button:focus-visible {
+  background: var(--gv-floating-folder-panel__surface-hover);
+  color: var(--gv-floating-folder-panel__text);
+}
+
+.gv-chatgpt-folder-section__actions .gv-floating-folder-panel__icon-button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/* "Create folder" stays; the rest appear while the heading is in use. */
+.gv-chatgpt-folder-section__header:not(:hover, :focus-within) .gv-chatgpt-folder-section__reveal {
+  opacity: 0;
 }
 
 /* "Added to …" after Move to folder: a quiet line under the header, on the
  * sidebar's own background rather than the panel's surface. */
 :host(.gv-chatgpt-folder-section) .gv-floating-folder-panel__status {
-  padding: 2px 10px 6px;
+  padding: 0 16px 6px;
   border-bottom: 0;
   background: transparent;
   color: var(--gv-floating-folder-panel__text-muted);
   font-family: inherit;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+/* ─── Tree ─────────────────────────────────────────────────────────────── */
+:host(.gv-chatgpt-folder-section) .gv-floating-folder-panel__body {
+  flex: none;
+  overflow: visible;
+  overscroll-behavior: auto;
+  padding: 0 6px;
+}
+
+/* Rows: 8px start padding (plus 24px per level) puts the 16px chevron on
+ * ChatGPT's 16px icon column; the 18px folder icon and the name follow at 6px
+ * gaps, so the name starts 58px into the row. */
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__folder-header,
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__conv,
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__inline-form {
+  min-height: 36px;
+  gap: 6px;
+  padding-block: 0;
+  padding-inline-end: 6px;
+  border-radius: 10px;
+  color: var(--gv-floating-folder-panel__text);
+}
+
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__folder-name,
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__conv-title {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+}
+
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__caret {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  border-radius: 6px;
+  opacity: 1;
+}
+
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__pin:empty {
+  display: none;
+}
+
+/* The count is quiet trailing text; on hover or focus the folder's actions
+ * take its place, as ChatGPT's own row actions do. */
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__count {
+  min-width: 0;
+  padding: 0 4px;
+  background: none;
+  color: var(--gv-chatgpt-folder-section__heading);
+  font-size: 12px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__icon-button--add-child,
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__icon-button--menu,
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__icon-button--star,
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__icon-button--remove,
+:host(.gv-chatgpt-folder-section[data-gv-scheme])
+  .gv-floating-folder-panel__icon-button--placeholder {
+  display: none;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 8px;
+  opacity: 1;
+}
+
+:host(.gv-chatgpt-folder-section[data-gv-scheme])
+  .gv-floating-folder-panel__folder-header:is(:hover, :focus-within)
+  :is(
+    .gv-floating-folder-panel__icon-button--add-child,
+    .gv-floating-folder-panel__icon-button--menu
+  ),
+:host(.gv-chatgpt-folder-section[data-gv-scheme])
+  .gv-floating-folder-panel__conv:is(:hover, :focus-within)
+  :is(.gv-floating-folder-panel__icon-button--star, .gv-floating-folder-panel__icon-button--remove),
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__icon-button--active {
+  display: inline-flex;
+}
+
+:host(.gv-chatgpt-folder-section[data-gv-scheme])
+  .gv-floating-folder-panel__folder-header:is(:hover, :focus-within)
+  .gv-floating-folder-panel__count {
+  display: none;
+}
+
+/* A conversation's title lines up with its folder's name. */
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__conv-title {
+  margin-inline-start: 34px;
+  padding-block: 8px;
+}
+
+/* Tree guides run under each enclosing folder's chevron (row start + 18px). */
+:host(.gv-chatgpt-folder-section[data-gv-scheme])
+  .gv-floating-folder-panel__tree-row[data-guides]::before {
+  left: 18px;
+}
+
+:host(.gv-chatgpt-folder-section[data-gv-scheme][data-gv-rtl])
+  .gv-floating-folder-panel__tree-row[data-guides]::before {
+  left: auto;
+  right: 18px;
+}
+
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__inline-input {
+  height: 28px;
+  border-color: var(--gv-floating-folder-panel__outline);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__inline-input:focus {
+  border-color: var(--gv-floating-folder-panel__accent);
+}
+
+/* ChatGPT's "No projects": muted text on the row's column, no illustration. */
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__empty {
+  min-height: 36px;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 0 10px;
+  color: var(--gv-chatgpt-folder-section__heading);
+  text-align: start;
+}
+
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__empty-icon {
+  display: none;
+}
+
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__empty-label {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+/* ─── Folder menu: ChatGPT's menu shape, in the page's font ────────────── */
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__context-menu {
+  border-radius: 16px;
+  font-family: inherit;
+}
+
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__menu-item {
+  min-height: 36px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+/* ─── RTL ──────────────────────────────────────────────────────────────── */
+:host(.gv-chatgpt-folder-section[data-gv-rtl]) .gv-chatgpt-folder-section__header,
+:host(.gv-chatgpt-folder-section[data-gv-rtl]) .gv-floating-folder-panel__status {
+  direction: rtl;
 }

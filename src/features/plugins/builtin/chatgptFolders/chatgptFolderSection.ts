@@ -1,10 +1,11 @@
+import { createPlusIcon } from '@/core/icons/folderIcons';
 /**
  * The folder tree as a section of ChatGPT's own sidebar, just above Recents. It
  * reuses the floating panel's tree and sheet inside its own shadow host. ChatGPT
  * (React) may drop it on any re-render or remount the whole sidebar; `place`
  * puts it back and is called after every sidebar change. While the sidebar or
- * Recents is missing it stays out of the page: the FAB panel is the other way
- * in, and nothing here turns into a floating fallback.
+ * Recents is missing it stays out of the page and the plugin offers the
+ * floating panel's button instead.
  */
 import type { FolderData } from '@/core/types/folder';
 import panelCss from '@/pages/content/folder/floatingPanel.css?raw';
@@ -19,6 +20,7 @@ import {
   type InlineEditorState,
   type TreeActions,
   type TreeChange,
+  type TreeSiteOptions,
 } from '@/pages/content/folder/floatingTree/shared';
 import {
   type ShadowSurface,
@@ -33,8 +35,38 @@ import { findHistoryAnchor } from './chatgptSidebarDom';
 
 export const FOLDER_SECTION_CLASS = 'gv-chatgpt-folder-section';
 
+/** Header icons, at the size of Gemini's folder header icons. */
+export const SECTION_ICON_SIZE = 18;
+
 /** How long a `flash` message stays, as in the floating panel. */
 const STATUS_MS = 4000;
+
+/**
+ * Gemini's folder vocabulary drawn in ChatGPT's line-icon style: chevrons,
+ * tinted folder icons, and a menu button on each folder.
+ */
+const SITE: TreeSiteOptions = {
+  lineIcons: true,
+  folderMenuButton: { labelKey: 'folder_settings' },
+};
+
+/** A header button beside "Create folder", shown while the header is hovered or focused. */
+export type SectionHeaderAction = {
+  modifier: string;
+  labelKey: string;
+  icon: () => SVGElement;
+  onClick: () => void;
+};
+
+function headerButton(modifier: string, labelKey: string, icon: SVGElement): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `${FLOATING_PANEL_CLASS}__icon-button ${FLOATING_PANEL_CLASS}__icon-button--${modifier}`;
+  button.setAttribute('aria-label', t(labelKey));
+  button.title = t(labelKey);
+  button.append(icon);
+  return button;
+}
 
 export class ChatGptFolderSection {
   readonly element: HTMLElement;
@@ -42,7 +74,7 @@ export class ChatGptFolderSection {
   readonly header: HTMLElement;
   private readonly surface: ShadowSurface;
   private readonly body: HTMLElement;
-  private readonly createButton: HTMLButtonElement;
+  private readonly headerButtons: HTMLButtonElement[];
   private readonly status: HTMLElement;
   private statusTimer: ReturnType<typeof setTimeout> | null = null;
   private inlineEditor: InlineEditorState | null = null;
@@ -52,6 +84,7 @@ export class ChatGptFolderSection {
     private data: FolderData,
     private readonly rootBucketId: string,
     private readonly actions: TreeActions,
+    headerActions: readonly SectionHeaderAction[] = [],
   ) {
     this.element = document.createElement('div');
     this.element.className = FOLDER_SECTION_CLASS;
@@ -61,20 +94,32 @@ export class ChatGptFolderSection {
     const header = document.createElement('div');
     this.header = header;
     header.className = `${FOLDER_SECTION_CLASS}__header`;
-    const title = document.createElement('div');
+    const title = document.createElement('h2');
     title.className = `${FOLDER_SECTION_CLASS}__title`;
     title.textContent = t('floatingPanelTitle');
-    this.createButton = document.createElement('button');
-    this.createButton.type = 'button';
-    this.createButton.className = `${FLOATING_PANEL_CLASS}__icon-button ${FLOATING_PANEL_CLASS}__icon-button--create`;
-    this.createButton.setAttribute('aria-label', t('floatingPanelCreateFolder'));
-    this.createButton.title = t('floatingPanelCreateFolder');
-    this.createButton.textContent = '+';
-    this.createButton.addEventListener('click', (event) => {
+    const toolbar = document.createElement('div');
+    toolbar.className = `${FOLDER_SECTION_CLASS}__actions`;
+    this.headerButtons = headerActions.map((action) => {
+      const button = headerButton(action.modifier, action.labelKey, action.icon());
+      button.classList.add(`${FOLDER_SECTION_CLASS}__reveal`);
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        action.onClick();
+      });
+      return button;
+    });
+    const createButton = headerButton(
+      'create',
+      'floatingPanelCreateFolder',
+      createPlusIcon(SECTION_ICON_SIZE),
+    );
+    createButton.addEventListener('click', (event) => {
       event.stopPropagation();
       this.apply({ inlineEditor: { mode: 'create', parentId: null }, contextMenu: null });
     });
-    header.append(title, this.createButton);
+    this.headerButtons.push(createButton);
+    toolbar.append(...this.headerButtons);
+    header.append(title, toolbar);
 
     this.body = document.createElement('div');
     this.body.className = `${FLOATING_PANEL_CLASS}__body`;
@@ -132,7 +177,7 @@ export class ChatGptFolderSection {
   setDataReady(ready: boolean): void {
     this.body.inert = !ready;
     this.body.setAttribute('aria-busy', String(!ready));
-    this.createButton.disabled = !ready;
+    for (const button of this.headerButtons) button.disabled = !ready;
   }
 
   /** True while the section's own folder menu or name field is open. */
@@ -204,6 +249,7 @@ export class ChatGptFolderSection {
       contextMenu: this.contextMenu,
       isExpanded: this.isExpanded,
       apply: this.apply,
+      site: SITE,
     });
   }
 }

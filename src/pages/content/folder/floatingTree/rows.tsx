@@ -18,6 +18,7 @@ import {
   readConversationDragData,
   t,
 } from './shared';
+import { CHEVRON_RIGHT, ELLIPSIS, FOLDER, LineIcon, PLUS } from './treeIcons';
 
 const FOLDER_DRAGGING = cls('folder-header--dragging');
 /** Set on a row while a drop would land before or after it. */
@@ -176,6 +177,7 @@ export function CreateFolderRow({ tree, parentId, index, measure, hidden }: Crea
     >
       <InlineForm
         initialValue=""
+        lineIcons={tree.site?.lineIcons}
         extraClass={parentId === null ? cls('inline-form--root') : undefined}
         style={
           parentId === null
@@ -212,6 +214,7 @@ export function FolderRow({ tree, node, item, index, measure, hidden }: ItemRowP
   const renaming = inlineEditor?.mode === 'rename' && inlineEditor.folderId === folder.id;
   const toggle = () => apply({ expand: { folderId: folder.id, expanded: !expanded } });
   const menuButton = site?.folderMenuButton;
+  const lineIcons = !!site?.lineIcons;
   const shell = rowShell(index, depth, { extraClass: cls('folder'), hidden });
   const draggable = !!site?.folderDrag && !folder.pinned && !renaming;
   const placementOf: PlacementOf | undefined = site?.reorder?.folders
@@ -301,24 +304,39 @@ export function FolderRow({ tree, node, item, index, measure, hidden }: ItemRowP
       >
         <button
           type="button"
-          class={cls('caret')}
+          class={expanded ? `${cls('caret')} ${cls('caret--expanded')}` : cls('caret')}
           aria-label={t(expanded ? 'floatingPanelCollapseFolder' : 'floatingPanelExpandFolder')}
           onClick={(e) => {
             e.stopPropagation();
             toggle();
           }}
         >
-          {expanded ? '▾' : '▸'}
+          {lineIcons ? <LineIcon node={CHEVRON_RIGHT} /> : expanded ? '▾' : '▸'}
         </button>
-        <span
-          class={cls('folder-color')}
-          style={{ backgroundColor: getFolderColor(folder.color, isDarkMode()) }}
-        />
+        {lineIcons ? (
+          // An uncoloured folder takes the row's icon colour, as the page's own rows do.
+          <span
+            class={cls('folder-icon')}
+            style={
+              folder.color && folder.color !== 'default'
+                ? { color: getFolderColor(folder.color, isDarkMode()) }
+                : undefined
+            }
+          >
+            <LineIcon node={FOLDER} />
+          </span>
+        ) : (
+          <span
+            class={cls('folder-color')}
+            style={{ backgroundColor: getFolderColor(folder.color, isDarkMode()) }}
+          />
+        )}
         <span class={cls('folder-name-wrap')}>
           {renaming ? (
             <InlineForm
               key={`rename:${folder.id}`}
               initialValue={folder.name}
+              lineIcons={lineIcons}
               // `folder` is the record the form opened on, maybe stale; the
               // controller compares the name with live data.
               onSubmit={(newName) =>
@@ -355,6 +373,7 @@ export function FolderRow({ tree, node, item, index, measure, hidden }: ItemRowP
             modifier="add-child"
             labelKey="floatingPanelCreateSubfolder"
             text="+"
+            icon={lineIcons ? PLUS : undefined}
             onClick={(e) => {
               e.stopPropagation();
               apply({
@@ -375,6 +394,7 @@ export function FolderRow({ tree, node, item, index, measure, hidden }: ItemRowP
             modifier="menu"
             labelKey={menuButton.labelKey}
             text="⋮"
+            icon={lineIcons ? ELLIPSIS : undefined}
             onClick={(e) => {
               e.stopPropagation();
               const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();

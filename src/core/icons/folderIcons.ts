@@ -5,7 +5,7 @@ import { createLucideIcon } from './lucideIcon';
 /** Lucide folder-control geometry from lucide-react v0.553.0. */
 const CHEVRON_DOWN_ICON_NODE = [['path', { d: 'm6 9 6 6 6-6', key: 'qrunsl' }]] satisfies IconNode;
 
-const CHEVRON_RIGHT_ICON_NODE = [
+export const CHEVRON_RIGHT_ICON_NODE = [
   ['path', { d: 'm9 18 6-6-6-6', key: 'mthhwq' }],
 ] satisfies IconNode;
 
@@ -13,7 +13,7 @@ const CLOUD_ICON_NODE = [
   ['path', { d: 'M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z', key: 'p7xjir' }],
 ] satisfies IconNode;
 
-const FOLDER_ICON_NODE = [
+export const FOLDER_ICON_NODE = [
   [
     'path',
     {
@@ -23,7 +23,7 @@ const FOLDER_ICON_NODE = [
   ],
 ] satisfies IconNode;
 
-const PLUS_ICON_NODE = [
+export const PLUS_ICON_NODE = [
   ['path', { d: 'M5 12h14', key: '1ays0h' }],
   ['path', { d: 'M12 5v14', key: 's699le' }],
 ] satisfies IconNode;
@@ -39,7 +39,7 @@ const SETTINGS_ICON_NODE = [
   ['circle', { cx: '12', cy: '12', r: '3', key: '1v7zrd' }],
 ] satisfies IconNode;
 
-const STAR_ICON_NODE = [
+export const STAR_ICON_NODE = [
   [
     'path',
     {
@@ -52,6 +52,39 @@ const STAR_ICON_NODE = [
 const USER_ROUND_ICON_NODE = [
   ['circle', { cx: '12', cy: '8', r: '5', key: '1hypcn' }],
   ['path', { d: 'M20 21a8 8 0 0 0-16 0', key: 'rfgkzh' }],
+] satisfies IconNode;
+
+const BOOKMARK_PLUS_ICON_NODE = [
+  ['path', { d: 'm19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z', key: '1fy3hk' }],
+  ['line', { x1: '12', x2: '12', y1: '7', y2: '13', key: '1cppfj' }],
+  ['line', { x1: '15', x2: '9', y1: '10', y2: '10', key: '1gty7f' }],
+] satisfies IconNode;
+
+export const CHECK_ICON_NODE = [
+  ['path', { d: 'M20 6 9 17l-5-5', key: '1gmf2c' }],
+] satisfies IconNode;
+
+const DOWNLOAD_ICON_NODE = [
+  ['path', { d: 'M12 15V3', key: 'm9g1x1' }],
+  ['path', { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', key: 'ih7n3h' }],
+  ['path', { d: 'm7 10 5 5 5-5', key: 'brsn70' }],
+] satisfies IconNode;
+
+export const ELLIPSIS_ICON_NODE = [
+  ['circle', { cx: '12', cy: '12', r: '1', key: '41hilf' }],
+  ['circle', { cx: '19', cy: '12', r: '1', key: '1wjl8i' }],
+  ['circle', { cx: '5', cy: '12', r: '1', key: '1pcz8c' }],
+] satisfies IconNode;
+
+const UPLOAD_ICON_NODE = [
+  ['path', { d: 'M12 3v12', key: '1x0j5s' }],
+  ['path', { d: 'm17 8-5-5-5 5', key: '7q97r8' }],
+  ['path', { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', key: 'ih7n3h' }],
+] satisfies IconNode;
+
+export const X_ICON_NODE = [
+  ['path', { d: 'M18 6 6 18', key: '1bl5f8' }],
+  ['path', { d: 'm6 6 12 12', key: 'd8bk6v' }],
 ] satisfies IconNode;
 
 export function createChevronDownIcon(size = 16): SVGSVGElement {
@@ -86,4 +119,16 @@ export function createStarIcon(size = 16, filled = false): SVGSVGElement {
 
 export function createUserRoundIcon(size = 16): SVGSVGElement {
   return createLucideIcon('user-round', USER_ROUND_ICON_NODE, size);
+}
+
+export function createBookmarkPlusIcon(size = 16): SVGSVGElement {
+  return createLucideIcon('bookmark-plus', BOOKMARK_PLUS_ICON_NODE, size);
+}
+
+export function createDownloadIcon(size = 16): SVGSVGElement {
+  return createLucideIcon('download', DOWNLOAD_ICON_NODE, size);
+}
+
+export function createUploadIcon(size = 16): SVGSVGElement {
+  return createLucideIcon('upload', UPLOAD_ICON_NODE, size);
 }

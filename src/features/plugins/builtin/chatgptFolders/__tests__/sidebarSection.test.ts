@@ -5,8 +5,9 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { StorageKeys } from '@/core/types/common';
 import type { FolderData } from '@/core/types/folder';
 import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
+import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
 import { PluginScope } from '@/features/plugins/runtime/pluginScope';
-import { initI18n } from '@/utils/i18n';
+import { initI18n, getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
 import { activateChatGptFolders } from '../index';
 import { type SidebarFixture, makeRows, mountSidebarFixture } from './chatgptSidebarFixture';
@@ -23,6 +24,8 @@ vi.mock('webextension-polyfill', () => ({
 }));
 
 const SECTION = '.gv-chatgpt-folder-section';
+const FAB = '.gv-floating-fab';
+const PANEL = '.gv-floating-folder-panel';
 const ROWS = makeRows(10);
 const FILED = ROWS[4];
 const DATA: FolderData = {
@@ -172,7 +175,7 @@ describe('ChatGPT folder section in the sidebar', () => {
     expect(clone.isConnected).toBe(false);
   });
 
-  it('does not fall back to a floating panel while the sidebar is gone', async () => {
+  it('offers the floating button, not an unasked-for panel, while the sidebar is gone', async () => {
     await activate();
 
     sidebar.removeSidebar();
@@ -180,11 +183,52 @@ describe('ChatGPT folder section in the sidebar', () => {
     await nextPass();
 
     expect(sections().filter((host) => host.isConnected)).toEqual([]);
-    expect(document.querySelector('.gv-floating-folder-panel')).toBeNull();
+    expect(document.querySelector(FAB)).not.toBeNull();
+    expect(document.querySelector(PANEL)).toBeNull();
 
     document.body.append(sidebar.sidebar);
     await nextPass();
     expectAboveRecents();
+    expect(document.querySelector(FAB)).toBeNull();
+  });
+
+  it('sidebar mode does not also show the floating folder button', async () => {
+    memory.values.local.set(StorageKeys.CHATGPT_FOLDER_PANEL, { open: true });
+    await activate();
+
+    expectAboveRecents();
+    expect(document.querySelector(FAB)).toBeNull();
+    expect(document.querySelector(PANEL)).toBeNull();
+
+    // The panel left open comes back with the button when the section cannot show.
+    sidebar.removeSidebar();
+    await nextPass();
+    expect(document.querySelector(FAB)).not.toBeNull();
+    expect(document.querySelector(PANEL)).not.toBeNull();
+
+    document.body.append(sidebar.sidebar);
+    await nextPass();
+    expect(document.querySelector(FAB)).toBeNull();
+    expect(document.querySelector(PANEL)).toBeNull();
+    expect(memory.values.local.get(StorageKeys.CHATGPT_FOLDER_PANEL)).toMatchObject({
+      open: true,
+    });
+  });
+
+  it('exports from its own header and confirms it there', async () => {
+    const download = vi
+      .spyOn(FolderImportExportService, 'downloadJSON')
+      .mockImplementation(() => {});
+    await activate();
+
+    section()
+      .shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Export folders"]')!
+      .click();
+
+    expect(download).toHaveBeenCalledTimes(1);
+    const status = section().shadowRoot!.querySelector<HTMLElement>('[role="status"]')!;
+    expect(status.hidden).toBe(false);
+    expect(status.textContent).toBe(t('folder_export_success'));
   });
 
   it('creates and saves a folder from its own header', async () => {

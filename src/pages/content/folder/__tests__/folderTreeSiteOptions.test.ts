@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cls } from '../floatingTree/shared';
 import type { TreeActions, TreeSiteOptions } from '../floatingTree/shared';
 import { type FolderTreeController, mountFolderTree } from '../floatingTree/treeController';
+import { getFolderColor, isDarkMode } from '../folderColors';
 import type { ConversationReference, Folder, FolderData } from '../types';
 
 vi.mock('@/utils/i18n', () => ({ getTranslationSyncUnsafe: (key: string) => key }));
@@ -223,6 +224,42 @@ describe('folderMenuButton', () => {
       new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
     );
     expect(q(root, 'context-menu')).not.toBeNull();
+  });
+});
+
+describe('lineIcons', () => {
+  const coloured = (): FolderData => ({
+    ...data(),
+    folders: data().folders.map((f) => (f.id === 'a' ? { ...f, color: 'red' } : f)),
+  });
+
+  it("tints a coloured folder's icon and leaves an uncoloured one in the row colour", () => {
+    const { root } = mount({ lineIcons: true }, {}, coloured());
+    const icon = (id: string) => q(header(root, id), 'folder-icon')!;
+    // The browser's own spelling of the folder's colour.
+    const probe = document.createElement('i');
+    probe.style.color = getFolderColor('red', isDarkMode());
+    expect(icon('a').style.color).toBe(probe.style.color);
+    expect(icon('z').style.color).toBe('');
+    expect(q(root, 'folder-color')).toBeNull();
+  });
+
+  it("fills a starred conversation's star and outlines the others", () => {
+    const { root } = mount({ lineIcons: true });
+    const star = (id: string) =>
+      root
+        .querySelector(
+          `.${cls('conv')}[data-conversation-id="${id}"] .${cls('icon-button--star')} svg`,
+        )!
+        .getAttribute('fill');
+    expect(star('star')).toBe('currentColor');
+    expect(star('old')).toBe('none');
+  });
+
+  it('default: a colour dot and text controls', () => {
+    const { root } = mount({}, {}, coloured());
+    expect(q(header(root, 'a'), 'folder-color')).not.toBeNull();
+    expect(root.querySelector(`.${cls('tree')} svg`)).toBeNull();
   });
 });
 

@@ -77,3 +77,48 @@
 .gv-floating-folder-panel__conv:focus:not(:focus-visible) {
   outline: none;
 }
+
+/* ─── Line icons (TreeSiteOptions.lineIcons) ─────────────────────────────
+ * Only a lineIcons tree renders these SVGs and the folder icon; the text
+ * glyphs and colour dot of other trees match none of the rules below; the
+ * panel header's own SVG buttons sit outside the tree. */
+.gv-floating-folder-panel__tree .gv-floating-folder-panel__icon-button svg,
+.gv-floating-folder-panel__caret svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* The chevron points at the reading direction and turns down when open. */
+.gv-floating-folder-panel__caret svg {
+  transition: transform 0.16s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+:host([data-gv-rtl]) .gv-floating-folder-panel__caret svg {
+  transform: scaleX(-1);
+}
+
+.gv-floating-folder-panel__caret--expanded svg,
+:host([data-gv-rtl]) .gv-floating-folder-panel__caret--expanded svg {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gv-floating-folder-panel__caret svg {
+    transition: none;
+  }
+}
+
+.gv-floating-folder-panel__folder-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+}
+
+.gv-floating-folder-panel__folder-icon svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}

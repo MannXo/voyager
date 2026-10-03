@@ -11,6 +11,7 @@ import {
   treeItemProps,
 } from './rows';
 import { type ConversationDragData, cls, t } from './shared';
+import { STAR, X } from './treeIcons';
 
 const DRAGGING = cls('conv--dragging');
 
@@ -148,6 +149,7 @@ export function ConversationRow({
             conv.starred ? 'floatingPanelUnstarConversation' : 'floatingPanelStarConversation'
           }
           text={conv.starred ? '★' : '☆'}
+          icon={site?.lineIcons ? STAR : undefined}
           active={conv.starred}
           onClick={(e) => {
             e.stopPropagation();
@@ -158,6 +160,7 @@ export function ConversationRow({
           modifier="remove"
           labelKey="floatingPanelRemoveConversation"
           text="×"
+          icon={site?.lineIcons ? X : undefined}
           onClick={(e) => {
             e.stopPropagation();
             const confirm = actions.confirmConversationRemoval;

@@ -4,16 +4,19 @@ import { useLayoutEffect, useRef } from 'preact/hooks';
 
 import { eventPassedThrough } from '../shadowHost';
 import { KEEPS_INLINE_FORM_ATTR, MAX_FOLDER_NAME_LENGTH, MENU_SELECTOR, cls, t } from './shared';
+import { CHECK, type IconNode, LineIcon, X } from './treeIcons';
 
 type IconButtonProps = {
   modifier: string;
   labelKey: string;
   text: string;
+  /** Drawn in place of `text` (a `lineIcons` tree). */
+  icon?: IconNode;
   active?: boolean;
   onClick: (e: MouseEvent) => void;
 };
 
-export function IconButton({ modifier, labelKey, text, active, onClick }: IconButtonProps) {
+export function IconButton({ modifier, labelKey, text, icon, active, onClick }: IconButtonProps) {
   const label = t(labelKey);
   const classes = [cls('icon-button'), cls(`icon-button--${modifier}`)];
   if (active) classes.push(cls('icon-button--active'));
@@ -25,13 +28,16 @@ export function IconButton({ modifier, labelKey, text, active, onClick }: IconBu
       title={label}
       onClick={onClick}
     >
-      {text}
+      {/* An active line icon is filled, as a starred conversation's star. */}
+      {icon ? <LineIcon node={icon} filled={active} /> : text}
     </button>
   );
 }
 
 type InlineFormProps = {
   initialValue: string;
+  /** Save and cancel as line icons. */
+  lineIcons?: boolean;
   extraClass?: string;
   style?: CSSProperties;
   onSubmit: (value: string) => void;
@@ -55,6 +61,7 @@ function keepsFormOpen(e: Event): boolean {
  */
 export function InlineForm({
   initialValue,
+  lineIcons,
   extraClass,
   style,
   onSubmit,
@@ -120,6 +127,7 @@ export function InlineForm({
         modifier="save"
         labelKey="floatingPanelSave"
         text="✓"
+        icon={lineIcons ? CHECK : undefined}
         onClick={(e) => {
           e.stopPropagation();
           submit();
@@ -129,6 +137,7 @@ export function InlineForm({
         modifier="cancel"
         labelKey="floatingPanelCancel"
         text="×"
+        icon={lineIcons ? X : undefined}
         onClick={(e) => {
           e.stopPropagation();
           onCancel();
