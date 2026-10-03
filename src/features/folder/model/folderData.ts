@@ -156,33 +156,6 @@ export function getFolderDepth(data: FolderData, folderId: string): number {
   return depth;
 }
 
-/** How many levels of subfolders `folderId` holds: 0 when it has none. */
-export function getFolderHeight(data: FolderData, folderId: string): number {
-  const base = getFolderDepth(data, folderId);
-  return getFolderAndDescendants(data, folderId).reduce(
-    (height, id) => Math.max(height, getFolderDepth(data, id) - base),
-    0,
-  );
-}
-
-/**
- * Whether `folderId` with its subfolders stays within `maxDepth` under
- * `parentId` (`null`: the root). A folder already under `parentId` fits, so
- * stored data deeper than the cap can still be reordered.
- */
-export function folderFitsUnder(
-  data: FolderData,
-  folderId: string,
-  parentId: string | null,
-  maxDepth: number,
-): boolean {
-  if (parentId === null) return true;
-  if (data.folders.some((folder) => folder.id === folderId && folder.parentId === parentId)) {
-    return true;
-  }
-  return getFolderDepth(data, parentId) + 1 + getFolderHeight(data, folderId) <= maxDepth;
-}
-
 function isFolderDescendant(data: FolderData, folderId: string, ancestorId: string): boolean {
   let currentId: string | null = folderId;
   const seen = new Set<string>();

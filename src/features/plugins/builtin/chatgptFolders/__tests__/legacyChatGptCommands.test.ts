@@ -110,7 +110,7 @@ describe('ChatGPT legacy FolderCommands import', () => {
 });
 
 describe('ChatGPT legacy FolderCommands folder moves', () => {
-  /** Work › Notes, and Personal: one level down at most. */
+  /** Work › Notes, and Personal. */
   const NESTED: FolderData = {
     folders: [
       folder('work', 'Work'),
@@ -125,8 +125,7 @@ describe('ChatGPT legacy FolderCommands folder moves', () => {
     await settle();
   });
 
-  it('refuses to nest a folder whose subfolders would go past the depth cap', async () => {
-    const before = structuredClone(stored());
+  it('nests a folder with subfolders past the depth a new folder may have, as Gemini does', async () => {
     const outcome = await createLegacyChatGptCommands(store).run({
       kind: 'moveFolder',
       folderId: 'work',
@@ -134,8 +133,9 @@ describe('ChatGPT legacy FolderCommands folder moves', () => {
     });
     await settle();
 
-    expect(outcome).toMatchObject({ kind: 'rejected', reason: 'depth_limit' });
-    expect(stored()).toEqual(before);
+    expect(outcome).toEqual({ kind: 'unconfirmed' });
+    const parents = Object.fromEntries(stored().folders.map((f) => [f.id, f.parentId]));
+    expect(parents).toMatchObject({ work: 'personal', notes: 'work', personal: null });
   });
 
   it('refuses to nest a folder under one that is gone', async () => {

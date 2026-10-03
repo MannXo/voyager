@@ -180,11 +180,6 @@ export type TreeSiteOptions = {
   /** Unpinned folder rows drag as `{ type: 'folder' }` payloads tagged `FOLDER_DRAG_TYPE`. */
   folderDrag?: boolean;
   /**
-   * A folder drag is offered only drops that keep it and its subfolders within
-   * `MAX_FOLDER_DEPTH`, for a store that refuses deeper moves. Default: any depth.
-   */
-  folderDepthCap?: boolean;
-  /**
    * Drops beside a row carry a `DropPlacement`: the top or bottom quarter of a
    * folder header for folder drags, the top or bottom half of a conversation row.
    */

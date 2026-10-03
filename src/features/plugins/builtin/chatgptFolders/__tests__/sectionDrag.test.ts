@@ -2,7 +2,7 @@
 // @vitest-environment-options { "url": "https://chatgpt.com/" }
 /**
  * Dragging in ChatGPT's folder section, against its real store and storage:
- * every drag Gemini's folder sidebar offers, and the depth cap the store keeps.
+ * every drag Gemini's folder sidebar offers.
  * A drop lands where the pointer is, so each target reports a 40px-tall rect.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -115,10 +115,6 @@ async function activate(): Promise<{ view: TreeDriver; heading: HTMLElement }> {
 
 function stored(): FolderData {
   return memory.values.local.get(KEY) as FolderData;
-}
-
-function folderWrites(): number {
-  return memory.writes.filter((write) => write.area === 'local' && write.key === KEY).length;
 }
 
 function titles(bucketId: string): string[] {
@@ -263,33 +259,21 @@ describe('ChatGPT folder section: dragging folders', () => {
   });
 });
 
-describe('ChatGPT folder section: the depth cap', () => {
-  it('offers no drop that would nest a folder deeper than a new folder may go', async () => {
+describe('ChatGPT folder section: folder depth', () => {
+  it('nests a folder with subfolders past the depth a new folder may have, as Gemini does', async () => {
     const { view } = await activate();
-    const before = folderWrites();
-    const personal = view.folderRow('Personal');
-    const notes = view.folderRow('Notes');
-
-    // Work holds Notes: under Personal, Notes would sit two levels down.
-    expect(dropAt(personal, dragFolder(view, 'Work'))).toBe(false);
-    expect(personal.classList.contains(LIT)).toBe(false);
-    // Into Notes, which is already a subfolder.
-    expect(dropAt(notes, dragFolder(view, 'Ideas'))).toBe(false);
-    expect(dropAt(view.conversationRow('personal', 'Delta'), dragFolder(view, 'Work'))).toBe(false);
+    // Work holds Notes: under Personal, Notes sits two levels down.
+    expect(dropAt(view.folderRow('Personal'), dragFolder(view, 'Work'))).toBe(true);
     await nextPass();
 
-    expect(folderWrites()).toBe(before);
-    expect(stored()).toEqual(DATA);
+    expect(parentOf('work')).toBe('personal');
+    expect(parentOf('notes')).toBe('work');
   });
 
-  it('still takes the drops that fit: beside a subfolder, and a parent among root folders', async () => {
+  it('drops a folder beside a subfolder, among that subfolder’s siblings', async () => {
     const { view } = await activate();
     expect(dropAt(view.folderRow('Notes'), dragFolder(view, 'Ideas'), 35)).toBe(true);
     await nextPass();
     expect(parentOf('ideas')).toBe('work');
-
-    expect(dropAt(view.folderRow('Personal'), dragFolder(view, 'Work'), 35)).toBe(true);
-    await nextPass();
-    expect(rootFolderNames()).toEqual(['Personal', 'Work']);
   });
 });

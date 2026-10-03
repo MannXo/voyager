@@ -2,8 +2,7 @@
 import type { ItemInstance } from '@headless-tree/core';
 import { useEffect, useRef } from 'preact/hooks';
 
-import { MAX_FOLDER_DEPTH } from '@/features/folder/constants';
-import { getFolderDepth, getFolderHeight } from '@/features/folder/model/folderData';
+import { getFolderDepth } from '@/features/folder/model/folderData';
 
 import { getFolderColor, isDarkMode } from '../folderColors';
 import { IconButton, InlineForm } from './controls';
@@ -24,11 +23,6 @@ import { CHEVRON_RIGHT, ELLIPSIS, FOLDER, LineIcon, PLUS } from './treeIcons';
 const FOLDER_DRAGGING = cls('folder-header--dragging');
 /** Set on a row while a drop would land before or after it. */
 const DROP_POSITION = 'data-drop-position';
-/**
- * Also on a folder drag, suffixed with how many levels of subfolders it holds:
- * dragover can read only the drag's types, not its data.
- */
-const FOLDER_HEIGHT_TYPE = 'application/x-gv-folder-height-';
 
 type DropEvent = DragEvent & { currentTarget: HTMLElement };
 export type PlacementOf = (e: DropEvent) => DropPlacement | undefined;
@@ -41,29 +35,6 @@ export function edgeOf(e: DropEvent, edge: number): 'before' | 'after' | null {
   if (offset < edge) return 'before';
   if (offset >= 1 - edge) return 'after';
   return null;
-}
-
-/**
- * With `folderDepthCap`, whether a dragged folder and its subfolders stay within
- * the cap where this drop puts them: into `folderId`, or beside a folder.
- */
-function fitsDepthCap(
-  tree: TreeProps,
-  types: readonly string[],
-  folderId: string,
-  placement: DropPlacement | undefined,
-): boolean {
-  if (!tree.site?.folderDepthCap) return true;
-  const heightType = types.find((type) => type.startsWith(FOLDER_HEIGHT_TYPE));
-  if (!heightType) return true;
-  const height = Number(heightType.slice(FOLDER_HEIGHT_TYPE.length));
-  const depth =
-    placement?.kind === 'folder'
-      ? getFolderDepth(tree.data, placement.folderId)
-      : folderId === tree.rootBucketId
-        ? 0
-        : getFolderDepth(tree.data, folderId) + 1;
-  return depth + height <= MAX_FOLDER_DEPTH;
 }
 
 function showPlacement(target: HTMLElement, placement: DropPlacement | undefined): void {
@@ -97,13 +68,6 @@ export function dropHandlers(tree: TreeProps, folderId: string, placementOf?: Pl
       const types = e.dataTransfer?.types;
       if (!types || !acceptsDrag(actions, Array.from(types))) return;
       const placement = placementOf?.(e);
-      if (!fitsDepthCap(tree, Array.from(types), folderId, placement)) {
-        // Refused here, and not offered to an enclosing target either.
-        e.stopPropagation();
-        e.currentTarget.classList.remove(DROP_TARGET_CLASS);
-        showPlacement(e.currentTarget, undefined);
-        return;
-      }
       e.preventDefault();
       if (nested) e.stopPropagation();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
@@ -316,10 +280,6 @@ export function FolderRow({ tree, node, item, index, measure, hidden }: ItemRowP
                     JSON.stringify({ type: 'folder', folderId: folder.id, title: folder.name }),
                   );
                   e.dataTransfer.setData(FOLDER_DRAG_TYPE, folder.id);
-                  e.dataTransfer.setData(
-                    `${FOLDER_HEIGHT_TYPE}${getFolderHeight(tree.data, folder.id)}`,
-                    folder.id,
-                  );
                 }
                 e.currentTarget.classList.add(FOLDER_DRAGGING);
               }

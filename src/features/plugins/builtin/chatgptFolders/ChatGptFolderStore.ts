@@ -1,6 +1,5 @@
 import { MAX_FOLDER_DEPTH } from '@/features/folder/constants';
 import {
-  folderFitsUnder,
   getFolderDepth,
   moveFolder,
   ownBucket,
@@ -20,8 +19,8 @@ import { CHATGPT_FOLDER_CONFIG } from './config';
 
 /** What filing a conversation did. `missing`: the folder was deleted (say, in another tab). */
 export type AddOutcome = 'added' | 'present' | 'missing' | 'closed';
-/** What a drag move did. `missing`: what it moved or its target is gone; `too_deep`: past the depth cap. */
-export type MoveOutcome = 'moved' | 'unchanged' | 'missing' | 'too_deep' | 'closed';
+/** What a drag move did. `missing`: what it moved or its target is gone. */
+export type MoveOutcome = 'moved' | 'unchanged' | 'missing' | 'closed';
 
 function bareId(conversationId: string): string {
   return conversationId.startsWith(CHATGPT_CONVERSATION_ID_PREFIX)
@@ -115,14 +114,12 @@ export class ChatGptFolderStore {
   }
   /**
    * Nests `folderId` under `parentId` (`null`: the root), at `index` among its
-   * unpinned siblings or after them. The folder and its subfolders must stay
-   * within the depth a new folder may have.
+   * unpinned siblings or after them. Only creation is capped by depth, as on Gemini.
    */
   moveFolder(folderId: string, parentId: string | null, index?: number): MoveOutcome {
     if (!this.ready) return 'closed';
     const exists = (id: string) => this.data.folders.some((folder) => folder.id === id);
     if (!exists(folderId) || (parentId !== null && !exists(parentId))) return 'missing';
-    if (!folderFitsUnder(this.data, folderId, parentId, MAX_FOLDER_DEPTH)) return 'too_deep';
     return this.replaceIfChanged(moveFolder(this.data, folderId, parentId, Date.now(), index));
   }
 

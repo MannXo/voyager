@@ -34,7 +34,6 @@ const MOVE_OUTCOMES: Record<MoveOutcome, EditOutcome> = {
   moved: { kind: 'unconfirmed' },
   unchanged: NOOP,
   missing: rejected('target_missing'),
-  too_deep: rejected('depth_limit'),
   closed: failed('read_only'),
 };
 /** Several adds report the strongest result: one added wins, then present, then a refusal. */

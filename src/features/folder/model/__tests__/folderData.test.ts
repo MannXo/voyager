@@ -4,10 +4,8 @@ import type { ConversationReference, Folder, FolderData } from '@/core/types/fol
 
 import {
   cloneFolderData,
-  folderFitsUnder,
   getFolderAndDescendants,
   getFolderDepth,
-  getFolderHeight,
   moveFolder,
   normalizeFolderData,
   removeFolder,
@@ -149,29 +147,6 @@ describe('folder data movement', () => {
 });
 
 describe('folder data traversal and removal', () => {
-  it('measures how many levels of subfolders a folder holds', () => {
-    const data = freezeData({
-      folders: [folder('root'), folder('a', 'root'), folder('b', 'root'), folder('leaf', 'a')],
-      folderContents: {},
-    });
-    expect(getFolderHeight(data, 'root')).toBe(2);
-    expect(getFolderHeight(data, 'a')).toBe(1);
-    expect(getFolderHeight(data, 'leaf')).toBe(0);
-  });
-
-  it('lets a folder under a parent only while it and its subfolders stay within the cap', () => {
-    const data = freezeData({
-      folders: [folder('p'), folder('q'), folder('kid', 'q'), folder('deep', 'kid'), folder('x')],
-      folderContents: {},
-    });
-    expect(folderFitsUnder(data, 'x', 'p', 1)).toBe(true);
-    expect(folderFitsUnder(data, 'q', 'p', 1)).toBe(false);
-    expect(folderFitsUnder(data, 'x', 'kid', 1)).toBe(false);
-    expect(folderFitsUnder(data, 'q', null, 1)).toBe(true);
-    // Stored deeper than the cap: reordering among its siblings is still allowed.
-    expect(folderFitsUnder(data, 'deep', 'kid', 1)).toBe(true);
-  });
-
   it('retains depth-first source order, root depth and the unknown-folder fallback', () => {
     const data = freezeData({
       folders: [folder('root'), folder('a', 'root'), folder('b', 'root'), folder('leaf', 'a')],

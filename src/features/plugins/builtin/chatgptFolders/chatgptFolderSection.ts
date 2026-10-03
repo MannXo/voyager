@@ -45,16 +45,13 @@ const STATUS_MS = 4000;
 
 /**
  * Gemini's folder sidebar drawn in ChatGPT's line-icon style: chevrons, tinted
- * folder icons, a menu button on each folder, and the same drags. Its store
- * refuses a folder move past the depth a new folder may have, so drags offer
- * only the drops it takes.
+ * folder icons, a menu button on each folder, and the same drags.
  */
 const SITE: TreeSiteOptions = {
   lineIcons: true,
   folderMenuButton: { labelKey: 'folder_settings' },
   folderBodyDrop: true,
   folderDrag: true,
-  folderDepthCap: true,
   reorder: { folders: true, conversations: true },
   conversationHref: (conversation) => readChatGptConversation(conversation.url)?.url ?? '',
   emptyLabelKey: 'folder_empty',
