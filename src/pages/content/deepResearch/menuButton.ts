@@ -442,12 +442,6 @@ export async function injectDownloadButton(targetMenuPanel?: HTMLElement): Promi
       applyDeepResearchSaveReportButtonI18n(saveReportButton, dict, next);
     });
     const observer = new MutationObserver(() => {
-      // The page's document is gone once the content script's environment is torn down.
-      if (typeof document === 'undefined') {
-        stopLanguage();
-        observer.disconnect();
-        return;
-      }
       if (!document.contains(downloadButton) && !document.contains(saveReportButton)) {
         stopLanguage();
         observer.disconnect();
