@@ -9,10 +9,14 @@ import { TimelineNavigation, type TimelineNavigationMarker } from '../TimelineNa
 
 const owners: TimelineNavigation[] = [];
 
-function fixture(count = 3) {
+function fixture(count = 3, virtualized = false) {
   const viewport = document.createElement('div');
   viewport.style.overflowY = 'auto';
   Object.defineProperty(viewport, 'clientHeight', { value: 400 });
+  Object.defineProperty(viewport, 'scrollHeight', { value: count * 200 + 400 });
+  viewport.scrollTo = vi.fn((options?: ScrollToOptions | number, y?: number) => {
+    viewport.scrollTop = typeof options === 'number' ? (y ?? 0) : (options?.top ?? 0);
+  });
   vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 50, 400, 400));
   document.body.appendChild(viewport);
   const markers: TimelineNavigationMarker[] = Array.from({ length: count }, (_, index) => {
@@ -22,7 +26,7 @@ function fixture(count = 3) {
     vi.spyOn(element, 'getBoundingClientRect').mockImplementation(
       () => new DOMRect(0, 50 + index * 200 - viewport.scrollTop, 300, 100),
     );
-    return { id: `s-${index}`, element };
+    return { id: `s-${index}`, element, center: index * 200 + 50 };
   });
   const tops = markers.map((_, index) => index * 200);
   const refreshMarkers = vi.fn(
@@ -32,6 +36,7 @@ function fixture(count = 3) {
   const onActiveChange = vi.fn<(id: string | null) => void>();
   const animateRunner = vi.fn();
   const navigation = new TimelineNavigation({
+    virtualized,
     getMarkers: () => markers,
     getMarkerTops: () => tops,
     getMarkerPositions: () => markers.map((_, index) => index * 50),
@@ -72,6 +77,34 @@ afterEach(() => {
 });
 
 describe('TimelineNavigation', () => {
+  it('homes to a remembered virtualized turn after it remounts', () => {
+    const { navigation, viewport, markers } = fixture(10, true);
+    const target = markers[9];
+    target.element.remove();
+    navigation.navigateToMarker(target.id, 9);
+    expect(viewport.scrollTo).toHaveBeenLastCalledWith({ top: 1670, behavior: 'instant' });
+    expect(navigation.activeTurnId).toBe(target.id);
+
+    viewport.appendChild(target.element);
+    vi.advanceTimersByTime(200);
+    expect(viewport.scrollTo).toHaveBeenLastCalledWith({ top: 1670, behavior: 'smooth' });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(['wheel', 'touchmove', 'destroy'])('cancels virtualized homing on %s', (cancel) => {
+    const { navigation, viewport, markers } = fixture(10, true);
+    const target = markers[9];
+    target.element.remove();
+    navigation.navigateToMarker(target.id, 9);
+    vi.mocked(viewport.scrollTo).mockClear();
+    if (cancel === 'destroy') navigation.destroy();
+    else window.dispatchEvent(new Event(cancel));
+    viewport.appendChild(target.element);
+    vi.advanceTimersByTime(1000);
+    expect(viewport.scrollTo).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('coalesces scroll work, rebinds the viewport, and releases it on destroy', () => {
     const { navigation, viewport, onScroll } = fixture();
     viewport.dispatchEvent(new Event('scroll'));

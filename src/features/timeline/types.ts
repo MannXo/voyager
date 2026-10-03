@@ -22,6 +22,10 @@ export interface TimelineMarker {
   assistantSummary: string;
   baseN: number;
   starred: boolean;
+  /** Remembered plugin geometry for turns outside a virtualized DOM window. */
+  hash?: string;
+  center?: number;
+  measuredAt?: number;
 }
 
 export type SyncSettingsListener = (

@@ -1,14 +1,20 @@
 import { keyboardShortcutService } from '@/core/services/KeyboardShortcutService';
 
+import { VirtualizedTimelineNavigation } from './VirtualizedTimelineNavigation';
+
 export interface TimelineNavigationMarker {
   id: string;
   element: HTMLElement;
+  hash?: string;
+  center?: number;
+  measuredAt?: number;
 }
 
 type Direction = 'previous' | 'next';
 type TimelineSpringProfile = 'ios' | 'snappy' | 'gentle';
 
 interface TimelineNavigationOptions {
+  virtualized?: boolean;
   getMarkers(): readonly TimelineNavigationMarker[];
   getMarkerTops(): readonly number[];
   getMarkerPositions(): readonly number[];
@@ -62,6 +68,7 @@ export class TimelineNavigation {
   activeTurnId: string | null = null;
   mode: 'jump' | 'flow' = 'flow';
   private scrollContainer: HTMLElement | null = null;
+  private viewportScrollTarget: EventTarget | null = null;
   private destroyed = false;
   private isScrolling = false;
   private scrollAnimationGeneration = 0;
@@ -80,7 +87,17 @@ export class TimelineNavigation {
   private starredNavigationTimer: number | null = null;
   private readonly onViewportScroll = () => this.scheduleScrollSync();
 
-  constructor(private readonly options: TimelineNavigationOptions) {}
+  private readonly virtualized: VirtualizedTimelineNavigation | null;
+
+  constructor(private readonly options: TimelineNavigationOptions) {
+    this.virtualized = options.virtualized
+      ? new VirtualizedTimelineNavigation(
+          () => this.scrollContainer,
+          () => this.options.getMarkers(),
+          (id) => this.setActive(id),
+        )
+      : null;
+  }
 
   get viewport(): HTMLElement | null {
     return this.scrollContainer;
@@ -88,10 +105,15 @@ export class TimelineNavigation {
 
   setViewport(viewport: HTMLElement | null): void {
     if (this.destroyed || viewport === this.scrollContainer) return;
-    this.scrollContainer?.removeEventListener('scroll', this.onViewportScroll);
+    this.viewportScrollTarget?.removeEventListener('scroll', this.onViewportScroll);
     this.cancelScrollAnimation();
     this.scrollContainer = viewport;
-    viewport?.addEventListener('scroll', this.onViewportScroll, { passive: true });
+    this.viewportScrollTarget =
+      this.virtualized && (viewport === document.documentElement || viewport === document.body)
+        ? window
+        : viewport;
+    this.viewportScrollTarget?.addEventListener('scroll', this.onViewportScroll, { passive: true });
+    if (viewport) this.virtualized?.prepare(viewport);
   }
 
   getActiveIndex(): number {
@@ -113,6 +135,11 @@ export class TimelineNavigation {
     const viewport = this.scrollContainer;
     const markers = this.options.getMarkers();
     if (this.destroyed || this.isScrolling || !viewport || markers.length === 0) return;
+    if (this.virtualized) {
+      this.virtualized.measure();
+      this.virtualized.refreshActive();
+      return;
+    }
     if (Date.now() < this.navigationActiveLockUntil) return;
     const scrollTop = viewport.scrollTop;
     const reference = scrollTop + viewport.clientHeight * 0.45;
@@ -204,6 +231,11 @@ export class TimelineNavigation {
 
   navigateToMarker(turnId: string, index = -1, source: 'dot' | 'preview' = 'dot'): void {
     if (this.destroyed) return;
+    if (this.virtualized) {
+      this.options.refreshMarkers(null);
+      this.virtualized.navigateTo(turnId);
+      return;
+    }
     const resolveTarget = () => {
       const markers = this.options.getMarkers();
       const idIndex = markers.findIndex((marker) => marker.id === turnId);
@@ -304,6 +336,10 @@ export class TimelineNavigation {
 
   handleStarredMessageNavigation(): void {
     if (this.destroyed) return;
+    if (this.virtualized) {
+      this.virtualized.handleHash();
+      return;
+    }
     this.clearStarredNavigationTimer();
     const url = window.location.href;
     const hash = window.location.hash;
@@ -346,6 +382,7 @@ export class TimelineNavigation {
   destroy(): void {
     if (this.destroyed) return;
     this.setViewport(null);
+    this.virtualized?.destroy();
     this.destroyed = true;
     this.shortcutUnsubscribe?.();
     this.shortcutUnsubscribe = null;
@@ -437,6 +474,10 @@ export class TimelineNavigation {
     this.options.refreshMarkers(this.options.getMarkers()[targetIndex]?.element ?? null);
     const marker = this.options.getMarkers()[targetIndex];
     if (!marker) return;
+    if (this.virtualized) {
+      this.virtualized.navigateTo(marker.id);
+      return;
+    }
     this.clearActiveChange();
     if (this.mode === 'flow' && currentIndex >= 0) {
       const duration = this.computeFlowDuration(currentIndex, targetIndex);
