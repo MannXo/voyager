@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AISTUDIO_PROMPT_DRAG_TYPES } from '../../aistudioTree';
 import type { FolderData } from '../../types';
-import { type TreeActions, cls } from '../shared';
+import { FOLDER_TOGGLE_DELAY_MS, type TreeActions, cls } from '../shared';
 import { mountFolderTree } from '../treeController';
 import { CONSUMERS, type ConsumerId, destroyMountedTrees, mountConsumer } from './treeConsumers';
 import {
@@ -23,6 +23,7 @@ import { calledSpies, conv, deepFreeze, folder, spyActions } from './treeFixture
 vi.mock('webextension-polyfill', () => ({ default: chrome }));
 
 afterEach(() => {
+  vi.useRealTimers();
   destroyMountedTrees();
   document.body.innerHTML = '';
   vi.restoreAllMocks();
@@ -72,10 +73,13 @@ describe.each(CONSUMERS)('$name: a click with a modifier key', ({ consumer }) =>
   it.each([{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }])(
     'neither toggles a folder nor opens a chat (%o)',
     (modifier) => {
+      // A site that renames on double-click (ChatGPT) toggles after a pause.
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
       const { view, actions } = mount(consumer);
 
       click(view.folderRow('Parent'), modifier);
       click(view.titleButton('p', 'In parent'), modifier);
+      vi.advanceTimersByTime(FOLDER_TOGGLE_DELAY_MS);
       expect(actions.onToggleFolderExpanded).not.toHaveBeenCalled();
       expect(actions.onNavigate).not.toHaveBeenCalled();
       expect(view.isExpanded('Parent')).toBe(true);
@@ -83,6 +87,7 @@ describe.each(CONSUMERS)('$name: a click with a modifier key', ({ consumer }) =>
       // The same clicks without the modifier do both.
       click(view.titleButton('p', 'In parent'));
       click(view.folderRow('Parent'));
+      vi.advanceTimersByTime(FOLDER_TOGGLE_DELAY_MS);
       expect(actions.onNavigate).toHaveBeenCalledTimes(1);
       expect(actions.onToggleFolderExpanded.mock.calls).toEqual([['p']]);
     },

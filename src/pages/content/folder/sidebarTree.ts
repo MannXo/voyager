@@ -14,6 +14,7 @@ import {
   type FolderMenuItem,
   type TreeActions,
   type TreeSiteOptions,
+  FOLDER_TOGGLE_DELAY_MS,
 } from './floatingTree/shared';
 import { mountFolderTree } from './floatingTree/treeController';
 import { normalizeConversationId, resolveConversationRouteId } from './folderConversationIdentity';
@@ -25,8 +26,6 @@ import { type SidebarDropContext, acceptsSidebarDrag, dropOnSidebar } from './si
 import type { ConversationReference, Folder } from './types';
 
 export const SIDEBAR_TREE_HOST_CLASS = 'gv-folder-tree-host';
-/** A double-click on a folder renames it; its first click waits this long before toggling. */
-const FOLDER_TOGGLE_DELAY_MS = 220;
 /**
  * The open folder chat's title, kept in the page for readers that cannot see
  * into the tree: the timeline title, the export adapter and the PDF exporter

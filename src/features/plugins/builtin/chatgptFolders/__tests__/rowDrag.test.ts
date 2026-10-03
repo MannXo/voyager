@@ -361,22 +361,35 @@ describe('dragging a ChatGPT sidebar row onto a folder', () => {
   });
 
   it('releasing a dragged row outside a folder files nothing', async () => {
-    const { view, root } = await activate();
+    const { view } = await activate();
     const before = folderWrites();
-    const sectionHeader = screen.place(root.querySelector('.gv-chatgpt-folder-section__header')!);
     const elsewhere = screen.place(document.body);
 
     pressRow(TARGET.id);
     moveTo(TARGET.id, screen.place(view.folderNameElement('Trips')));
-    moveTo(TARGET.id, sectionHeader);
-    expect(view.folderRow('Trips').classList.contains(HIGHLIGHT)).toBe(false);
-    releaseAt(TARGET.id, sectionHeader);
-    pressRow(TARGET.id);
     moveTo(TARGET.id, elsewhere);
+    expect(view.folderRow('Trips').classList.contains(HIGHLIGHT)).toBe(false);
     releaseAt(TARGET.id, elsewhere);
     await nextPass();
 
     expect(folderWrites()).toBe(before);
+  });
+
+  it('releasing a dragged row on the section heading files it at the root, as on Gemini', async () => {
+    const { root } = await activate();
+    const heading = root.querySelector<HTMLElement>('.gv-chatgpt-folder-section__header')!;
+    const at = screen.place(heading);
+
+    pressRow(TARGET.id);
+    moveTo(TARGET.id, at);
+    expect(heading.classList.contains(HIGHLIGHT)).toBe(true);
+    releaseAt(TARGET.id, at);
+    await nextPass();
+
+    expect(heading.classList.contains(HIGHLIGHT)).toBe(false);
+    expect(stored().folderContents[ROOT_CONVERSATIONS_ID]).toEqual([
+      expect.objectContaining(FILED),
+    ]);
   });
 
   it('a conversation link outside the sidebar does not drag into folders', async () => {

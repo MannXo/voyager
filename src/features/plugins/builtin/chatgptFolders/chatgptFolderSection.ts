@@ -17,6 +17,7 @@ import {
 import {
   type ContextMenuState,
   FLOATING_PANEL_CLASS,
+  FOLDER_TOGGLE_DELAY_MS,
   type InlineEditorState,
   type TreeActions,
   type TreeChange,
@@ -31,6 +32,7 @@ import type { Folder } from '@/pages/content/folder/types';
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
 import sectionCss from './chatgptFolderSection.css?raw';
+import { readChatGptConversation } from './chatgptIdentity';
 import { findHistoryAnchor } from './chatgptSidebarDom';
 
 export const FOLDER_SECTION_CLASS = 'gv-chatgpt-folder-section';
@@ -42,12 +44,21 @@ export const SECTION_ICON_SIZE = 18;
 const STATUS_MS = 4000;
 
 /**
- * Gemini's folder vocabulary drawn in ChatGPT's line-icon style: chevrons,
- * tinted folder icons, and a menu button on each folder.
+ * Gemini's folder sidebar drawn in ChatGPT's line-icon style: chevrons, tinted
+ * folder icons, a menu button on each folder, and the same drags. Its store
+ * refuses a folder move past the depth a new folder may have, so drags offer
+ * only the drops it takes.
  */
 const SITE: TreeSiteOptions = {
   lineIcons: true,
   folderMenuButton: { labelKey: 'folder_settings' },
+  folderBodyDrop: true,
+  folderDrag: true,
+  folderDepthCap: true,
+  reorder: { folders: true, conversations: true },
+  conversationHref: (conversation) => readChatGptConversation(conversation.url)?.url ?? '',
+  emptyLabelKey: 'folder_empty',
+  folderToggleDelayMs: FOLDER_TOGGLE_DELAY_MS,
 };
 
 /** A header button beside "Create folder", shown while the header is hovered or focused. */
@@ -79,6 +90,7 @@ export class ChatGptFolderSection {
   private statusTimer: ReturnType<typeof setTimeout> | null = null;
   private inlineEditor: InlineEditorState | null = null;
   private contextMenu: ContextMenuState | null = null;
+  private activeConversationId: string | null = null;
 
   constructor(
     private data: FolderData,
@@ -168,10 +180,14 @@ export class ChatGptFolderSection {
     if (menu && !data.folders.some((folder) => folder.id === menu.folderId)) {
       this.contextMenu = null;
     }
-    // Rebuilding the tree under an open inline form would empty it; every way out
-    // of the form renders again and picks up this data.
-    if (this.inlineEditor && this.isTyping()) return;
-    this.render();
+    this.renderUnlessTyping();
+  }
+
+  /** Marks the rows of the conversation the page has open (its stored id), or none. */
+  setActiveConversation(conversationId: string | null): void {
+    if (conversationId === this.activeConversationId) return;
+    this.activeConversationId = conversationId;
+    this.renderUnlessTyping();
   }
 
   setDataReady(ready: boolean): void {
@@ -213,6 +229,13 @@ export class ChatGptFolderSection {
     this.status.textContent = '';
   }
 
+  // Rebuilding the tree under an open inline form would empty it; every way out
+  // of the form renders again and picks up the latest state.
+  private renderUnlessTyping(): void {
+    if (this.inlineEditor && this.isTyping()) return;
+    this.render();
+  }
+
   private isTyping(): boolean {
     return !!this.surface.root.activeElement?.classList.contains(
       `${FLOATING_PANEL_CLASS}__inline-input`,
@@ -249,7 +272,7 @@ export class ChatGptFolderSection {
       contextMenu: this.contextMenu,
       isExpanded: this.isExpanded,
       apply: this.apply,
-      site: SITE,
+      site: { ...SITE, activeConversationId: this.activeConversationId },
     });
   }
 }

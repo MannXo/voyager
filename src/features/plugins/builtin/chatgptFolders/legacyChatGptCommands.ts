@@ -16,7 +16,7 @@ import {
 import { cloneFolderData, ownBucket } from '@/features/folder/model/folderData';
 import { type ConversationSeed, rejected } from '@/features/folder/owner/folderOps';
 
-import type { AddOutcome, ChatGptFolderStore } from './ChatGptFolderStore';
+import type { AddOutcome, ChatGptFolderStore, MoveOutcome } from './ChatGptFolderStore';
 import { CHATGPT_CONVERSATION_ID_PREFIX } from './chatgptIdentity';
 import { CHATGPT_FOLDER_CONFIG } from './config';
 import { importChatGptFolders } from './transfer';
@@ -29,6 +29,13 @@ const ADD_OUTCOMES: Record<AddOutcome, EditOutcome> = {
   present: { kind: 'unchanged', reason: 'present' },
   missing: rejected('target_missing'),
   closed: failed('not_loaded'),
+};
+const MOVE_OUTCOMES: Record<MoveOutcome, EditOutcome> = {
+  moved: { kind: 'unconfirmed' },
+  unchanged: NOOP,
+  missing: rejected('target_missing'),
+  too_deep: rejected('depth_limit'),
+  closed: failed('read_only'),
 };
 /** Several adds report the strongest result: one added wins, then present, then a refusal. */
 const ADD_RANK: AddOutcome[] = ['added', 'present', 'missing', 'closed'];
@@ -59,6 +66,12 @@ export function createLegacyChatGptCommands(store: ChatGptFolderStore): FolderCo
     return differs ? edit(toggle) : NOOP;
   };
 
+  const moveConversations = (ids: string[], from: string, target: string): EditOutcome => {
+    if (!ids.every((id) => recordIn(from, id))) return rejected('source_missing');
+    if (!hasBucket(target)) return rejected('target_missing');
+    return edit(() => ids.forEach((id) => store.moveConversation(id, from, target)));
+  };
+
   const handlers: { [K in Kind]: Handler<K> } = {
     createFolder: ({ name, parentId }) => edit(() => store.createFolder(name, parentId)),
     renameFolder: ({ folderId, name }) => edit(() => store.renameFolder(folderId, name)),
@@ -82,10 +95,23 @@ export function createLegacyChatGptCommands(store: ChatGptFolderStore): FolderCo
       const best = ADD_RANK.find((rank) => results.includes(rank)) ?? 'closed';
       return ADD_OUTCOMES[best];
     },
-    moveConversations: ({ ids, from, target }) => {
-      if (!ids.every((id) => recordIn(from, id))) return rejected('source_missing');
-      if (!hasBucket(target)) return rejected('target_missing');
-      return edit(() => ids.forEach((id) => store.moveConversation(id, from, target)));
+    moveConversations: ({ ids, from, target }) => moveConversations(ids, from, target),
+    moveFolder: ({ folderId, parentId, index }) =>
+      MOVE_OUTCOMES[store.moveFolder(folderId, parentId, index)],
+    // Only the tree's own rows drag here, so a drop always names the folder it left.
+    dropConversations: ({ target, payload, index }) => {
+      const from = payload.sourceFolderId;
+      const ids = payload.conversations?.length
+        ? payload.conversations.map((record) => record.conversationId)
+        : payload.conversationId
+          ? [payload.conversationId]
+          : [];
+      if (!from || ids.length === 0) return rejected('source_missing');
+      if (index !== undefined) {
+        if (!ids.every((id) => recordIn(from, id))) return rejected('source_missing');
+        return MOVE_OUTCOMES[store.reorderConversations(ids, from, target, index)];
+      }
+      return from === target ? NOOP : moveConversations(ids, from, target);
     },
     removeConversations: ({ folderId, ids }) =>
       edit(() => ids.forEach((id) => store.removeConversation(folderId, id))),
@@ -105,11 +131,9 @@ export function createLegacyChatGptCommands(store: ChatGptFolderStore): FolderCo
     placeAIStudioPrompt: () => rejected('unsupported'),
     saveCurrentData: () => rejected('unsupported'),
     ensureDefaultAIStudioFolder: () => rejected('unsupported'),
-    dropConversations: unsupported,
     bufferNativeTitle: unsupported,
     flushNativeTitles: unsupported,
     syncNativeSidebarTitles: unsupported,
-    moveFolder: unsupported,
     setFolderInstructions: unsupported,
     reorderConversations: unsupported,
     removeConversationEverywhere: unsupported,

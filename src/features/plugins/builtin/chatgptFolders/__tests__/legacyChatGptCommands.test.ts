@@ -108,3 +108,44 @@ describe('ChatGPT legacy FolderCommands import', () => {
     expect(memory.values.local.get(StorageKeys.FOLDER_DATA_CHATGPT)).toEqual(before);
   });
 });
+
+describe('ChatGPT legacy FolderCommands folder moves', () => {
+  /** Work › Notes, and Personal: one level down at most. */
+  const NESTED: FolderData = {
+    folders: [
+      folder('work', 'Work'),
+      { ...folder('notes', 'Notes'), parentId: 'work' },
+      folder('personal', 'Personal'),
+    ],
+    folderContents: { work: [], notes: [], personal: [], [ROOT_CONVERSATIONS_ID]: [] },
+  };
+
+  beforeEach(async () => {
+    await store.replaceData(structuredClone(NESTED));
+    await settle();
+  });
+
+  it('refuses to nest a folder whose subfolders would go past the depth cap', async () => {
+    const before = structuredClone(stored());
+    const outcome = await createLegacyChatGptCommands(store).run({
+      kind: 'moveFolder',
+      folderId: 'work',
+      parentId: 'personal',
+    });
+    await settle();
+
+    expect(outcome).toMatchObject({ kind: 'rejected', reason: 'depth_limit' });
+    expect(stored()).toEqual(before);
+  });
+
+  it('refuses to nest a folder under one that is gone', async () => {
+    const outcome = await createLegacyChatGptCommands(store).run({
+      kind: 'moveFolder',
+      folderId: 'personal',
+      parentId: 'deleted-elsewhere',
+    });
+
+    expect(outcome).toMatchObject({ kind: 'rejected', reason: 'target_missing' });
+    expect(store.data.folders.find((f) => f.id === 'personal')?.parentId).toBeNull();
+  });
+});

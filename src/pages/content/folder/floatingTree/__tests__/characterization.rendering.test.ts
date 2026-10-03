@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { FolderData } from '../../types';
+import { FOLDER_TOGGLE_DELAY_MS } from '../shared';
 import { CONSUMERS, type ConsumerId, destroyMountedTrees, mountConsumer } from './treeConsumers';
 import { label, settle, treeDriver } from './treeDriver';
 import {
@@ -22,6 +23,7 @@ import {
 vi.mock('webextension-polyfill', () => ({ default: chrome }));
 
 afterEach(() => {
+  vi.useRealTimers();
   destroyMountedTrees();
   document.body.innerHTML = '';
   document.body.className = '';
@@ -70,10 +72,14 @@ const AISTUDIO_OUTLINE = [
   '· Loose chat',
 ];
 
-const EXPECTED: Record<ConsumerId, { outline: string[]; rootHeading: boolean }> = {
-  panel: { outline: DEFAULT_OUTLINE, rootHeading: false },
-  aistudio: { outline: AISTUDIO_OUTLINE, rootHeading: true },
-  chatgpt: { outline: DEFAULT_OUTLINE, rootHeading: false },
+const EXPECTED: Record<
+  ConsumerId,
+  { outline: string[]; rootHeading: boolean; emptyLabelKey: string }
+> = {
+  panel: { outline: DEFAULT_OUTLINE, rootHeading: false, emptyLabelKey: 'floatingPanelEmpty' },
+  aistudio: { outline: AISTUDIO_OUTLINE, rootHeading: true, emptyLabelKey: 'floatingPanelEmpty' },
+  // Gemini's sidebar wording.
+  chatgpt: { outline: DEFAULT_OUTLINE, rootHeading: false, emptyLabelKey: 'folder_empty' },
 };
 
 describe.each(CONSUMERS)('$name: what the tree shows', ({ consumer }) => {
@@ -102,18 +108,19 @@ describe.each(CONSUMERS)('$name: what the tree shows', ({ consumer }) => {
 
   it('shows the empty state only while there are neither folders nor root chats', () => {
     const { tree, view } = mount(() => ({ folders: [], folderContents: {} }));
-    expect(view.text()).toContain(label('floatingPanelEmpty'));
+    const empty = label(EXPECTED[consumer].emptyLabelKey);
+    expect(view.text()).toContain(empty);
     expect(view.outline()).toEqual([]);
 
     tree.update({ folders: [], folderContents: { [tree.rootBucketId]: [conv('r', 'At root')] } });
-    expect(view.text()).not.toContain(label('floatingPanelEmpty'));
+    expect(view.text()).not.toContain(empty);
     expect(view.outline()).toEqual(['· At root']);
   });
 
   it('shows an empty folder with no chats instead of the empty state', () => {
     const { view } = mount(() => ({ folders: [folder('e', 'Empty')], folderContents: { e: [] } }));
     expect(view.outline()).toEqual(['Empty']);
-    expect(view.text()).not.toContain(label('floatingPanelEmpty'));
+    expect(view.text()).not.toContain(label(EXPECTED[consumer].emptyLabelKey));
   });
 
   it('names a chat with no title "Untitled"', () => {
@@ -160,9 +167,12 @@ describe.each(CONSUMERS)('$name: what the tree shows', ({ consumer }) => {
     expect(actions.onToggleFolderExpanded.mock.calls).toEqual([['a'], ['a']]);
   });
 
+  // A site that renames on double-click (ChatGPT) toggles once the second click could not come.
   it('toggles a folder from a click on its name too', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const { view, actions } = mount(placementFixture);
     view.folderNameElement('Zeta').click();
+    vi.advanceTimersByTime(FOLDER_TOGGLE_DELAY_MS);
     expect(actions.onToggleFolderExpanded.mock.calls).toEqual([['z']]);
   });
 

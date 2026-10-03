@@ -10,7 +10,7 @@ import {
   rowShell,
   treeItemProps,
 } from './rows';
-import { type ConversationDragData, cls, t } from './shared';
+import { type ConversationDragData, FOLDER_DRAG_TYPE, cls, t } from './shared';
 import { STAR, X } from './treeIcons';
 
 const DRAGGING = cls('conv--dragging');
@@ -34,6 +34,8 @@ export function ConversationRow({
   const atRoot = bucketId === tree.rootBucketId;
   const placementOf: PlacementOf | undefined = site?.reorder?.conversations
     ? (e) => {
+        // A folder lands in this row's folder, not between its chats.
+        if (e.dataTransfer?.types.includes(FOLDER_DRAG_TYPE)) return undefined;
         const position = edgeOf(e, 0.5);
         return position
           ? { kind: 'conversation', bucketId, conversationId: conv.conversationId, position }

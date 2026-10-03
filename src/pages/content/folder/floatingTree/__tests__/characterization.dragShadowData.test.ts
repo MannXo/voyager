@@ -1,8 +1,9 @@
 /**
  * Drag and drop, the shadow-root boundary, and the data invariant of the shared
  * folder tree in each consumer, pinned ahead of moving its internals to
- * open-source packages. Rows can be dragged onto folders (a move); there is no
- * reordering within a folder and no dragging of folders.
+ * open-source packages. Rows can be dragged onto folders (a move). ChatGPT's
+ * section also reorders and drags folders through its own drop hook; its
+ * drags are pinned against its store in chatgptFolders' `sectionDrag.test.ts`.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 

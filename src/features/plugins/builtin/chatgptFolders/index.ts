@@ -18,9 +18,19 @@ import type { PluginSettings } from '@/features/plugins/types';
 import { createCommandTreeActions } from '@/pages/content/folder/commandTreeActions';
 import { mountFloatingFab, unmountFloatingFab } from '@/pages/content/folder/floatingModeFab';
 import { type FloatingPanelHandle, mountFloatingPanel } from '@/pages/content/folder/floatingPanel';
-import type { FolderDropTarget } from '@/pages/content/folder/floatingTree/dropTargets';
+import {
+  DROP_FOLDER_ATTR,
+  DROP_TARGET_CLASS,
+  type FolderDropTarget,
+} from '@/pages/content/folder/floatingTree/dropTargets';
 import type { TreeActions } from '@/pages/content/folder/floatingTree/shared';
 import { createFolderDialogs } from '@/pages/content/folder/folderDialogs';
+import {
+  type SidebarDropContext,
+  acceptsSidebarDrag,
+  bindRootDropZone,
+  dropOnSidebar,
+} from '@/pages/content/folder/sidebarDrops';
 import { getTranslationSyncUnsafe as t, initI18n } from '@/utils/i18n';
 
 import { isTemporaryChat } from '../chatgptTemporaryHandoff/handoff';
@@ -29,6 +39,7 @@ import { ChatGptFolderGuide } from './chatgptFolderGuide';
 import { type FolderPickerHandle, openFolderPicker } from './chatgptFolderPicker';
 import { ChatGptFolderSection, SECTION_ICON_SIZE } from './chatgptFolderSection';
 import { ChatGptHideFiled, HIDE_FILED_SETTING } from './chatgptHideFiled';
+import { readChatGptConversation } from './chatgptIdentity';
 import { ChatGptMoveMenu, MOVE_ENTRY_ATTR } from './chatgptMoveMenu';
 import { openChatGptConversation, readCurrentConversation } from './chatgptPage';
 import { type DroppedConversation, bindChatGptRowDrag } from './chatgptRowDrag';
@@ -77,10 +88,22 @@ class ChatGptFoldersView {
     this.scope.effect(() => this.store.subscribe(() => this.refresh()), 'chatgpt-folders:sync');
     this.scope.effect(() => () => this.unmountPanel(), 'chatgpt-folders:panel');
     this.scope.effect(() => {
+      const rootBucketId = CHATGPT_FOLDER_CONFIG.rootBucketId;
+      const drops: SidebarDropContext = {
+        store: this.store,
+        commands: this.commands,
+        rootBucketId,
+        feedback: { showNotification: (message) => this.flashTree(message) },
+        sortMode: () => 'manual',
+      };
       const section = new ChatGptFolderSection(
         this.store.data,
-        CHATGPT_FOLDER_CONFIG.rootBucketId,
-        this.treeActions(),
+        rootBucketId,
+        {
+          ...this.treeActions(),
+          onDrop: (e, folderId, placement) => dropOnSidebar(drops, e, folderId, placement),
+          acceptsDrag: acceptsSidebarDrag,
+        },
         [
           {
             modifier: 'add-current',
@@ -103,9 +126,13 @@ class ChatGptFoldersView {
         ],
       );
       section.setDataReady(this.store.ready);
+      // The heading files at the root, as Gemini's does: tree drags, and ChatGPT's row drags.
+      section.header.setAttribute(DROP_FOLDER_ATTR, rootBucketId);
+      const unbindRootDrop = bindRootDropZone(section.header, drops, DROP_TARGET_CLASS);
       this.section = section;
       return () => {
         this.section = null;
+        unbindRootDrop();
         section.destroy();
       };
     }, 'chatgpt-folders:section');
@@ -126,9 +153,15 @@ class ChatGptFoldersView {
     this.section?.setDataReady(this.store.ready);
   }
 
-  /** Keeps the sidebar section in ChatGPT's sidebar; called after every sidebar change. */
+  /**
+   * Keeps the sidebar section in ChatGPT's sidebar, marking the conversation the
+   * page has open; called after every sidebar change, a route change included.
+   */
   placeSection(sidebar: HTMLElement | null): void {
     this.section?.place(sidebar);
+    this.section?.setActiveConversation(
+      readChatGptConversation(location.href)?.conversationId ?? null,
+    );
     this.showFloatingEntry(!this.section?.element.isConnected);
   }
 
@@ -269,6 +302,7 @@ class ChatGptFoldersView {
     return {
       ...createCommandTreeActions(this.commands),
       onNavigate: (conversation) => void openChatGptConversation(conversation),
+      confirmFolderRemoval: this.dialogs.confirmFolderRemoval,
       confirmConversationRemoval: this.dialogs.confirmConversationRemoval,
       onAddCurrentConversation: (folderId) => this.addCurrent(folderId),
     };

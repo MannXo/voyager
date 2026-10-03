@@ -175,7 +175,7 @@ describe('ChatGPT folder section: what it writes', () => {
     press(document.body);
     view.openMenuByRightClick('Personal');
     menuItem(label('floatingPanelDeleteFolder')).click();
-    menuItem(label('floatingPanelCancel')).click();
+    document.querySelector<HTMLButtonElement>('.gv-folder-confirm-no')!.click();
     view.dragOver(view.folderRow('Personal'), view.dragRow('work', 'Plan'));
     await nextPass();
 
@@ -221,11 +221,11 @@ describe('ChatGPT folder section: what it writes', () => {
     expect(view.outline().slice(0, 2)).toEqual(['Work', 'Personal']);
   });
 
-  it('deletes after the inline confirm exactly the folders shown inside, cycle included', async () => {
+  it("deletes after Gemini's confirm exactly the folders shown inside, cycle included", async () => {
     const view = await activate();
     view.openMenuByRightClick('Loop Y');
     menuItem(label('floatingPanelDeleteFolder')).click();
-    menuItem(label('floatingPanelDeleteFolder')).click();
+    document.querySelector<HTMLButtonElement>('.gv-folder-confirm-yes')!.click();
     await nextPass();
 
     expect(openMenu()).toBeNull();

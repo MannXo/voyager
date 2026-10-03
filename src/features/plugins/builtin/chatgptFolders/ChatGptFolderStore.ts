@@ -1,8 +1,11 @@
 import { MAX_FOLDER_DEPTH } from '@/features/folder/constants';
 import {
+  folderFitsUnder,
   getFolderDepth,
+  moveFolder,
   ownBucket,
   removeFolder,
+  reorderConversations,
   setBucket,
 } from '@/features/folder/model/folderData';
 import { placeConversations } from '@/features/folder/model/placeConversations';
@@ -17,6 +20,8 @@ import { CHATGPT_FOLDER_CONFIG } from './config';
 
 /** What filing a conversation did. `missing`: the folder was deleted (say, in another tab). */
 export type AddOutcome = 'added' | 'present' | 'missing' | 'closed';
+/** What a drag move did. `missing`: what it moved or its target is gone; `too_deep`: past the depth cap. */
+export type MoveOutcome = 'moved' | 'unchanged' | 'missing' | 'too_deep' | 'closed';
 
 function bareId(conversationId: string): string {
   return conversationId.startsWith(CHATGPT_CONVERSATION_ID_PREFIX)
@@ -108,6 +113,18 @@ export class ChatGptFolderStore {
   removeFolder(folderId: string): void {
     this.commit(() => (this.repository.data = removeFolder(this.data, folderId)));
   }
+  /**
+   * Nests `folderId` under `parentId` (`null`: the root), at `index` among its
+   * unpinned siblings or after them. The folder and its subfolders must stay
+   * within the depth a new folder may have.
+   */
+  moveFolder(folderId: string, parentId: string | null, index?: number): MoveOutcome {
+    if (!this.ready) return 'closed';
+    const exists = (id: string) => this.data.folders.some((folder) => folder.id === id);
+    if (!exists(folderId) || (parentId !== null && !exists(parentId))) return 'missing';
+    if (!folderFitsUnder(this.data, folderId, parentId, MAX_FOLDER_DEPTH)) return 'too_deep';
+    return this.replaceIfChanged(moveFolder(this.data, folderId, parentId, Date.now(), index));
+  }
 
   toggleStar(folderId: string, conversationId: string): void {
     const conversation = ownBucket(this.data.folderContents, folderId)?.find(
@@ -139,6 +156,15 @@ export class ChatGptFolderStore {
         removeWhenPresent: true,
       }).data;
     });
+  }
+  /**
+   * Moves `ids` from `from` to `index` in `target` (the same bucket reorders),
+   * within their starred group, as Gemini's manual order does.
+   */
+  reorderConversations(ids: string[], from: string, target: string, index: number): MoveOutcome {
+    if (!this.ready) return 'closed';
+    if (!this.hasBucketOwner(target)) return 'missing';
+    return this.replaceIfChanged(reorderConversations(this.data, ids, from, target, index));
   }
   /**
    * Files `conversation` into `target`. A picker or menu may still offer a folder
@@ -227,6 +253,11 @@ export class ChatGptFolderStore {
       edit(folder);
       folder.updatedAt = Date.now();
     });
+  }
+  private replaceIfChanged(next: FolderData): MoveOutcome {
+    if (next === this.data) return 'unchanged';
+    this.commit(() => (this.repository.data = next));
+    return 'moved';
   }
   private commit(mutate: () => void): void {
     if (!this.ready) return;

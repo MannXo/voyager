@@ -2,6 +2,7 @@ import type browser from 'webextension-polyfill';
 
 import { StorageKeys } from '@/core/types/common';
 import type { FolderCommands } from '@/features/folder/commands/folderCommands';
+import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import type { ConversationSortMode } from '@/features/folder/model/folderData';
 
 import type { FolderFeedback } from './FolderFeedback';
@@ -82,6 +83,7 @@ export class FolderSidebarView {
     this.drops = {
       store: options.store,
       commands: options.commands,
+      rootBucketId: ROOT_CONVERSATIONS_ID,
       feedback: options.feedback,
       sortMode: () => this.prefs.conversationSortMode,
       finish: () => options.selection.finishDrop(),

@@ -12,6 +12,8 @@ import type { TreeProjection } from './projection';
 
 export const FLOATING_PANEL_CLASS = 'gv-floating-folder-panel';
 export const MAX_FOLDER_NAME_LENGTH = 50;
+/** A double-click on a folder renames it; its first click waits this long before toggling. */
+export const FOLDER_TOGGLE_DELAY_MS = 220;
 
 /** `gv-floating-folder-panel__<part>` */
 export function cls(part: string): string {
@@ -177,6 +179,11 @@ export type TreeSiteOptions = {
   folderToggleDelayMs?: number;
   /** Unpinned folder rows drag as `{ type: 'folder' }` payloads tagged `FOLDER_DRAG_TYPE`. */
   folderDrag?: boolean;
+  /**
+   * A folder drag is offered only drops that keep it and its subfolders within
+   * `MAX_FOLDER_DEPTH`, for a store that refuses deeper moves. Default: any depth.
+   */
+  folderDepthCap?: boolean;
   /**
    * Drops beside a row carry a `DropPlacement`: the top or bottom quarter of a
    * folder header for folder drags, the top or bottom half of a conversation row.

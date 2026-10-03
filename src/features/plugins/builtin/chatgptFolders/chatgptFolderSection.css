@@ -97,6 +97,8 @@
   min-height: 36px;
   margin-inline: 6px;
   padding-inline: 10px 4px;
+  /* It takes drops for the root, lit like a row. */
+  border-radius: var(--gv-chatgpt-folder-section__row-radius);
   user-select: none;
 }
 
@@ -195,6 +197,13 @@
 :host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__drop-target {
   background: var(--gv-floating-folder-panel__surface-active) !important;
   box-shadow: none;
+}
+
+/* The open conversation: ChatGPT marks its own row with a fill, not a colour. */
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__conv--active,
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__conv--active:hover {
+  background: var(--gv-floating-folder-panel__surface-active);
+  color: var(--gv-floating-folder-panel__text);
 }
 
 :host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__folder-name,

@@ -1,5 +1,4 @@
 import type { FolderCommands } from '@/features/folder/commands/folderCommands';
-import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import {
   type ConversationSortMode,
   sortConversationsByPriority,
@@ -8,29 +7,30 @@ import {
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
 import type { FolderFeedback } from './FolderFeedback';
-import type { FolderStore } from './FolderStore';
 import { VOYAGER_DRAG_MIME, readDragPayload } from './dragPayload';
 import type { DropPlacement } from './floatingTree/shared';
-import type { DragData } from './types';
+import type { DragData, FolderData } from './types';
 
-/** What a drop on Gemini's sidebar folders needs. */
+/** What a drop on a sidebar's folders needs: Gemini's, and ChatGPT's section. */
 export type SidebarDropContext = {
-  store: FolderStore;
+  store: { readonly data: FolderData };
   commands: FolderCommands;
+  /** The bucket of conversations filed at the root; a folder dropped there moves to the root. */
+  rootBucketId: string;
   feedback: Pick<FolderFeedback, 'showNotification'>;
   sortMode: () => ConversationSortMode;
   /** After any drop that read a payload: ends the multi-select a drag carried. */
-  finish: () => void;
+  finish?: () => void;
 };
 
-/** Gemini's sidebar drags all carry Voyager JSON: folder rows, folder chats and native chats. */
+/** Sidebar drags all carry Voyager JSON: folder rows, folder chats and Gemini's native chats. */
 export function acceptsSidebarDrag(types: readonly string[]): boolean {
   return types.includes(VOYAGER_DRAG_MIME);
 }
 
 /** The insert index of a drop beside `placement`'s folder among its unpinned siblings. */
 function folderInsertIndex(
-  store: FolderStore,
+  store: SidebarDropContext['store'],
   placement: Extract<DropPlacement, { kind: 'folder' }>,
 ): { parentId: string; index: number } | null {
   const target = store.data.folders.find((folder) => folder.id === placement.folderId);
@@ -46,7 +46,7 @@ function folderInsertIndex(
 
 /** The insert index of a drop beside a chat, within its starred or unstarred group. */
 function conversationInsertIndex(
-  store: FolderStore,
+  store: SidebarDropContext['store'],
   sortMode: ConversationSortMode,
   placement: Extract<DropPlacement, { kind: 'conversation' }>,
 ): number {
@@ -88,7 +88,7 @@ export function applySidebarDrop(
         void commands.run({
           kind: 'moveFolder',
           folderId: dragData.folderId,
-          parentId: folderId === ROOT_CONVERSATIONS_ID ? null : folderId,
+          parentId: folderId === context.rootBucketId ? null : folderId,
         });
       }
       return;
@@ -109,7 +109,7 @@ export function applySidebarDrop(
   } catch (error) {
     console.error('[FolderManager] Drop error:', error);
   } finally {
-    context.finish();
+    context.finish?.();
   }
 }
 
@@ -128,10 +128,14 @@ export function dropOnSidebar(
 
 /**
  * Makes `element` file drops at the root: the section header, and the tree
- * host for drops between rows that no row takes. Returns its cleanup.
+ * host for drops between rows that no row takes. `active` marks it while a
+ * drag is over it. Returns its cleanup.
  */
-export function bindRootDropZone(element: HTMLElement, context: SidebarDropContext): () => void {
-  const active = 'gv-folder-list-dragover';
+export function bindRootDropZone(
+  element: HTMLElement,
+  context: SidebarDropContext,
+  active = 'gv-folder-list-dragover',
+): () => void {
   const onDragOver = (e: DragEvent) => {
     if (!acceptsSidebarDrag(Array.from(e.dataTransfer?.types ?? []))) return;
     e.preventDefault();
@@ -149,7 +153,7 @@ export function bindRootDropZone(element: HTMLElement, context: SidebarDropConte
     if (!acceptsSidebarDrag(Array.from(e.dataTransfer?.types ?? []))) return;
     e.preventDefault();
     e.stopPropagation();
-    dropOnSidebar(context, e, ROOT_CONVERSATIONS_ID);
+    dropOnSidebar(context, e, context.rootBucketId);
   };
   element.addEventListener('dragover', onDragOver);
   element.addEventListener('dragleave', onDragLeave);
