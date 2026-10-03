@@ -22,8 +22,9 @@ owns selector discovery, turn collection, scroll viewport discovery and native h
 | Timestamp opt-in, draft adoption, history matching and timestamp DOM                | `TimelineTimestamps.ts`         |
 
 `TimelineState` owns the marker snapshot and exposes its hierarchy owner directly. Its shared storage
-listener routes hierarchy changes after star changes; `TimelineHierarchy` owns the account context,
-level/collapse maps and pending-load teardown. `TimelineDotLayer` owns dot elements and measured positions;
+listener routes hierarchy changes after star changes; `TimelineHierarchy` owns the account context
+and level/collapse maps. State owns one shared `TimelineHydration` primitive per store for readiness,
+read retries and ordering against complete active-scope snapshots. `TimelineDotLayer` owns dot elements and measured positions;
 DOM nodes do not belong in persisted state. Owners take their required data/actions explicitly,
 without a reference back to the manager. Rendering reads state; user actions and storage events
 update state and notify the manager.

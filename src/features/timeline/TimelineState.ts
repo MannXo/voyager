@@ -10,6 +10,7 @@ import {
 } from '@/pages/content/timeline/timelineLocalStorage';
 
 import { TimelineHierarchy } from './TimelineHierarchy';
+import { TimelineHydration } from './TimelineHydration';
 import type { TimelineStoragePolicy } from './TimelineStoragePolicy';
 import type { TimelineMarker } from './types';
 
@@ -21,8 +22,8 @@ export class TimelineState {
   readonly markerMap = new Map<string, TimelineMarker>();
   private destroyed = false;
   private starred = new Set<string>();
-  private starHydrated = false;
-  private starRevision = 0;
+  private readonly starHydration = new TimelineHydration(() => this.isCurrent);
+  private readonly hierarchyHydration = new TimelineHydration(() => this.isCurrent);
   private localPrimaryPresent = false;
   private pendingStarEdits = new Map<string, boolean>();
   private starDisplayOverride = new Map<string, boolean>();
@@ -37,7 +38,12 @@ export class TimelineState {
     readonly policy: TimelineStoragePolicy,
   ) {
     this.conversationId = policy.conversationId;
-    this.hierarchy = new TimelineHierarchy(policy, onChange, (id) => this.canEdit(id));
+    this.hierarchy = new TimelineHierarchy(
+      policy,
+      onChange,
+      (id) => this.canEdit(id),
+      this.hierarchyHydration,
+    );
   }
   private get url(): string {
     return this.policy.url;
@@ -49,7 +55,6 @@ export class TimelineState {
     return this.policy.canEdit(this.markerMap.get(id), id);
   }
   private initPromise: Promise<void> | null = null;
-  private starRead: Promise<void> | null = null;
   init(): Promise<void> {
     return (this.initPromise ??= this.initialize());
   }
@@ -89,11 +94,16 @@ export class TimelineState {
       try {
         nextArr = JSON.parse(e.newValue || '[]');
       } catch {
-        /* Invalid host data is an empty snapshot. */
+        if (!this.policy.stars.libraryMirror) return;
+        /* Invalid host data is an empty display snapshot, never Library hydration. */
       }
       const nextSet = new Set(Array.isArray(nextArr) ? nextArr.map(String) : []);
-      this.starRevision += 1;
-      this.applyStarredIdSet(nextSet, false);
+      if (this.policy.stars.libraryMirror) {
+        this.starHydration.changed();
+        this.applyStarredIdSet(nextSet, false);
+      } else if (Array.isArray(nextArr) && nextArr.every((id) => typeof id === 'string')) {
+        this.starHydration.snapshot(() => this.applyStarredIdSet(nextSet, false));
+      }
     };
     window.addEventListener('storage', this.onStorage);
 
@@ -141,11 +151,11 @@ export class TimelineState {
     );
   }
   private applyStarDelta(turnId: string, added: boolean): void {
-    const pending = this.policy.stars.source === 'local' && !this.starHydrated;
+    const pending = !this.starHydration.ready;
     // A partial EventBus delta cannot seed a complete primary before the legacy/library read settles.
     if (pending) this.pendingStarEdits.set(turnId, added);
     if (this.starred.has(turnId) === added) return;
-    if (!pending) this.starRevision += 1;
+    if (!pending) this.starHydration.changed();
     if (added) this.starred.add(turnId);
     else this.starred.delete(turnId);
     if (!pending) this.saveStars();
@@ -262,14 +272,14 @@ export class TimelineState {
     // may live under a legacy/route conversation-id key, and a direct-key-only
     // lookup would wrongly clear this conversation's stars whenever a star
     // changes in another conversation.
-    this.starRevision += 1;
-    this.starHydrated = true;
-    this.pendingStarEdits.clear();
-    const normalized: StarredMessagesData = { messages: data?.messages ?? {} };
-    const matched = this.matchLibrary(normalized);
-    const nextSet = new Set(matched.messages.map((message) => String(message.turnId)));
+    this.starHydration.snapshot(() => {
+      this.pendingStarEdits.clear();
+      const normalized: StarredMessagesData = { messages: data?.messages ?? {} };
+      const matched = this.matchLibrary(normalized);
+      const nextSet = new Set(matched.messages.map((message) => String(message.turnId)));
 
-    this.applyStarredIdSet(nextSet);
+      this.applyStarredIdSet(nextSet);
+    });
   }
 
   private matchLibrary(data: StarredMessagesData): {
@@ -284,17 +294,13 @@ export class TimelineState {
         };
   }
   private readStars(): Promise<void> {
-    // Deduplicate pending reads, but release failed attempts so the next press can recover.
-    return (this.starRead ??= this.syncStarredFromService().finally(() => {
-      this.starRead = null;
-    }));
+    return this.starHydration.read((accept) => this.syncStarredFromService(accept));
   }
-  private async syncStarredFromService(): Promise<void> {
+  private async syncStarredFromService(accept: (apply: () => void) => boolean): Promise<void> {
     if (!this.conversationId || !this.policy.stars.libraryMirror) {
-      this.starHydrated = true;
+      accept(() => {});
       return;
     }
-    const revision = this.starRevision;
     try {
       const data = this.policy.stars.matchLegacyConversations
         ? await StarredMessagesService.getAllStarredMessages()
@@ -325,24 +331,26 @@ export class TimelineState {
         }
       }
 
-      this.starHydrated = true;
-      if (revision !== this.starRevision) return;
-      const nextSet = new Set(messages.map((message) => String(message.turnId)));
-      if (this.policy.stars.source === 'local' && !this.localPrimaryPresent) {
-        // The first edit must retain both historical local IDs and the Saved Library mirror.
-        for (const id of this.starred) nextSet.add(id);
+      accept(() => {
+        const nextSet = new Set(messages.map((message) => String(message.turnId)));
+        if (this.policy.stars.source === 'local' && !this.localPrimaryPresent) {
+          // The first edit must retain both historical local IDs and the Saved Library mirror.
+          for (const id of this.starred) nextSet.add(id);
+        }
         for (const [id, added] of this.pendingStarEdits) {
           if (added) nextSet.add(id);
           else nextSet.delete(id);
         }
-        this.applyStarredIdSet(nextSet, false);
-      } else if (this.policy.stars.source === 'library' || !this.localStarsLoaded) {
-        this.applyStarredIdSet(nextSet);
-      }
-      if (this.pendingStarEdits.size > 0) {
-        this.pendingStarEdits.clear();
-        this.saveStars();
-      }
+        if (this.policy.stars.source === 'local' && !this.localPrimaryPresent) {
+          this.applyStarredIdSet(nextSet, false);
+        } else if (this.policy.stars.source === 'library' || !this.localStarsLoaded) {
+          this.applyStarredIdSet(nextSet);
+        }
+        if (this.pendingStarEdits.size > 0) {
+          this.pendingStarEdits.clear();
+          this.saveStars();
+        }
+      });
     } catch (error) {
       console.warn('[Timeline] Failed to sync starred messages from shared storage:', error);
     }
@@ -359,8 +367,9 @@ export class TimelineState {
     // A press captures its message before an initial read can yield to a route or DOM change.
     const summary = marker?.summary;
     const conversationTitle = this.policy.getConversationTitle(this.markers);
-    if (!this.starHydrated) await this.readStars();
-    if (!this.isCurrent || !this.policy.canEdit(marker, id) || !this.starHydrated) return;
+    if (!this.starHydration.ready) await this.readStars();
+    if (!this.isCurrent || !this.policy.canEdit(marker, id) || !this.starHydration.ready) return;
+    this.starHydration.changed();
     const wasStarred = this.isMarkerStarred(id);
     // A stable marker may represent both its current server-id record and an
     // older verified positional alias. Removing the star clears both records.
@@ -420,6 +429,7 @@ export class TimelineState {
   }
 
   private saveStars(): void {
+    if (!this.starHydration.ready) return;
     const key = this.getStarsStorageKey();
     if (!key) return;
     safeLocalStorageSet(key, JSON.stringify(Array.from(this.starred)));

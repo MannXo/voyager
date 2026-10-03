@@ -19,6 +19,7 @@ ChatGPT, Claude and DeepSeek.
 | Virtualized turn homing, reversed scrollers and remembered geometry | `VirtualizedTimelineNavigation`, `scrollMotion` |
 | Stars, marker snapshot, aliases and storage synchronization         | `TimelineState`                                 |
 | Hierarchy edits and persistence                                     | `TimelineHierarchy`                             |
+| Store readiness, read settlement and snapshot ordering              | `TimelineHydration`                             |
 | Collapse layout                                                     | `TimelineHierarchyGeometry`                     |
 
 The [Gemini adapter](../../pages/content/timeline/GeminiTimelineAdapter.ts) retains Gemini selector
@@ -42,10 +43,13 @@ cannot remove a newly enabled rail.
 
 The first per-site star mirror seeds from its legacy key and a successful Saved Library read before
 applying an edit. Failed reads reject at the background/service boundary and leave persisted stars
-intact. The next star press retries an unhydrated Library read, sharing one in-flight attempt;
-writes remain refused until hydration succeeds. Authoritative storage snapshots take precedence over
-older pending reads. Hierarchy loads independently of Library stars, and level/collapse edits require
-a completed hierarchy load. Stored aliases and mounted identity use separate policy resolvers: an
+intact. `TimelineState` owns one `TimelineHydration` per store, sharing readiness, in-flight read
+settlement and snapshot ordering between Library stars and hierarchy. Failed attempts release the
+read; the next edit retries, and writes remain refused until hydration succeeds. A complete external
+snapshot for the resolved active scope also restores readiness and takes precedence over older
+pending reads. Hierarchy loads independently of Library stars. Level/collapse edits before or during
+the first read are refused; ready edits stay synchronous, while an edit after a settled failure
+waits for a successful retry. Stored aliases and mounted identity use separate policy resolvers: an
 unverified Gemini DOM-window `u-N` cannot receive a stored full-history turn’s star or deep link.
 
 Rail and preview styles are injected from `timeline.css` and `timelinePreview.css` by the view and removed on teardown. Shared theme tokens and
