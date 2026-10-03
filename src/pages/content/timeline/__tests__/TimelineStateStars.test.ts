@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { StorageKeys } from '@/core/types/common';
 import { TimelineState } from '@/features/timeline/TimelineState';
 import type { TimelineMarker } from '@/features/timeline/types';
 import { createGeminiTimelineStoragePolicy } from '@/pages/content/timeline/GeminiTimelineStorage';
 
+import { HistoryTimestampStore } from '../../timestamp/historyTimestamps';
 import { eventBus } from '../EventBus';
 import { StarredMessagesService } from '../StarredMessagesService';
+import { TimelineTurns } from '../TimelineTurns';
 import type { StarredMessage, StarredMessagesData } from '../starredTypes';
 
 const CONVERSATION_ID = 'gemini:conv:abc';
@@ -81,6 +84,48 @@ describe('TimelineState stars in a partially mounted conversation', () => {
       new Map([['u-0', FIRST_ID]]),
     );
     expect(state.markers.map((marker) => marker.starred)).toEqual([false, true]);
+  });
+  it('a mounted fallback cannot inherit a full-history turn’s star or deep link', async () => {
+    const cache = new HistoryTimestampStore();
+    vi.mocked(chrome.storage.local.get).mockImplementation(async () => ({
+      [StorageKeys.GV_TURN_IDENTITY_CACHE]: {
+        version: 1,
+        conversations: { c_abc: { turnIds: [FIRST_ID, TAIL_ID], updatedAt: 1 } },
+      },
+    }));
+    await cache.start();
+    try {
+      expect(cache.resolveCanonicalTurnId('abc', 'u-0')).toBe(FIRST_ID);
+      const main = document.createElement('main');
+      main.innerHTML = '<div class="user">Mounted tail without a server ID</div>';
+      document.body.append(main);
+      const turns = new TimelineTurns();
+      const mounted = turns.collect(main, '.user');
+      expect(mounted[0].id).toBe('u-0');
+      vi.spyOn(StarredMessagesService, 'getAllStarredMessages').mockResolvedValue({
+        messages: { [CONVERSATION_ID]: [message(FIRST_ID, 'First'), message('u-0', 'First')] },
+      });
+      const state = new TimelineState(
+        vi.fn(),
+        createGeminiTimelineStoragePolicy(location.href, cache),
+      );
+      states.push(state);
+      await state.init();
+      state.replaceMarkers(mounted);
+      expect(state.markers[0].starred).toBe(false);
+      expect(state.resolveMarkerIdForStorageId(FIRST_ID)).not.toBe('u-0');
+      expect(state.resolveMarkerIdForStorageId('u-0')).not.toBe('u-0');
+      // A real server-identified node may still receive both verified stored aliases.
+      main.insertAdjacentHTML(
+        'afterbegin',
+        '<div class="conversation-container" id="1111111111111111"><div class="user">First</div></div>',
+      );
+      state.replaceMarkers(turns.collect(main, '.user', state.markers));
+      expect(state.markers.map((turn) => turn.starred)).toEqual([true, false]);
+      expect(state.resolveMarkerIdForStorageId('u-0')).toBe(FIRST_ID);
+    } finally {
+      cache.stop();
+    }
   });
   it('removes every verified stored alias when un-starring', async () => {
     const remove = vi.spyOn(StarredMessagesService, 'removeStarredMessage').mockResolvedValue();

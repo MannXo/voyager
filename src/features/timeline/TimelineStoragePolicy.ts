@@ -23,7 +23,9 @@ export interface TimelineStoragePolicy {
         readonly legacyCollapsedKey: string | null;
         readonly resolveAccountScope: () => Promise<AccountScope | null>;
       };
-  readonly resolveCanonicalTurnId: (id: string) => string | null;
+  /** Full-history aliases belong to stored records, never to DOM-window positions. */
+  readonly resolveMountedTurnId: (id: string) => string | null;
+  readonly resolveStoredTurnId: (id: string) => string | null;
   readonly getStoredTurnIdAliases: (id: string) => string[];
   readonly canEdit: (marker: TimelineMarker | undefined, id: string) => boolean;
   readonly isCurrent: () => boolean;

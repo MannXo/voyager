@@ -178,18 +178,22 @@ export class TimelineState {
    */
   private recomputeStarredDisplay(): void {
     const { displayByMarkerId, storageIdsByMarkerId } = resolveStarredDisplay({
-      markers: this.markers.map((marker) => ({
-        id: this.policy.resolveCanonicalTurnId(marker.id) ?? marker.id,
-      })),
+      markers: this.markers.flatMap((marker) => {
+        const id = this.policy.resolveMountedTurnId(marker.id);
+        return id ? [{ id }] : [];
+      }),
       starredIds: this.starred,
-      resolveCanonicalId: this.policy.resolveCanonicalTurnId,
+      resolveCanonicalId: this.policy.resolveStoredTurnId,
     });
     this.starDisplayOverride.clear();
     this.starStorageIdsByMarkerId.clear();
     for (const marker of this.markers) {
-      const canonical = this.policy.resolveCanonicalTurnId(marker.id) ?? marker.id;
-      this.starDisplayOverride.set(marker.id, displayByMarkerId.get(canonical) ?? false);
-      const storageIds = storageIdsByMarkerId.get(canonical);
+      const canonical = this.policy.resolveMountedTurnId(marker.id);
+      this.starDisplayOverride.set(
+        marker.id,
+        (canonical && displayByMarkerId.get(canonical)) || false,
+      );
+      const storageIds = canonical ? storageIdsByMarkerId.get(canonical) : undefined;
       if (storageIds) this.starStorageIdsByMarkerId.set(marker.id, storageIds);
     }
   }
@@ -398,15 +402,15 @@ export class TimelineState {
    * `#gv-turn-<id>` deep links, whose ids come from storage and may have been
    * relocated onto a different index.
    */
-  resolveMarkerIdForStorageId(storageId: string): string {
+  resolveMarkerIdForStorageId(storageId: string): string | null {
     for (const [markerId, ids] of this.starStorageIdsByMarkerId) {
       if (ids.includes(storageId)) return markerId;
     }
-    const canonical = this.policy.resolveCanonicalTurnId(storageId);
-    if (!canonical) return storageId;
+    const canonical = this.policy.resolveStoredTurnId(storageId);
+    if (!canonical) return null;
     return (
-      this.markers.find((marker) => this.policy.resolveCanonicalTurnId(marker.id) === canonical)
-        ?.id ?? storageId
+      this.markers.find((marker) => this.policy.resolveMountedTurnId(marker.id) === canonical)
+        ?.id ?? canonical
     );
   }
 

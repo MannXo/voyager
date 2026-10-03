@@ -30,7 +30,8 @@ export function createCatalogTimelineStoragePolicy(
     hierarchy: {
       localKey: conversationId ? catalogHierarchyStorageKey(config.siteId, conversationId) : null,
     },
-    resolveCanonicalTurnId: extractTurnHash,
+    resolveMountedTurnId: extractTurnHash,
+    resolveStoredTurnId: extractTurnHash,
     getStoredTurnIdAliases: (id) => [id],
     canEdit: (marker) => !!conversationId && !!marker && ownership.canStar(marker.element),
     // Hosts change their URL and thread DOM separately; neither old turns nor pending work may write into the next route.

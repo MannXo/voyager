@@ -63,7 +63,9 @@ export function createGeminiTimelineStoragePolicy(
         });
       },
     },
-    resolveCanonicalTurnId: (id) =>
+    // A mounted u-N is an unverified window position even when stored u-N has a history alias.
+    resolveMountedTurnId: (id) => (getLegacyTurnIndex(id) === null ? id : null),
+    resolveStoredTurnId: (id) =>
       nativeConversationId
         ? historyTimestampStore.resolveCanonicalTurnId(nativeConversationId, id)
         : getLegacyTurnIndex(id) === null

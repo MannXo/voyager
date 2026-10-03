@@ -21,7 +21,7 @@ interface TimelineNavigationOptions {
   getTrackHeight(): number;
   /** Refresh an interaction target, or check for new turns at a navigation boundary. */
   refreshMarkers(target: HTMLElement | null, direction?: Direction): boolean;
-  resolveStoredId(storedId: string): string;
+  resolveStoredId(storedId: string): string | null;
   onActiveChange(id: string | null): void;
   onScroll(): void;
   animateRunner(fromIndex: number, toIndex: number, duration: number): void;

@@ -64,7 +64,8 @@ function create(
     hierarchy: { localKey: null },
     isCurrent: () => route === capturedRoute,
     canEdit: (marker) => !!marker && ownership.canStar(marker.element),
-    resolveCanonicalTurnId: extractTurnHash,
+    resolveMountedTurnId: extractTurnHash,
+    resolveStoredTurnId: extractTurnHash,
     getStoredTurnIdAliases: (id) => [id],
     getConversationTitle: () => 'B',
   };
