@@ -19,7 +19,7 @@
 import { StorageKeys } from '@/core/types/common';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
 
-import { isGenericLanguageLabel } from '../mermaid/index';
+import { isGenericLanguageLabel } from '../mermaid/source';
 
 // ---------------------------------------------------------------------------
 // Types

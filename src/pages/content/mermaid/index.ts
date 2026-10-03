@@ -4,8 +4,6 @@ import { createStyles, renderMermaid } from './codeBlock';
 import { MermaidRenderer } from './renderer';
 import { isGenericLanguageLabel, isMermaidCode } from './source';
 
-export { isGenericLanguageLabel } from './source';
-
 const renderer = new MermaidRenderer();
 
 /**
