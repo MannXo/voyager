@@ -117,27 +117,6 @@ tabs save at the same moment`), `src/pages/background/__tests__/promptDriveMerge
   `src/pages/popup/hooks/__tests__/usePromptDataTransfer.test.tsx` (`keeps a template saved on a
 Gemini tab while the popup import is writing`).
 
-## A prompt import or Drive merge must not re-sort the library
-
-- **Trap:** `mergeImportedPrompts` ended by sorting the whole library newest-first by
-  `createdAt`. It backs the owner's `import` op, so every popup file import and both prompts-only
-  Drive merges (pull, and push, which merges before it uploads) silently threw away the manual
-  order the Prompt Manager stores as array position. Existing tests either used prompts that were
-  already newest-first or shared one `createdAt`, which a stable sort leaves alone, or asserted
-  the newest-first order outright.
-- **Rule:** Array position is the manual order; there is no order field or library-level reorder
-  time, and the stored and Drive formats stay that way. Stored prompts keep their positions
-  whatever order the incoming list uses. An added prompt goes right after the nearest earlier
-  incoming prompt that matched a stored one, or to the front when none did; prompts sharing a
-  place keep their incoming order. Only a stored prompt anchors: grouping under a prompt the same
-  import added would drop it from the output. Pins (`pinnedAt`) are never changed by placement.
-  So a pull never reorders local prompts and a push gives Drive the pushing device's order; a
-  reorder made on another device does not arrive through a merge. Order tests must store prompts
-  whose array order is not newest-first and assert exact id order.
-- **Guard:** `src/features/prompt/library/__tests__/promptImportOrder.test.ts` and
-  `src/pages/background/__tests__/promptDriveMergeOrder.test.ts` (`round-trips between two
-devices: the pusher sets Drive, a puller keeps its own order`).
-
 ## A prompt merge must not stamp the time it ran
 
 - **Trap:** The prompts import set `updatedAt = now` on every matched prompt and `createdAt = now`
