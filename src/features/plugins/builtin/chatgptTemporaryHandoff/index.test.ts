@@ -192,6 +192,7 @@ afterEach(async () => {
   Reflect.deleteProperty(URL, 'createObjectURL');
   Reflect.deleteProperty(URL, 'revokeObjectURL');
   vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
@@ -375,6 +376,74 @@ describe('ChatGPT temporary handoff plugin', () => {
 
     await expect(collectTemporaryChatTurns(new AbortController().signal)).rejects.toThrow(
       'chatgpt_export_response_still_generating',
+    );
+  });
+
+  it('collects every prompt and reply of a legacy chat, materializing unmounted turns', async () => {
+    const shell = legacyTurn('user-2');
+    shell.scrollIntoView = () => {
+      if (shell.childElementCount === 0) {
+        shell.append(legacyTurn('mounted', 'user', 'Question 2').firstElementChild!);
+      }
+    };
+    document.body.append(
+      legacyTurn('user-1', 'user', 'Question 1'),
+      legacyTurn('assistant-1', 'assistant', 'Answer 1'),
+      shell,
+      legacyTurn('assistant-2', 'assistant', 'Answer 2'),
+    );
+
+    await expect(collectTemporaryChatTurns(new AbortController().signal)).resolves.toMatchObject([
+      { user: 'Question 1', assistant: 'Answer 1' },
+      { user: 'Question 2', assistant: 'Answer 2' },
+    ]);
+  });
+
+  it('stops crawling a legacy chat as soon as the handoff is cancelled', async () => {
+    const shell = legacyTurn('user-1');
+    let scrolls = 0;
+    shell.scrollIntoView = () => {
+      scrolls += 1;
+    };
+    document.body.append(shell, legacyTurn('assistant-1', 'assistant', 'Answer'));
+    const cancel = new AbortController();
+
+    const collection = collectTemporaryChatTurns(cancel.signal);
+    cancel.abort();
+
+    await expect(collection).rejects.toMatchObject({ name: 'AbortError' });
+    expect(scrolls).toBe(1);
+  });
+
+  it('refuses a legacy chat that navigates away while a turn materializes', async () => {
+    history.replaceState({}, '', '/?temporary-chat=true');
+    const shell = legacyTurn('user-1');
+    shell.scrollIntoView = () => {
+      if (shell.childElementCount > 0) return;
+      shell.append(legacyTurn('mounted', 'user', 'Question').firstElementChild!);
+      history.replaceState({}, '', '/c/another-chat');
+    };
+    document.body.append(shell, legacyTurn('assistant-1', 'assistant', 'Answer'));
+
+    await expect(collectTemporaryChatTurns(new AbortController().signal)).rejects.toThrow(
+      'chatgpt_export_conversation_changed',
+    );
+  });
+
+  it('refuses a legacy chat that starts regenerating after every turn was read', async () => {
+    document.body.append(
+      legacyTurn('user-1', 'user', 'Question'),
+      legacyTurn('assistant-1', 'assistant', 'Answer'),
+    );
+    // Restoring the reader's scroll position is the last page call after the turns are read.
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {
+      const stop = document.createElement('button');
+      stop.dataset.testid = 'stop-button';
+      document.body.append(stop);
+    });
+
+    await expect(collectTemporaryChatTurns(new AbortController().signal)).rejects.toThrow(
+      'chatgpt_export_conversation_changed',
     );
   });
 
