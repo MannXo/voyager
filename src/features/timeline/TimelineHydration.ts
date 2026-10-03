@@ -44,8 +44,10 @@ export class TimelineHydration {
       this.changed();
       apply();
     } else if (this.isCurrent() && this.status === 'failed') {
+      const revision = this.revision;
       return retry().then(() => {
-        if (this.ready) {
+        // A newer accepted choice wins over an older edit waiting for recovery.
+        if (this.ready && revision === this.revision) {
           this.changed();
           apply();
         }

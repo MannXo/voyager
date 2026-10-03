@@ -117,6 +117,53 @@ describe('outline hydration recovery', () => {
     expect(saved.conversations[CONVERSATION].collapsed).toEqual([OLD, NEW]);
   });
 
+  it('an earlier level choice waiting on a retry does not undo a newer one', async () => {
+    const url = 'https://gemini.google.com/app/recovery';
+    const stale = outline(url);
+    let saved = structuredClone(stale);
+    let reads = 0;
+    let release!: (value: Record<string, unknown>) => void;
+    const external = storageEvents();
+    vi.mocked(chrome.storage.local.get).mockImplementation(async () => {
+      reads += 1;
+      if (reads === 1) throw new Error('temporary outline read failure');
+      if (reads === 2)
+        return new Promise<Record<string, unknown>>((resolve) => {
+          release = resolve;
+        });
+      return { [KEY]: structuredClone(saved) };
+    });
+    vi.mocked(chrome.storage.local.set).mockImplementation(async (items) => {
+      saved = structuredClone((items as Record<string, unknown>)[KEY]) as TimelineHierarchyData;
+    });
+    const state = createState(url);
+    await state.init();
+    const earlier = state.hierarchy.setMarkerLevel(NEW, 2);
+    await settle();
+    expect(reads).toBe(2);
+    expect(chrome.storage.local.set).not.toHaveBeenCalled();
+
+    external(KEY, structuredClone(saved));
+    const newer = state.hierarchy.setMarkerLevel(NEW, 3);
+    expect(state.hierarchy.getMarkerLevel(NEW)).toBe(3);
+    await newer;
+    await settle();
+    expect(saved.conversations[CONVERSATION].levels).toEqual({ [OLD]: 2, [NEW]: 3 });
+    const writes = vi.mocked(chrome.storage.local.set).mock.calls.length;
+
+    release({ [KEY]: stale });
+    await earlier;
+    await settle();
+    expect(state.hierarchy.getMarkerLevel(NEW)).toBe(3);
+    expect(saved.conversations[CONVERSATION].levels).toEqual({ [OLD]: 2, [NEW]: 3 });
+    expect(saved.conversations[CONVERSATION].collapsed).toEqual([OLD]);
+    expect(chrome.storage.local.set).toHaveBeenCalledTimes(writes);
+    expect(JSON.parse(localStorage.getItem(`geminiTimelineLevels:${CONVERSATION}`)!)).toEqual({
+      [OLD]: 2,
+      [NEW]: 3,
+    });
+  });
+
   it('only a complete external outline for the resolved account can restore editing after a failed read', async () => {
     const url = 'https://gemini.google.com/u/2/app/recovery';
     const scopedKey = buildScopedStorageKey(KEY, 'route:2');
