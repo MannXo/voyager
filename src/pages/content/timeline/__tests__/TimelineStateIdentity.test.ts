@@ -115,6 +115,51 @@ describe('TimelineState identity aliases', () => {
     expect(state.hierarchy.isMarkerCollapsed(PARENT_ID)).toBe(false);
     expect(localStorage.getItem(collapsedKey)).toBe('[]');
   });
+  it('outline edits before hierarchy hydration cannot overwrite saved levels or collapses', async () => {
+    const saved = {
+      [StorageKeys.TIMELINE_HIERARCHY]: {
+        conversations: {
+          [CONVERSATION_ID]: { levels: { [PARENT_ID]: 2 }, collapsed: [PARENT_ID], updatedAt: 1 },
+        },
+      },
+    };
+    let release!: (value: Record<string, unknown>) => void;
+    vi.mocked(chrome.storage.local.set).mockClear();
+    vi.mocked(chrome.storage.local.get)
+      .mockImplementation(async () => saved)
+      .mockImplementationOnce(
+        async () =>
+          new Promise<Record<string, unknown>>((resolve) => {
+            release = resolve;
+          }),
+      );
+    const state = new TimelineState(vi.fn(), createGeminiTimelineStoragePolicy());
+    states.push(state);
+    state.hierarchy.setMarkerLevel(CHILD_ID, 3);
+    state.hierarchy.toggleCollapse(CHILD_ID);
+    const pending = state.init();
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    state.hierarchy.setMarkerLevel(CHILD_ID, 3);
+    state.hierarchy.toggleCollapse(CHILD_ID);
+    expect(chrome.storage.local.set).not.toHaveBeenCalled();
+    expect(localStorage.getItem(levelsKey)).toBeNull();
+    expect(localStorage.getItem(collapsedKey)).toBeNull();
+    release(saved);
+    await pending;
+    state.hierarchy.setMarkerLevel(CHILD_ID, 3);
+    state.hierarchy.toggleCollapse(CHILD_ID);
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    expect(chrome.storage.local.set).toHaveBeenLastCalledWith({
+      [StorageKeys.TIMELINE_HIERARCHY]: {
+        conversations: {
+          [CONVERSATION_ID]: expect.objectContaining({
+            levels: { [PARENT_ID]: 2, [CHILD_ID]: 3 },
+            collapsed: [PARENT_ID, CHILD_ID],
+          }),
+        },
+      },
+    });
+  });
   it('does not restore a late hierarchy snapshot after the owner is destroyed', async () => {
     let resolveSnapshot!: (data: Record<string, unknown>) => void;
     let started!: () => void;

@@ -15,6 +15,7 @@ import type { MarkerLevel } from './types';
 /** Shared level/collapse state and persistence; geometry reads this owner without owning it. */
 export class TimelineHierarchy {
   private destroyed = false;
+  private loaded = false;
   constructor(
     private readonly policy: TimelineStoragePolicy,
     private readonly onChange: () => void,
@@ -209,18 +210,20 @@ export class TimelineHierarchy {
     });
     conversationData.collapsed.forEach((turnId) => this.collapsedMarkers.add(turnId));
   }
-  private async loadTimelineHierarchyStorageContext(): Promise<void> {
-    if (!('extensionKey' in this.policy.hierarchy)) return;
+  private async loadTimelineHierarchyStorageContext(): Promise<boolean> {
+    if (!('extensionKey' in this.policy.hierarchy)) return true;
     this.timelineHierarchyStorageKey = this.policy.hierarchy.extensionKey;
     try {
       const scope = await this.policy.hierarchy.resolveAccountScope();
-      if (!this.isCurrent) return;
+      if (!this.isCurrent) return false;
       this.timelineHierarchyAccountScope = scope;
       this.timelineHierarchyStorageKey = scope?.accountKey
         ? buildScopedStorageKey(this.unscopedKey, scope.accountKey)
         : this.unscopedKey;
+      return true;
     } catch (error) {
       console.warn('[Timeline] Failed to resolve timeline hierarchy storage scope:', error);
+      return false;
     }
   }
   private persistTimelineHierarchyToLegacyStorage(): void {
@@ -238,9 +241,9 @@ export class TimelineHierarchy {
       safeLocalStorageSet(collapsedKey, JSON.stringify(Array.from(this.collapsedMarkers)));
     }
   }
-  private async loadTimelineHierarchyFromExtensionStorage(): Promise<void> {
+  private async loadTimelineHierarchyFromExtensionStorage(): Promise<boolean> {
     if (!this.conversationId || typeof chrome === 'undefined' || !chrome.storage?.local?.get) {
-      return;
+      return true;
     }
 
     try {
@@ -248,7 +251,7 @@ export class TimelineHierarchy {
         string,
         unknown
       >;
-      if (!this.isCurrent) return;
+      if (!this.isCurrent) return false;
       const data = this.resolveStoredHierarchy(storageValues);
       const conversationData = data.conversations[this.conversationId] || null;
 
@@ -257,7 +260,7 @@ export class TimelineHierarchy {
         if (this.timelineHierarchyStorageKey === this.unscopedKey) {
           this.persistTimelineHierarchyToLegacyStorage();
         }
-        return;
+        return true;
       }
 
       if (this.timelineHierarchyStorageKey !== this.unscopedKey) {
@@ -265,15 +268,17 @@ export class TimelineHierarchy {
         if (legacyConversationData) {
           this.applyTimelineHierarchyConversationData(legacyConversationData);
           await this.persistTimelineHierarchyToExtensionStorage();
-          return;
+          return true;
         }
       }
 
       if (this.hasTimelineHierarchyData()) {
         await this.persistTimelineHierarchyToExtensionStorage();
       }
+      return true;
     } catch (error) {
       console.warn('[Timeline] Failed to load timeline hierarchy from extension storage:', error);
+      return false;
     }
   }
   private async persistTimelineHierarchyToExtensionStorage(): Promise<void> {
@@ -310,7 +315,7 @@ export class TimelineHierarchy {
   }
   toggleCollapse(turnId: string): void {
     const aliases = this.policy.getStoredTurnIdAliases(turnId);
-    if (!this.isCurrent || !this.canEdit(turnId) || aliases.length === 0) return;
+    if (!this.loaded || !this.isCurrent || !this.canEdit(turnId) || aliases.length === 0) return;
     if (aliases.some((alias) => this.collapsedMarkers.has(alias))) {
       aliases.forEach((alias) => this.collapsedMarkers.delete(alias));
     } else {
@@ -331,7 +336,7 @@ export class TimelineHierarchy {
     // canonical server id. Delete every known representation first so reset to
     // level 1 cannot be shadowed by an old u-N entry.
     const aliases = this.policy.getStoredTurnIdAliases(turnId);
-    if (!this.isCurrent || !this.canEdit(turnId) || aliases.length === 0) return;
+    if (!this.loaded || !this.isCurrent || !this.canEdit(turnId) || aliases.length === 0) return;
     aliases.forEach((alias) => this.markerLevels.delete(alias));
     if (level !== 1) {
       this.markerLevels.set(turnId, level);
@@ -361,17 +366,25 @@ export class TimelineHierarchy {
     }
   }
   async init(): Promise<void> {
+    // An edit before hydration would serialize empty maps over the saved outline.
+    if (!this.isCurrent) return;
     if ('localKey' in this.policy.hierarchy) {
       this.loadLocalHierarchy();
+      this.loaded = true;
+      this.onChange();
       return;
     }
-    await this.loadTimelineHierarchyStorageContext();
+    if (!(await this.loadTimelineHierarchyStorageContext())) return;
     if (!this.isCurrent) return;
     if (this.timelineHierarchyStorageKey === this.unscopedKey) {
       this.loadMarkerLevels();
       this.loadCollapsedMarkers();
     }
-    await this.loadTimelineHierarchyFromExtensionStorage();
+    if (await this.loadTimelineHierarchyFromExtensionStorage()) {
+      if (!this.isCurrent) return;
+      this.loaded = true;
+      this.onChange();
+    }
   }
   destroy(): void {
     this.destroyed = true;

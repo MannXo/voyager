@@ -88,3 +88,37 @@ describe('timeline scope lifetime', () => {
     expect(newRail?.isConnected).toBe(true);
   });
 });
+
+describe('timeline startup outline', () => {
+  it('editing a level while the Library read is delayed preserves saved chapters and collapse state', async () => {
+    const { buildTurnId } = await import('./turnMerge');
+    const key = 'gvTimelineHierarchy:chatgpt:chatgpt:conv:one';
+    const heading = buildTurnId('Saved heading');
+    const child = buildTurnId('Saved child');
+    localStorage.setItem(key, JSON.stringify({ levels: { [child]: 2 }, collapsed: [heading] }));
+    enable();
+    await flush();
+    document
+      .querySelector('main')!
+      .insertAdjacentHTML(
+        'beforeend',
+        '<div data-user-message-bubble>Saved heading</div><div data-user-message-bubble>Saved child</div>',
+      );
+    await vi.waitFor(() => expect(document.querySelector('.timeline-dot')).not.toBeNull());
+    expect(releaseRead).not.toBeNull();
+    document
+      .querySelector('.timeline-dot')!
+      .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, button: 2 }));
+    document.querySelector<HTMLButtonElement>('.timeline-context-menu [data-level="3"]')!.click();
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({
+      levels: { [child]: 2, [buildTurnId('Prompt')]: 3 },
+      collapsed: [heading],
+    });
+    releaseRead?.();
+    await flush();
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({
+      levels: { [child]: 2, [buildTurnId('Prompt')]: 3 },
+      collapsed: [heading],
+    });
+  });
+});

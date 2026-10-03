@@ -45,6 +45,7 @@ async function fixture(count = 2) {
   const owners = manager as unknown as TimelineOwners;
   localStorage.setItem('geminiTimelineUserTurnSelectorAuto', '.user');
   await owners.findCriticalElements();
+  await owners.state.hierarchy.init();
   owners.navigation.setViewport(viewport);
   owners.mountUI();
   Object.defineProperty(owners.view.ui.timelineBar, 'clientHeight', { value: 400 });

@@ -58,10 +58,10 @@ export class TimelineState {
     this.listen();
     this.loadStars();
     if (this.policy.stars.source === 'local') this.refreshStars();
+    // Outline readiness is independent of an unrelated Saved Library request.
+    const hierarchyRead = this.hierarchy.init();
     this.starRead = this.syncStarredFromService();
-    await this.starRead;
-    if (!this.isCurrent) return;
-    await this.hierarchy.init();
+    await Promise.all([hierarchyRead, this.starRead]);
   }
   replaceMarkers(markers: TimelineMarker[]): void {
     this.markers = markers;

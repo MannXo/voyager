@@ -107,8 +107,9 @@ describe('TimelineDotLayer', () => {
     expect(current()).toEqual([]);
   });
 
-  it('spaces only visible markers after collapse and uses pixel tops when CSS cannot resolve them', () => {
+  it('spaces only visible markers after collapse and uses pixel tops when CSS cannot resolve them', async () => {
     const { layer, state, geometry, content } = fixture([0, 0.001, 0.002, 0.003, 0.004, 1]);
+    await state.hierarchy.init();
     geometry.markerLevelEnabled = true;
     state.hierarchy.setMarkerLevel('turn-1', 2);
     state.hierarchy.setMarkerLevel('turn-2', 3);
