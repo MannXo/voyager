@@ -2,12 +2,22 @@
  * DOM Content Extractor
  * Extracts rich content from Gemini's DOM structure preserving formatting
  */
-import {
-  requestEChartsDataUrl,
-  resolveEChartsExportContainer,
-} from '../../../pages/content/echarts/exportBridge';
 import type { ExportPlatformAdapter } from '../../../pages/content/export/adapter/platformAdapters';
 import type { ExportAttachment } from '../types/export';
+import {
+  findExportCodeBlocks,
+  extractExportCodeBlock,
+  extractCodeBlock,
+  extractCodeFromCodeElement,
+  serializeListHtml,
+} from './exportCodeBlocks';
+import {
+  shouldSkipElement,
+  stripExportArtifacts,
+  normalizeText,
+  escapeHtml,
+  escapeHtmlAttribute,
+} from './exportDomPolicy';
 
 export interface ExtractedContent {
   text: string;
@@ -48,27 +58,6 @@ function queryOutsideThoughts<T extends Element = Element>(
   }
   return null;
 }
-
-const MERMAID_WRAPPER_SELECTOR = '.gv-mermaid-wrapper';
-const MERMAID_RENDERED_SVG_SELECTOR = '.gv-mermaid-diagram svg';
-const MERMAID_LIGHT_EXPORT_TEMPLATE_SELECTOR = 'template.gv-mermaid-light-export';
-const MERMAID_EXPORT_CLASS = 'gv-export-mermaid';
-const MERMAID_THEME_ATTRIBUTE = 'data-gv-mermaid-theme';
-
-const WAVEDROM_WRAPPER_SELECTOR = '.gv-wavedrom-wrapper';
-const WAVEDROM_RENDERED_SVG_SELECTOR = '.gv-wavedrom-diagram svg';
-const WAVEDROM_EXPORT_CLASS = 'gv-export-wavedrom';
-
-const ECHARTS_WRAPPER_SELECTOR = '.gv-echarts-wrapper';
-const ECHARTS_RENDERED_DIAGRAM_SELECTOR = '.gv-echarts-diagram';
-const ECHARTS_RENDERED_CANVAS_SELECTOR = '.gv-echarts-diagram canvas';
-const ECHARTS_EXPORT_CLASS = 'gv-export-echarts';
-
-type ExportCodeBlock =
-  | { kind: 'mermaid'; element: HTMLElement }
-  | { kind: 'wavedrom'; element: HTMLElement }
-  | { kind: 'echarts'; element: HTMLElement }
-  | { kind: 'code'; element: HTMLElement };
 
 interface SerializedTableCell {
   text: string;
@@ -299,7 +288,7 @@ export class DOMContentExtractor {
         console.log(
           `[DOMContentExtractor] Processing raw code element ${idx + 1}/${altCodeBlocks.length}`,
         );
-      const extracted = this.extractCodeFromCodeElement(codeEl as HTMLElement);
+      const extracted = extractCodeFromCodeElement(codeEl as HTMLElement);
       if (extracted.text) {
         (codeEl as Element & { processedByGV?: boolean }).processedByGV = true;
         result.hasCode = true;
@@ -452,7 +441,7 @@ export class DOMContentExtractor {
         console.log('[DOMContentExtractor] Processing child:', tagName, child.className);
 
       // Skip certain elements
-      if (this.shouldSkipElement(child)) {
+      if (shouldSkipElement(child)) {
         if (this.DEBUG) console.log('[DOMContentExtractor] Skipping element:', tagName);
         continue;
       }
@@ -481,17 +470,10 @@ export class DOMContentExtractor {
         continue;
       }
 
-      const exportCodeBlocks = this.findExportCodeBlocks(child);
-      const directExportCodeBlock = exportCodeBlocks.find(({ element }) => element === child);
+      const exportCodeBlocks = findExportCodeBlocks(child);
+      const directExportCodeBlock = exportCodeBlocks.find((element) => element === child);
       if (directExportCodeBlock) {
-        const content =
-          directExportCodeBlock.kind === 'mermaid'
-            ? this.extractMermaidContent(directExportCodeBlock.element)
-            : directExportCodeBlock.kind === 'wavedrom'
-              ? this.extractWavedromContent(directExportCodeBlock.element)
-              : directExportCodeBlock.kind === 'echarts'
-                ? this.extractEchartsContent(directExportCodeBlock.element)
-                : this.extractCodeBlock(directExportCodeBlock.element);
+        const content = extractExportCodeBlock(directExportCodeBlock);
         if (content) {
           htmlParts.push(content.html);
         }
@@ -712,61 +694,6 @@ export class DOMContentExtractor {
   }
 
   /**
-   * Check if element should be skipped
-   */
-  private static shouldSkipElement(element: Element): boolean {
-    // Skip non-content HTML nodes and interactive/action elements. Some hosts
-    // colocate component styles inside message cards; their textContent is CSS,
-    // not conversation text.
-    if (
-      element.tagName === 'STYLE' ||
-      element.tagName === 'SCRIPT' ||
-      element.tagName === 'NOSCRIPT' ||
-      element.tagName === 'TEMPLATE' ||
-      (element.tagName === 'BUTTON' &&
-        !(element.classList.contains('image-button') && element.querySelector('img'))) ||
-      element.tagName === 'MAT-ICON' ||
-      // Gemini inline sources/citation chips (appear as link icons in export/print)
-      element.tagName === 'SOURCES-CAROUSEL-INLINE' ||
-      element.tagName === 'SOURCE-INLINE-CHIPS' ||
-      element.tagName === 'SOURCE-INLINE-CHIP' ||
-      // Generated image overlay controls (share, copy, download buttons)
-      element.tagName === 'SHARE-BUTTON' ||
-      element.tagName === 'COPY-BUTTON' ||
-      element.tagName === 'DOWNLOAD-GENERATED-IMAGE-BUTTON'
-    ) {
-      return true;
-    }
-
-    // Skip model thoughts completely (including the toggle button)
-    if (element.tagName === 'MODEL-THOUGHTS' || element.classList.contains('model-thoughts')) {
-      return true;
-    }
-
-    // Skip action buttons and controls
-    if (
-      element.classList.contains('copy-button') ||
-      element.classList.contains('action-button') ||
-      element.classList.contains('table-footer') ||
-      element.classList.contains('export-sheets-button') ||
-      element.classList.contains('thoughts-header') ||
-      // Gemini inline source/citation container
-      element.classList.contains('source-inline-chip-container') ||
-      // NanoBanana watermark remover indicator (🍌 emoji)
-      element.classList.contains('nanobanana-indicator') ||
-      // Generated image overlay controls (share/copy/download buttons)
-      element.classList.contains('generated-image-controls') ||
-      (element.classList.contains('hide-from-message-actions') &&
-        !element.matches('.image-container, single-image, generated-image') &&
-        !element.querySelector('img.hero-image, img.spark-licensed-portrait, img.image'))
-    ) {
-      return true;
-    }
-
-    return false;
-  }
-
-  /**
    * Process inline content (text with inline formulas)
    */
   private static processInlineContent(
@@ -818,7 +745,7 @@ export class DOMContentExtractor {
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         const el = node as Element;
 
-        if (this.shouldSkipElement(el)) {
+        if (shouldSkipElement(el)) {
           return;
         }
 
@@ -907,7 +834,7 @@ export class DOMContentExtractor {
       if (node.nodeType !== Node.ELEMENT_NODE) return;
 
       const child = node as Element;
-      if (this.shouldSkipElement(child)) return;
+      if (shouldSkipElement(child)) return;
 
       Array.from(child.childNodes).forEach(collectText);
     };
@@ -967,193 +894,11 @@ export class DOMContentExtractor {
     return { html: processed.html, text: processed.text };
   }
 
-  /**
-   * Extract Mermaid content for rich and text exports.
-   * Rendered SVG is preferred, with source HTML as a safe fallback.
-   */
-  private static extractMermaidContent(
-    wrapper: HTMLElement,
-  ): { html: string; text: string } | null {
-    const renderedSvg = wrapper.querySelector<SVGSVGElement>(MERMAID_RENDERED_SVG_SELECTOR);
-    const lightExportSvg = wrapper
-      .querySelector<HTMLTemplateElement>(MERMAID_LIGHT_EXPORT_TEMPLATE_SELECTOR)
-      ?.content.querySelector<SVGSVGElement>('svg');
-    const codeBlock = wrapper.querySelector<HTMLElement>('code-block, .code-block');
-    const codeContent = codeBlock
-      ? this.extractCodeBlock(codeBlock, 'mermaid')
-      : { html: '', text: '' };
-    const renderedTheme = wrapper.getAttribute(MERMAID_THEME_ATTRIBUTE);
-    const svg =
-      renderedTheme === 'light' ? renderedSvg : renderedTheme === 'dark' ? lightExportSvg : null;
-
-    if (svg) {
-      const exportContainer = document.createElement('div');
-      exportContainer.className = MERMAID_EXPORT_CLASS;
-      exportContainer.setAttribute(MERMAID_THEME_ATTRIBUTE, 'light');
-      exportContainer.appendChild(svg.cloneNode(true));
-      return { html: exportContainer.outerHTML, text: codeContent.text };
-    }
-
-    return codeContent.text ? codeContent : null;
-  }
-
-  /**
-   * Extract WaveDrom content for rich and text exports.
-   * The rendered SVG is preferred; the WaveJSON source is the fallback.
-   */
-  private static extractWavedromContent(
-    wrapper: HTMLElement,
-  ): { html: string; text: string } | null {
-    const renderedSvg = wrapper.querySelector<SVGSVGElement>(WAVEDROM_RENDERED_SVG_SELECTOR);
-    const codeBlock = wrapper.querySelector<HTMLElement>('code-block, .code-block');
-    const codeContent = codeBlock
-      ? this.extractCodeBlock(codeBlock, 'wavedrom')
-      : { html: '', text: '' };
-
-    if (renderedSvg) {
-      const exportContainer = document.createElement('div');
-      exportContainer.className = WAVEDROM_EXPORT_CLASS;
-      exportContainer.appendChild(renderedSvg.cloneNode(true));
-      return { html: exportContainer.outerHTML, text: codeContent.text };
-    }
-
-    return codeContent.text ? codeContent : null;
-  }
-
-  /**
-   * Extract ECharts content for rich and text exports.
-   * The rendered canvas is snapshotted to a PNG image; the option source is
-   * the fallback (canvas readback can throw when tainted).
-   */
-  private static extractEchartsContent(
-    wrapper: HTMLElement,
-    renderedWrapper: HTMLElement = wrapper,
-  ): { html: string; text: string } | null {
-    const diagram =
-      resolveEChartsExportContainer(renderedWrapper) ??
-      renderedWrapper.querySelector<HTMLElement>(ECHARTS_RENDERED_DIAGRAM_SELECTOR);
-    const canvas = diagram?.querySelector<HTMLCanvasElement>(ECHARTS_RENDERED_CANVAS_SELECTOR);
-    const codeBlock = wrapper.querySelector<HTMLElement>('code-block, .code-block');
-    const codeContent = codeBlock
-      ? this.extractCodeBlock(codeBlock, 'echarts')
-      : { html: '', text: '' };
-
-    if (canvas && canvas.width > 0 && canvas.height > 0) {
-      try {
-        const liveExport = diagram
-          ? requestEChartsDataUrl(diagram)
-          : { handled: false, dataUrl: null };
-        const dataUrl = liveExport.handled ? liveExport.dataUrl : canvas.toDataURL('image/png');
-        if (!dataUrl) throw new Error('ECharts composited export unavailable');
-        const exportContainer = document.createElement('div');
-        exportContainer.className = ECHARTS_EXPORT_CLASS;
-        const img = document.createElement('img');
-        img.src = dataUrl;
-        const chartDescription =
-          diagram?.getAttribute('aria-label')?.trim() ||
-          canvas.getAttribute('aria-label')?.trim() ||
-          diagram?.querySelector<HTMLElement>('[aria-label]')?.getAttribute('aria-label')?.trim();
-        img.alt = chartDescription || 'Chart';
-        const inlineWidth = canvas.style.width.endsWith('px')
-          ? Number.parseFloat(canvas.style.width)
-          : 0;
-        const displayWidth =
-          canvas.getBoundingClientRect().width || canvas.clientWidth || inlineWidth;
-        if (displayWidth > 0) {
-          img.width = Math.round(displayWidth);
-          img.style.maxWidth = '100%';
-          img.style.height = 'auto';
-        }
-        exportContainer.appendChild(img);
-        return { html: exportContainer.outerHTML, text: codeContent.text };
-      } catch {
-        // Tainted/read-only canvas: fall back to the option source below.
-      }
-    }
-
-    return codeContent.text ? codeContent : null;
-  }
-
-  /**
-   * Find top-level Mermaid/WaveDrom/ECharts and ordinary code blocks in DOM order.
-   * Hidden source blocks inside diagram wrappers and nested code-block shells are excluded.
-   */
-  private static findExportCodeBlocks(container: Element): ExportCodeBlock[] {
-    const selector = `${MERMAID_WRAPPER_SELECTOR}, ${WAVEDROM_WRAPPER_SELECTOR}, ${ECHARTS_WRAPPER_SELECTOR}, code-block, .code-block`;
-    const elements = [
-      ...(container.matches(selector) ? [container as HTMLElement] : []),
-      ...Array.from(container.querySelectorAll<HTMLElement>(selector)),
-    ];
-
-    return elements.flatMap((element): ExportCodeBlock[] => {
-      if (element.matches(MERMAID_WRAPPER_SELECTOR)) {
-        return [{ kind: 'mermaid', element }];
-      }
-      if (element.matches(WAVEDROM_WRAPPER_SELECTOR)) {
-        return [{ kind: 'wavedrom', element }];
-      }
-      if (element.matches(ECHARTS_WRAPPER_SELECTOR)) {
-        return [{ kind: 'echarts', element }];
-      }
-      if (
-        element.closest(
-          `${MERMAID_WRAPPER_SELECTOR}, ${WAVEDROM_WRAPPER_SELECTOR}, ${ECHARTS_WRAPPER_SELECTOR}`,
-        )
-      )
-        return [];
-      if (element.parentElement?.closest('code-block, .code-block')) return [];
-      return [{ kind: 'code', element }];
-    });
-  }
-
-  /**
-   * Extract code block content
-   */
   public static extractCodeBlock(
     element: HTMLElement,
     languageOverride?: string,
   ): { html: string; text: string } {
-    const codeElement = element.querySelector('code[role="text"], code');
-    const code = codeElement?.textContent || '';
-
-    // Try to detect language from class or label
-    let language = languageOverride ?? '';
-    const langLabel = languageOverride ? null : element.querySelector('.code-block-decoration');
-    if (langLabel) {
-      language = this.normalizeText(langLabel.textContent || '').toLowerCase();
-    }
-
-    return {
-      html: `<pre><code class="language-${language}">${this.escapeHtml(code)}</code></pre>`,
-      text: `\`\`\`${language}\n${code}\n\`\`\``,
-    };
-  }
-
-  /**
-   * Extract code directly from a <code> element (fallback path)
-   */
-  private static extractCodeFromCodeElement(codeEl: HTMLElement): { html: string; text: string } {
-    const code = codeEl.textContent || '';
-    // Try to infer language from class names like "language-python"
-    let language = '';
-    const className = (codeEl.getAttribute('class') || '').toLowerCase();
-    const langMatch = className.match(/language-([a-z0-9]+)/i);
-    if (langMatch) {
-      language = langMatch[1];
-    } else {
-      // Try to find a nearby header label inside a surrounding code-block component
-      const parentBlock = codeEl.closest('code-block') as HTMLElement | null;
-      if (parentBlock) {
-        const label = parentBlock.querySelector('.code-block-decoration');
-        if (label) {
-          language = this.normalizeText(label.textContent || '').toLowerCase();
-        }
-      }
-    }
-    return {
-      html: `<pre><code class="language-${language}">${this.escapeHtml(code)}</code></pre>`,
-      text: `\`\`\`${language}\n${code}\n\`\`\``,
-    };
+    return extractCodeBlock(element, languageOverride);
   }
 
   /**
@@ -1177,7 +922,7 @@ export class DOMContentExtractor {
 
     // Extract HTML (clean version)
     const cleanTable = table.cloneNode(true) as HTMLElement;
-    this.stripExportArtifacts(cleanTable);
+    stripExportArtifacts(cleanTable);
 
     // Convert to Markdown
     const rowCells: Element[][] = [];
@@ -1322,18 +1067,11 @@ export class DOMContentExtractor {
             return;
           }
 
-          const exportCodeBlocks = this.findExportCodeBlocks(child);
-          const directExportCodeBlock = exportCodeBlocks.find(({ element }) => element === child);
+          const exportCodeBlocks = findExportCodeBlocks(child);
+          const directExportCodeBlock = exportCodeBlocks.find((element) => element === child);
           if (directExportCodeBlock) {
             flushProse();
-            const content =
-              directExportCodeBlock.kind === 'mermaid'
-                ? this.extractMermaidContent(directExportCodeBlock.element)
-                : directExportCodeBlock.kind === 'wavedrom'
-                  ? this.extractWavedromContent(directExportCodeBlock.element)
-                  : directExportCodeBlock.kind === 'echarts'
-                    ? this.extractEchartsContent(directExportCodeBlock.element)
-                    : this.extractCodeBlock(directExportCodeBlock.element);
+            const content = extractExportCodeBlock(directExportCodeBlock);
             if (!content?.text) return;
 
             ensureItemMarker();
@@ -1365,131 +1103,25 @@ export class DOMContentExtractor {
       }
     });
 
-    const liveEchartsWrappers = Array.from(
-      element.querySelectorAll<HTMLElement>(ECHARTS_WRAPPER_SELECTOR),
-    );
-    const cleanList = element.cloneNode(true) as HTMLElement;
-    this.stripExportArtifacts(cleanList);
-    cleanList.querySelectorAll<HTMLElement>(MERMAID_WRAPPER_SELECTOR).forEach((wrapper) => {
-      const content = this.extractMermaidContent(wrapper);
-      if (!content) return;
-
-      const replacement = document.createElement('div');
-      replacement.innerHTML = content.html;
-      if (replacement.firstElementChild) {
-        wrapper.replaceWith(replacement.firstElementChild);
-      }
-    });
-    cleanList.querySelectorAll<HTMLElement>(WAVEDROM_WRAPPER_SELECTOR).forEach((wrapper) => {
-      const content = this.extractWavedromContent(wrapper);
-      if (!content) return;
-
-      const replacement = document.createElement('div');
-      replacement.innerHTML = content.html;
-      if (replacement.firstElementChild) {
-        wrapper.replaceWith(replacement.firstElementChild);
-      }
-    });
-    cleanList.querySelectorAll<HTMLElement>(ECHARTS_WRAPPER_SELECTOR).forEach((wrapper, index) => {
-      const content = this.extractEchartsContent(wrapper, liveEchartsWrappers[index] ?? wrapper);
-      if (!content) return;
-
-      const replacement = document.createElement('div');
-      replacement.innerHTML = content.html;
-      if (replacement.firstElementChild) {
-        wrapper.replaceWith(replacement.firstElementChild);
-      }
-    });
-    cleanList.querySelectorAll<HTMLElement>('code-block, .code-block').forEach((codeBlock) => {
-      if (
-        codeBlock.closest(
-          `${MERMAID_WRAPPER_SELECTOR}, ${WAVEDROM_WRAPPER_SELECTOR}, ${ECHARTS_WRAPPER_SELECTOR}`,
-        )
-      )
-        return;
-      if (codeBlock.parentElement?.closest('code-block, .code-block')) return;
-
-      const content = this.extractCodeBlock(codeBlock);
-      const replacement = document.createElement('div');
-      replacement.innerHTML = content.html;
-      if (replacement.firstElementChild) {
-        codeBlock.replaceWith(replacement.firstElementChild);
-      }
-    });
+    const html = serializeListHtml(element);
 
     return {
       hasFormulas,
       hasCode,
-      html: cleanList.outerHTML,
+      html,
       text: textLines.join('\n'),
     };
   }
 
-  /**
-   * Strip non-content UI artifacts from exported HTML fragments.
-   * Best-effort: safe to call multiple times.
-   */
-  private static stripExportArtifacts(root: HTMLElement): void {
-    const selector = [
-      'style',
-      'script',
-      'noscript',
-      'template',
-      'button',
-      'mat-icon',
-      'model-thoughts',
-      'sources-carousel-inline',
-      'source-inline-chips',
-      'source-inline-chip',
-      'share-button',
-      'copy-button',
-      'download-generated-image-button',
-      '.model-thoughts',
-      '.copy-button',
-      '.action-button',
-      '.table-footer',
-      '.export-sheets-button',
-      '.thoughts-header',
-      '.source-inline-chip-container',
-      '.nanobanana-indicator',
-      '.generated-image-controls',
-      '.hide-from-message-actions',
-    ].join(',');
-
-    root.querySelectorAll(selector).forEach((el) => {
-      // WaveDrom skins live in an embedded SVG stylesheet. List extraction
-      // strips UI artifacts before it replaces the wrapper with the exported
-      // SVG, so preserve that one content-bearing style element.
-      if (el.localName === 'style' && el.closest(WAVEDROM_WRAPPER_SELECTOR)) return;
-      el.remove();
-    });
-  }
-
-  /**
-   * Normalize whitespace in text
-   */
   public static normalizeText(text: string): string {
-    return text.replace(/\s+/g, ' ').trim();
+    return normalizeText(text);
   }
 
-  /**
-   * Escape HTML special characters
-   */
   public static escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return escapeHtml(text);
   }
 
-  /**
-   * Escape HTML for attribute context.
-   */
   public static escapeHtmlAttribute(text: string): string {
-    return String(text)
-      .replace(/&/g, '&amp;')
-      .replace(/"/g, '&quot;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/'/g, '&#39;');
+    return escapeHtmlAttribute(text);
   }
 }
