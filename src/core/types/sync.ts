@@ -47,6 +47,8 @@ export interface SyncState {
   lastSyncTimeAIStudio: number | null;
   /** Timestamp of last successful upload for AI Studio */
   lastUploadTimeAIStudio: number | null;
+  lastSyncTimeChatGPT: number | null;
+  lastUploadTimeChatGPT: number | null;
   /** Whether a sync operation is currently in progress */
   isSyncing: boolean;
   /** Last error message (null if no error) */
@@ -79,6 +81,7 @@ export interface PromptItem {
  * Folder export payload format (matches existing export format)
  */
 export interface FolderExportPayload {
+  platform?: 'chatgpt';
   format: 'gemini-voyager.folders.v1';
   exportedAt: string;
   version: string;
@@ -218,6 +221,8 @@ export const DEFAULT_SYNC_STATE: SyncState = {
   lastUploadTime: null,
   lastSyncTimeAIStudio: null,
   lastUploadTimeAIStudio: null,
+  lastSyncTimeChatGPT: null,
+  lastUploadTimeChatGPT: null,
   isSyncing: false,
   error: null,
   isAuthenticated: false,

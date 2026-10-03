@@ -33,19 +33,24 @@ export function chatgptFolderExportFilename(now: Date = new Date()): string {
  */
 function holdsOnlyChatGptConversations(data: FolderData): boolean {
   return Object.values(data.folderContents).every((bucket) =>
-    bucket.every(
-      (entry) =>
-        typeof entry.url === 'string' &&
-        readChatGptConversation(entry.url)?.conversationId === entry.conversationId,
-    ),
+    bucket.every((entry) => {
+      const identity = typeof entry.url === 'string' ? readChatGptConversation(entry.url) : null;
+      // Imports require the canonical host, even though navigation accepts the legacy redirect.
+      return (
+        identity !== null &&
+        identity.url.startsWith('https://chatgpt.com/') &&
+        identity.conversationId === entry.conversationId
+      );
+    }),
   );
 }
 
-/** Merges a folder file into `current`. Nothing is written here; the caller persists `data`. */
-export async function importChatGptFolders(
+/** Validates a ChatGPT folder file before an import or cloud restore can write it. */
+export function readChatGptFolderExport(
   raw: unknown,
-  current: FolderData,
-): Promise<ChatGptImportOutcome> {
+):
+  | { ok: true; payload: FolderExportPayload }
+  | { ok: false; reason: 'invalid' | 'wrong-site'; message?: string } {
   const platform = raw && typeof raw === 'object' ? (raw as { platform?: unknown }).platform : null;
   if (platform !== undefined && platform !== null && platform !== CHATGPT_EXPORT_PLATFORM) {
     return { ok: false, reason: 'wrong-site' };
@@ -57,9 +62,19 @@ export async function importChatGptFolders(
   if (!holdsOnlyChatGptConversations(validated.data.data)) {
     return { ok: false, reason: 'wrong-site' };
   }
+  return { ok: true, payload: validated.data };
+}
+
+/** Merges a folder file into `current`. Nothing is written here; the caller persists `data`. */
+export async function importChatGptFolders(
+  raw: unknown,
+  current: FolderData,
+): Promise<ChatGptImportOutcome> {
+  const validated = readChatGptFolderExport(raw);
+  if (!validated.ok) return validated;
   // Merge only, and no sessionStorage backup: the repository keeps its own
   // recovery copies, and a merge never removes an existing folder or entry.
-  const imported = await FolderImportExportService.importFromPayload(validated.data, current, {
+  const imported = await FolderImportExportService.importFromPayload(validated.payload, current, {
     strategy: 'merge',
     createBackup: false,
   });

@@ -113,6 +113,8 @@ describe('StorageQuotaService', () => {
       [`${StorageKeys.PROMPT_HISTORY_ITEMS}:u:0:item-id`]: { id: 'item-id' },
       [StorageKeys.FOLDER_DATA]: { folders: [] },
       [`${StorageKeys.FOLDER_DATA}:acct:abc`]: { folders: [] },
+      [StorageKeys.FOLDER_DATA_CHATGPT]: { folders: [] },
+      'gvBackup_chatgpt-folders_primary': 'recovery copy',
       [`${StorageKeys.TIMELINE_HIERARCHY}:acct:def`]: { conversations: {} },
       'gvHighlight:records': [{ id: 'highlight' }],
       'gvAnnotation:index': { count: 1 },
@@ -162,6 +164,8 @@ describe('StorageQuotaService', () => {
     expect(category(snapshot, 'folders').keys).toEqual([
       StorageKeys.FOLDER_DATA,
       `${StorageKeys.FOLDER_DATA}:acct:abc`,
+      StorageKeys.FOLDER_DATA_CHATGPT,
+      'gvBackup_chatgpt-folders_primary',
     ]);
     expect(category(snapshot, 'timeline').keys).toEqual([
       `${StorageKeys.TIMELINE_HIERARCHY}:acct:def`,

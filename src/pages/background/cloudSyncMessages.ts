@@ -1,5 +1,4 @@
 import {
-  type AccountPlatform,
   type AccountScope,
   accountIsolationService,
   buildScopedStorageKey,
@@ -12,7 +11,13 @@ import { exportBackupableSyncSettings } from '@/core/services/SettingsBackupServ
 import { getHighlightAccountHash } from '@/core/services/highlightAnnotationData';
 import { StorageKeys } from '@/core/types/common';
 import type { FolderData } from '@/core/types/folder';
-import type { PromptItem, SyncAccountScope, SyncMode, SyncProvider } from '@/core/types/sync';
+import type {
+  PromptItem,
+  SyncAccountScope,
+  SyncMode,
+  SyncPlatform,
+  SyncProvider,
+} from '@/core/types/sync';
 import { getPromptNameConflictIds } from '@/core/utils/promptName';
 import { FOLDER_PLATFORMS } from '@/features/folder/platforms';
 import { loadPluginState } from '@/features/plugins/storage/pluginState';
@@ -55,9 +60,10 @@ function toSyncAccountScope(scope: AccountScope): SyncAccountScope {
 
 async function resolveAccountScopeForMessage(
   sender: chrome.runtime.MessageSender,
-  platform: AccountPlatform,
+  platform: SyncPlatform,
   explicitScope?: SyncAccountScope,
 ): Promise<SyncAccountScope | null> {
+  if (platform === 'chatgpt') return null;
   const enabled = await accountIsolationService.isIsolationEnabled({
     platform,
     pageUrl: sender.tab?.url ?? null,
@@ -115,19 +121,23 @@ function isPromptItemArray(value: unknown): value is PromptItem[] {
 }
 
 async function loadAuthoritativeSyncPayload(
-  platform: AccountPlatform,
+  platform: SyncPlatform,
   accountScope: SyncAccountScope | null,
 ): Promise<{ folders: FolderData; prompts: PromptItem[] }> {
   const baseFolderStorageKey = FOLDER_PLATFORMS[platform].folderStorageKey;
   const folderStorageKey = accountScope
     ? buildScopedStorageKey(baseFolderStorageKey, accountScope.accountKey)
     : baseFolderStorageKey;
-  const stored = await chrome.storage.local.get([folderStorageKey, StorageKeys.PROMPT_ITEMS]);
+  const stored = await chrome.storage.local.get([
+    folderStorageKey,
+    ...(platform === 'chatgpt' ? [] : [StorageKeys.PROMPT_ITEMS]),
+  ]);
   const folders = parseStoredFolderData(stored[folderStorageKey]);
   if (!folders) {
     throw new Error('Local folder data is unavailable or invalid');
   }
 
+  if (platform === 'chatgpt') return { folders, prompts: [] };
   const rawPrompts = stored[StorageKeys.PROMPT_ITEMS];
   if (rawPrompts !== undefined && !isPromptItemArray(rawPrompts)) {
     throw new Error('Local prompt data is invalid');
@@ -242,10 +252,9 @@ export function createCloudSyncMessageHandler(readers: {
         if (!platform || !isTrustedSyncMessageSender(sender, platform)) {
           return { ok: false, error: 'untrusted_sender' };
         }
-        const syncHighlights = await isHighlightCloudSyncRequested(
-          platform,
-          includeHighlights === true,
-        );
+        const syncHighlights =
+          platform !== 'chatgpt' &&
+          (await isHighlightCloudSyncRequested(platform, includeHighlights === true));
         const accountScope = await resolveAccountScopeForMessage(
           sender,
           platform,
@@ -293,8 +302,9 @@ export function createCloudSyncMessageHandler(readers: {
                 timelineHierarchyAccountScope.routeUserId,
               )
             : timelineHierarchyDataRaw;
-        const settingsPayload = await exportBackupableSyncSettings();
-        const pluginState = await loadPluginState();
+        const settingsPayload =
+          platform === 'chatgpt' ? null : await exportBackupableSyncSettings();
+        const pluginState = platform === 'chatgpt' ? null : await loadPluginState();
         const success = await googleDriveSyncService.upload(
           folders,
           prompts,
@@ -305,7 +315,7 @@ export function createCloudSyncMessageHandler(readers: {
           timelineHierarchyData,
           accountScope,
           timelineHierarchyAccountScope,
-          settingsPayload.data,
+          settingsPayload?.data ?? null,
           pluginState,
         );
         if (success && shouldSyncHighlights && highlightAccountScope) {
@@ -343,10 +353,9 @@ export function createCloudSyncMessageHandler(readers: {
         if (!platform || !canSenderPageUseSyncPlatform(getSenderPageUrl(sender), platform)) {
           return { ok: false, error: 'unsupported_sync_platform' };
         }
-        const syncHighlights = await isHighlightCloudSyncRequested(
-          platform,
-          payload?.includeHighlights === true,
-        );
+        const syncHighlights =
+          platform !== 'chatgpt' &&
+          (await isHighlightCloudSyncRequested(platform, payload?.includeHighlights === true));
         const rawScope = payload?.accountScope;
         const rawTimelineHierarchyScope = payload?.timelineHierarchyAccountScope;
         const rawHighlightScope = payload?.highlightAccountScope;

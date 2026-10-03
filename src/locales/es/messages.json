@@ -1342,6 +1342,18 @@
     "message": "Sincronización en Nube",
     "description": "Cloud sync section title"
   },
+  "platformChatGPT": {
+    "message": "ChatGPT",
+    "description": "ChatGPT platform label"
+  },
+  "cloudSyncFoldersDescription": {
+    "message": "Sincroniza carpetas con Google Drive",
+    "description": "ChatGPT folders-only Google Drive sync description"
+  },
+  "cloudSyncFoldersDescriptionICloud": {
+    "message": "Sincroniza carpetas con tu almacenamiento privado de iCloud",
+    "description": "ChatGPT folders-only iCloud sync description"
+  },
   "cloudSyncDescription": {
     "message": "Sincronizar carpetas y prompts con Google Drive",
     "description": "Cloud sync description"

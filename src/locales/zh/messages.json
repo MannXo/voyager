@@ -1334,6 +1334,18 @@
     "message": "云同步",
     "description": "云同步区域标题"
   },
+  "platformChatGPT": {
+    "message": "ChatGPT",
+    "description": "ChatGPT platform label"
+  },
+  "cloudSyncFoldersDescription": {
+    "message": "将文件夹同步到 Google Drive",
+    "description": "ChatGPT folders-only Google Drive sync description"
+  },
+  "cloudSyncFoldersDescriptionICloud": {
+    "message": "通过你的私人 iCloud 存储同步文件夹",
+    "description": "ChatGPT folders-only iCloud sync description"
+  },
   "cloudSyncDescription": {
     "message": "将文件夹和提示词同步到 Google Drive",
     "description": "云同步描述"

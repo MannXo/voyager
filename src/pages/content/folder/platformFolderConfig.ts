@@ -1,4 +1,4 @@
-import type { AccountScope } from '@/core/services/AccountIsolationService';
+import type { AccountPlatform, AccountScope } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 import { AISTUDIO_ROOT_BUCKET_ID, ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import {
@@ -7,7 +7,7 @@ import {
   ownBucket,
   setBucket,
 } from '@/features/folder/model/folderData';
-import { FOLDER_PLATFORMS, type FolderPlatform } from '@/features/folder/platforms';
+import { FOLDER_PLATFORMS } from '@/features/folder/platforms';
 
 import type { ConversationReference, FolderData } from './types';
 
@@ -21,7 +21,7 @@ export interface PlatformFolderConfig {
    * isolation switch (ChatGPT): isolation stays off and nothing falls back to the
    * legacy global switch, so the bucket never becomes account-scoped.
    */
-  platform: FolderPlatform | null;
+  platform: AccountPlatform | null;
   /** `chrome.storage.local` base key; account isolation appends `:acct:<hash>`. */
   storageKey: string;
   /** DataBackupService namespace for the `gvBackup_<namespace>_*` recovery slots. */

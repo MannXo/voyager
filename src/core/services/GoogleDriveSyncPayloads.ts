@@ -111,10 +111,14 @@ export class GoogleDriveSyncPayloads {
 
     // Upload folders file (platform-specific)
     const { driveFoldersFileName } = FOLDER_PLATFORMS[platform];
-    const foldersFileName = this.getFileNameForScope(driveFoldersFileName, accountScope);
+    const foldersFileName = this.getFileNameForScope(
+      driveFoldersFileName,
+      platform === 'chatgpt' ? null : accountScope,
+    );
     const foldersFileIdToUse = await this.files.ensure(token, foldersFileName);
     await this.files.upload(token, foldersFileIdToUse, folderPayload);
     logger.info(`[GoogleDriveSyncService] ${platform} folders uploaded successfully`);
+    if (platform === 'chatgpt') return 1;
 
     // Upload prompts file (shared between Gemini and AI Studio)
     if (prompts.length > 0) {
@@ -171,9 +175,22 @@ export class GoogleDriveSyncPayloads {
     const folders = await this.readFile<FolderExportPayload>(
       token,
       FOLDER_PLATFORMS[platform].driveFoldersFileName,
-      accountScope,
+      platform === 'chatgpt' ? null : accountScope,
       `[GoogleDriveSyncService] ${platform} folders downloaded`,
     );
+    if (platform === 'chatgpt') {
+      return folders
+        ? {
+            folders,
+            prompts: null,
+            settings: null,
+            plugins: null,
+            starred: null,
+            forks: null,
+            timelineHierarchy: null,
+          }
+        : null;
+    }
     const prompts = await this.readFile<PromptExportPayload>(
       token,
       PROMPTS_FILE_NAME,
@@ -280,6 +297,7 @@ export class GoogleDriveSyncPayloads {
       exportedAt: now.toISOString(),
       version: EXTENSION_VERSION,
       data: snapshot.folders,
+      ...(snapshot.platform === 'chatgpt' ? { platform: 'chatgpt' as const } : {}),
     };
 
     const promptPayload: PromptExportPayload = {

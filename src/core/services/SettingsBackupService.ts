@@ -178,9 +178,8 @@ export const NON_SETTINGS_BACKUP_POLICIES = {
   },
   [StorageKeys.FOLDER_DATA_CHATGPT]: {
     storage: 'local',
-    disposition: 'local-data',
-    reason:
-      'ChatGPT folder content stays on this device until Drive sync supports ChatGPT; the user exports it from the folder panel.',
+    disposition: 'separate-file',
+    reason: 'ChatGPT folder content has its own unscoped Drive file.',
   },
   [StorageKeys.CHATGPT_FOLDER_PANEL]: {
     storage: 'local',

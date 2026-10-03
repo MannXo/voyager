@@ -107,6 +107,14 @@ describe('ChatGPT folder transfer', () => {
     expect(await importChatGptFolders(payload, EMPTY)).toEqual({ ok: false, reason: 'wrong-site' });
   });
 
+  it('rejects the legacy redirect host instead of importing it as chatgpt.com', async () => {
+    const payload = exportChatGptFolders({
+      folders: [folder('f1', 'Work')],
+      folderContents: { f1: [{ ...ref(A), url: `https://chat.openai.com/c/${A}` }] },
+    });
+    expect(await importChatGptFolders(payload, EMPTY)).toEqual({ ok: false, reason: 'wrong-site' });
+  });
+
   it('rejects an entry whose id is not the one its url names', async () => {
     const payload = exportChatGptFolders({
       folders: [folder('f1', 'Work')],

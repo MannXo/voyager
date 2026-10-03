@@ -1342,6 +1342,18 @@
     "message": "クラウド同期",
     "description": "Cloud sync section title"
   },
+  "platformChatGPT": {
+    "message": "ChatGPT",
+    "description": "ChatGPT platform label"
+  },
+  "cloudSyncFoldersDescription": {
+    "message": "フォルダを Google Drive に同期",
+    "description": "ChatGPT folders-only Google Drive sync description"
+  },
+  "cloudSyncFoldersDescriptionICloud": {
+    "message": "プライベートな iCloud ストレージでフォルダを同期",
+    "description": "ChatGPT folders-only iCloud sync description"
+  },
   "cloudSyncDescription": {
     "message": "フォルダとプロンプトを Google ドライブに同期します",
     "description": "Cloud sync description"

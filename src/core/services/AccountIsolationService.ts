@@ -47,7 +47,7 @@ export interface AccountContext {
 }
 
 /** Platforms with their own folder bucket and account isolation switch. */
-export type AccountPlatform = FolderPlatform;
+export type AccountPlatform = Exclude<FolderPlatform, 'chatgpt'>;
 
 interface AccountScopeResolveResponse {
   ok: true;
@@ -78,7 +78,7 @@ function isGeminiHost(hostname: string | null): boolean {
  * Resolve the folder/account platform that owns a page.
  *
  * Returns `null` for any other web page (ChatGPT, Claude, DeepSeek, custom websites): those sites
- * have no folder bucket, so callers must not read, write, back up or sync folder data for them.
+ * have no account-isolated bucket. ChatGPT folders remain unscoped until isolation is supported.
  * Without a web page (missing URL, new tab, extension pages) the historical Gemini default stays,
  * matching the popup's full Gemini settings surface on those tabs.
  */
@@ -87,7 +87,8 @@ export function detectAccountPlatformFromUrl(
 ): AccountPlatform | null {
   const parsed = parseUrl(pageUrl || '');
   if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) return 'gemini';
-  return getFolderPlatformForHost(parsed.hostname);
+  const platform = getFolderPlatformForHost(parsed.hostname);
+  return platform === 'chatgpt' ? null : platform;
 }
 
 export function getAccountIsolationStorageKey(platform: AccountPlatform): string {

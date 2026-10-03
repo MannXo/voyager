@@ -397,6 +397,8 @@ export class GoogleDriveSyncService {
         'gvLastUploadTime',
         'gvLastSyncTimeAIStudio',
         'gvLastUploadTimeAIStudio',
+        'gvLastSyncTimeChatGPT',
+        'gvLastUploadTimeChatGPT',
         'gvSyncError',
       ]);
       this.state = {
@@ -407,6 +409,8 @@ export class GoogleDriveSyncService {
         lastUploadTime: getNumberValue(result.gvLastUploadTime),
         lastSyncTimeAIStudio: getNumberValue(result.gvLastSyncTimeAIStudio),
         lastUploadTimeAIStudio: getNumberValue(result.gvLastUploadTimeAIStudio),
+        lastSyncTimeChatGPT: getNumberValue(result.gvLastSyncTimeChatGPT),
+        lastUploadTimeChatGPT: getNumberValue(result.gvLastUploadTimeChatGPT),
         error: getStringValue(result.gvSyncError),
         isSyncing: false,
         isAuthenticated: false,
@@ -429,6 +433,8 @@ export class GoogleDriveSyncService {
         gvLastUploadTime: this.state.lastUploadTime,
         gvLastSyncTimeAIStudio: this.state.lastSyncTimeAIStudio,
         gvLastUploadTimeAIStudio: this.state.lastUploadTimeAIStudio,
+        gvLastSyncTimeChatGPT: this.state.lastSyncTimeChatGPT,
+        gvLastUploadTimeChatGPT: this.state.lastUploadTimeChatGPT,
         gvSyncError: this.state.error,
       });
     } catch (error) {

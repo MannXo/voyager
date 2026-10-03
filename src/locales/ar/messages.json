@@ -1342,6 +1342,18 @@
     "message": "مزامنة سحابية",
     "description": "Cloud sync section title"
   },
+  "platformChatGPT": {
+    "message": "ChatGPT",
+    "description": "ChatGPT platform label"
+  },
+  "cloudSyncFoldersDescription": {
+    "message": "مزامنة المجلدات مع Google Drive",
+    "description": "ChatGPT folders-only Google Drive sync description"
+  },
+  "cloudSyncFoldersDescriptionICloud": {
+    "message": "مزامنة المجلدات باستخدام مساحة تخزين iCloud الخاصة بك",
+    "description": "ChatGPT folders-only iCloud sync description"
+  },
   "cloudSyncDescription": {
     "message": "مزامنة المجلدات والمطالبات مع Google Drive",
     "description": "Cloud sync description"

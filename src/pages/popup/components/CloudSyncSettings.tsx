@@ -1,12 +1,14 @@
 import React from 'react';
 
 import type { SyncPlatform } from '@/core/types/sync';
+import type { TranslationKey } from '@/utils/translations';
 
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent, CardTitle } from '../../../components/ui/card';
 import { Label } from '../../../components/ui/label';
 import { Switch } from '../../../components/ui/switch';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { IconChatGPT } from './WebsiteLogos';
 import { useCloudSyncSettings } from './useCloudSyncSettings';
 
 /**
@@ -17,14 +19,15 @@ interface CloudSyncSettingsProps {
   sourceTabId?: number;
 }
 
-const PLATFORM_LOGO_URLS: Record<SyncPlatform, string> = {
+const PLATFORM_LOGO_URLS: Record<Exclude<SyncPlatform, 'chatgpt'>, string> = {
   gemini: 'https://www.gstatic.com/lamda/images/gemini_sparkle_4g_512_lt_f94943af3be039176192d.png',
   aistudio:
     'https://www.gstatic.com/images/branding/productlogos/ai_studio/v1/web-512dp/logo_ai_studio_color_1x_web_512dp.png',
 };
-const PLATFORM_LABEL_KEYS: Record<SyncPlatform, 'platformGemini' | 'platformAIStudio'> = {
+const PLATFORM_LABEL_KEYS: Record<SyncPlatform, TranslationKey> = {
   gemini: 'platformGemini',
   aistudio: 'platformAIStudio',
+  chatgpt: 'platformChatGPT',
 };
 
 export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) {
@@ -59,7 +62,13 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
         {/* Description */}
         <p className="text-muted-foreground text-xs">
           {t(
-            syncState.provider === 'icloud' ? 'cloudSyncDescriptionICloud' : 'cloudSyncDescription',
+            platform === 'chatgpt'
+              ? syncState.provider === 'icloud'
+                ? 'cloudSyncFoldersDescriptionICloud'
+                : 'cloudSyncFoldersDescription'
+              : syncState.provider === 'icloud'
+                ? 'cloudSyncDescriptionICloud'
+                : 'cloudSyncDescription',
           )}
         </p>
 
@@ -321,12 +330,18 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
                 className="pointer-events-none absolute inset-y-0 end-0 flex w-20 items-center justify-center overflow-hidden"
               >
                 <div className="bg-primary/10 absolute inset-3 rounded-full blur-xl" />
-                <img
-                  src={PLATFORM_LOGO_URLS[platform]}
-                  alt=""
-                  draggable={false}
-                  className="size-16 object-contain opacity-[0.13] saturate-75 select-none dark:opacity-[0.2] dark:saturate-100"
-                />
+                {platform === 'chatgpt' ? (
+                  <div className="size-16 opacity-[0.13] dark:opacity-[0.2]">
+                    <IconChatGPT />
+                  </div>
+                ) : (
+                  <img
+                    src={PLATFORM_LOGO_URLS[platform]}
+                    alt=""
+                    draggable={false}
+                    className="size-16 object-contain opacity-[0.13] saturate-75 select-none dark:opacity-[0.2] dark:saturate-100"
+                  />
+                )}
               </div>
             </div>
 

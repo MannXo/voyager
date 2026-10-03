@@ -71,7 +71,10 @@ export function useFolderPopupSettings({
     };
     setAccountIsolationByPlatform(
       Object.fromEntries(
-        FOLDER_PLATFORM_IDS.map((platform) => [platform, resolveIsolation(platform)]),
+        FOLDER_PLATFORM_IDS.filter((platform) => platform !== 'chatgpt').map((platform) => [
+          platform,
+          resolveIsolation(platform),
+        ]),
       ) as Record<AccountPlatform, boolean>,
     );
   }, []);

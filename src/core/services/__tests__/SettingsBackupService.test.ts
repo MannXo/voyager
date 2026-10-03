@@ -41,6 +41,32 @@ describe('SettingsBackupService', () => {
     );
   });
 
+  it('keeps ChatGPT folder content in its local separate file and outside settings restore', async () => {
+    const folderData = { folders: [], folderContents: {} };
+    const settingsStorage = {
+      get: vi.fn().mockResolvedValue({
+        ...BACKUPABLE_SYNC_SETTINGS_DEFAULTS,
+        [StorageKeys.FOLDER_DATA_CHATGPT]: folderData,
+      }),
+      set: vi.fn().mockResolvedValue(undefined),
+    };
+    const exported = await exportBackupableSyncSettings(settingsStorage);
+    expect(exported.data).not.toHaveProperty(StorageKeys.FOLDER_DATA_CHATGPT);
+    expect(NON_SETTINGS_BACKUP_POLICIES[StorageKeys.FOLDER_DATA_CHATGPT]).toMatchObject({
+      storage: 'local',
+      disposition: 'separate-file',
+    });
+    await expect(
+      restoreBackupableSyncSettings(
+        {
+          [StorageKeys.FOLDER_DATA_CHATGPT]: folderData,
+        },
+        settingsStorage,
+      ),
+    ).resolves.toEqual({});
+    expect(settingsStorage.set).not.toHaveBeenCalled();
+  });
+
   it('keeps popup scroll position device-local and outside settings backup', () => {
     const popupScrollKey = 'gvPopupScrollTop';
 

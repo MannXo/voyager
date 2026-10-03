@@ -32,7 +32,7 @@ export function isAllowedSyncContentSender(
 ): boolean {
   const parsed = parseHttpsUrl(senderPageUrl);
   if (!parsed) return false;
-  return FOLDER_PLATFORMS[platform].hosts.includes(parsed.hostname);
+  return FOLDER_PLATFORMS[platform].hosts.some((host) => host === parsed.hostname);
 }
 
 export function isTrustedExtensionPageSender(sender: chrome.runtime.MessageSender): boolean {

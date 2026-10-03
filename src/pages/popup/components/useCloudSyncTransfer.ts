@@ -16,6 +16,7 @@ import type {
 } from '@/core/types/sync';
 import { getPromptNameConflictIds } from '@/core/utils/promptName';
 import { FOLDER_PLATFORMS } from '@/features/folder/platforms';
+import { readChatGptFolderExport } from '@/features/plugins/builtin/chatgptFolders/transfer';
 import {
   getTimelineHierarchyStorageKey,
   getTimelineHierarchyStorageKeysToRead,
@@ -30,7 +31,7 @@ import {
   mergeStarredMessages,
   mergeTimelineHierarchy,
 } from '../../../utils/merge';
-import { applyCloudRestore, type CloudRestoreMode } from './cloudRestore';
+import { applyCloudRestore, CloudRestoreError, type CloudRestoreMode } from './cloudRestore';
 
 function isFolderData(value: unknown): value is FolderData {
   if (typeof value !== 'object' || value === null) return false;
@@ -134,6 +135,7 @@ async function resolvePageScope(
   respectIsolationSetting: boolean,
   getTargetTab: TargetTab,
 ): Promise<SyncAccountScope | null> {
+  if (platform === 'chatgpt') return null;
   if (respectIsolationSetting) {
     const isolationEnabled = await accountIsolationService.isIsolationEnabled({ platform });
     if (!isolationEnabled) return null;
@@ -232,7 +234,7 @@ async function readLocalSyncData(
     } | null>(getTargetTab, 'gv.sync.requestData', purpose === 'upload' ? 500 : 2000);
     if (response?.ok && response.data) {
       folders = response.data;
-      if (response.accountScope) {
+      if (platform !== 'chatgpt' && response.accountScope) {
         accountScope = response.accountScope;
         folderStorageKey = buildScopedStorageKey(
           FOLDER_PLATFORMS[platform].folderStorageKey,
@@ -247,8 +249,8 @@ async function readLocalSyncData(
   try {
     const storageResult = await chrome.storage.local.get([
       folderStorageKey,
-      StorageKeys.PROMPT_ITEMS,
-      ...(purpose === 'restore'
+      ...(platform === 'chatgpt' ? [] : [StorageKeys.PROMPT_ITEMS]),
+      ...(platform !== 'chatgpt' && purpose === 'restore'
         ? getTimelineHierarchyStorageKeysToRead(timelineHierarchyAccountScope?.accountKey)
         : []),
     ]);
@@ -280,15 +282,32 @@ async function restoreCloudDownload(
   highlightsRestored: boolean,
 ): Promise<{ foldersMissing: boolean; nameConflicts: number }> {
   const local = await readLocalSyncData(context, getTargetTab, 'restore');
-  const rawFolders = data.folders?.data;
+  let rawFolders = data.folders?.data;
+  if (context.payload.platform === 'chatgpt' && data.folders) {
+    const validated = readChatGptFolderExport(data.folders);
+    if (!validated.ok) {
+      throw new CloudRestoreError(
+        [],
+        ['folders'],
+        new Error('Invalid ChatGPT folder backup'),
+        validated.reason === 'wrong-site'
+          ? 'folder_import_wrong_site'
+          : 'folder_import_invalid_format',
+      );
+    }
+    rawFolders = validated.payload.data;
+  }
   const hasCloudFolderData = isFolderData(rawFolders);
-  const cloudFolders = hasCloudFolderData ? rawFolders : { folders: [], folderContents: {} };
-  const cloudPrompts = data.prompts?.items || [];
+  const cloudFolders = isFolderData(rawFolders) ? rawFolders : { folders: [], folderContents: {} };
+  const cloudPrompts = context.payload.platform === 'chatgpt' ? [] : data.prompts?.items || [];
   const cloudStarred = data.starred?.data || { messages: {} };
   const cloudHierarchy = data.timelineHierarchy?.data || { conversations: {} };
   let localStarred: StarredMessagesData = { messages: {} };
   try {
-    const starredResult = await chrome.storage.local.get(['geminiTimelineStarredMessages']);
+    const starredResult =
+      context.payload.platform !== 'chatgpt'
+        ? await chrome.storage.local.get(['geminiTimelineStarredMessages'])
+        : {};
     if (isStarredMessagesData(starredResult.geminiTimelineStarredMessages)) {
       localStarred = starredResult.geminiTimelineStarredMessages;
     }
@@ -316,8 +335,11 @@ async function restoreCloudDownload(
   await applyCloudRestore({
     mode,
     highlightsRestored,
-    plugins: data.plugins?.format === 'gemini-voyager.plugins.v1' ? data.plugins.data : undefined,
-    settings: data.settings?.data,
+    plugins:
+      context.payload.platform !== 'chatgpt' && data.plugins?.format === 'gemini-voyager.plugins.v1'
+        ? data.plugins.data
+        : undefined,
+    settings: context.payload.platform === 'chatgpt' ? undefined : data.settings?.data,
     storageUpdate,
     includesPrompts: context.payload.platform === 'gemini',
     foldersMissing: !hasCloudFolderData,

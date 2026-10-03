@@ -31,8 +31,17 @@ describe('folder platform map', () => {
         lastUploadTimeField: 'lastUploadTimeAIStudio',
         lastSyncTimeField: 'lastSyncTimeAIStudio',
       },
+      chatgpt: {
+        hosts: ['chatgpt.com'],
+        folderStorageKey: 'gvFolderDataChatGPT',
+        accountIsolationStorageKey: null,
+        driveFoldersFileName: 'gemini-voyager-chatgpt-folders.json',
+        driveFoldersFileType: 'chatgpt-folders',
+        lastUploadTimeField: 'lastUploadTimeChatGPT',
+        lastSyncTimeField: 'lastSyncTimeChatGPT',
+      },
     } satisfies Record<FolderPlatform, FolderPlatformDefinition>);
-    expect(FOLDER_PLATFORM_IDS).toEqual(['gemini', 'aistudio']);
+    expect(FOLDER_PLATFORM_IDS).toEqual(['gemini', 'aistudio', 'chatgpt']);
   });
 
   it('never lets two platforms share a host, bucket, Drive file or sync timestamp', () => {
@@ -56,7 +65,8 @@ describe('folder platform map', () => {
     expect(getFolderPlatformForHost('gemini.google.com')).toBe('gemini');
     expect(getFolderPlatformForHost('BUSINESS.GEMINI.GOOGLE')).toBe('gemini');
     expect(getFolderPlatformForHost('aistudio.google.cn')).toBe('aistudio');
-    for (const host of ['chatgpt.com', 'claude.ai', 'chat.deepseek.com', 'google.com', '']) {
+    expect(getFolderPlatformForHost('chatgpt.com')).toBe('chatgpt');
+    for (const host of ['claude.ai', 'chat.deepseek.com', 'google.com', '']) {
       expect(getFolderPlatformForHost(host), host).toBeNull();
     }
     expect(getFolderPlatformForHost(null)).toBeNull();
@@ -65,7 +75,7 @@ describe('folder platform map', () => {
   it('accepts only known platform identifiers', () => {
     expect(isFolderPlatform('gemini')).toBe(true);
     expect(isFolderPlatform('aistudio')).toBe(true);
-    expect(isFolderPlatform('chatgpt')).toBe(false);
+    expect(isFolderPlatform('chatgpt')).toBe(true);
     expect(isFolderPlatform('toString')).toBe(false);
     expect(isFolderPlatform(undefined)).toBe(false);
   });

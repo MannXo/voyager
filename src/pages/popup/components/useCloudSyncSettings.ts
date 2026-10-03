@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { detectAccountPlatformFromUrl } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 import type { SyncMode, SyncPlatform, SyncProvider, SyncState } from '@/core/types/sync';
 import { DEFAULT_SYNC_STATE } from '@/core/types/sync';
 import { getVoyagerBuildTarget, isSafari } from '@/core/utils/browser';
 import { deleteSafariICloudBackup } from '@/core/utils/safariICloudSync';
-import { FOLDER_PLATFORMS } from '@/features/folder/platforms';
+import { FOLDER_PLATFORMS, getFolderPlatformForHost } from '@/features/folder/platforms';
 import type { TranslationKey } from '@/utils/translations';
 
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -54,7 +53,7 @@ export function useCloudSyncSettings(sourceTabId?: number) {
   const [isDeletingICloudBackup, setIsDeletingICloudBackup] = useState(false);
   const [downloadMode, setDownloadMode] = useState<CloudRestoreMode | null>(null);
   const [platform, setPlatform] = useState<SyncPlatform>('gemini');
-  // False on tabs without a folder bucket (ChatGPT, Claude, …): render nothing, sync nothing.
+  // Tabs without a folder bucket render no sync controls.
   const [hasFolderPlatform, setHasFolderPlatform] = useState(true);
   const [highlightSyncEnabled, setHighlightSyncEnabled] = useState(true);
 
@@ -79,7 +78,10 @@ export function useCloudSyncSettings(sourceTabId?: number) {
   const detectPlatform = useCallback(async (): Promise<SyncPlatform | null> => {
     try {
       const tab = await getTargetTab();
-      return detectAccountPlatformFromUrl(tab?.url ?? null);
+      if (!tab?.url) return 'gemini';
+      const url = new URL(tab.url);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return 'gemini';
+      return getFolderPlatformForHost(url.hostname);
     } catch (e) {
       console.warn('[CloudSyncSettings] Failed to detect platform:', e);
     }

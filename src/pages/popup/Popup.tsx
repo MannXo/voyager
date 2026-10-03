@@ -249,7 +249,9 @@ export default function Popup({ sourceTabId }: PopupProps = {}) {
           </Card>
         )}
         {/* Cloud Sync */}
-        {wrapSection('cloudSync', <CloudSyncSettings sourceTabId={sourceTabId} />)}
+        {wrapSection('cloudSync', <CloudSyncSettings sourceTabId={sourceTabId} />, {
+          allowPluginSite: activeSiteDomain === 'chatgpt.com',
+        })}
         {isPluginSite && (
           <PluginSiteSettings
             siteDomain={activeSiteDomain}

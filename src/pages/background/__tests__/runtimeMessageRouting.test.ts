@@ -99,6 +99,9 @@ describe('background runtime message routing', () => {
     expect(isAllowedSyncContentSender('https://business.gemini.google/app', 'gemini')).toBe(true);
     expect(isAllowedSyncContentSender('https://aistudio.google.com/app', 'aistudio')).toBe(true);
     expect(isAllowedSyncContentSender('https://aistudio.google.cn/app', 'aistudio')).toBe(true);
+    expect(isAllowedSyncContentSender('https://chatgpt.com/c/1', 'chatgpt')).toBe(true);
+    expect(isAllowedSyncContentSender('https://gemini.google.com/app', 'chatgpt')).toBe(false);
+    expect(isAllowedSyncContentSender('https://chatgpt.com.evil.test/c/1', 'chatgpt')).toBe(false);
 
     expect(isAllowedSyncContentSender('https://example.com/app', 'gemini')).toBe(false);
     expect(isAllowedSyncContentSender('https://gemini.google.com/app', 'aistudio')).toBe(false);
@@ -111,7 +114,7 @@ describe('background runtime message routing', () => {
     expect(parseSyncPlatform(undefined)).toBe('gemini');
     expect(parseSyncPlatform('gemini')).toBe('gemini');
     expect(parseSyncPlatform('aistudio')).toBe('aistudio');
-    expect(parseSyncPlatform('chatgpt')).toBeNull();
+    expect(parseSyncPlatform('chatgpt')).toBe('chatgpt');
     expect(parseSyncPlatform('__proto__')).toBeNull();
     expect(parseSyncPlatform({ platform: 'gemini' })).toBeNull();
   });
@@ -136,6 +139,11 @@ describe('background runtime message routing', () => {
     };
     expect(isTrustedSyncMessageSender(popup, 'gemini')).toBe(true);
     expect(isTrustedSyncMessageSender(popup, 'aistudio')).toBe(true);
+    expect(isTrustedSyncMessageSender(popup, 'chatgpt')).toBe(true);
+    expect(isTrustedSyncMessageSender(contentSender('https://chatgpt.com/c/1'), 'chatgpt')).toBe(
+      true,
+    );
+    expect(canSenderPageUseSyncPlatform('https://chatgpt.com/c/1', 'chatgpt')).toBe(true);
     expect(
       isTrustedSyncMessageSender(contentSender('https://gemini.google.com/app'), 'gemini'),
     ).toBe(true);
