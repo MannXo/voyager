@@ -316,4 +316,41 @@ describe('Popup settings integration', () => {
     );
     expect(bulkReads).toHaveLength(1);
   });
+
+  it('keeps ChatGPT Cloud Sync visible when a remembered native search has no clear control', async () => {
+    local[StorageKeys.GV_POPUP_SETTINGS_SEARCH_QUERY] = 'Mermaid';
+    await mount();
+    expect(container.querySelector<HTMLInputElement>('input[type="search"]')!.value).toBe(
+      'Mermaid',
+    );
+    expect(container.querySelector('#mermaid-enabled')).not.toBeNull();
+    expect(container.textContent).not.toContain(TRANSLATIONS.en.cloudSync);
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    extensionApi.tabs.query.mockResolvedValue([{ id: 10, url: 'https://chatgpt.com/c/abc' }]);
+    await mount();
+    expect(container.querySelector('input[type="search"]')).toBeNull();
+    expect(
+      container.querySelector(`button[aria-label="${TRANSLATIONS.en.popupSettingsSearchClear}"]`),
+    ).toBeNull();
+    expect(container.querySelector('#prompt-manager-site-enabled')).not.toBeNull();
+    expect(container.textContent).toContain(TRANSLATIONS.en.cloudSync);
+    expect(container.querySelector('#mermaid-enabled')).toBeNull();
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    extensionApi.tabs.query.mockResolvedValue([{ id: 7, url: 'https://gemini.google.com/app' }]);
+    await mount();
+    expect(container.querySelector<HTMLInputElement>('input[type="search"]')!.value).toBe(
+      'Mermaid',
+    );
+    expect(container.textContent).not.toContain(TRANSLATIONS.en.cloudSync);
+    const clear = container.querySelector<HTMLButtonElement>(
+      `button[aria-label="${TRANSLATIONS.en.popupSettingsSearchClear}"]`,
+    )!;
+    await act(async () => clear.click());
+    expect(container.textContent).toContain(TRANSLATIONS.en.cloudSync);
+    expect(local[StorageKeys.GV_POPUP_SETTINGS_SEARCH_QUERY]).toBe('');
+  });
 });

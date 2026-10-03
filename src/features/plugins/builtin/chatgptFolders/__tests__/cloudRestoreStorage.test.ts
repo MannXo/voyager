@@ -1,4 +1,4 @@
-import { act, createElement } from 'react';
+import { act, createElement, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -184,15 +184,15 @@ describe('ChatGPT popup restore and the open folder store', () => {
   it.each([
     {
       symptom: 'rename',
-      edit: { kind: 'renameFolder', folderId: 'folder', name: 'Unsaved name' },
+      edit: { kind: 'renameFolder' as const, folderId: 'folder', name: 'Unsaved name' },
       localNames: ['Unsaved name'],
     },
     {
       symptom: 'last-folder removal',
-      edit: { kind: 'removeFolder', folderId: 'folder' },
+      edit: { kind: 'removeFolder' as const, folderId: 'folder' },
       localNames: [],
     },
-  ] as const)(
+  ])(
     'a cloud merge preserves an unsaved $symptom after its local save fails',
     async ({ edit, localNames }) => {
       type Receiver = Parameters<typeof chrome.runtime.onMessage.addListener>[0];
@@ -224,7 +224,7 @@ describe('ChatGPT popup restore and the open folder store', () => {
 
       let transfer!: ReturnType<typeof useCloudSyncTransfer>;
       function TransferHarness() {
-        transfer = useCloudSyncTransfer(
+        const current = useCloudSyncTransfer(
           'chatgpt',
           false,
           async () =>
@@ -233,6 +233,9 @@ describe('ChatGPT popup restore and the open folder store', () => {
               url: 'https://chatgpt.com/',
             }) as chrome.tabs.Tab,
         );
+        useEffect(() => {
+          transfer = current;
+        }, [current]);
         return null;
       }
       (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
