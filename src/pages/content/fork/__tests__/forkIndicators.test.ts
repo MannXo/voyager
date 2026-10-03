@@ -124,6 +124,30 @@ describe('fork indicators', () => {
     expect(events).toEqual(['pointerdown', 'mousedown', 'mouseup', 'click']);
   });
 
+  it('removes a branch link only after the user confirms', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+    await indicators.inject();
+    const confirm = vi
+      .spyOn(window, 'confirm')
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
+    const deleteBranch = () =>
+      document.querySelectorAll<HTMLButtonElement>('.gv-fork-indicator-delete')[1].click();
+
+    deleteBranch();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(ForkNodesService.removeForkNode).not.toHaveBeenCalled();
+
+    deleteBranch();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ForkNodesService.removeForkNode).toHaveBeenCalledWith(
+      branch.conversationId,
+      branch.turnId,
+      branch.forkGroupId,
+    );
+  });
+
   it('cancels a queued storage refresh when stopped', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
     await indicators.inject();
