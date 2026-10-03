@@ -62,6 +62,7 @@ const COMPOSER_BLOCK_TAGS = new Set([
   'PRE',
 ]);
 
+// textContent merges paragraphs, which makes multiline delivery verification fail.
 function readComposerDomText(root: HTMLElement): string {
   const parts: string[] = [];
   const visit = (node: Node): void => {
@@ -326,6 +327,7 @@ export function isDeliveryComplete(
   return hasOrderedComposerSegments(input, deliveryText, draft);
 }
 
+// Selector priority keeps an unrelated editor from outranking the real composer.
 export function currentComposer(): HTMLElement | null {
   for (const selector of CHATGPT_COMPOSER_SELECTORS) {
     const candidate = pickComposer(Array.from(document.querySelectorAll<HTMLElement>(selector)));

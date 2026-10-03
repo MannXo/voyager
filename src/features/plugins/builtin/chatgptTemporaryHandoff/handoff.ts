@@ -92,6 +92,8 @@ export function discardDeliveredPendingHandoff(): void {
   cancelPendingHandoffRecovery();
 }
 
+// Cancel synchronously so late storage or attachment work cannot restore an edited draft.
+// Only our own synchronous writes/navigation clicks may suppress cancellation.
 export function cancelPendingHandoffRecovery(): void {
   if (internalNavigationClicks > 0 || isInternalComposerWrite()) return;
   recoveryCancellationRevision += 1;
@@ -107,6 +109,7 @@ function clickForHandoffNavigation(target: HTMLElement): void {
   }
 }
 
+// ChatGPT can reuse the composer; normal-mode readiness does not require a replacement node.
 async function waitForNormalComposer(
   scope: PluginScope,
   attempts: number,
@@ -245,6 +248,7 @@ export async function resumePendingHandoff(scope: PluginScope): Promise<PendingH
       await discardPendingHandoff();
       return 'account-mismatch';
     }
+    // Delivered recovery stays on its original route so another chat never receives the transcript.
     if (pending.deliveredRoute && pending.deliveredRoute !== readHandoffRoute()) {
       await discardPendingHandoff();
       return null;

@@ -1,3 +1,5 @@
+// Transcripts stay in expiring extension records; page storage holds only a tab token.
+// Duplicating a tab copies that token, so verify the tab id before reading or removing its record.
 import browser from 'webextension-polyfill';
 
 import { createHandoffTabToken, type HandoffDelivery } from './handoffPlan';
