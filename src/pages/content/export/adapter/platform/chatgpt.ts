@@ -31,8 +31,6 @@ function extractId(): string | null {
   return window.location.pathname.match(/\/c\/([^/?#]+)/)?.[1] ?? null;
 }
 
-const ROOT_CANDIDATES = ['main', '[role="main"]'];
-
 /** `/c/<id>` or `/g/<gpt>/c/<id>`, optionally under `/u/<index>/`. */
 const CONVERSATION_ROUTE = /^(?:\/u\/[^/]+)?(?:\/g\/[^/]+)?\/c\/[^/?#]+/;
 /** A turn ChatGPT has actually rendered, whatever the route says. */
@@ -240,7 +238,6 @@ export function buildChatGptAdapter(site: SiteAdapter): ExportPlatformAdapter {
     site,
     getUserSelectors: () => [site.selectors.userTurn],
     getAssistantSelectors: () => [site.selectors.assistantTurn],
-    getConversationRootCandidates: () => ROOT_CANDIDATES,
     extractConversationTitle: extractTitle,
     extractConversationIdFromUrl: extractId,
     shouldPreloadHistory: () => false,

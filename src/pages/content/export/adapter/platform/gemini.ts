@@ -99,13 +99,6 @@ function extractConversationTitle(): string {
   return conversationId ? `Conversation ${conversationId.slice(0, 8)}` : 'Untitled Conversation';
 }
 
-const ROOT_CANDIDATES = [
-  '#chat-history',
-  'infinite-scroller.chat-history',
-  'chat-window-content',
-  'main',
-];
-
 function resolveRoot(userSelectors: string[], doc: Document = document): HTMLElement {
   return resolveConversationRoot({ userSelectors, doc });
 }
@@ -216,7 +209,6 @@ export function buildGeminiAdapter(site: SiteAdapter): ExportPlatformAdapter {
       ...getGeminiTurnSelectors('turn.assistant'),
       ...getGeminiTurnSelectors('turn.assistantFallback'),
     ],
-    getConversationRootCandidates: () => ROOT_CANDIDATES,
     extractConversationTitle,
     extractConversationIdFromUrl: extractConversationId,
     shouldPreloadHistory: () => true,

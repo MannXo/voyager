@@ -20,7 +20,6 @@ export interface ExportPlatformAdapter {
 
   getUserSelectors: () => string[];
   getAssistantSelectors: () => string[];
-  getConversationRootCandidates: () => string[];
   extractConversationTitle: () => string;
   extractConversationIdFromUrl: () => string | null;
   shouldPreloadHistory: () => boolean;

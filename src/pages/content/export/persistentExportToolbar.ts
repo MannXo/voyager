@@ -347,10 +347,6 @@ export function mountPersistentExportToolbar(
   };
 }
 
-export function isPersistentExportToolbarMounted(): boolean {
-  return !!document.querySelector(`.${TOOLBAR_CLASS}`);
-}
-
 /**
  * Open the export flow through the mounted toolbar, exactly as a click on it
  * would. Returns false when no toolbar is mounted (the page holds nothing to

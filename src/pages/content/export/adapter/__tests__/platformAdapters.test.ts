@@ -3,12 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { DOMContentExtractor } from '@/features/export/services/DOMContentExtractor';
 
 import {
-  type ExportPlatformAdapter,
   chatgptExtractFormula,
   chatgptExtractInlineFormula,
   chatgptExtractUserText,
-  resolveExportAdapter,
-} from '../platformAdapters';
+} from '../platform/chatgpt';
+import { type ExportPlatformAdapter, resolveExportAdapter } from '../platformAdapters';
 
 describe('Gemini export adapter contract', () => {
   const extractWithProductionAdapter = (html: string) => {

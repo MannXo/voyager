@@ -3,7 +3,6 @@ import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  isPersistentExportToolbarMounted,
   mountPersistentExportToolbar,
   openPersistentExportToolbar,
 } from '../persistentExportToolbar';
@@ -49,7 +48,7 @@ describe('persistentExportToolbar', () => {
       tooltip: 'Export chat history',
       onClick,
     });
-    expect(isPersistentExportToolbarMounted()).toBe(true);
+    expect(document.querySelector('.gv-persistent-export-toolbar')).not.toBeNull();
     expect(handle.root.classList.contains('gv-persistent-export-toolbar')).toBe(true);
     expect(handle.button.getAttribute('aria-label')).toBe('Export chat history');
     expect(handle.button.title).toBe('Export chat history');
@@ -111,9 +110,9 @@ describe('persistentExportToolbar', () => {
     expect(secondClick).toHaveBeenCalledOnce();
 
     first.remove();
-    expect(isPersistentExportToolbarMounted()).toBe(true);
+    expect(document.querySelector('.gv-persistent-export-toolbar')).not.toBeNull();
     second.remove();
-    expect(isPersistentExportToolbarMounted()).toBe(false);
+    expect(document.querySelector('.gv-persistent-export-toolbar')).toBeNull();
   });
 
   it('keeps ChatGPT toolbar avoidance and dark-mode styles', () => {
