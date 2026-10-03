@@ -1,39 +1,24 @@
-import type { MarkerLevel, TimelineMarker } from './types';
+import type { TimelineState } from './TimelineState';
+import type { TimelineStoragePolicy } from './TimelineStoragePolicy';
+import type { TimelineMarker } from './types';
 
-export interface TimelineHierarchyOwner {
-  markerLevelEnabled: boolean;
-  getMarkerLevel(id: string): MarkerLevel;
-  setMarkerLevel(id: string, level: MarkerLevel): void;
-  isMarkerCollapsed(id: string): boolean;
-  toggleCollapse(id: string): void;
-  canCollapseMarker(id: string): boolean;
-  getHiddenMarkerIndices(): Set<number>;
-  calculateCollapsedPositions(
-    hidden: Set<number>,
-    pad: number,
-    usable: number,
-  ): {
-    desiredY: number[];
-    effectiveBaseNs: number[];
-  };
+export interface TimelineTurnSnapshot {
+  readonly markers: TimelineMarker[];
+  readonly mountedCount: number;
 }
 
-export interface TimelineStateOwner {
-  readonly hierarchy: TimelineHierarchyOwner;
-  markers: TimelineMarker[];
-  readonly markerMap: Map<string, TimelineMarker>;
-  init(): Promise<void>;
-  destroy(): void;
-  replaceMarkers(markers: TimelineMarker[]): void;
-  isMarkerStarred(id: string): boolean;
-  toggleStar(id: string): Promise<void>;
-  resolveMarkerIdForStorageId(id: string): string;
-}
-
-export interface TimelineElements {
-  container: HTMLElement;
-  selector: string;
-  viewport: HTMLElement;
+/** A source owns selectors, discovery and its host's observation rules. */
+export interface TimelineTurnSource {
+  readonly root: HTMLElement | null;
+  readonly anchor: HTMLElement | null;
+  // Virtualized hosts need remembered geometry and homing when a turn leaves the DOM.
+  readonly navigation: 'mounted' | 'virtualized';
+  initialize(signal: AbortSignal): Promise<boolean>;
+  read(previous: TimelineMarker[]): TimelineTurnSnapshot;
+  count(): number;
+  refresh(): boolean;
+  observe(callback: MutationCallback): MutationObserver;
+  stop(): void;
 }
 
 export interface TimelineTimestampOwner {
@@ -43,22 +28,13 @@ export interface TimelineTimestampOwner {
   destroy(): void;
 }
 
-/** One captured conversation; the engine owns viewport rebinds and UI lifetime. */
+/** Host facts for one route; the engine owns state, geometry and UI lifetime. */
 export interface TimelineAdapter {
-  readonly siteId: string;
-  readonly settingsPrefix: string;
-  readonly virtualized?: boolean;
-  readonly observationOptions?: MutationObserverInit;
-  readonly defaultMarkerLevelEnabled?: boolean;
-  readonly mountAnchor?: HTMLElement;
-  readonly position?: 'left' | 'right';
-  shouldRefresh?(records: MutationRecord[]): boolean;
-  createState(onChange: () => void): TimelineStateOwner;
-  createTimestamps(state: TimelineStateOwner): TimelineTimestampOwner | null;
-  findElements(signal: AbortSignal): Promise<TimelineElements | null>;
-  refreshElements(selector: string): TimelineElements | null;
-  getViewport(element: HTMLElement): HTMLElement;
-  collect(container: HTMLElement, selector: string, previous: TimelineMarker[]): TimelineMarker[];
-  reportTurns(found: boolean, recheck: () => boolean): void;
-  destroy(): void;
+  readonly route: { readonly siteId: string; readonly url: string };
+  readonly mount: { anchor(): HTMLElement; readonly position: 'auto' | 'left' | 'right' };
+  readonly storage: TimelineStoragePolicy;
+  readonly turns: TimelineTurnSource;
+  viewport(element: HTMLElement): HTMLElement;
+  // Gemini's timestamp bridge subscribes to a page-lifetime history store independently of state.
+  timestamps(state: TimelineState): TimelineTimestampOwner | null;
 }

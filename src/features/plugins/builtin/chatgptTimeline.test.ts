@@ -217,7 +217,14 @@ function starred(conversation: string): string[] | undefined {
 function notifyStars(): void {
   const listeners = vi.mocked(chrome.storage.onChanged.addListener).mock.calls;
   for (const [notify] of listeners)
-    notify({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: {} } }, 'local');
+    notify(
+      {
+        [StorageKeys.TIMELINE_STARRED_MESSAGES]: {
+          newValue: { messages: Object.fromEntries(starStore) },
+        },
+      },
+      'local',
+    );
 }
 
 async function longPress(dot: HTMLElement): Promise<void> {

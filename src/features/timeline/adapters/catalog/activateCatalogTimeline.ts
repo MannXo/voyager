@@ -7,9 +7,9 @@ import { watchRouteChanges } from '@/pages/content/utils/routeWatcher';
 
 import { TimelineEngine } from '../../TimelineEngine';
 import { CatalogTimelineAdapter } from './CatalogTimelineAdapter';
-import { catalogStarsStorageKey, type CatalogTimelineConfig } from './config';
+import { CatalogTurnOwnership } from './CatalogTurnOwnership';
+import { type CatalogTimelineConfig } from './config';
 import { starConversationId, turnConversationId } from './conversationId';
-import { NavigatorStars } from './navigatorStars';
 
 /** The primitive scope owns route lifetime; viewport remounts stay inside one engine. */
 export function activateCatalogTimeline(
@@ -21,23 +21,21 @@ export function activateCatalogTimeline(
   let stopStart: Dispose | null = null;
   let currentSettings = settings;
   let route = location.href.split('#')[0];
-  const stars = new NavigatorStars({
+  const ownership = new CatalogTurnOwnership({
     routeId: () => location.href.split('#')[0],
     starId: () => starConversationId(config),
-    alive: () => !scope.isDisposed,
     turnConversation: (element) => turnConversationId(config, element),
-    storageKey: (id) => catalogStarsStorageKey(config.siteId, id),
   });
-  stars.begin();
+  ownership.begin();
   if (document.body)
     scope.observe(document.body, { childList: true, subtree: true }, (records) =>
-      stars.recordInsertions(records),
+      ownership.recordInsertions(records),
     );
   const start = (): void => {
     if (scope.isDisposed) return;
     engine?.destroy();
     void stopStart?.();
-    engine = new TimelineEngine(new CatalogTimelineAdapter(config, stars));
+    engine = new TimelineEngine(new CatalogTimelineAdapter(config, ownership), scope.signal);
     // Settings belong to the mounted plugin version; route changes keep them.
     engine.updateSettings(currentSettings);
     const captured = engine;

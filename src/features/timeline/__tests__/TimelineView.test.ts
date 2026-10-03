@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { TimelineState } from '@/pages/content/timeline/TimelineState';
+import { TimelineState } from '@/features/timeline/TimelineState';
+import { createGeminiTimelineStoragePolicy } from '@/pages/content/timeline/GeminiTimelineStorage';
 
+import { TimelineHierarchyGeometry } from '../TimelineHierarchyGeometry';
 import { TimelineView } from '../TimelineView';
 
 const views: TimelineView[] = [];
@@ -12,7 +14,7 @@ function fixture(
 ) {
   const viewport = document.createElement('div');
   Object.defineProperty(viewport, 'clientHeight', { value: 400 });
-  const state = new TimelineState(() => {});
+  const state = new TimelineState(() => {}, createGeminiTimelineStoragePolicy());
   state.replaceMarkers(
     Array.from({ length: count }, (_, index) => ({
       id: `s-${index}`,
@@ -24,7 +26,12 @@ function fixture(
     })),
   );
   const onResize = vi.fn();
-  const view = new TimelineView(state, {
+  const geometry = new TimelineHierarchyGeometry(
+    () => state.markers,
+    (id) => state.hierarchy.getMarkerLevel(id),
+    (id) => state.hierarchy.isMarkerCollapsed(id),
+  );
+  const view = new TimelineView(state, geometry, {
     ...options,
     getViewport: () => viewport,
     getActiveId: () => null,

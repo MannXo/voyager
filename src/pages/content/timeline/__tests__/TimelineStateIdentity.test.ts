@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import { TimelineHierarchyGeometry } from '@/features/timeline/TimelineHierarchyGeometry';
+import { TimelineState } from '@/features/timeline/TimelineState';
 import type { MarkerLevel } from '@/features/timeline/types';
+import { createGeminiTimelineStoragePolicy } from '@/pages/content/timeline/GeminiTimelineStorage';
 
 import { StarredMessagesService } from '../StarredMessagesService';
-import { TimelineState } from '../TimelineState';
 import {
   getLegacyTimelineCollapsedStorageKey,
   getLegacyTimelineLevelsStorageKey,
@@ -24,13 +26,18 @@ async function setup(
 ) {
   localStorage.setItem(levelsKey, JSON.stringify(levels));
   localStorage.setItem(collapsedKey, JSON.stringify(collapsed));
-  const state = new TimelineState(vi.fn(), window.location.href, {
-    getTurnIdAliases: (_conversationId, id) => [id, ...(aliases.has(id) ? [aliases.get(id)!] : [])],
-    resolveCanonicalTurnId: (_conversationId, id) => (id.startsWith('u-') ? null : id),
-  });
+  const state = new TimelineState(
+    vi.fn(),
+    createGeminiTimelineStoragePolicy(window.location.href, {
+      getTurnIdAliases: (_conversationId, id) => [
+        id,
+        ...(aliases.has(id) ? [aliases.get(id)!] : []),
+      ],
+      resolveCanonicalTurnId: (_conversationId, id) => (id.startsWith('u-') ? null : id),
+    }),
+  );
   states.push(state);
   await state.init();
-  state.hierarchy.markerLevelEnabled = true;
   state.replaceMarkers(
     [PARENT_ID, CHILD_ID].map((id, index) => ({
       id,
@@ -43,6 +50,16 @@ async function setup(
   );
   vi.mocked(chrome.storage.local.set).mockClear();
   return state;
+}
+
+function hiddenIndices(state: TimelineState): Set<number> {
+  const geometry = new TimelineHierarchyGeometry(
+    () => state.markers,
+    (id) => state.hierarchy.getMarkerLevel(id),
+    (id) => state.hierarchy.isMarkerCollapsed(id),
+  );
+  geometry.markerLevelEnabled = true;
+  return geometry.getHiddenMarkerIndices();
 }
 
 describe('TimelineState identity aliases', () => {
@@ -68,12 +85,12 @@ describe('TimelineState identity aliases', () => {
       ['u-60'],
     );
     expect(state.hierarchy.getMarkerLevel(CHILD_ID)).toBe(2);
-    expect(state.hierarchy.getHiddenMarkerIndices()).toEqual(new Set([1]));
+    expect(hiddenIndices(state)).toEqual(new Set([1]));
   });
   it('does not apply an unverified legacy position to the first mounted tail turn', async () => {
     const state = await setup(new Map(), { 'u-0': 2 }, ['u-0']);
     expect(state.hierarchy.getMarkerLevel(PARENT_ID)).toBe(1);
-    expect(state.hierarchy.getHiddenMarkerIndices()).toEqual(new Set());
+    expect(hiddenIndices(state)).toEqual(new Set());
   });
   it('does not persist actions from a mounted positional fallback', async () => {
     const state = await setup(new Map([['u-0', 'u-0']]));
@@ -110,7 +127,7 @@ describe('TimelineState identity aliases', () => {
         resolveSnapshot = resolve;
       });
     });
-    const state = new TimelineState(vi.fn());
+    const state = new TimelineState(vi.fn(), createGeminiTimelineStoragePolicy());
     states.push(state);
     const init = state.init();
     await readStarted;

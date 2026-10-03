@@ -4,14 +4,15 @@ import {
 } from '@/core/gemini/turnSelectors';
 import type {
   TimelineAdapter,
-  TimelineElements,
-  TimelineStateOwner,
+  TimelineTurnSource,
+  TimelineTurnSnapshot,
 } from '@/features/timeline/TimelineAdapter';
+import type { TimelineState } from '@/features/timeline/TimelineState';
 import type { TimelineMarker } from '@/features/timeline/types';
 
 import { nativeHealthReporter } from '../nativeHealth';
 import { hasRenderedConversationContent } from '../nativeHealth/pageEvidence';
-import { TimelineState } from './TimelineState';
+import { createGeminiTimelineStoragePolicy } from './GeminiTimelineStorage';
 import { TimelineTimestamps } from './TimelineTimestamps';
 import { TimelineTurns } from './TimelineTurns';
 
@@ -20,49 +21,64 @@ export interface GeminiTimelineOptions {
 }
 
 export class GeminiTimelineAdapter implements TimelineAdapter {
-  readonly siteId = 'gemini';
-  readonly settingsPrefix = 'geminiTimeline';
-  private conversationContainer: HTMLElement | null = null;
-  private userTurnSelector = '';
-  private readonly turns = new TimelineTurns();
+  readonly route = { siteId: 'gemini', url: window.location.href };
+  readonly storage = createGeminiTimelineStoragePolicy(this.route.url);
+  readonly mount = { anchor: () => document.body, position: 'auto' as const };
+  readonly turns = new GeminiTimelineTurnSource();
   constructor(private readonly options: GeminiTimelineOptions = {}) {}
-  createState(onChange: () => void): TimelineState {
-    return new TimelineState(onChange);
-  }
-  createTimestamps(state: TimelineStateOwner): TimelineTimestamps {
-    const geminiState = state as TimelineState;
+  viewport = geminiViewport;
+  timestamps(state: TimelineState): TimelineTimestamps {
     return new TimelineTimestamps(
       {
         getMarkers: () => state.markers,
-        getTurnText: (element) => this.turns.getTurnTextCached(element),
-        getTurnAliases: (id) => geminiState.getStoredTurnIdAliases(id),
-        onIdentityChange: () => geminiState.refreshStars(),
+        getTurnText: (element) => this.turns.text.getTurnTextCached(element),
+        getTurnAliases: (id) => state.getStoredTurnIdAliases(id),
+        onIdentityChange: () => state.refreshStars(),
       },
       this.options,
     );
   }
-  collect(container: HTMLElement, selector: string, previous: TimelineMarker[]): TimelineMarker[] {
-    return this.turns.collect(container, selector, previous);
+}
+
+class GeminiTimelineTurnSource implements TimelineTurnSource {
+  readonly navigation = 'mounted';
+  readonly text = new TimelineTurns();
+  private conversationContainer: HTMLElement | null = null;
+  private userTurnSelector = '';
+  get root(): HTMLElement | null {
+    return this.conversationContainer;
   }
-  refreshElements(selector: string): TimelineElements | null {
-    const firstTurn = document.querySelector<HTMLElement>(selector);
-    if (!firstTurn) return null;
-    return {
-      container: document.querySelector<HTMLElement>('main') || document.body,
-      selector,
-      viewport: this.getViewport(firstTurn),
-    };
+  get anchor(): HTMLElement | null {
+    return document.querySelector<HTMLElement>(this.userTurnSelector) || this.root;
   }
-  reportTurns(found: boolean, recheck: () => boolean): void {
-    if (found) nativeHealthReporter.reportFound('timeline');
+  count(): number {
+    return this.userTurnSelector ? document.querySelectorAll(this.userTurnSelector).length : 0;
+  }
+  read(previous: TimelineMarker[]): TimelineTurnSnapshot {
+    const mountedCount = this.root?.querySelectorAll(this.userTurnSelector).length ?? 0;
+    if (mountedCount) nativeHealthReporter.reportFound('timeline');
     else
       nativeHealthReporter.reportMissing('timeline', {
         route: 'conversation',
-        recheck,
+        recheck: () => !!this.userTurnSelector && !!this.root?.querySelector(this.userTurnSelector),
         expected: () => hasRenderedConversationContent(),
       });
+    return {
+      mountedCount,
+      markers: this.root ? this.text.collect(this.root, this.userTurnSelector, previous) : [],
+    };
   }
-  destroy(): void {
+  refresh(): boolean {
+    if (!this.userTurnSelector || !document.querySelector(this.userTurnSelector)) return false;
+    this.conversationContainer = document.querySelector<HTMLElement>('main') || document.body;
+    return true;
+  }
+  observe(callback: MutationCallback): MutationObserver {
+    const observer = new MutationObserver(callback);
+    if (this.root) observer.observe(this.root, { childList: true, subtree: true });
+    return observer;
+  }
+  stop(): void {
     nativeHealthReporter.withdraw('timeline');
   }
   private waitForAnyElement(
@@ -96,7 +112,7 @@ export class GeminiTimelineAdapter implements TimelineAdapter {
       signal.addEventListener('abort', onAbort, { once: true });
     });
   }
-  async findElements(signal: AbortSignal): Promise<TimelineElements | null> {
+  async initialize(signal: AbortSignal): Promise<boolean> {
     let userOverride = '';
     let autoDetected = '';
     try {
@@ -138,7 +154,7 @@ export class GeminiTimelineAdapter implements TimelineAdapter {
           (document.querySelector('main') as HTMLElement) || (document.body as HTMLElement);
       } else {
         const parent = firstTurn.parentElement as HTMLElement | null;
-        if (!parent) return null;
+        if (!parent) return false;
         this.conversationContainer = parent;
       }
       // Persist auto-detected selector for future sessions when no explicit user override exists
@@ -154,27 +170,23 @@ export class GeminiTimelineAdapter implements TimelineAdapter {
         } catch {}
       }
     }
-    return {
-      container: this.conversationContainer!,
-      selector: this.userTurnSelector,
-      viewport: this.getViewport((firstTurn as HTMLElement) || this.conversationContainer!),
-    };
+    return true;
   }
+}
 
-  getViewport(element: HTMLElement): HTMLElement {
-    let p: HTMLElement | null = element;
-    while (p && p !== document.body) {
-      const st = getComputedStyle(p);
-      if (st.overflowY === 'auto' || st.overflowY === 'scroll') {
-        return p;
-      }
-      p = p.parentElement;
+function geminiViewport(element: HTMLElement): HTMLElement {
+  let p: HTMLElement | null = element;
+  while (p && p !== document.body) {
+    const st = getComputedStyle(p);
+    if (st.overflowY === 'auto' || st.overflowY === 'scroll') {
+      return p;
     }
-
-    return (
-      (document.scrollingElement as HTMLElement | null) ||
-      (document.documentElement as HTMLElement | null) ||
-      (document.body as unknown as HTMLElement)
-    );
+    p = p.parentElement;
   }
+
+  return (
+    (document.scrollingElement as HTMLElement | null) ||
+    (document.documentElement as HTMLElement | null) ||
+    (document.body as unknown as HTMLElement)
+  );
 }

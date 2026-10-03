@@ -1,8 +1,8 @@
 import type { TimelineStyle } from '@/core/types/common';
 
-import type { TimelineStateOwner } from './TimelineAdapter';
+import type { TimelineHierarchyGeometry } from './TimelineHierarchyGeometry';
 import { getTimelineSpringProfile } from './TimelineNavigation';
-import type { DotElement } from './types';
+import type { DotElement, TimelineMarker } from './types';
 
 /** Owns measured marker positions, keyed dot rendering and the runner lifetime. */
 export class TimelineDotLayer {
@@ -29,7 +29,8 @@ export class TimelineDotLayer {
   private track: HTMLElement | null = null;
   private content: HTMLElement | null = null;
   constructor(
-    private readonly state: Pick<TimelineStateOwner, 'markers' | 'hierarchy'>,
+    private readonly getMarkers: () => TimelineMarker[],
+    private readonly geometry: TimelineHierarchyGeometry,
     private readonly options: {
       getStyle: () => TimelineStyle;
       getViewport: () => HTMLElement | null;
@@ -92,7 +93,7 @@ export class TimelineDotLayer {
   }
 
   private get markers() {
-    return this.state.markers;
+    return this.getMarkers();
   }
   private get scrollContainer() {
     return this.options.getViewport();
@@ -143,7 +144,7 @@ export class TimelineDotLayer {
     const minGap = this.getMinGap();
     const N = this.markers.length;
     // Get hidden markers for collapse feature
-    const hiddenIndices = this.state.hierarchy.getHiddenMarkerIndices();
+    const hiddenIndices = this.geometry.getHiddenMarkerIndices();
     const visibleCount = N - hiddenIndices.size;
     const desired = Math.max(
       H,
@@ -154,11 +155,7 @@ export class TimelineDotLayer {
 
     const usableC = Math.max(1, this.contentHeight - 2 * pad);
     // Calculate Y positions with collapse - using effective baseN for repositioning
-    const { desiredY } = this.state.hierarchy.calculateCollapsedPositions(
-      hiddenIndices,
-      pad,
-      usableC,
-    );
+    const { desiredY } = this.geometry.calculateCollapsedPositions(hiddenIndices, pad, usableC);
 
     // Apply min gap only to visible markers
     const gapMultipliers: number[] = new Array(N).fill(1.0);
@@ -382,7 +379,7 @@ export class TimelineDotLayer {
       if (!marker) continue;
       const dot = this.dots.get(marker.id);
       if (!dot) continue;
-      const level = this.state.hierarchy.getMarkerLevel(marker.id);
+      const level = this.geometry.getMarkerLevel(marker.id);
       const baseScale = level === 3 ? 0.54 : level === 2 ? 0.42 : 0.29;
       const distance = Math.abs(index - focusIndex);
       const crest = Math.exp(-(distance * distance) / (2 * sigma * sigma));
@@ -429,7 +426,7 @@ export class TimelineDotLayer {
   }
   render(): void {
     if (!this.track || !this.content) return;
-    const hidden = this.state.hierarchy.getHiddenMarkerIndices();
+    const hidden = this.geometry.getHiddenMarkerIndices();
     const dense = this.options.getStyle() !== 'dots';
     const top = this.track.scrollTop;
     const height = this.track.clientHeight;
@@ -457,14 +454,14 @@ export class TimelineDotLayer {
       dot.dataset.markerIndex = String(index);
       dot.setAttribute('aria-label', marker.summary);
       this.applyDotPosition(dot, index, offsets.get(index));
-      const collapsed = this.state.hierarchy.isMarkerCollapsed(marker.id);
+      const collapsed = this.geometry.isMarkerCollapsed(marker.id);
       dot.classList.toggle('active', marker.id === this.activeTurnId);
       dot.setAttribute('aria-current', String(marker.id === this.activeTurnId));
       dot.classList.toggle('starred', marker.starred);
       dot.classList.toggle('collapsed', collapsed);
       dot.setAttribute('aria-pressed', String(marker.starred));
       dot.setAttribute('aria-expanded', String(!collapsed));
-      dot.dataset.level = String(this.state.hierarchy.getMarkerLevel(marker.id));
+      dot.dataset.level = String(this.geometry.getMarkerLevel(marker.id));
       orderedDots.push(dot);
     }
     for (const [id, dot] of this.dots) {

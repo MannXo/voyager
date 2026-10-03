@@ -1,7 +1,8 @@
 # Shared timeline ownership
 
 `TimelineEngine` composes one captured conversation through `TimelineAdapter`. The adapter supplies
-turn identity, observation roots, viewport discovery and persistence. The engine owns the rail,
+a turn source, viewport discovery, mount, route identity and storage policy. The engine owns state,
+hierarchy geometry, the rail,
 preview, tooltips, interactions, navigation and settings application. The same owners render Gemini,
 ChatGPT, Claude and DeepSeek.
 
@@ -16,22 +17,32 @@ ChatGPT, Claude and DeepSeek.
 | Marker navigation, star long press and hierarchy menu               | `TimelineMarkerInteractions`                    |
 | Shortcuts, active turn and navigation cancellation                  | `TimelineNavigation`                            |
 | Virtualized turn homing, reversed scrollers and remembered geometry | `VirtualizedTimelineNavigation`, `scrollMotion` |
+| Stars, marker snapshot, aliases and storage synchronization         | `TimelineState`                                 |
+| Hierarchy edits and persistence                                     | `TimelineHierarchy`                             |
 | Collapse layout                                                     | `TimelineHierarchyGeometry`                     |
 
 The [Gemini adapter](../../pages/content/timeline/GeminiTimelineAdapter.ts) retains Gemini selector
-priority, stable identities, account scope, verified legacy aliases and timestamps. Its state and
-storage owners remain in the [native timeline directory](../../pages/content/timeline/README.md).
+priority, stable identities and timestamps. Its small
+[storage policy](../../pages/content/timeline/GeminiTimelineStorage.ts) retains account scope,
+verified legacy aliases, exact keys and serialized formats. All sites use the same `TimelineState`
+and hierarchy owner.
 
 The [catalog adapter](adapters/catalog/CatalogTimelineAdapter.ts) receives semantic selectors from
 `site.json` and optional `turnNavigator` manifest parameters. It retains identity and ownership
-across virtualized DOM windows. Its state stores hierarchy and timeline-local stars under per-site
-keys; stars still mirror the Saved Library. Every edit requires evidence that the turn belongs to
+across virtualized DOM windows. Its [storage policy](adapters/catalog/CatalogTimelineStorage.ts)
+stores hierarchy and timeline-local stars under per-site keys; stars still mirror the Saved Library. Every edit requires evidence that the turn belongs to
 the current conversation. Catalog data currently exposes no account identity, so these sites have
 site/conversation scope; Gemini keeps its existing account scope.
 
 Viewport replacement rebinds scroll and intersection observation while retaining conversation state.
 Path/query replacement destroys the engine and creates a fresh conversation adapter. Gemini's shared
 history timestamp store has page lifetime: conversation teardown unsubscribes without stopping it.
+Plugin scope abort immediately destroys the engine before pending startup settles, so an old cleanup
+cannot remove a newly enabled rail.
+
+The first per-site star mirror seeds from its legacy key and a successful Saved Library read before
+applying an edit. Failed reads reject at the background/service boundary and leave persisted stars
+intact. Authoritative storage snapshots take precedence over older pending reads.
 
 Rail and preview styles are injected from `timeline.css` and `timelinePreview.css` by the view and removed on teardown. Shared theme tokens and
 coachmark replicas remain in `public/contentStyle.css` because other features use them. Existing

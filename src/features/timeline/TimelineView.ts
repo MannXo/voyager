@@ -1,11 +1,12 @@
 import { type TimelineStyle } from '@/core/types/common';
 import { applyRTLClass } from '@/core/utils/rtl';
 
-import type { TimelineStateOwner } from './TimelineAdapter';
 import { TimelineDotLayer } from './TimelineDotLayer';
+import type { TimelineHierarchyGeometry } from './TimelineHierarchyGeometry';
 import { TimelinePreviewPanel } from './TimelinePreviewPanel';
 import { TimelineRailPlacement } from './TimelineRailPlacement';
 import { TimelineSlider } from './TimelineSlider';
+import type { TimelineState } from './TimelineState';
 import timelineStyles from './timeline.css?inline';
 import previewStyles from './timelinePreview.css?inline';
 interface TimelineViewOptions {
@@ -49,10 +50,11 @@ export class TimelineView {
   private styleElement: HTMLStyleElement | null = null;
   private readonly lifetime = new AbortController();
   constructor(
-    private readonly state: TimelineStateOwner,
+    private readonly state: Pick<TimelineState, 'markers' | 'toggleStar'>,
+    geometry: TimelineHierarchyGeometry,
     private readonly options: TimelineViewOptions,
   ) {
-    this.dotLayer = new TimelineDotLayer(state, {
+    this.dotLayer = new TimelineDotLayer(() => state.markers, geometry, {
       getStyle: () => this.timelineStyle,
       getViewport: () => this.options.getViewport(),
       getActiveId: () => this.options.getActiveId(),

@@ -2,13 +2,11 @@ import { StorageKeys, isTimelineStyle } from '@/core/types/common';
 import { applyRTLClass } from '@/core/utils/rtl';
 import { initI18n } from '@/utils/i18n';
 
-import type {
-  TimelineAdapter,
-  TimelineStateOwner,
-  TimelineTimestampOwner,
-} from './TimelineAdapter';
+import type { TimelineAdapter, TimelineTimestampOwner } from './TimelineAdapter';
+import { TimelineHierarchyGeometry } from './TimelineHierarchyGeometry';
 import { TimelineMarkerInteractions } from './TimelineMarkerInteractions';
 import { TimelineNavigation } from './TimelineNavigation';
+import { TimelineState } from './TimelineState';
 import { TimelineTooltip } from './TimelineTooltip';
 import { TimelineView } from './TimelineView';
 import type { DotElement, ExtGlobal, SyncSettingsListener, TimelinePositionData } from './types';
@@ -21,9 +19,9 @@ export class TimelineEngine {
   private zeroTurnsTimer: number | null = null;
   private zeroTurnsRetryCount = 0;
   private onSyncSettingsChanged: SyncSettingsListener | null = null;
-  private userTurnSelector: string = '';
   private static readonly SEARCH_HIGHLIGHT_CLASS = 'timeline-search-highlight';
-  private readonly state: TimelineStateOwner;
+  private readonly state: TimelineState;
+  private readonly geometry: TimelineHierarchyGeometry;
   private readonly timestamps: TimelineTimestampOwner | null;
   private readonly navigation: TimelineNavigation;
   private readonly view: TimelineView;
@@ -32,10 +30,19 @@ export class TimelineEngine {
   private readonly lifetime = new AbortController();
   private recalcTimer: number | null = null;
   private pluginSettings: Record<string, unknown> | null = null;
-  constructor(private readonly adapter: TimelineAdapter) {
-    this.state = adapter.createState(() => this.onStateChange());
+  // A scope aborts before awaiting pending startup, so old teardown cannot touch a newly mounted rail.
+  constructor(
+    private readonly adapter: TimelineAdapter,
+    private readonly ownerSignal?: AbortSignal,
+  ) {
+    this.state = new TimelineState(() => this.onStateChange(), adapter.storage);
+    this.geometry = new TimelineHierarchyGeometry(
+      () => this.state.markers,
+      (id) => this.state.hierarchy.getMarkerLevel(id),
+      (id) => this.state.hierarchy.isMarkerCollapsed(id),
+    );
     this.navigation = new TimelineNavigation({
-      virtualized: adapter.virtualized,
+      virtualized: adapter.turns.navigation === 'virtualized',
       getMarkers: () => this.state.markers,
       getMarkerTops: () => this.view.markerTops,
       getMarkerPositions: () => this.view.yPositions,
@@ -53,24 +60,27 @@ export class TimelineEngine {
       },
       animateRunner: (from, to, duration) => this.view.startRunner(from, to, duration),
     });
-    this.view = new TimelineView(this.state, {
+    this.view = new TimelineView(this.state, this.geometry, {
       getViewport: () => this.navigation.viewport,
       getActiveId: () => this.navigation.activeTurnId,
       navigate: (id, index) => this.navigation.navigateToMarker(id, index, 'preview'),
       search: (query) => this.highlightSearchInDOM(query),
       onStyleChange: () => this.tooltip?.hide(true),
       onResize: () => this.tooltip?.refreshCurrent(),
-      storagePrefix: adapter.settingsPrefix,
-      mountAnchor: adapter.mountAnchor,
-      position: adapter.position,
+      storagePrefix: adapter.storage.settingsPrefix,
+      mountAnchor: adapter.mount.anchor(),
+      position: adapter.mount.position === 'auto' ? undefined : adapter.mount.position,
     });
-    this.timestamps = adapter.createTimestamps(this.state);
+    this.timestamps = adapter.timestamps(this.state);
+    ownerSignal?.addEventListener('abort', this.onOwnerAbort, { once: true });
+    if (ownerSignal?.aborted) this.destroy();
   }
+  private readonly onOwnerAbort = (): void => this.destroy();
   handleHash = (): void => {
     this.navigation.handleStarredMessageNavigation();
   };
   private settingKey(suffix: string): string {
-    return `${this.adapter.settingsPrefix}${suffix}`;
+    return `${this.adapter.storage.settingsPrefix}${suffix}`;
   }
   updateSettings(settings: Record<string, unknown>): void {
     if (this.destroyed) return;
@@ -84,7 +94,8 @@ export class TimelineEngine {
   private mountUI(): void {
     this.view.mount();
     const bar = this.view.ui.timelineBar!;
-    if (this.adapter.virtualized) bar.dataset.gvTurnNavigator = this.adapter.siteId;
+    if (this.adapter.turns.navigation === 'virtualized')
+      bar.dataset.gvTurnNavigator = this.adapter.route.siteId;
     this.tooltip = new TimelineTooltip(bar, {
       getContext: () => ({
         style: this.view.timelineStyle,
@@ -105,11 +116,11 @@ export class TimelineEngine {
       navigate: (index, id) => this.navigation.navigateToMarker(id, index),
       toggleStar: (id) => void this.state.toggleStar(id),
       getHierarchy: (id) =>
-        this.state.hierarchy.markerLevelEnabled
+        this.geometry.markerLevelEnabled
           ? {
               level: this.state.hierarchy.getMarkerLevel(id),
               collapsed: this.state.hierarchy.isMarkerCollapsed(id),
-              canCollapse: this.state.hierarchy.canCollapseMarker(id),
+              canCollapse: this.geometry.canCollapseMarker(id),
             }
           : null,
       setLevel: (id, level) => this.state.hierarchy.setMarkerLevel(id, level),
@@ -126,7 +137,7 @@ export class TimelineEngine {
     this.tooltip?.refreshCurrent();
   }
   private setMarkerLevelEnabled(enabled: boolean): void {
-    this.state.hierarchy.markerLevelEnabled = enabled;
+    this.geometry.markerLevelEnabled = enabled;
     if (!enabled) this.interactions?.closeMenu();
     this.onStateChange();
   }
@@ -142,12 +153,13 @@ export class TimelineEngine {
     if (this.destroyed) return;
     this.destroyed = true;
     this.lifetime.abort();
+    this.ownerSignal?.removeEventListener('abort', this.onOwnerAbort);
     this.unregisterSyncSettingsListener();
     this.mutationObserver?.disconnect();
     this.intersectionObserver?.disconnect();
     if (this.recalcTimer !== null) clearTimeout(this.recalcTimer);
     if (this.zeroTurnsTimer !== null) clearTimeout(this.zeroTurnsTimer);
-    this.adapter.destroy();
+    this.adapter.turns.stop();
     this.navigation.destroy();
     this.interactions?.destroy();
     this.tooltip?.destroy();
@@ -184,7 +196,8 @@ export class TimelineEngine {
         [this.settingKey('HideContainer')]: false,
         [this.settingKey('BarWidth')]: null,
         [this.settingKey('Draggable')]: false,
-        [this.settingKey('MarkerLevel')]: this.adapter.defaultMarkerLevelEnabled ?? false,
+        [this.settingKey('MarkerLevel')]:
+          this.pluginSettings !== null && this.pluginSettings.markerLevel !== false,
         [this.settingKey('Position')]: null,
         [this.settingKey('PreviewPinned')]: false,
         [StorageKeys.LANGUAGE]: null,
@@ -336,11 +349,12 @@ export class TimelineEngine {
   }
 
   private async findCriticalElements(): Promise<boolean> {
-    const elements = await this.adapter.findElements(this.lifetime.signal);
-    if (!elements || this.destroyed) return false;
-    this.conversationContainer = elements.container;
-    this.userTurnSelector = elements.selector;
-    this.navigation.setViewport(elements.viewport);
+    const ready = await this.adapter.turns.initialize(this.lifetime.signal);
+    if (!ready || this.destroyed || !this.adapter.turns.root) return false;
+    this.conversationContainer = this.adapter.turns.root;
+    this.navigation.setViewport(
+      this.adapter.viewport(this.adapter.turns.anchor ?? this.conversationContainer),
+    );
     return true;
   }
 
@@ -349,20 +363,18 @@ export class TimelineEngine {
       this.destroyed ||
       !this.conversationContainer ||
       !this.view.ui.timelineBar ||
-      !this.navigation.viewport ||
-      !this.userTurnSelector
+      !this.navigation.viewport
     )
       return;
-    if (this.adapter.virtualized) {
-      const elements = this.adapter.refreshElements(this.userTurnSelector);
-      if (elements && elements.viewport !== this.navigation.viewport) {
+    if (this.adapter.turns.navigation === 'virtualized') {
+      const anchor = this.adapter.turns.anchor;
+      if (anchor && this.adapter.viewport(anchor) !== this.navigation.viewport) {
         this.refreshCriticalElementsFromDocument();
       }
     }
-    const userTurnNodeList = this.conversationContainer.querySelectorAll(this.userTurnSelector);
-    if (userTurnNodeList.length === 0 && !this.adapter.virtualized) {
+    const snapshot = this.adapter.turns.read(this.state.markers);
+    if (snapshot.mountedCount === 0 && this.adapter.turns.navigation !== 'virtualized') {
       this.timestamps?.update([], []);
-      this.reportMissingTurns();
       if (!this.zeroTurnsTimer) {
         this.zeroTurnsRetryCount++;
         // Empty-page polling with backoff: 200ms for the first 30 attempts,
@@ -383,17 +395,12 @@ export class TimelineEngine {
       this.zeroTurnsTimer = null;
     }
     this.zeroTurnsRetryCount = 0;
-    this.adapter.reportTurns(true, () => true);
 
     const previousMarkers = this.state.markers;
 
-    const nextMarkers = this.adapter.collect(
-      this.conversationContainer,
-      this.userTurnSelector,
-      previousMarkers,
-    );
+    const nextMarkers = snapshot.markers;
     if (nextMarkers.length === 0) {
-      if (this.adapter.virtualized) {
+      if (this.adapter.turns.navigation === 'virtualized') {
         this.state.replaceMarkers([]);
         this.onStateChange();
       }
@@ -405,7 +412,7 @@ export class TimelineEngine {
     this.timestamps?.update(previousMarkers, nextMarkers);
     this.view.updateTimelineGeometry();
     // Virtualized adapters select the viewport's nearest turn instead of Gemini's initial last turn.
-    if (this.adapter.virtualized) this.navigation.computeActiveByScroll();
+    if (this.adapter.turns.navigation === 'virtualized') this.navigation.computeActiveByScroll();
     else if (!this.navigation.activeTurnId && this.state.markers.length > 0)
       this.navigation.activeTurnId = this.state.markers[this.state.markers.length - 1].id;
     this.updateIntersectionObserverTargetsFromMarkers();
@@ -416,33 +423,14 @@ export class TimelineEngine {
     this.view.updatePreviewMarkers();
   };
 
-  /** The zero-turn poll is the probe: no extra observer, and the verdict re-runs this query. */
-  private reportMissingTurns(): void {
-    this.adapter.reportTurns(
-      false,
-      () =>
-        !!this.userTurnSelector &&
-        !!this.conversationContainer?.querySelector(this.userTurnSelector),
-    );
-  }
-
+  private readonly onTurnsChanged: MutationCallback = (records) => {
+    if (!this.shouldIgnoreSelfInjectedMutations(records)) this.debouncedRecalc();
+  };
   private setupObservers(): void {
     if (this.destroyed) return;
-    this.mutationObserver = new MutationObserver((records) => {
-      if (this.shouldIgnoreSelfInjectedMutations(records)) return;
-      if (this.adapter.shouldRefresh && !this.adapter.shouldRefresh(records)) return;
-      this.debouncedRecalc();
-    });
-    if (this.conversationContainer)
-      this.mutationObserver.observe(
-        this.conversationContainer,
-        this.adapter.observationOptions ?? { childList: true, subtree: true },
-      );
-
+    this.mutationObserver = this.adapter.turns.observe(this.onTurnsChanged);
     this.intersectionObserver = new IntersectionObserver(
-      () => {
-        this.navigation.scheduleScrollSync();
-      },
+      () => this.navigation.scheduleScrollSync(),
       { root: this.navigation.viewport, threshold: 0.1, rootMargin: '-40% 0px -59% 0px' },
     );
   }
@@ -500,9 +488,9 @@ export class TimelineEngine {
   }
 
   private shouldAttemptRefreshForNavigation(): boolean {
-    if (!this.userTurnSelector) return false;
+    if (!this.adapter.turns.root) return false;
 
-    const documentCount = document.querySelectorAll(this.userTurnSelector).length;
+    const documentCount = this.adapter.turns.count();
     const containersDisconnected =
       (this.conversationContainer ? !this.conversationContainer.isConnected : true) ||
       (this.navigation.viewport ? !this.navigation.viewport.isConnected : true);
@@ -511,7 +499,7 @@ export class TimelineEngine {
   }
 
   private getScrollContainerForElement(element: HTMLElement): HTMLElement {
-    return this.adapter.getViewport(element);
+    return this.adapter.viewport(element);
   }
 
   private shouldRefreshForInteraction(targetElement: HTMLElement | null): boolean {
@@ -549,7 +537,7 @@ export class TimelineEngine {
   }
 
   private maybeRefreshMarkersForInteraction(targetElement: HTMLElement | null): boolean {
-    if (!this.userTurnSelector) return false;
+    if (!this.adapter.turns.root) return false;
     if (!this.shouldRefreshForInteraction(targetElement)) return false;
 
     const refreshed = this.refreshCriticalElementsFromDocument();
@@ -560,7 +548,7 @@ export class TimelineEngine {
   }
 
   private maybeRefreshMarkersForNavigation(direction: 'previous' | 'next'): boolean {
-    if (!this.userTurnSelector) return false;
+    if (!this.adapter.turns.root) return false;
 
     const currentIndex = this.navigation.getActiveIndex();
     const isAtStart = currentIndex === 0;
@@ -580,21 +568,16 @@ export class TimelineEngine {
   }
 
   private refreshCriticalElementsFromDocument(): boolean {
-    if (!this.userTurnSelector) return false;
+    if (!this.adapter.turns.root) return false;
 
-    const elements = this.adapter.refreshElements(this.userTurnSelector);
-    if (!elements) return false;
-    this.conversationContainer = elements.container;
-    this.navigation.setViewport(elements.viewport);
-
-    if (this.mutationObserver && this.conversationContainer) {
-      try {
-        this.mutationObserver.disconnect();
-        this.mutationObserver.observe(
-          this.conversationContainer,
-          this.adapter.observationOptions ?? { childList: true, subtree: true },
-        );
-      } catch {}
+    if (!this.adapter.turns.refresh() || !this.adapter.turns.root) return false;
+    this.conversationContainer = this.adapter.turns.root;
+    this.navigation.setViewport(
+      this.adapter.viewport(this.adapter.turns.anchor ?? this.conversationContainer),
+    );
+    if (this.mutationObserver) {
+      this.mutationObserver.disconnect();
+      this.mutationObserver = this.adapter.turns.observe(this.onTurnsChanged);
     }
 
     if (this.intersectionObserver && this.navigation.viewport) {

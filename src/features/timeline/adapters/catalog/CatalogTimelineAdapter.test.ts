@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { TimelineHierarchyGeometry } from '../../TimelineHierarchyGeometry';
+import { TimelineState } from '../../TimelineState';
 import { CatalogTimelineAdapter } from './CatalogTimelineAdapter';
+import { CatalogTurnOwnership } from './CatalogTurnOwnership';
 import { catalogHierarchyStorageKey, type CatalogTimelineConfig } from './config';
 import { buildConversationId, starConversationId, turnConversationId } from './conversationId';
-import { NavigatorStars } from './navigatorStars';
 
 vi.mock('@/pages/content/timeline/StarredMessagesService', () => ({
   StarredMessagesService: {
@@ -60,10 +62,9 @@ for (const fixture of fixtures) {
     function create() {
       history.replaceState({}, '', fixture.path);
       document.body.setAttribute(fixture.conversationIdAttribute, 'first');
-      const stars = new NavigatorStars({
+      const stars = new CatalogTurnOwnership({
         routeId: () => location.href.split('#')[0],
         starId: () => starConversationId(config),
-        alive: () => true,
         turnConversation: (element) => turnConversationId(config, element),
       });
       stars.begin();
@@ -75,20 +76,20 @@ for (const fixture of fixtures) {
       const { adapter } = create();
       const first = turn('First prompt');
       document.body.append(first, turn('First answer', 'assistant'), turn('Next prompt'));
-      let markers = adapter.collect(document.body, config.turnSelector, []);
+      let markers = adapter.turns.read([]).markers;
       const id = markers[0].id;
       expect(markers.map((marker) => [marker.summary, marker.assistantSummary])).toEqual([
         ['First prompt', 'First answer'],
         ['Next prompt', ''],
       ]);
       first.remove();
-      markers = adapter.collect(document.body, config.turnSelector, markers);
+      markers = adapter.turns.read(markers).markers;
       expect(markers.map((marker) => marker.summary)).toEqual(['First prompt', 'Next prompt']);
       document.body.prepend(turn('First prompt'));
-      markers = adapter.collect(document.body, config.turnSelector, markers);
+      markers = adapter.turns.read(markers).markers;
       expect(markers[0].id).toBe(id);
       expect(markers).toHaveLength(2);
-      adapter.destroy();
+      adapter.turns.stop();
       expect(document.querySelector('[data-gv-turn-id]')).toBeNull();
       document.body.removeAttribute(fixture.conversationIdAttribute);
     });
@@ -96,38 +97,48 @@ for (const fixture of fixtures) {
     it('persists hierarchy under its site and restores collapse geometry on conversation remount', async () => {
       const { adapter } = create();
       document.body.append(turn('Parent'), turn('Child'), turn('Next parent'));
-      const state = adapter.createState(() => {});
+      const state = new TimelineState(() => {}, adapter.storage);
       await state.init();
-      state.replaceMarkers(adapter.collect(document.body, config.turnSelector, []));
-      state.hierarchy.markerLevelEnabled = true;
+      state.replaceMarkers(adapter.turns.read([]).markers);
+      const geometry = new TimelineHierarchyGeometry(
+        () => state.markers,
+        (id) => state.hierarchy.getMarkerLevel(id),
+        (id) => state.hierarchy.isMarkerCollapsed(id),
+      );
+      geometry.markerLevelEnabled = true;
       state.hierarchy.setMarkerLevel(state.markers[1].id, 2);
       state.hierarchy.toggleCollapse(state.markers[0].id);
-      expect(state.hierarchy.getHiddenMarkerIndices()).toEqual(new Set([1]));
+      expect(geometry.getHiddenMarkerIndices()).toEqual(new Set([1]));
       const key = catalogHierarchyStorageKey(fixture.siteId, buildConversationId(config));
       expect(localStorage.getItem(key)).toBeTruthy();
       expect(
         localStorage.getItem(`geminiTimelineLevels:${buildConversationId(config)}`),
       ).toBeNull();
       state.destroy();
-      const restored = adapter.createState(() => {});
+      const restored = new TimelineState(() => {}, adapter.storage);
       await restored.init();
       restored.replaceMarkers(state.markers);
-      restored.hierarchy.markerLevelEnabled = true;
-      expect(restored.hierarchy.getHiddenMarkerIndices()).toEqual(new Set([1]));
+      const restoredGeometry = new TimelineHierarchyGeometry(
+        () => restored.markers,
+        (id) => restored.hierarchy.getMarkerLevel(id),
+        (id) => restored.hierarchy.isMarkerCollapsed(id),
+      );
+      restoredGeometry.markerLevelEnabled = true;
+      expect(restoredGeometry.getHiddenMarkerIndices()).toEqual(new Set([1]));
       restored.destroy();
-      adapter.destroy();
+      adapter.turns.stop();
       document.body.removeAttribute(fixture.conversationIdAttribute);
     });
 
     it('refuses hierarchy edits for a previous conversation still on screen after the route changes', async () => {
       const { adapter, stars } = create();
       document.body.append(turn('Cached previous prompt'));
-      adapter.collect(document.body, config.turnSelector, []);
+      adapter.turns.read([]);
       history.replaceState({}, '', fixture.path.replace('first', 'next'));
       const nextAdapter = new CatalogTimelineAdapter(config, stars);
-      const state = nextAdapter.createState(() => {});
+      const state = new TimelineState(() => {}, nextAdapter.storage);
       await state.init();
-      state.replaceMarkers(nextAdapter.collect(document.body, config.turnSelector, []));
+      state.replaceMarkers(nextAdapter.turns.read([]).markers);
       state.hierarchy.setMarkerLevel(state.markers[0].id, 2);
       state.hierarchy.toggleCollapse(state.markers[0].id);
       expect(state.hierarchy.getMarkerLevel(state.markers[0].id)).toBe(1);
@@ -137,8 +148,8 @@ for (const fixture of fixtures) {
         ),
       ).toBeNull();
       state.destroy();
-      adapter.destroy();
-      nextAdapter.destroy();
+      adapter.turns.stop();
+      nextAdapter.turns.stop();
       document.body.removeAttribute(fixture.conversationIdAttribute);
     });
   });

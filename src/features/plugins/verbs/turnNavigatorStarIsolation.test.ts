@@ -79,8 +79,6 @@ describe('turnNavigator async star isolation', () => {
     document.body.innerHTML = '<div class="ds-user">same prompt</div>';
     const scope = new PluginScope();
     getStarredMessagesForConversation.mockResolvedValue([]);
-    turnNavigatorPrimitive.activate(scope, {}, context(deepseek).ctx);
-    await flush();
     let release!: (value: StarredMessage[]) => void;
     getStarredMessagesForConversation.mockImplementationOnce(
       () =>
@@ -88,9 +86,9 @@ describe('turnNavigator async star isolation', () => {
           release = resolve;
         }),
     );
-    const callbacks = vi.mocked(chrome.storage.onChanged.addListener).mock.calls;
-    for (const [notify] of callbacks)
-      notify({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: [] } }, 'local');
+    turnNavigatorPrimitive.activate(scope, {}, context(deepseek).ctx);
+    await flush();
+    // The old engine's initial Saved Library read is still pending at navigation.
     history.replaceState({}, '', '/a/chat/s/new-chat');
     const starred = {
       turnId: buildTurnId('same prompt'),
@@ -319,7 +317,7 @@ describe('turnNavigator async star isolation', () => {
     // Another tab starred something before this tab refreshed for the new route.
     const callbacks = vi.mocked(chrome.storage.onChanged.addListener).mock.calls;
     for (const [notify] of callbacks)
-      notify({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: [] } }, 'local');
+      notify({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: { messages: {} } } }, 'local');
     document.querySelector('.ds-user')!.replaceWith(
       Object.assign(document.createElement('div'), {
         className: 'ds-user',

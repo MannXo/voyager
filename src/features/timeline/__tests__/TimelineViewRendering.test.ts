@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import { TimelineState } from '@/features/timeline/TimelineState';
+import { createGeminiTimelineStoragePolicy } from '@/pages/content/timeline/GeminiTimelineStorage';
 import { StarredMessagesService } from '@/pages/content/timeline/StarredMessagesService';
-import { TimelineState } from '@/pages/content/timeline/TimelineState';
 import type { StarredMessagesData } from '@/pages/content/timeline/starredTypes';
 
+import { TimelineHierarchyGeometry } from '../TimelineHierarchyGeometry';
 import { TimelineView } from '../TimelineView';
 import type { TimelineMarker } from '../types';
 
@@ -25,9 +27,14 @@ function setup(markers = [marker(0), marker(1), marker(2)]) {
   const state = new TimelineState(() => {
     view.render();
     view.updatePreviewMarkers();
-  });
+  }, createGeminiTimelineStoragePolicy());
   state.replaceMarkers(markers);
-  const view = new TimelineView(state, {
+  const geometry = new TimelineHierarchyGeometry(
+    () => state.markers,
+    (id) => state.hierarchy.getMarkerLevel(id),
+    (id) => state.hierarchy.isMarkerCollapsed(id),
+  );
+  const view = new TimelineView(state, geometry, {
     getViewport: () => viewport,
     getActiveId: () => null,
     navigate: vi.fn(),

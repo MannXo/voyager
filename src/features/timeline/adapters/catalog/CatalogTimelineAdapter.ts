@@ -1,65 +1,80 @@
-import type { TimelineAdapter, TimelineElements, TimelineStateOwner } from '../../TimelineAdapter';
+import type {
+  TimelineAdapter,
+  TimelineTurnSource,
+  TimelineTurnSnapshot,
+} from '../../TimelineAdapter';
 import type { TimelineMarker } from '../../types';
-import { CatalogTimelineState } from './CatalogTimelineState';
+import { createCatalogTimelineStoragePolicy } from './CatalogTimelineStorage';
+import { CatalogTurnOwnership } from './CatalogTurnOwnership';
 import type { CatalogTimelineConfig } from './config';
-import { NavigatorStars } from './navigatorStars';
 import { type Marker, type MountedTurn, mergeMountedTurns, rememberedMarkers } from './turnMerge';
 import { mountedOwnershipTurns } from './turnOwnership';
 import { renderedCheck, togglesVisibility } from './turnVisibility';
 
 /** Site selectors and virtualized DOM identity; every visual surface belongs to the shared engine. */
 export class CatalogTimelineAdapter implements TimelineAdapter {
-  readonly virtualized = true;
-  readonly defaultMarkerLevelEnabled = true;
-  readonly settingsPrefix: string;
-  readonly observationOptions: MutationObserverInit = {
-    childList: true,
-    characterData: true,
-    subtree: true,
-    attributes: true,
-    attributeOldValue: true,
-    attributeFilter: ['style', 'hidden'],
-  };
+  readonly route: { siteId: string; url: string };
+  readonly mount: { anchor: () => HTMLElement; position: 'left' | 'right' };
+  readonly storage;
+  readonly turns: CatalogTimelineTurnSource;
+  constructor(config: CatalogTimelineConfig, ownership: CatalogTurnOwnership) {
+    this.route = { siteId: config.siteId, url: location.href.split('#')[0] };
+    this.mount = { anchor: () => document.body, position: config.position };
+    this.storage = createCatalogTimelineStoragePolicy(config, ownership, this.route.url);
+    this.turns = new CatalogTimelineTurnSource(config, ownership);
+  }
+  viewport(element: HTMLElement): HTMLElement {
+    return this.turns.viewport(element);
+  }
+  timestamps(): null {
+    return null;
+  }
+}
+
+class CatalogTimelineTurnSource implements TimelineTurnSource {
+  readonly navigation = 'virtualized';
+  get root(): HTMLElement | null {
+    return document.body;
+  }
+  get anchor(): HTMLElement | null {
+    return (
+      Array.from(document.querySelectorAll<HTMLElement>(this.config.turnSelector)).find(
+        renderedCheck(),
+      ) ?? this.root
+    );
+  }
+  count(): number {
+    return document.querySelectorAll(this.config.turnSelector).length;
+  }
+  refresh(): boolean {
+    return !!this.root;
+  }
+  async initialize(signal: AbortSignal): Promise<boolean> {
+    return !signal.aborted && this.refresh();
+  }
+  observe(callback: MutationCallback): MutationObserver {
+    const observer = new MutationObserver((records, owner) => {
+      if (this.shouldRefresh(records)) callback(records, owner);
+    });
+    if (this.root)
+      observer.observe(this.root, {
+        childList: true,
+        characterData: true,
+        subtree: true,
+        attributes: true,
+        attributeOldValue: true,
+        attributeFilter: ['style', 'hidden'],
+      });
+    return observer;
+  }
   private known: Marker[] = [];
   private readonly originalStamps = new Map<HTMLElement, string | null>();
 
   constructor(
-    readonly config: CatalogTimelineConfig,
-    private readonly stars: NavigatorStars,
-  ) {
-    this.settingsPrefix = `gvTimeline:${config.siteId}:`;
-  }
-
-  get siteId(): string {
-    return this.config.siteId;
-  }
-  get position(): 'left' | 'right' {
-    return this.config.position;
-  }
-
-  createState(onChange: () => void): TimelineStateOwner {
-    return new CatalogTimelineState(this.config, this.stars, onChange);
-  }
-
-  createTimestamps(): null {
-    return null;
-  }
-
-  async findElements(signal: AbortSignal): Promise<TimelineElements | null> {
-    return signal.aborted ? null : this.refreshElements(this.config.turnSelector);
-  }
-
-  refreshElements(selector: string): TimelineElements | null {
-    if (!document.body) return null;
-    const turn = Array.from(document.querySelectorAll<HTMLElement>(selector)).find(renderedCheck());
-    return {
-      container: document.body,
-      selector,
-      viewport: this.getViewport(turn ?? document.body),
-    };
-  }
-
-  getViewport(element: HTMLElement): HTMLElement {
+    private readonly config: CatalogTimelineConfig,
+    private readonly ownership: CatalogTurnOwnership,
+  ) {}
+  viewport(element: HTMLElement): HTMLElement {
     if (this.config.scrollContainerSelector) {
       try {
         const configured = document.querySelector<HTMLElement>(this.config.scrollContainerSelector);
@@ -84,7 +99,10 @@ export class CatalogTimelineAdapter implements TimelineAdapter {
       : document.documentElement;
   }
 
-  collect(container: HTMLElement, selector: string, previous: TimelineMarker[]): TimelineMarker[] {
+  read(previous: TimelineMarker[]): TimelineTurnSnapshot {
+    const container = this.root;
+    if (!container) return { markers: [], mountedCount: 0 };
+    const selector = this.config.turnSelector;
     const mounted: MountedTurn[] = Array.from(container.querySelectorAll<HTMLElement>(selector))
       .filter(renderedCheck())
       .map((element) => ({
@@ -94,7 +112,7 @@ export class CatalogTimelineAdapter implements TimelineAdapter {
     for (const turn of mounted)
       if (!this.originalStamps.has(turn.element))
         this.originalStamps.set(turn.element, turn.element.getAttribute('data-gv-turn-id'));
-    const viewport = this.getViewport(mounted[0]?.element ?? container);
+    const viewport = this.viewport(mounted[0]?.element ?? container);
     const viewportTop =
       viewport === document.documentElement || viewport === document.body
         ? 0
@@ -126,20 +144,21 @@ export class CatalogTimelineAdapter implements TimelineAdapter {
       marker.center = centerOf(marker.element);
       marker.measuredAt = pass;
     }
-    this.stars.observe(mountedOwnershipTurns(mounted));
+    this.ownership.observe(mountedOwnershipTurns(mounted));
     const assistantByElement = this.assistantSummaries(mounted, container);
-    return this.known.map((marker, index) => ({
+    const markers = this.known.map((marker, index) => ({
       id: marker.id,
       element: marker.element,
       summary: marker.summary,
       assistantSummary:
         assistantByElement.get(marker.element) ?? old.get(marker.id)?.assistantSummary ?? '',
       baseN: this.known.length === 1 ? 0.5 : index / Math.max(1, this.known.length - 1),
-      starred: !!this.stars.get(marker.hash),
+      starred: false,
       hash: marker.hash,
       center: marker.center,
       measuredAt: marker.measuredAt,
     }));
+    return { markers, mountedCount: mounted.length };
   }
 
   private assistantSummaries(
@@ -188,11 +207,7 @@ export class CatalogTimelineAdapter implements TimelineAdapter {
     });
   }
 
-  reportTurns(): void {
-    /* Plugin health uses the primitive's target counter. */
-  }
-
-  destroy(): void {
+  stop(): void {
     for (const [element, original] of this.originalStamps) {
       if (original === null) element.removeAttribute('data-gv-turn-id');
       else element.setAttribute('data-gv-turn-id', original);

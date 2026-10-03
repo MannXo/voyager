@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { TimelineManager } from '../manager';
+import { GeminiTimelineAdapter } from '../GeminiTimelineAdapter';
 
 describe('TimelineManager selector priority compatibility', () => {
   beforeEach(() => {
@@ -25,15 +25,9 @@ describe('TimelineManager selector priority compatibility', () => {
     document.body.appendChild(main);
     localStorage.setItem('geminiTimelineUserTurnSelectorAuto', '.stale-selector-target');
 
-    const manager = new TimelineManager();
-    const internal = manager as unknown as {
-      findCriticalElements: () => Promise<boolean>;
-      userTurnSelector: string;
-    };
-
-    const ok = await internal.findCriticalElements();
-    expect(ok).toBe(true);
-    expect(internal.userTurnSelector).toBe('.user-query-bubble-with-background');
+    const source = await detect();
+    expect(source.matches()).toEqual([defaultTurn]);
+    source.destroy();
     expect(localStorage.getItem('geminiTimelineUserTurnSelectorAuto')).toBe(
       '.user-query-bubble-with-background',
     );
@@ -55,29 +49,23 @@ describe('TimelineManager selector priority compatibility', () => {
     document.body.appendChild(main);
     localStorage.setItem('geminiTimelineUserTurnSelector', '.custom-user-turn');
 
-    const manager = new TimelineManager();
-    const internal = manager as unknown as {
-      findCriticalElements: () => Promise<boolean>;
-      userTurnSelector: string;
-    };
-
-    const ok = await internal.findCriticalElements();
-    expect(ok).toBe(true);
-    expect(internal.userTurnSelector).toBe('.custom-user-turn');
+    const source = await detect();
+    expect(source.matches()).toEqual([customTurn]);
+    source.destroy();
   });
 });
 
-type TimelineSelectorInternals = {
-  findCriticalElements: () => Promise<boolean>;
-  userTurnSelector: string;
-  conversationContainer: HTMLElement | null;
-  destroy: () => void;
-};
-
-async function detect(): Promise<TimelineSelectorInternals> {
-  const internal = new TimelineManager() as unknown as TimelineSelectorInternals;
-  await internal.findCriticalElements();
-  return internal;
+async function detect() {
+  const adapter = new GeminiTimelineAdapter();
+  await adapter.turns.initialize(new AbortController().signal);
+  return {
+    get root() {
+      return adapter.turns.root;
+    },
+    matches: () => adapter.turns.read([]).markers.map((marker) => marker.element),
+    refresh: () => adapter.turns.refresh(),
+    destroy: () => adapter.turns.stop(),
+  };
 }
 
 /** Every user-turn shape Voyager has recognized on Gemini, each in its own wrapper. */
@@ -134,11 +122,8 @@ describe('TimelineManager Gemini user-turn detection', () => {
     while (main.querySelector(recognizable)) {
       localStorage.clear();
       const internal = await detect();
-      const matches = Array.from(document.querySelectorAll(internal.userTurnSelector));
-      detected.push([
-        shapeOf(matches[0]),
-        internal.conversationContainer === main ? 'main' : 'parent',
-      ]);
+      const matches = internal.matches();
+      detected.push([shapeOf(matches[0]), internal.root === main ? 'main' : 'parent']);
       matches.forEach((element) => element.closest('.gv-test-wrapper')?.remove());
       internal.destroy();
     }
@@ -163,14 +148,13 @@ describe('TimelineManager Gemini user-turn detection', () => {
     await vi.advanceTimersByTimeAsync(4000);
     const internal = await pending;
 
-    expect(internal.conversationContainer).toBe(main);
-    expect(document.querySelectorAll(internal.userTurnSelector)).toHaveLength(0);
+    expect(internal.root).toBe(main);
+    expect(internal.matches()).toHaveLength(0);
 
     main.remove();
     mountShapes(USER_SHAPES.map(([name]) => name));
-    const recognized = Array.from(document.querySelectorAll(internal.userTurnSelector)).map(
-      shapeOf,
-    );
+    internal.refresh();
+    const recognized = internal.matches().map(shapeOf);
     expect([...new Set(recognized)]).toEqual([
       'bubble',
       'bubbleContainer',
@@ -191,8 +175,8 @@ describe('TimelineManager Gemini user-turn detection', () => {
 
     const internal = await detect();
 
-    expect(internal.userTurnSelector).toBe('user-query');
-    expect(internal.conversationContainer).toBe(main);
+    expect(internal.matches().map((element) => element.textContent)).toEqual(['host']);
+    expect(internal.root).toBe(main);
     internal.destroy();
   });
 
@@ -205,8 +189,8 @@ describe('TimelineManager Gemini user-turn detection', () => {
 
     const internal = await detect();
 
-    expect(internal.userTurnSelector).toBe('.gv-test-custom-turn');
-    expect(internal.conversationContainer).toBe(wrapper);
+    expect(internal.matches().map((element) => element.textContent)).toEqual(['custom']);
+    expect(internal.root).toBe(wrapper);
     internal.destroy();
   });
 
@@ -215,15 +199,15 @@ describe('TimelineManager Gemini user-turn detection', () => {
     localStorage.setItem('geminiTimelineUserTurnSelector', 'article[data-turn="user"]');
 
     let internal = await detect();
-    expect(internal.userTurnSelector).toBe('article[data-turn="user"]');
-    expect(internal.conversationContainer).toBe(main);
+    expect(internal.matches().map((element) => element.textContent)).toEqual(['articleTurn']);
+    expect(internal.root).toBe(main);
     expect(localStorage.getItem('geminiTimelineUserTurnSelectorAuto')).toBeNull();
     internal.destroy();
 
     localStorage.setItem('geminiTimelineUserTurnSelector', '.gv-test-missing');
     internal = await detect();
-    expect(internal.userTurnSelector).toBe('article[data-turn="user"]');
-    expect(shapeOf(internal.conversationContainer)).toBe('articleTurn');
+    expect(internal.matches().map((element) => element.textContent)).toEqual(['articleTurn']);
+    expect(shapeOf(internal.root)).toBe('articleTurn');
     expect(localStorage.getItem('geminiTimelineUserTurnSelector')).toBeNull();
     internal.destroy();
   });

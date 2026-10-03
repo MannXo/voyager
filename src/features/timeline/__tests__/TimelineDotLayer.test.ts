@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { TimelineState } from '@/pages/content/timeline/TimelineState';
+import { TimelineState } from '@/features/timeline/TimelineState';
+import { createGeminiTimelineStoragePolicy } from '@/pages/content/timeline/GeminiTimelineStorage';
 
 import { TimelineDotLayer } from '../TimelineDotLayer';
+import { TimelineHierarchyGeometry } from '../TimelineHierarchyGeometry';
 
 const fixtures: Array<{ layer: TimelineDotLayer; state: TimelineState }> = [];
 
@@ -17,7 +19,10 @@ function fixture(positions = [0, 0.5, 1], getActiveId: () => string | null = () 
   track.appendChild(content);
   bar.appendChild(track);
   document.body.appendChild(bar);
-  const state = new TimelineState(() => {}, 'https://gemini.google.com/app/dot-layer');
+  const state = new TimelineState(
+    () => {},
+    createGeminiTimelineStoragePolicy('https://gemini.google.com/app/dot-layer'),
+  );
   state.replaceMarkers(
     positions.map((baseN, index) => ({
       id: `turn-${index}`,
@@ -28,14 +33,19 @@ function fixture(positions = [0, 0.5, 1], getActiveId: () => string | null = () 
       starred: false,
     })),
   );
-  const layer = new TimelineDotLayer(state, {
+  const geometry = new TimelineHierarchyGeometry(
+    () => state.markers,
+    (id) => state.hierarchy.getMarkerLevel(id),
+    (id) => state.hierarchy.isMarkerCollapsed(id),
+  );
+  const layer = new TimelineDotLayer(() => state.markers, geometry, {
     getStyle: () => 'dots',
     getViewport: () => null,
     getActiveId,
   });
   fixtures.push({ layer, state });
   layer.mount(bar, track, content);
-  return { layer, state, content };
+  return { layer, state, geometry, content };
 }
 
 beforeEach(() => {
@@ -98,8 +108,8 @@ describe('TimelineDotLayer', () => {
   });
 
   it('spaces only visible markers after collapse and uses pixel tops when CSS cannot resolve them', () => {
-    const { layer, state, content } = fixture([0, 0.001, 0.002, 0.003, 0.004, 1]);
-    state.hierarchy.markerLevelEnabled = true;
+    const { layer, state, geometry, content } = fixture([0, 0.001, 0.002, 0.003, 0.004, 1]);
+    geometry.markerLevelEnabled = true;
     state.hierarchy.setMarkerLevel('turn-1', 2);
     state.hierarchy.setMarkerLevel('turn-2', 3);
     state.hierarchy.toggleCollapse('turn-0');

@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { TimelineState } from '@/features/timeline/TimelineState';
 import type { TimelineMarker } from '@/features/timeline/types';
+import { createGeminiTimelineStoragePolicy } from '@/pages/content/timeline/GeminiTimelineStorage';
 
 import { eventBus } from '../EventBus';
 import { StarredMessagesService } from '../StarredMessagesService';
-import { TimelineState } from '../TimelineState';
 import type { StarredMessage, StarredMessagesData } from '../starredTypes';
 
 const CONVERSATION_ID = 'gemini:conv:abc';
@@ -39,10 +40,14 @@ async function setup(
   vi.spyOn(StarredMessagesService, 'getAllStarredMessages').mockResolvedValue({
     messages: { [CONVERSATION_ID]: messages },
   });
-  const state = new TimelineState(vi.fn(), window.location.href, {
-    resolveCanonicalTurnId: (_cid, id) => (id.startsWith('s-') ? id : (aliases.get(id) ?? null)),
-    getTurnIdAliases: (_cid, id) => (legacyByServer.has(id) ? [id, legacyByServer.get(id)!] : [id]),
-  });
+  const state = new TimelineState(
+    vi.fn(),
+    createGeminiTimelineStoragePolicy(window.location.href, {
+      resolveCanonicalTurnId: (_cid, id) => (id.startsWith('s-') ? id : (aliases.get(id) ?? null)),
+      getTurnIdAliases: (_cid, id) =>
+        legacyByServer.has(id) ? [id, legacyByServer.get(id)!] : [id],
+    }),
+  );
   states.push(state);
   await state.init();
   state.replaceMarkers(markers);
@@ -133,7 +138,7 @@ describe('TimelineState stars in a partially mounted conversation', () => {
       }),
     );
     const onChange = vi.fn();
-    const state = new TimelineState(onChange);
+    const state = new TimelineState(onChange, createGeminiTimelineStoragePolicy());
     states.push(state);
     const init = state.init();
     state.destroy();

@@ -8,7 +8,8 @@ owns selector discovery, turn collection, scroll viewport discovery and native h
 | ----------------------------------------------------------------------------------- | ------------------------------- |
 | Find turns, stable IDs, prompt/response summaries                                   | `TimelineTurns.ts`              |
 | Marker snapshot, stars, verified legacy aliases and star persistence                | `TimelineState.ts`              |
-| Scoped hierarchy persistence, level/collapse edits and collapsed positions          | `TimelineHierarchy.ts`          |
+| Scoped hierarchy persistence and level/collapse edits                               | `TimelineHierarchy.ts`          |
+| Collapsed positions and hidden marker geometry                                      | `TimelineHierarchyGeometry.ts`  |
 | Dot/preview/shortcut navigation, active turn, scrolling and navigation cancellation | `TimelineNavigation.ts`         |
 | Rail composition, styling, preview, viewport sync and resize debounce               | `TimelineView.ts`               |
 | Marker measurements/geometry, virtual/dense dots, ruler wave and runner animation   | `TimelineDotLayer.ts`           |
@@ -52,9 +53,9 @@ Owner tests exercise DOM behavior and data invariants. The `TimelineManager*` te
 viewport replacement, real navigation surfaces, initialization and teardown. Migrate those assertions
 with their owner instead of retaining private manager forwarding methods for old tests.
 
-View, navigation and interaction owners in the table now live in `src/features/timeline/`.
-Gemini state, hierarchy persistence, turns and timestamps remain in this directory. Their serialized
-formats, localStorage compatibility keys and account isolation are unchanged.
+State, hierarchy, geometry, view, navigation and interaction owners in the table live in
+`src/features/timeline/`. Gemini supplies `GeminiTimelineStorage.ts`, turns and timestamps from this
+directory. Its serialized formats, localStorage compatibility keys and account isolation are unchanged.
 
 ## Highlight integration
 
