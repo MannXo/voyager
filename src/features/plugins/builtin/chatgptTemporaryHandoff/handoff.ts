@@ -174,12 +174,11 @@ function randomFilenameNonce(): string {
   }
 }
 
-// Recovery trusts the filename, so another handoff must never reuse an earlier attachment preview.
 export function createHandoffFilename(now = new Date(), nonce = randomFilenameNonce()): string {
   const timestamp = now
     .toISOString()
     .replace(/[-:.TZ]/g, '')
-    .slice(0, 17);
+    .slice(0, 17); // Unique names stop recovery accepting an earlier attachment preview.
   const safeNonce = nonce.replace(/[^a-z0-9]/gi, '').slice(0, 12) || randomFilenameNonce();
   return `chatgpt-temporary-handoff-${timestamp}-${safeNonce}.md`;
 }

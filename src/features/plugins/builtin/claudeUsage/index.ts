@@ -55,10 +55,8 @@ let dragStart = { x: 0, y: 0 };
 let pillMoveHandler: ((ev: PointerEvent) => void) | null = null;
 let reloadPage = (): void => location.reload();
 const refreshOwnerId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-// Bumped on every stopClaudeUsage(): async work still in flight (usage /
-// bootstrap fetches, cache reads) captures the generation at entry and must
-// re-check it before touching the DOM, or a disabled plugin resurrects the
-// pill as un-removable zombie UI.
+// Each stop bumps this generation; async usage/bootstrap fetches and cache reads capture it at entry
+// and recheck before DOM writes, so late work cannot resurrect a disabled plugin's pill.
 let generation = 0;
 
 export function claudeUsageUrl(pathname = location.pathname, search = location.search): string {
