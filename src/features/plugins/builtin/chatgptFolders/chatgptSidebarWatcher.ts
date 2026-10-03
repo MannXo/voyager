@@ -8,7 +8,7 @@ export type SidebarListener = (sidebar: HTMLElement | null) => void;
 /**
  * Rows appear (pagination), are renamed in place (text or `href` changes), and
  * the whole sidebar can be remounted. A row's menu trigger flips `aria-expanded`
- * when its menu opens. Text and attribute changes only matter inside it.
+ * when its menu opens, and the open conversation's row carries `aria-current`. Text and attribute changes only matter inside it.
  */
 const SIDEBAR_OBSERVER_OPTIONS: MutationObserverInit = {
   childList: true,
@@ -21,6 +21,8 @@ const SIDEBAR_OBSERVER_OPTIONS: MutationObserverInit = {
     'role',
     'data-sidebar-project-container-id',
     'aria-expanded',
+    // Moves to the open conversation's row when the route changes.
+    'aria-current',
     FILED_ROW_ATTRIBUTE,
   ],
 };

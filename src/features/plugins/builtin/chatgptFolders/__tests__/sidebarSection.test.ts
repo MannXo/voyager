@@ -283,6 +283,29 @@ describe('ChatGPT folder section in the sidebar', () => {
     );
   });
 
+  it('marks the filed conversation the page has open, and follows the route', async () => {
+    await activate();
+    const filedTitle = () =>
+      [...section().shadowRoot!.querySelectorAll<HTMLElement>('[class*="__conv-title"]')].find(
+        (title) => title.textContent === FILED.title,
+      )!;
+    expect(filedTitle().getAttribute('aria-current')).toBeNull();
+
+    try {
+      history.pushState(null, '', `/c/${FILED.id}`);
+      sidebar.setActive(FILED.id);
+      await nextPass();
+      expect(filedTitle().getAttribute('aria-current')).toBe('page');
+
+      history.pushState(null, '', `/c/${ROWS[2].id}`);
+      sidebar.setActive(ROWS[2].id);
+      await nextPass();
+      expect(filedTitle().getAttribute('aria-current')).toBeNull();
+    } finally {
+      history.pushState(null, '', '/');
+    }
+  });
+
   it('opens a filed conversation through its sidebar link', async () => {
     await activate();
     const link = sidebar.row(FILED.id).querySelector('a')!;
