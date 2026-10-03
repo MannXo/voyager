@@ -25,5 +25,4 @@ details only when the introduction point changes how a maintainer should reason 
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | [Watermark and media](regressions/watermark-media.md)           | Watermark detection or removal, image downloads, full-size media, or native media handoffs.      |
 | [Providers and plugins](regressions/providers-plugins.md)       | ChatGPT or Claude adapters, plugin lifecycles, temporary chat handoff, or prompt commands.       |
-| [Browser and release](regressions/browser-release.md)           | Browser support, extension permissions or messaging, Safari native behavior, or public assets.   |
 | [State, identity, and sync](regressions/state-identity-sync.md) | Account or route identity, extension message lifetimes, storage mirrors, clear markers, or sync. |

@@ -15,6 +15,7 @@ export function createPromptNudgeRegistration(getPluginSiteDomains: () => Set<st
   // exposes SetIcon (no badge action), so the dot is baked into the icon via
   // OffscreenCanvas. chrome.declarativeContent is absent on Firefox/Safari, where
   // this whole feature safely no-ops.
+  // Chrome cannot pin the icon; unpinned users see this dot only in the extensions menu.
   const NUDGE_ICON_SIZES = [16, 32] as const;
   const NUDGE_DOT_COLOR = '#e5484d';
   let cachedNudgeIcon: { [size: string]: ImageData } | null = null;
