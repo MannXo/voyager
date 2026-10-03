@@ -11,7 +11,14 @@ import {
 } from '../bundleIntent';
 import { hashValue } from '../canonicalHash';
 import { INTERRUPTED, type StoredOutcome } from '../folderOps';
-import { type FolderOwnerMeta, OWNER_INDEX_KEY, ownerMetaKey } from '../folderOwnerState';
+import {
+  type FolderOwnerMeta,
+  OWNER_INDEX_KEY,
+  ownerBackupKey,
+  ownerIntentKey,
+  ownerMetaKey,
+  pendingOpKey,
+} from '../folderOwnerState';
 import { createAllowanceLedger } from '../ownerAllowances';
 import { type Fault, createFaultyStorage } from './faultyStorage';
 import {
@@ -86,6 +93,25 @@ describe('bundle writes (addendum P3P4 R3, R4)', () => {
       const intent = storage.read(BUNDLE_INTENT_KEY) as { status: string } | undefined;
       expect(intent?.status, label).toBe(landed ? 'closed' : undefined);
     }
+  });
+
+  it.each([
+    OWNER_INDEX_KEY,
+    ownerIntentKey(KEY),
+    pendingOpKey('tab', 4),
+    ownerBackupKey(KEY, 'last'),
+    BUNDLE_INTENT_KEY,
+    ownerMetaKey('not-a-folder-key'),
+  ])('refuses a bundle over %s, which owner turns read without declaring it', async (sidecar) => {
+    const storage = createFaultyStorage({ [META]: metaWith({ kind: 'saved' }, 4) });
+    const before = storage.snapshot();
+
+    await expect(
+      writeBundle(storage.area, request({ [META]: metaWith(pending('tx')), [sidecar]: 'x' })),
+    ).rejects.toThrow('Not a bundle participant');
+
+    expect(storage.calls()).toBe(0);
+    expect(storage.snapshot()).toEqual(before);
   });
 
   it.each([{ laterPrompts: ['prompt'] }, { laterPrompts: ['later user edit'] }])(

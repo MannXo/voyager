@@ -22,7 +22,8 @@ import type { FolderOwnerMeta, FolderOwnerStorageArea } from './folderOwnerState
 
 export const BUNDLE_INTENT_KEY = 'gvFolderOwner:bundleIntent';
 const BUNDLE_VERSION = 1;
-const META_PREFIX = 'gvFolderOwner:meta:';
+const OWNER_PREFIX = 'gvFolderOwner:';
+const META_PREFIX = `${OWNER_PREFIX}meta:`;
 const MIN_MARGIN_BYTES = 512 * 1024;
 const MARGIN_RATIO = 0.1;
 const SAVED: OpOutcome = { kind: 'saved' };
@@ -277,10 +278,12 @@ async function readKeys(area: FolderOwnerStorageArea, intent: OpenBundle) {
 }
 
 /**
- * Writes `request` as one bundle. Callers run inside the queue. The admission
- * (R3.1) is one `data` step for the intent and every value, which must leave
- * `M` free under a hard quota; a value `set` refused on quota while every key
- * is still at its prev hash aborts with nothing landed (R3.4).
+ * Writes `request` as one bundle. Callers run inside the queue. Its keys are
+ * folder keys, their metas and companions such as the prompt library; any
+ * other owner key throws. The admission (R3.1) is one `data` step for the
+ * intent and every value, which must leave `M` free under a hard quota; a
+ * value `set` refused on quota while every key is still at its prev hash
+ * aborts with nothing landed (R3.4).
  */
 export async function writeBundle(
   area: FolderOwnerStorageArea,
@@ -288,6 +291,11 @@ export async function writeBundle(
   budget?: Pick<StorageBudget, 'run'>,
 ): Promise<BundleResult> {
   const keyList = Object.keys(request.values);
+  // Turns declare only K and its meta as reads, so a bundle over any other owner key would go unseen.
+  const sidecar = keyList.find(
+    (key) => key.startsWith(OWNER_PREFIX) && !(key.startsWith(META_PREFIX) && siteOfKey(key)),
+  );
+  if (sidecar) throw new Error(`Not a bundle participant: ${sidecar}`);
   let prev: Record<string, unknown>;
   try {
     prev = await area.get(keyList);
