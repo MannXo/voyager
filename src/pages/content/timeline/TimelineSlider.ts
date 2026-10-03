@@ -36,7 +36,7 @@ export class TimelineSlider {
       const rect = this.handle.getBoundingClientRect();
       this.sliderStartTop = rect.top;
       this.onSliderMove = (e: PointerEvent) => this.handleSliderDrag(e);
-      this.onSliderUp = (e: PointerEvent) => this.endSliderDrag(e);
+      this.onSliderUp = () => this.endSliderDrag();
       window.addEventListener('pointermove', this.onSliderMove, { signal });
       // Cancellation must release dragging so native scrolling can synchronize the rail again.
       window.addEventListener('pointerup', this.onSliderUp, { signal });
@@ -146,7 +146,7 @@ export class TimelineSlider {
     this.show();
   }
 
-  private endSliderDrag(_e: PointerEvent): void {
+  private endSliderDrag(): void {
     this.sliderDragging = false;
     try {
       if (this.onSliderMove) window.removeEventListener('pointermove', this.onSliderMove);

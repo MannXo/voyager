@@ -9,7 +9,7 @@ it observes Gemini DOM changes and rebinds the live scroll viewport.
 | Stars, verified legacy aliases, levels, collapse, persistence                       | `TimelineState.ts`              |
 | Dot/preview/shortcut navigation, active turn, scrolling and navigation cancellation | `TimelineNavigation.ts`         |
 | Rail composition, styling, preview, viewport sync and resize debounce               | `TimelineView.ts`               |
-| Marker geometry, virtual dots and runner animation                                  | `TimelineView.ts`               |
+| Marker geometry, virtual/dense dots, ruler wave and runner animation                | `TimelineDotLayer.ts`           |
 | Slider geometry, scroll dragging and hover fade                                     | `TimelineSlider.ts`             |
 | Rail width, position dragging and cached placement                                  | `TimelineRailPlacement.ts`      |
 | Preview list, search, pinning and compact hover bridge                              | `TimelinePreviewPanel.ts`       |
@@ -17,7 +17,7 @@ it observes Gemini DOM changes and rebinds the live scroll viewport.
 | Marker clicks, long press and hierarchy menu                                        | `TimelineMarkerInteractions.ts` |
 | Timestamp opt-in, draft adoption, history matching and timestamp DOM                | `TimelineTimestamps.ts`         |
 
-`TimelineState` owns the marker snapshot. `TimelineView` owns dot elements and measured positions;
+`TimelineState` owns the marker snapshot. `TimelineDotLayer` owns dot elements and measured positions;
 DOM nodes do not belong in persisted state. Owners take their required data/actions explicitly,
 without a reference back to the manager. Rendering reads state; user actions and storage events
 update state and notify the manager.

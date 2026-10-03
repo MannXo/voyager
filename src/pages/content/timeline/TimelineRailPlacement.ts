@@ -44,7 +44,7 @@ export class TimelineRailPlacement {
       this.barStartOffset = { x: rect.left, y: rect.top };
       this.bar!.setPointerCapture(ev.pointerId);
       this.onBarPointerMove = (e: PointerEvent) => this.handleBarDrag(e);
-      this.onBarPointerUp = (e: PointerEvent) => this.endBarDrag(e);
+      this.onBarPointerUp = () => this.endBarDrag();
       window.addEventListener('pointermove', this.onBarPointerMove, { signal });
       // Cancellation follows pointerup, including saving the final position.
       window.addEventListener('pointerup', this.onBarPointerUp, { signal });
@@ -86,7 +86,7 @@ export class TimelineRailPlacement {
       this.barWidth = Math.max(this.barWidthMin, Math.min(this.barWidthMax, dist * 2));
       this.options.onWidthChange();
     };
-    this.onResizeUp = (_e: PointerEvent) => {
+    this.onResizeUp = () => {
       this.resizing = false;
       this.bar?.classList.remove('timeline-resizing');
       window.removeEventListener('pointermove', this.onResizeMove!);
@@ -131,7 +131,7 @@ export class TimelineRailPlacement {
     this.updateRulerDirection(left);
   }
 
-  private endBarDrag(_e: PointerEvent): void {
+  private endBarDrag(): void {
     this.barDragging = false;
     this.savePosition();
     try {
@@ -211,5 +211,6 @@ export class TimelineRailPlacement {
 
   destroy(): void {
     this.lifetime.abort();
+    this.bar = null;
   }
 }
