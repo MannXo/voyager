@@ -335,6 +335,29 @@ describe('CloudSyncSettings platform routing', () => {
     },
   );
 
+  it.each([
+    { symptom: 'an empty array', contents: [] },
+    { symptom: 'an array of buckets', contents: [[]] },
+  ])(
+    'Overwrite refuses $symptom as folderContents without deleting local conversations',
+    async ({ contents }) => {
+      const malformed = { ...cloudFolders, folderContents: contents };
+      const { local, localSet, syncSet } = installChrome(
+        `https://chatgpt.com/c/${localId}`,
+        downloadedData(malformed),
+      );
+      const before = structuredClone(local);
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      await mount();
+      await click(t.syncOverwrite);
+      expect(local).toEqual(before);
+      expect(localSet).not.toHaveBeenCalled();
+      expect(syncSet).not.toHaveBeenCalled();
+      expect(container.textContent).toContain(t.folder_import_invalid_format);
+      expect(container.textContent).not.toContain(t.syncSuccess);
+    },
+  );
+
   it('rejects downloaded folders containing a foreign URL without writing storage', async () => {
     const foreign = folders(cloudId, 'Foreign folder');
     foreign.folderContents[cloudId][0].url = `https://gemini.google.com/app/${cloudId}`;

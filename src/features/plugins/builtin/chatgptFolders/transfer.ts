@@ -65,13 +65,15 @@ export function readChatGptFolderExport(
     return { ok: false, reason: 'invalid', message: validated.error.message };
   }
   // Dropping corrupt data is safe for a merge, but an overwrite would silently delete local entries.
-  if (
-    strategy === 'overwrite' &&
-    FolderImportExportService.sanitizeFolderContents(
-      (raw as FolderExportPayload).data.folderContents,
-    ).skipped > 0
-  ) {
-    return { ok: false, reason: 'invalid' };
+  if (strategy === 'overwrite') {
+    const contents = (raw as FolderExportPayload).data.folderContents;
+    const prototype = Object.getPrototypeOf(contents);
+    if (
+      (prototype !== Object.prototype && prototype !== null) ||
+      FolderImportExportService.sanitizeFolderContents(contents).skipped > 0
+    ) {
+      return { ok: false, reason: 'invalid' };
+    }
   }
   if (!holdsOnlyChatGptConversations(validated.data.data)) {
     return { ok: false, reason: 'wrong-site' };
