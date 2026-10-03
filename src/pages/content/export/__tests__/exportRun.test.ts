@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ExportFormat } from '../../../../features/export/types/export';
+import { nativeHealthReporter } from '../../nativeHealth';
 import type { ExportPlatformAdapter } from '../adapter/platformAdapters';
 import type { ChatTurn, ConversationCollector, ExportMessage } from '../conversationCollector';
 import type { ExportDictionaries } from '../exportLocale';
@@ -109,10 +110,14 @@ describe('createExportRunner', () => {
   });
 
   it('exports the selected messages and reports the finished PDF', async () => {
+    const found = vi.spyOn(nativeHealthReporter, 'reportFound');
     const result = { success: true };
     mocks.exportPendingConversation.mockResolvedValue(result);
+    const release = vi.fn();
+    const adapter = fakeAdapter();
+    adapter.prepareConversation = vi.fn(async () => ({ release }));
     const runner = createExportRunner({
-      adapter: fakeAdapter(),
+      adapter,
       collector: fakeCollector(renderMessages()),
     });
     const prepare = vi.fn(async () => {});
@@ -128,6 +133,12 @@ describe('createExportRunner', () => {
     await settle(running);
 
     expect(prepare).toHaveBeenCalledWith(expect.any(AbortSignal));
+    expect(adapter.prepareConversation).toHaveBeenCalledWith({
+      signal: expect.any(AbortSignal),
+      expectedUrl: location.href,
+    });
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(found).toHaveBeenCalledWith('export');
     const [state, turns, metadata, includeImageSource] =
       mocks.exportPendingConversation.mock.calls[0];
     expect(state).toMatchObject({ format: ExportFormat.PDF, fontSize: 14 });
@@ -160,13 +171,27 @@ describe('createExportRunner', () => {
     expect(mocks.reportFinishedExport).not.toHaveBeenCalled();
   });
 
-  it('warns and stops when the conversation has no messages', async () => {
+  it('warns and reports missing turns with a fresh health recheck', async () => {
+    const missing = vi.spyOn(nativeHealthReporter, 'reportMissing');
+    const found = vi.spyOn(nativeHealthReporter, 'reportFound');
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
-    const runner = createExportRunner({ adapter: fakeAdapter(), collector: fakeCollector([]) });
+    const collector = fakeCollector([]);
+    const runner = createExportRunner({ adapter: fakeAdapter(), collector });
 
     await settle(runner.run({ format: ExportFormat.MARKDOWN }, { dict, lang: 'en' }));
 
     expect(alertSpy).toHaveBeenCalledWith('export_dialog_warning');
+    expect(found).not.toHaveBeenCalled();
+    expect(missing).toHaveBeenCalledWith(
+      'export',
+      expect.objectContaining({ route: 'conversation' }),
+    );
+    const probe = missing.mock.calls[0][1];
+    expect(probe.recheck()).toBe(false);
+    collector.collectChatPairs = () => [
+      { user: 'Loaded later', assistant: '', starred: false, turnId: '1' },
+    ];
+    expect(probe.recheck()).toBe(true);
     expect(selectionBar()).toBeNull();
     expect(mocks.exportPendingConversation).not.toHaveBeenCalled();
   });
@@ -184,6 +209,34 @@ describe('createExportRunner', () => {
 
     expect(selectionBar()).toBeNull();
     expect(document.querySelector('.gv-export-msg-selector')).toBeNull();
+    expect(mocks.exportPendingConversation).not.toHaveBeenCalled();
+  });
+
+  it('waits for adapter preparation and keeps its resources until selection is cancelled', async () => {
+    const adapter = fakeAdapter();
+    const collector = fakeCollector([]);
+    const release = vi.fn();
+    let completePreparation: () => void = () => {};
+    adapter.prepareConversation = () =>
+      new Promise((resolve) => {
+        completePreparation = () => {
+          collector.collectSelectionMessages = () => renderMessages();
+          resolve({ release });
+        };
+      });
+    const runner = createExportRunner({ adapter, collector });
+
+    const running = runner.run({ format: ExportFormat.JSON }, { dict, lang: 'en' });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(selectionBar()).toBeNull();
+    completePreparation();
+    await until(() => selectionBar() !== null);
+    expect(release).not.toHaveBeenCalled();
+
+    runner.cancel();
+    await settle(running);
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(selectionBar()).toBeNull();
     expect(mocks.exportPendingConversation).not.toHaveBeenCalled();
   });
 

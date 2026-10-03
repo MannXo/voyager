@@ -5,20 +5,23 @@ resolves the platform adapter once per page, creates the collector and the runne
 entry points (persistent toolbar, conversation/response menus, logo dropdown, copy-as-image). File
 writing (JSON/Markdown/PDF/image) lives in `src/features/export/`.
 
-| Change                                                                              | Owner                                                                  |
-| ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Platform selectors, titles, lazy-history policy, ChatGPT selection turns            | `adapter/`                                                             |
-| Read turns and selectable messages from the page, Canvas snapshots, message ids     | `conversationCollector.ts`                                             |
-| One export run: preload clicks, reload resume, final export, active-operation abort | `exportRun.ts` (+ `pendingExportState.ts`, `topNodePreload.ts`)        |
-| Selection mode: checkboxes, bar, role filters, lazy-load refresh, Cancel/Escape     | `exportSelectionSession.ts`                                            |
-| Progress pill and centring floating UI over the conversation                        | `exportOverlayUi.ts`                                                   |
-| Generated-UI iframe screenshots and their permission prompt                         | `generatedUiScreenshots.ts`                                            |
-| Export item in Gemini conversation / sidebar / response menus                       | `conversationMenuExportObserver.ts` (+ `conversationMenuInjection.ts`) |
-| Opening a sidebar conversation before exporting it                                  | `sidebarConversationNavigation.ts`                                     |
-| Copy a single response as an image (button, width menu, Safari fallbacks)           | `responseCopyImageAction.ts`                                           |
-| Logo dropdown button (old Gemini layout) and its re-creation after re-renders       | `logoExportButton.ts`                                                  |
-| Always-visible toolbar (lr26 Gemini, ChatGPT and other plugin hosts)                | `persistentExportToolbar.ts`, `exportEntryGate.ts`                     |
-| Dictionaries, language reads and the `t()` used by every export surface             | `exportLocale.ts`                                                      |
+| Change                                                                               | Owner                                                                                |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| Platform selectors, titles, lazy-history policy, ChatGPT crawl/snapshot/thread watch | `adapter/`                                                                           |
+| Read turns and selectable messages from the page, Canvas snapshots, message ids      | `conversationCollector.ts`                                                           |
+| One export run: preload, resume, preparation/release, final export, operation abort  | `exportRun.ts` (+ `preparedExport.ts`, `pendingExportState.ts`, `topNodePreload.ts`) |
+| Selection mode: checkboxes, bar, role filters, lazy-load refresh, Cancel/Escape      | `exportSelectionSession.ts`                                                          |
+| ChatGPT crawl progress and cancellation                                              | `chatgptCrawlProgress.ts`                                                            |
+| Export turn anchor health after collection                                           | `exportRun.ts`, `exportHealth.ts`                                                    |
+| Shared cancellation checks                                                           | `exportCancellation.ts`                                                              |
+| Progress pill and centring floating UI over the conversation                         | `exportOverlayUi.ts`                                                                 |
+| Generated-UI iframe screenshots and their permission prompt                          | `generatedUiScreenshots.ts`                                                          |
+| Export item in Gemini conversation / sidebar / response menus                        | `conversationMenuExportObserver.ts` (+ `conversationMenuInjection.ts`)               |
+| Opening a sidebar conversation before exporting it                                   | `sidebarConversationNavigation.ts`                                                   |
+| Copy a single response as an image (button, width menu, Safari fallbacks)            | `responseCopyImageAction.ts`                                                         |
+| Logo dropdown button (old Gemini layout) and its re-creation after re-renders        | `logoExportButton.ts`                                                                |
+| Always-visible toolbar (lr26 Gemini, ChatGPT and other plugin hosts)                 | `persistentExportToolbar.ts`, `exportEntryGate.ts`                                   |
+| Dictionaries, language reads and the `t()` used by every export surface              | `exportLocale.ts`                                                                    |
 
 Each owner takes its dependencies explicitly (adapter, collector, translator, callbacks) and keeps
 its listeners, observers and timers beside the code that installs them. Page-wide observers
@@ -32,6 +35,10 @@ Keep these less obvious boundaries intact:
   before clicking; `startExportButton` resumes it on load. Do not move that persist after the click.
 - `generatedUiScreenshots.ensureGeneratedUiScreenshotPermission()` must run while the user gesture
   is still valid: before the run in the dialog, and before `takeSelection()` in selection mode.
+- `exportRun.ts` awaits `preparedExport.runPreparedExport()` through the entire selection session.
+  The adapter owns the snapshot and thread watch; its preparation releases only its own snapshot
+  after selection ends, including cancellation, teardown and failures. An older run must never
+  clear the preparation of a newer run.
 - Selection UI is removed (`takeSelection()`) before screenshots so it is not captured.
 - Opening a sidebar conversation uses the native link click; the `location.assign` fallback is the
   only full navigation and is pre-existing.

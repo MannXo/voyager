@@ -4,8 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { insertTextIntoChatInput } from '../../chatInput';
 import { startChatWidthAdjuster } from '../../chatWidth';
-import { collectChatPairs } from '../../export';
-import { noteExportTurns } from '../../export/exportHealth';
 import {
   createSidebarRuntimeHarness,
   mountSidebar,
@@ -191,23 +189,6 @@ describe('folders', () => {
     await harness.runtime.start('sidebar');
     await vi.advanceTimersByTimeAsync(14_000 + NATIVE_HEALTH_GRACE_MS);
     expect(nativeHealthReporter.getEntries()).toEqual([]);
-  });
-});
-
-describe('export', () => {
-  const probeExport = () =>
-    noteExportTurns(collectChatPairs().length > 0, () => collectChatPairs().length > 0);
-
-  it('reports broken when an export finds no turns in a rendered conversation', () => {
-    document.body.innerHTML = RENAMED_CONVERSATION;
-    expect(probeExport()).toBe(false);
-    expect(featuresAfterGrace()).toEqual(['export:broken']);
-  });
-
-  it('stays healthy when the export finds turns', () => {
-    document.body.innerHTML = KNOWN_CONVERSATION;
-    expect(probeExport()).toBe(true);
-    expect(featuresAfterGrace()).toEqual([]);
   });
 });
 

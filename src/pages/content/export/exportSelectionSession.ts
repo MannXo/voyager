@@ -11,6 +11,7 @@
 import { resolveExportErrorMessage } from '../../../features/export/ui/ExportErrorMessage';
 import type { ChatGptTurnRole } from './adapter/type';
 import type { ExportMessage, ExportMessageRole } from './conversationCollector';
+import { isAbortError, throwIfExportCancelled } from './exportCancellation';
 import type { ExportTranslate } from './exportLocale';
 import { type ConversationAnchors, alignToConversationCenter } from './exportOverlayUi';
 import {
@@ -61,14 +62,6 @@ export interface ExportSelectionSession {
   readonly done: Promise<void>;
   /** Remove the selection UI and end the session without exporting. */
   cancel: () => void;
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === 'AbortError';
-}
-
-function throwIfExportCancelled(signal?: AbortSignal): void {
-  if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
 }
 
 function swallow(ev: Event): void {

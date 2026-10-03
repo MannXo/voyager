@@ -23,9 +23,8 @@ import type { ExportPlatformAdapter } from './adapter/platformAdapters';
 import { type ConversationCollector, removeCanvasExportSections } from './conversationCollector';
 import { waitForAnyElement, waitForElement } from './domWait';
 import { isAbortError, throwIfExportCancelled } from './exportCancellation';
-import { noteExportTurns } from './exportHealth';
-import { runPreparedExport } from './preparedExport';
 import { withExportCollectingBanner } from './exportCollectingBanner';
+import { noteExportTurns } from './exportHealth';
 import {
   type ExportDictionaries,
   createExportTranslator,
@@ -51,6 +50,7 @@ import {
   persistPendingExportState,
   restorePendingExportState,
 } from './pendingExportState';
+import { runPreparedExport } from './preparedExport';
 import {
   computeConversationFingerprint,
   waitForConversationFingerprintChangeOrTimeout,
