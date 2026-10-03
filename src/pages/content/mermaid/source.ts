@@ -1,6 +1,5 @@
 /**
  * Check if a code block contains Mermaid syntax and appears complete enough to render
- * @internal Exported for testing
  */
 export const isMermaidCode = (code: string): boolean => {
   const codeTrimmed = code.trim();
@@ -69,22 +68,6 @@ export const isMermaidCode = (code: string): boolean => {
   return true;
 };
 
-/**
- * Normalize whitespace characters in Mermaid code
- * Replaces non-breaking spaces (NBSP \u00A0) and other special whitespace
- * with standard spaces to prevent Mermaid parsing errors.
- *
- * Common problematic characters:
- * - \u00A0 (NBSP): From web pages, Word, Notion, WeChat, etc.
- * - \u2003 (Em Space)
- * - \u2002 (En Space)
- * - \u2009 (Thin Space)
- * - \u200B (Zero-width Space)
- * - \u3000 (Ideographic Space - CJK full-width space)
- */
-/**
- * @internal Exported for testing
- */
 const PICTOGRAPHIC = /\p{Extended_Pictographic}/u;
 /** Variation selectors and skin-tone modifiers sit between an emoji and its joiner. */
 const EMOJI_MODIFIER = /\uFE0F|\p{Emoji_Modifier}/u;
@@ -108,6 +91,7 @@ const joinsEmoji = (source: string, index: number): boolean => {
   );
 };
 
+/** Normalize copy/pasted spaces without splitting composed emoji. */
 export const normalizeWhitespace = (code: string): string => {
   return (
     code
@@ -125,8 +109,6 @@ export const normalizeWhitespace = (code: string): string => {
 /**
  * Repair a small set of unambiguous Mermaid mistakes commonly produced by
  * models. Keep these rules narrow so valid diagram text is not rewritten.
- *
- * @internal Exported for testing
  */
 export const normalizeMermaidCode = (code: string): string => {
   const lines = normalizeWhitespace(code)
@@ -219,9 +201,6 @@ const GENERIC_LANGUAGE_LABELS = new Set([
 
 /**
  * Check if a language label is generic (not a specific programming language)
- */
-/**
- * @internal Exported for testing
  */
 export const isGenericLanguageLabel = (language: string | null): boolean => {
   if (!language) return true; // No label = generic
