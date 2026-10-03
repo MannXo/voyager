@@ -22,7 +22,7 @@ describe('slashPrompt', () => {
 
   it('shows only matching names and tags, with the body in a hover tooltip', () => {
     const input = createContentEditable('/trans');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
 
     typeInto(input);
 
@@ -42,7 +42,7 @@ describe('slashPrompt', () => {
 
   it('lets keyboard navigation replace a hovered selection', () => {
     const input = createContentEditable('/');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
 
     const root = document.getElementById('gv-pm-slash-root')!;
@@ -63,7 +63,7 @@ describe('slashPrompt', () => {
   it('shows the completion while the query is still being typed', () => {
     withQueryRect(() => {
       const input = createContentEditable('/trans');
-      destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+      destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
       typeInto(input);
 
       const ghost = document.getElementById('gv-pm-slash-ghost')!;
@@ -81,7 +81,7 @@ describe('slashPrompt', () => {
     // just offered never arrived.
     withQueryRect(() => {
       const input = createContentEditable('/trans');
-      destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+      destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
       typeInto(input);
 
       press(input, 'Tab');
@@ -94,7 +94,7 @@ describe('slashPrompt', () => {
   it('places the token on Tab once there is nothing left to complete', () => {
     withQueryRect(() => {
       const input = createContentEditable('/Translator');
-      destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+      destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
       typeInto(input);
 
       press(input, 'Tab');
@@ -106,7 +106,7 @@ describe('slashPrompt', () => {
   it('still places the token on Enter while a completion is showing', () => {
     withQueryRect(() => {
       const input = createContentEditable('/trans');
-      destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+      destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
       typeInto(input);
 
       press(input, 'Enter');
@@ -118,7 +118,7 @@ describe('slashPrompt', () => {
   it('takes the completion down with the list', () => {
     withQueryRect(() => {
       const input = createContentEditable('/trans');
-      destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+      destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
       typeInto(input);
       const ghost = document.getElementById('gv-pm-slash-ghost')!;
       expect(ghost.classList.contains('gv-pm-slash-ghost-visible')).toBe(true);
@@ -133,7 +133,7 @@ describe('slashPrompt', () => {
     // It is a separate fixed element on purpose: backspace, caret movement and
     // IME composition all have to behave exactly as they did.
     const input = createContentEditable('/trans');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
 
     expect(input.textContent).toBe('/trans');
@@ -163,7 +163,7 @@ describe('slashPrompt', () => {
     try {
       const input = createContentEditable('/');
       setRect(input, { top: 40, bottom: 720, height: 680 });
-      destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+      destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
       const list = document.getElementById('gv-pm-slash-list')!;
       setRect(list, { height: 144 });
 
@@ -204,7 +204,7 @@ describe('slashPrompt', () => {
     try {
       const input = createContentEditable('/');
       setRect(input, { top: 680, bottom: 748, height: 68 });
-      destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+      destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
       const list = document.getElementById('gv-pm-slash-list')!;
       setRect(list, { height: 144 });
 
@@ -224,7 +224,7 @@ describe('slashPrompt', () => {
 
   it('confirms with Enter and renders an inline name token backed by the prompt body', () => {
     const input = createContentEditable('/trans');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
 
     const event = press(input, 'Enter');
@@ -256,7 +256,7 @@ describe('slashPrompt', () => {
     const withPath = prompts.map((prompt) =>
       prompt.id === 'review' ? { ...prompt, text: 'Review https://example.com/a/b.' } : prompt,
     );
-    destroy = startPromptSlashCommand({ initialItems: withPath }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: withPath }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -267,7 +267,7 @@ describe('slashPrompt', () => {
 
   it('supports arrow navigation and Tab confirmation', () => {
     const input = createContentEditable('/');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
 
     press(input, 'ArrowDown');
@@ -287,7 +287,10 @@ describe('slashPrompt', () => {
         ...prompts,
         { id: 'b', name: 'B', text: 'Prompt B body.', tags: [], createdAt: 4 },
       ];
-      destroy = startPromptSlashCommand({ initialItems: promptsWithB }).destroy;
+      destroy = startPromptSlashCommand({
+        scheme: () => 'light',
+        initialItems: promptsWithB,
+      }).destroy;
 
       typeInto(input);
 
@@ -303,7 +306,10 @@ describe('slashPrompt', () => {
       ...prompts,
       { id: 'b', name: 'B', text: 'Prompt B body.', tags: [], createdAt: 4 },
     ];
-    destroy = startPromptSlashCommand({ initialItems: promptsWithB }).destroy;
+    destroy = startPromptSlashCommand({
+      scheme: () => 'light',
+      initialItems: promptsWithB,
+    }).destroy;
 
     typeInto(input);
 
@@ -322,7 +328,10 @@ describe('slashPrompt', () => {
       tags: [],
       createdAt: 4,
     };
-    destroy = startPromptSlashCommand({ initialItems: [...prompts, dailyStandup] }).destroy;
+    destroy = startPromptSlashCommand({
+      scheme: () => 'light',
+      initialItems: [...prompts, dailyStandup],
+    }).destroy;
 
     typeInto(input);
 
@@ -336,7 +345,7 @@ describe('slashPrompt', () => {
 
   it('closes completion immediately when the slash query is deleted', () => {
     const input = createContentEditable('/');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
 
     expect(document.getElementById('gv-pm-slash-root')?.hidden).toBe(false);
@@ -349,7 +358,7 @@ describe('slashPrompt', () => {
 
   it('closes completion for beforeinput deletion commands', () => {
     const input = createContentEditable('/');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
 
     const event = new InputEvent('beforeinput', {
@@ -365,7 +374,7 @@ describe('slashPrompt', () => {
 
   it('reopens completion after deletion when the remaining text is still a slash query', () => {
     const input = createContentEditable('/trans');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
 
     press(input, 'Backspace');
@@ -386,7 +395,7 @@ describe('slashPrompt', () => {
 
   it('confirms with a left mouse press without moving the editor selection', () => {
     const input = createContentEditable('/review');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
 
     const option = document.querySelector<HTMLElement>('.gv-pm-slash-option')!;
@@ -399,6 +408,26 @@ describe('slashPrompt', () => {
     );
   });
 
+  it('paints every slash surface in the site scheme even when the page markers disagree', () => {
+    withQueryRect(() => {
+      const input = createContentEditable('/trans');
+      document.body.insertAdjacentHTML('afterbegin', '<div class="theme-host light-theme"></div>');
+      destroy = startPromptSlashCommand({ scheme: () => 'dark', initialItems: prompts }).destroy;
+      typeInto(input);
+
+      const root = document.getElementById('gv-pm-slash-root')!;
+      root
+        .querySelector<HTMLElement>('.gv-pm-slash-option')!
+        .dispatchEvent(new MouseEvent('mouseenter'));
+      expect(root.dataset.gvTheme).toBe('dark');
+      expect(document.getElementById('gv-pm-slash-ghost')?.dataset.gvTheme).toBe('dark');
+      expect(document.getElementById('gv-pm-slash-tooltip')?.dataset.gvTheme).toBe('dark');
+
+      press(input, 'Enter');
+      expect(input.querySelector<HTMLElement>('.gv-pm-slash-token')?.dataset.gvTheme).toBe('dark');
+    });
+  });
+
   it('ignores the Prompt Manager form textarea', () => {
     document.body.innerHTML = `
       <div class="gv-pm-panel"><textarea class="gv-pm-input-text"></textarea></div>
@@ -408,7 +437,7 @@ describe('slashPrompt', () => {
     promptTextarea.value = '/review';
     const chatInput = document.getElementById('question-input')!;
     setRect(chatInput);
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
 
     typeInto(promptTextarea);
 

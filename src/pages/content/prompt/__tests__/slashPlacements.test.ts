@@ -16,7 +16,9 @@ describe('slashPlacements', () => {
 
   it('lets the overlay own the complete prompt-only selection area', () => {
     const input = createContentEditable('/trans');
-    const placements = track(createPromptPlacements({ bindPreview: () => {} }));
+    const placements = track(
+      createPromptPlacements({ scheme: () => 'light', bindPreview: () => {} }),
+    );
     placements.place(getPromptQuery(input)!, prompts[0], true);
 
     const token = input.querySelector<HTMLElement>('.gv-pm-slash-token')!;
@@ -51,7 +53,9 @@ describe('slashPlacements', () => {
 
   it('keeps Prompt and ordinary text visibly selected together', () => {
     const input = createContentEditable('/trans');
-    const placements = track(createPromptPlacements({ bindPreview: () => {} }));
+    const placements = track(
+      createPromptPlacements({ scheme: () => 'light', bindPreview: () => {} }),
+    );
     placements.place(getPromptQuery(input)!, prompts[0], true);
 
     const token = input.querySelector<HTMLElement>('.gv-pm-slash-token')!;
@@ -77,7 +81,9 @@ describe('slashPlacements', () => {
     // `expandPromptTokens`, `isTextareaPromptOnlyValue` and `readText` all go
     // by the token's text, and the icon contributes none.
     const input = createContentEditable('/trans');
-    const placements = track(createPromptPlacements({ bindPreview: () => {} }));
+    const placements = track(
+      createPromptPlacements({ scheme: () => 'light', bindPreview: () => {} }),
+    );
     placements.place(getPromptQuery(input)!, prompts[0], true);
 
     const placed = input.querySelector<HTMLElement>('.gv-pm-slash-token')!;
@@ -90,7 +96,9 @@ describe('slashPlacements', () => {
 
   it('expands a selected contenteditable prompt before destroying slash completion', () => {
     const input = createContentEditable('/review');
-    const placements = track(createPromptPlacements({ bindPreview: () => {} }));
+    const placements = track(
+      createPromptPlacements({ scheme: () => 'light', bindPreview: () => {} }),
+    );
     placements.place(getPromptQuery(input)!, prompts[1], true);
 
     placements.destroy();
@@ -126,7 +134,9 @@ describe('slashPlacements', () => {
 
     try {
       const input = createContentEditable('/review');
-      const placements = track(createPromptPlacements({ bindPreview: () => {} }));
+      const placements = track(
+        createPromptPlacements({ scheme: () => 'light', bindPreview: () => {} }),
+      );
       placements.place(getPromptQuery(input)!, prompts[1], true);
       input.textContent = 'Before Code Review';
       placements.afterInput(input);
@@ -142,7 +152,9 @@ describe('slashPlacements', () => {
 
   it('expands the stored prompt occurrence when the same name already appears earlier', () => {
     const input = createContentEditable('Code Review notes: /review');
-    const placements = track(createPromptPlacements({ bindPreview: () => {} }));
+    const placements = track(
+      createPromptPlacements({ scheme: () => 'light', bindPreview: () => {} }),
+    );
     placements.place(getPromptQuery(input)!, prompts[1], false);
 
     input.textContent = 'Code Review notes: Code Review\u00a0';
@@ -163,7 +175,9 @@ describe('slashPlacements', () => {
 
   it('keeps a rebuilt prompt anchored when the same name is inserted before it', () => {
     const input = createContentEditable('/review');
-    const placements = track(createPromptPlacements({ bindPreview: () => {} }));
+    const placements = track(
+      createPromptPlacements({ scheme: () => 'light', bindPreview: () => {} }),
+    );
     placements.place(getPromptQuery(input)!, prompts[1], true);
 
     input.textContent = 'Code Review';
@@ -185,7 +199,9 @@ describe('slashPlacements', () => {
 
   it('keeps the caret at the removed prompt when Gemini rebuilds the editor', async () => {
     const input = createContentEditable('/review');
-    const placements = track(createPromptPlacements({ bindPreview: () => {} }));
+    const placements = track(
+      createPromptPlacements({ scheme: () => 'light', bindPreview: () => {} }),
+    );
     placements.place(getPromptQuery(input)!, prompts[1], true);
 
     const token = input.querySelector<HTMLElement>('.gv-pm-slash-token')!;
@@ -232,7 +248,9 @@ describe('slashPlacements', () => {
       createdAt: 4,
     };
     const input = createContentEditable('/structured');
-    const placements = track(createPromptPlacements({ bindPreview: () => {} }));
+    const placements = track(
+      createPromptPlacements({ scheme: () => 'light', bindPreview: () => {} }),
+    );
     placements.place(getPromptQuery(input)!, multilinePrompt, true);
 
     placements.expandForSend(input);
@@ -249,7 +267,9 @@ describe('slashPlacements', () => {
 
   it('expands each live inline prompt exactly once when sending', () => {
     const input = createContentEditable('First /review');
-    const placements = track(createPromptPlacements({ bindPreview: () => {} }));
+    const placements = track(
+      createPromptPlacements({ scheme: () => 'light', bindPreview: () => {} }),
+    );
     placements.place(getPromptQuery(input)!, prompts[1], false);
 
     input.append(document.createTextNode(', then /trans'));
@@ -276,7 +296,9 @@ describe('slashTextareaPlacements', () => {
 
   it('replaces a textarea query and keeps a hoverable name marker inside the composer', () => {
     const input = createTextarea('Please /review');
-    const placements = track(createPromptPlacements({ bindPreview: () => {} }));
+    const placements = track(
+      createPromptPlacements({ scheme: () => 'light', bindPreview: () => {} }),
+    );
     placements.place(getPromptQuery(input)!, prompts[1], false);
 
     expect(input.value.trimEnd()).toBe('Please Code Review');
@@ -285,7 +307,9 @@ describe('slashTextareaPlacements', () => {
 
   it('expands a selected textarea prompt before destroying slash completion', () => {
     const input = createTextarea('/review');
-    const placements = track(createPromptPlacements({ bindPreview: () => {} }));
+    const placements = track(
+      createPromptPlacements({ scheme: () => 'light', bindPreview: () => {} }),
+    );
     placements.place(getPromptQuery(input)!, prompts[1], true);
 
     placements.destroy();
@@ -297,7 +321,9 @@ describe('slashTextareaPlacements', () => {
 
   it('reveals textarea text typed after a selected prompt and preserves it when sending', () => {
     const input = createTextarea('/review');
-    const placements = track(createPromptPlacements({ bindPreview: () => {} }));
+    const placements = track(
+      createPromptPlacements({ scheme: () => 'light', bindPreview: () => {} }),
+    );
     placements.place(getPromptQuery(input)!, prompts[1], true);
 
     expect(input.classList.contains('gv-pm-slash-textarea-hide-value')).toBe(true);

@@ -13,9 +13,9 @@
  * live controller.
  */
 import { createPackageIcon } from '@/core/icons/promptManagerIcons';
+import type { PromptScheme } from '@/features/prompt/PromptSiteAdapter';
 
 import { CHAT_INPUT_SELECTOR, insertTextIntoChatInput } from '../chatInput/index';
-import { detectPageScheme } from './pageScheme';
 import {
   type PromptQuery,
   TOKEN_CLASS,
@@ -82,20 +82,24 @@ export interface PromptPlacements {
   expandForSend: (input: HTMLElement) => void;
   /** Mirrors a selection over placed prompts onto the composer and markers. */
   syncSelection: () => void;
-  position: (theme: string) => void;
+  position: () => void;
   /** Expands every placed prompt and removes the marker layer. */
   destroy: () => void;
 }
 
 export function createPromptPlacements({
   bindPreview,
+  scheme,
 }: {
   bindPreview: BindPreview;
+  /** The page's light/dark, from the site adapter. */
+  scheme: () => PromptScheme;
 }): PromptPlacements {
   const pendingPromptEdits = new WeakMap<HTMLElement, PendingPromptEdit>();
   const markers = createMarkerLayer({
     promptsFor: (input) => selectedPrompts.get(input) || [],
     bindPreview,
+    scheme,
   });
 
   /** Drops the markers along with the records of the composer they describe. */
@@ -197,7 +201,7 @@ export function createPromptPlacements({
       const inserted =
         query.input instanceof HTMLTextAreaElement
           ? replaceTextareaQuery(query, prompt)
-          : replaceContentEditableQuery(query, prompt, bindPreview);
+          : replaceContentEditableQuery(query, prompt, bindPreview, scheme());
       if (!inserted) return false;
       rememberPrompt(query.input, prompt, query.start);
       markers.add(prompt, query.input, hideInputValue);
@@ -245,7 +249,7 @@ export function createPromptPlacements({
       if (markers.input === input) dropMarkers(input);
     },
     syncSelection,
-    position: (theme) => markers.position(theme),
+    position: () => markers.position(),
     destroy: () => {
       expandAllPromptTokens();
       selectedPrompts.clear();
@@ -268,7 +272,11 @@ function isTextareaPromptOnlyValue(inputText: string, selected: SelectedPrompt[]
   );
 }
 
-function createPromptToken(prompt: TokenPrompt, bindPreview: BindPreview): HTMLSpanElement {
+function createPromptToken(
+  prompt: TokenPrompt,
+  bindPreview: BindPreview,
+  scheme: PromptScheme,
+): HTMLSpanElement {
   const token = document.createElement('span');
   token.className = TOKEN_CLASS;
   token.contentEditable = 'false';
@@ -276,14 +284,13 @@ function createPromptToken(prompt: TokenPrompt, bindPreview: BindPreview): HTMLS
   token.dataset.gvPromptName = prompt.name!.trim();
   token.dataset.gvPromptText = prompt.text;
   if (prompt.gvSourceText) token.dataset.gvPromptSource = prompt.gvSourceText;
-  token.dataset.gvTheme = detectPageScheme();
   token.setAttribute('role', 'button');
   token.setAttribute('aria-label', prompt.name!.trim());
   // The icon carries no text, so everything that reads this token by its text -
   // `expandPromptTokens`, `isTextareaPromptOnlyValue`, `readText` - still sees
   // exactly the prompt's name.
   token.append(createPackageIcon(14), prompt.name!.trim());
-  applyPromptTokenColor(token);
+  applyPromptTokenColor(token, scheme);
   bindPreview(token, prompt.text);
   return token;
 }
@@ -292,11 +299,12 @@ function replaceContentEditableQuery(
   query: PromptQuery,
   prompt: TokenPrompt,
   bindPreview: BindPreview,
+  scheme: PromptScheme,
 ): boolean {
   const range = createQueryRange(query);
   if (!range) return false;
   range.deleteContents();
-  const token = createPromptToken(prompt, bindPreview);
+  const token = createPromptToken(prompt, bindPreview, scheme);
   range.insertNode(token);
   const spacer = document.createTextNode(TOKEN_SPACER);
   token.after(spacer);

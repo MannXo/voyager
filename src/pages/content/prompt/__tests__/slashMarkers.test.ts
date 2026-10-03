@@ -28,6 +28,7 @@ describe('slashMarkers', () => {
       const input = createContentEditable('Before Code Review\u00a0');
       const layer = track(
         createMarkerLayer({
+          scheme: () => 'light',
           promptsFor: () => [{ id: prompts[1].id, name: prompts[1].name!, start: 7 }],
           bindPreview: () => {},
         }),
@@ -77,6 +78,7 @@ describe('slashMarkers', () => {
       setRect(input, { top: 300, bottom: 360 });
       const layer = track(
         createMarkerLayer({
+          scheme: () => 'light',
           promptsFor: () => [{ id: prompts[1].id, name: prompts[1].name!, start: 0 }],
           bindPreview: () => {},
         }),
@@ -125,6 +127,7 @@ describe('slashMarkers', () => {
       const input = createContentEditable('Translator\u00a0Code Review\u00a0');
       const layer = track(
         createMarkerLayer({
+          scheme: () => 'light',
           promptsFor: () => [
             { id: prompts[0].id, name: prompts[0].name!, start: 0 },
             { id: prompts[1].id, name: prompts[1].name!, start: 11 },
@@ -162,6 +165,7 @@ describe('slashMarkers', () => {
     const input = createContentEditable('元Prompt(杠杆)\u00a0');
     const layer = track(
       createMarkerLayer({
+        scheme: () => 'light',
         promptsFor: () => [{ id: metaPrompt.id, name: metaPrompt.name!, start: 0 }],
         bindPreview: () => {},
       }),
@@ -206,6 +210,7 @@ describe('slashMarkers', () => {
       const input = createContentEditable('Code Review\u00a0');
       const layer = track(
         createMarkerLayer({
+          scheme: () => 'light',
           promptsFor: () => [{ id: prompts[1].id, name: prompts[1].name!, start: 0 }],
           bindPreview: () => {},
         }),

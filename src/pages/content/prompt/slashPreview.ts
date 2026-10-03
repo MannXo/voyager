@@ -6,10 +6,10 @@
  * turn is sent. An edit is reported through `onValuesEdited(previous, next)`
  * so every copy of that body the send path might read is updated together.
  */
+
+import type { PromptScheme } from '@/features/prompt/PromptSiteAdapter';
 import { parsePromptTemplate } from '@/features/prompt/model/promptTemplate';
 import { matchSentPrompt } from '@/features/prompt/model/promptTextMatch';
-
-import { detectPageScheme } from './pageScheme';
 
 export const SLASH_PREVIEW_ID = 'gv-pm-slash-tooltip';
 const TOOLTIP_VALUE_CLASS = 'gv-pm-slash-tooltip-value';
@@ -30,11 +30,14 @@ export interface SlashPreviewOptions {
   /** Previews for rows inside this list sit above the whole list instead of the row. */
   resultList: HTMLElement;
   onValuesEdited: (previous: string, next: string) => void;
+  /** The page's light/dark, from the site adapter. */
+  scheme: () => PromptScheme;
 }
 
 export function createSlashPreview({
   resultList,
   onValuesEdited,
+  scheme,
 }: SlashPreviewOptions): SlashPreview {
   let hideTimer: number | null = null;
 
@@ -70,7 +73,7 @@ export function createSlashPreview({
     const tooltip = ensureCard();
     tooltip.scrollTop = 0;
     paintTooltipBody(tooltip, text, target, onValuesEdited);
-    tooltip.dataset.gvTheme = detectPageScheme();
+    tooltip.dataset.gvTheme = scheme();
     tooltip.style.left = '0px';
     tooltip.style.top = '0px';
     tooltip.classList.add('gv-pm-slash-tooltip-visible');

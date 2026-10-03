@@ -10,6 +10,7 @@
  * the same index.
  */
 import { createPackageIcon } from '@/core/icons/promptManagerIcons';
+import type { PromptScheme } from '@/features/prompt/PromptSiteAdapter';
 
 import {
   type PromptOccurrence,
@@ -38,7 +39,8 @@ export interface MarkerLayer {
   follow: (input: HTMLElement) => void;
   /** Lays the markers out again, now and once more after the next frame. */
   reflow: () => void;
-  position: (theme: string) => void;
+  /** Lays the markers out again in the page's current scheme. */
+  position: () => void;
   /** Removes the markers at `indexes` (positions before any removal). */
   remove: (indexes: readonly number[]) => void;
   /** Highlights exactly the markers at `indexes`; `[]` clears the highlight. */
@@ -51,16 +53,22 @@ export interface MarkerLayer {
 export interface MarkerLayerOptions {
   promptsFor: (input: HTMLElement) => readonly PromptOccurrence[];
   bindPreview: (target: HTMLElement, text: string) => void;
+  scheme: () => PromptScheme;
 }
 
-export function createMarkerLayer({ promptsFor, bindPreview }: MarkerLayerOptions): MarkerLayer {
+export function createMarkerLayer({
+  promptsFor,
+  bindPreview,
+  scheme,
+}: MarkerLayerOptions): MarkerLayer {
   const container = document.createElement('div');
   container.className = 'gv-pm-slash-textarea-tokens';
   container.setAttribute('aria-hidden', 'false');
   document.body.appendChild(container);
   let tracked: HTMLElement | null = null;
 
-  const layout = (input: HTMLElement): void => positionMarkers(container, input, promptsFor(input));
+  const layout = (input: HTMLElement): void =>
+    positionMarkers(container, input, promptsFor(input), scheme());
   const markers = (): HTMLElement[] =>
     Array.from(container.querySelectorAll<HTMLElement>(`.${TEXTAREA_TOKEN_CLASS}`));
 
@@ -162,8 +170,8 @@ export function createMarkerLayer({ promptsFor, bindPreview }: MarkerLayerOption
         }
       });
     },
-    position: (theme) => {
-      container.dataset.gvTheme = theme;
+    position: () => {
+      container.dataset.gvTheme = scheme();
       if (tracked) layout(tracked);
     },
     remove: (indexes) => {
@@ -206,6 +214,7 @@ function positionMarkers(
   container: HTMLElement,
   input: HTMLElement,
   prompts: readonly PromptOccurrence[],
+  scheme: PromptScheme,
 ): void {
   const rect = input.getBoundingClientRect();
   const inputSurfaceColor = findInputSurfaceColor(input);
@@ -263,7 +272,9 @@ function positionMarkers(
     marker.style.top = `${Math.round(anchorRect?.top ?? rect.top)}px`;
     marker.style.maxWidth = `${Math.max(20, rect.right - left)}px`;
   });
-  input.querySelectorAll<HTMLElement>(`.${TOKEN_CLASS}`).forEach(applyPromptTokenColor);
+  input
+    .querySelectorAll<HTMLElement>(`.${TOKEN_CLASS}`)
+    .forEach((token) => applyPromptTokenColor(token, scheme));
 }
 
 export function syncMarkerTypography(

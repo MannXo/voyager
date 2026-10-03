@@ -1,7 +1,7 @@
-import { detectPageScheme } from './pageScheme';
+import type { PromptScheme } from '@/features/prompt/PromptSiteAdapter';
 
-export function applyPromptTokenColor(token: HTMLElement): void {
-  token.dataset.gvTheme = detectPageScheme();
+export function applyPromptTokenColor(token: HTMLElement, scheme: PromptScheme): void {
+  token.dataset.gvTheme = scheme;
   // Gemini's editor applies host styles to contenteditable=false spans. An
   // inline custom property feeds the stylesheet's important declaration, so
   // the selected prompt follows Voyager's configurable accent even when a

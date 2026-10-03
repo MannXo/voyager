@@ -13,7 +13,9 @@ describe('slashPreview', () => {
 
   it('keeps result previews above the completion list instead of flipping sides', () => {
     const { root, option } = createPreviewTargets();
-    const preview = track(createSlashPreview({ resultList: root, onValuesEdited: () => {} }));
+    const preview = track(
+      createSlashPreview({ scheme: () => 'light', resultList: root, onValuesEdited: () => {} }),
+    );
     preview.bind(option, prompts[0].text);
     setRect(root, {
       left: 220,
@@ -41,7 +43,9 @@ describe('slashPreview', () => {
     // only its bottom-right corner near the thing it described, reading as
     // loose over the sidebar rather than as belonging to the token.
     const { root, token } = createPreviewTargets();
-    const preview = track(createSlashPreview({ resultList: root, onValuesEdited: () => {} }));
+    const preview = track(
+      createSlashPreview({ scheme: () => 'light', resultList: root, onValuesEdited: () => {} }),
+    );
     preview.bind(token, prompts[0].text);
 
     // The first hover creates the shared tooltip; the second uses its size.
@@ -60,7 +64,9 @@ describe('slashPreview', () => {
 
   it('keeps a composer token preview inside the viewport', () => {
     const { root, token } = createPreviewTargets();
-    const preview = track(createSlashPreview({ resultList: root, onValuesEdited: () => {} }));
+    const preview = track(
+      createSlashPreview({ scheme: () => 'light', resultList: root, onValuesEdited: () => {} }),
+    );
     preview.bind(token, prompts[0].text);
 
     token.dispatchEvent(new MouseEvent('mouseenter'));
@@ -86,7 +92,9 @@ describe('slashPreview', () => {
     try {
       const longText = Array.from({ length: 20 }, () => prompts[1].text).join('\n');
       const { root, token: marker } = createPreviewTargets();
-      const preview = track(createSlashPreview({ resultList: root, onValuesEdited: () => {} }));
+      const preview = track(
+        createSlashPreview({ scheme: () => 'light', resultList: root, onValuesEdited: () => {} }),
+      );
       preview.bind(marker, longText);
       marker.dispatchEvent(new MouseEvent('mouseenter'));
       const tooltip = document.getElementById('gv-pm-slash-tooltip')!;

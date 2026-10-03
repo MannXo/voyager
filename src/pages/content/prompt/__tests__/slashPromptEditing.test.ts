@@ -20,7 +20,7 @@ describe('slashPromptEditing', () => {
 
   it('keeps the caret visible at the input start when Home is pressed after selection', () => {
     const input = createContentEditable('/review');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -40,7 +40,7 @@ describe('slashPromptEditing', () => {
 
   it('removes the external prompt marker when the editor content is deleted', () => {
     const input = createContentEditable('/review');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
     expect(document.querySelector('.gv-pm-slash-textarea-token')).not.toBeNull();
@@ -55,7 +55,7 @@ describe('slashPromptEditing', () => {
 
   it('removes the marker when Gemini replaces the editor after deleting a full selection', () => {
     const input = createContentEditable('/review');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
     expect(document.querySelector('.gv-pm-slash-textarea-token')).not.toBeNull();
@@ -74,7 +74,7 @@ describe('slashPromptEditing', () => {
 
   it('clears the marker before Ctrl+A Backspace deletes the editor content', () => {
     const input = createContentEditable('/review');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -91,7 +91,7 @@ describe('slashPromptEditing', () => {
 
   it('removes the prompt spacer before removing the prompt with Backspace', () => {
     const input = createContentEditable('/review');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -113,7 +113,7 @@ describe('slashPromptEditing', () => {
 
   it('does not treat matching ordinary text after a rebuilt prompt as an atomic prompt', () => {
     const input = createContentEditable('/review');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -144,7 +144,7 @@ describe('slashPromptEditing', () => {
 
   it('removes a rebuilt prompt spacer before removing its remembered range', () => {
     const input = createContentEditable('/review');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -169,7 +169,7 @@ describe('slashPromptEditing', () => {
 
   it('removes the repeated prompt token immediately before the caret', () => {
     const input = createContentEditable('/review');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
     const firstToken = input.querySelector<HTMLElement>('.gv-pm-slash-token')!;
@@ -198,7 +198,7 @@ describe('slashPromptEditing', () => {
 
   it('preserves the first prompt styling and focus after deleting a later prompt', () => {
     const input = createContentEditable('/review');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
     const firstToken = input.querySelector<HTMLElement>('.gv-pm-slash-token')!;
@@ -249,7 +249,7 @@ describe('slashPromptEditing', () => {
 
   it('does not remove the prompt when Backspace follows two line breaks', () => {
     const input = createContentEditable('/review');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -271,7 +271,7 @@ describe('slashPromptEditing', () => {
 
   it('removes a selected textarea prompt with two Backspaces', () => {
     const input = createTextarea('/review');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Tab');
 
@@ -290,7 +290,7 @@ describe('slashPromptEditing', () => {
 
   it('keeps later textarea prompts tracked when a selected earlier prompt is deleted', () => {
     const input = createTextarea('/review');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
     input.setRangeText(' /trans', input.value.length, input.value.length, 'end');
@@ -316,7 +316,7 @@ describe('slashPromptEditing', () => {
 
   it('does not forget a textarea prompt when deleting ordinary text with the same name', () => {
     const input = createTextarea('/review');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
     input.setRangeText('Code Review', input.value.length, input.value.length, 'end');
@@ -337,7 +337,7 @@ describe('slashPromptEditing', () => {
 
   it('does not treat matching ordinary text before the caret as a textarea prompt', () => {
     const input = createTextarea('/review');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
     input.setRangeText('Code Review', input.value.length, input.value.length, 'end');

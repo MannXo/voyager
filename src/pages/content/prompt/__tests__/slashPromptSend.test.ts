@@ -27,7 +27,7 @@ describe('slashPromptSend', () => {
     input.addEventListener('input', () => {
       if (input.querySelector('.gv-pm-slash-token')) input.textContent = 'Code Review';
     });
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -62,7 +62,7 @@ describe('slashPromptSend', () => {
 
   it('expands a rebuilt prompt alongside a later live token when sending', async () => {
     const input = createContentEditable('/trans');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -97,7 +97,10 @@ describe('slashPromptSend', () => {
       text: 'Line 1\n\nLine 3',
     };
     const input = createContentEditable('/trans');
-    destroy = startPromptSlashCommand({ initialItems: [multilinePrompt] }).destroy;
+    destroy = startPromptSlashCommand({
+      scheme: () => 'light',
+      initialItems: [multilinePrompt],
+    }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -121,7 +124,7 @@ describe('slashPromptSend', () => {
 
   it('expands a rebuilt prompt after an earlier live token when sending', async () => {
     const input = createContentEditable('/review');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -152,7 +155,7 @@ describe('slashPromptSend', () => {
 
   it('unwraps inline tokens to plain prompt text before a send Enter reaches the host page', () => {
     const input = createContentEditable('/review');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -167,6 +170,7 @@ describe('slashPromptSend', () => {
   it('preserves the token on plain Enter when Ctrl/Cmd+Enter send mode is enabled', () => {
     const input = createContentEditable('/review');
     destroy = startPromptSlashCommand({
+      scheme: () => 'light',
       initialItems: prompts,
       initialCtrlEnterSend: true,
     }).destroy;
@@ -188,7 +192,7 @@ describe('slashPromptSend', () => {
 
   it('updates the Ctrl/Cmd+Enter send mode when the sync setting changes', () => {
     const input = createContentEditable('/review');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Tab');
     const addStorageListener = chrome.storage.onChanged.addListener as unknown as ReturnType<
@@ -219,6 +223,7 @@ describe('slashPromptSend', () => {
       createdAt: 4,
     };
     destroy = startPromptSlashCommand({
+      scheme: () => 'light',
       initialItems: [slashBodyPrompt, ...prompts],
     }).destroy;
     typeInto(input);
@@ -254,7 +259,7 @@ describe('slashPromptSend', () => {
     const selection = window.getSelection()!;
     selection.removeAllRanges();
     selection.addRange(range);
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -288,7 +293,7 @@ describe('slashPromptSend', () => {
     const selection = window.getSelection()!;
     selection.removeAllRanges();
     selection.addRange(range);
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -303,7 +308,7 @@ describe('slashPromptSend', () => {
     const feedback = document.createElement('button');
     feedback.setAttribute('aria-label', 'Send feedback');
     document.body.appendChild(feedback);
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -329,7 +334,7 @@ describe('slashPromptSend', () => {
     const chatForm = document.getElementById('chat-form')!;
     const unrelatedForm = document.createElement('form');
     document.body.appendChild(unrelatedForm);
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
     expect(input.querySelector('.gv-pm-slash-token')).not.toBeNull();
@@ -344,7 +349,7 @@ describe('slashPromptSend', () => {
 
   it('shows a selected prompt name in a textarea and expands its body only when sending', () => {
     const input = createTextarea('/review');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
 
     press(input, 'Enter');

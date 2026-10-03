@@ -54,13 +54,6 @@ const SLASH_TOGGLE: NativeFeatureToggle = {
   areas: ['sync'],
 };
 
-const SLASH: NativeFeature = {
-  id: 'slashPrompt',
-  position: CleanupPositions.DestroySlashPromptFeatureInstance,
-  start: async () => (await startStoredPromptSlashCommand()).destroy,
-  toggle: SLASH_TOGGLE,
-};
-
 /** Whether the custom-website list covers `host`, a `location.host`-shaped value. */
 export async function readPromptCoverage(host: string): Promise<boolean> {
   try {
@@ -110,6 +103,12 @@ export function createPromptManagerEngine(
   adapter: PromptSiteAdapter,
   cleanup: CleanupManager,
 ): PromptManagerEngine {
+  const slash: NativeFeature = {
+    id: 'slashPrompt',
+    position: CleanupPositions.DestroySlashPromptFeatureInstance,
+    start: async () => (await startStoredPromptSlashCommand(() => adapter.scheme())).destroy,
+    toggle: SLASH_TOGGLE,
+  };
   const panel: NativeFeature = {
     id: 'promptManager',
     position: CleanupPositions.DestroyPromptManagerInstance,
@@ -159,9 +158,9 @@ export function createPromptManagerEngine(
   return {
     async startComposerFeatures() {
       if (!adapter.slash) return;
-      const slash = createNativeFeatureToggle(cleanup, SLASH);
-      follow(slash);
-      await applyInitial(slash, await readSlashEnabled(), 'slash completion');
+      const slashToggle = createNativeFeatureToggle(cleanup, slash);
+      follow(slashToggle);
+      await applyInitial(slashToggle, await readSlashEnabled(), 'slash completion');
 
       // Chips restore what a sent slash token looked like. They follow the
       // site, never the slash setting: turning slash off must not re-expand

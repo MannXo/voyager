@@ -87,7 +87,7 @@ describe('slash completion with template prompts', () => {
 
   it('asks for the values before it places a token', () => {
     const input = createContentEditable('/fable');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -101,7 +101,7 @@ describe('slash completion with template prompts', () => {
 
   it('stores the resolved body on the token so expansion stays unchanged', () => {
     const input = createContentEditable('/fable');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -124,7 +124,7 @@ describe('slash completion with template prompts', () => {
     // is a wall of template text with the reader's own answers buried in it -
     // and those answers are still theirs to change until the turn is sent.
     const input = createContentEditable('/fable');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -154,7 +154,7 @@ describe('slash completion with template prompts', () => {
 
   it('sends what was changed in the preview', () => {
     const input = createContentEditable('/fable');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -183,7 +183,7 @@ describe('slash completion with template prompts', () => {
     // Expansion then falls back on the remembered record instead of the
     // token's dataset, so the edit has to reach that too.
     const input = createContentEditable('/fable');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -209,7 +209,7 @@ describe('slash completion with template prompts', () => {
 
   it('leaves the list keys alone while a preview field has focus', () => {
     const input = createContentEditable('/fable');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -234,7 +234,7 @@ describe('slash completion with template prompts', () => {
 
   it('leaves a preview unmarked when no template was filled', () => {
     const input = createContentEditable('/plain');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -248,7 +248,7 @@ describe('slash completion with template prompts', () => {
 
   it('keeps the placeholders when the user defers filling', () => {
     const input = createContentEditable('/fable');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -264,7 +264,7 @@ describe('slash completion with template prompts', () => {
     // fill surface over a composer still reading `/`, which said nothing about
     // what had just been chosen.
     const input = createContentEditable('/');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -274,7 +274,7 @@ describe('slash completion with template prompts', () => {
 
   it('leaves the query editable when the fill is abandoned', () => {
     const input = createContentEditable('/fable');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -290,7 +290,7 @@ describe('slash completion with template prompts', () => {
 
   it('does not disturb a prompt that has no placeholders', () => {
     const input = createContentEditable('/plain');
-    destroy = startPromptSlashCommand({ initialItems: prompts }).destroy;
+    destroy = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts }).destroy;
     typeInto(input);
     press(input, 'Enter');
 
@@ -300,7 +300,7 @@ describe('slash completion with template prompts', () => {
 
   it('takes an open fill surface down with the controller', () => {
     const input = createContentEditable('/fable');
-    const controller = startPromptSlashCommand({ initialItems: prompts });
+    const controller = startPromptSlashCommand({ scheme: () => 'light', initialItems: prompts });
     destroy = controller.destroy;
     typeInto(input);
     press(input, 'Enter');

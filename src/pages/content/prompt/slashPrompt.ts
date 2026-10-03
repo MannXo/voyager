@@ -12,13 +12,13 @@ import browser from 'webextension-polyfill';
 import { promptStorageService } from '@/core/services/StorageService';
 import { StorageKeys } from '@/core/types/common';
 import { type PromptItem } from '@/core/types/sync';
+import type { PromptScheme } from '@/features/prompt/PromptSiteAdapter';
 import { isPromptTemplate } from '@/features/prompt/model/promptTemplate';
 import { getTranslationSync } from '@/utils/i18n';
 
 import { CHAT_INPUT_SELECTOR, findChatInput } from '../chatInput/index';
 import { findClosestSendActionButton, isSendKeyboardEvent } from '../sendBehavior/sendButton';
 import { type TemplateFillHandle, openTemplateFill } from './PromptTemplateFill';
-import { detectPageScheme } from './pageScheme';
 import {
   type PromptQuery,
   TOKEN_CLASS,
@@ -46,6 +46,8 @@ export interface SlashPromptController {
 }
 
 interface SlashPromptOptions {
+  /** The page's light/dark, from the site adapter; every slash surface paints in it. */
+  scheme: () => PromptScheme;
   initialItems?: PromptItem[];
   initialCtrlEnterSend?: boolean;
 }
@@ -65,7 +67,7 @@ function hideGhost(): void {
   document.getElementById(GHOST_ID)?.classList.remove('gv-pm-slash-ghost-visible');
 }
 
-function showGhost(query: PromptQuery, name: string): void {
+function showGhost(query: PromptQuery, name: string, scheme: PromptScheme): void {
   const suffix = ghostSuffix(query.query, name);
   const range = createQueryRange(query);
   // A textarea has no range to measure against, and the query may be scrolled
@@ -81,7 +83,7 @@ function showGhost(query: PromptQuery, name: string): void {
   }
   const ghost = ghostElement();
   ghost.textContent = suffix;
-  ghost.dataset.gvTheme = detectPageScheme();
+  ghost.dataset.gvTheme = scheme;
   syncMarkerTypography(ghost, query.input, null);
   ghost.style.left = `${Math.round(rect.right)}px`;
   ghost.style.top = `${Math.round(rect.top)}px`;
@@ -117,7 +119,7 @@ function findPromptInputForSendButton(
   return null;
 }
 
-export function startPromptSlashCommand(options: SlashPromptOptions = {}): SlashPromptController {
+export function startPromptSlashCommand(options: SlashPromptOptions): SlashPromptController {
   if (!document.body || document.getElementById(ROOT_ID)) return { destroy: () => {} };
 
   let items = Array.isArray(options.initialItems) ? options.initialItems.filter(isPromptItem) : [];
@@ -126,6 +128,7 @@ export function startPromptSlashCommand(options: SlashPromptOptions = {}): Slash
   let selectedIndex = 0;
   let results: PromptItem[] = [];
   let ctrlEnterSendEnabled = options.initialCtrlEnterSend === true;
+  const { scheme } = options;
   const slashRefreshSuppressedInputs = new WeakSet<HTMLElement>();
 
   const root = document.createElement('div');
@@ -143,8 +146,9 @@ export function startPromptSlashCommand(options: SlashPromptOptions = {}): Slash
   const preview = createSlashPreview({
     resultList: root,
     onValuesEdited: syncEditedPromptText,
+    scheme,
   });
-  const placements = createPromptPlacements({ bindPreview: preview.bind });
+  const placements = createPromptPlacements({ bindPreview: preview.bind, scheme });
 
   /* Outlives `close()` on purpose: accepting a template closes the result list
    * and then opens this, so tearing it down here would dismiss it instantly.
@@ -171,8 +175,7 @@ export function startPromptSlashCommand(options: SlashPromptOptions = {}): Slash
   }
 
   function position(): void {
-    const theme = detectPageScheme();
-    root.dataset.gvTheme = theme;
+    root.dataset.gvTheme = scheme();
     if (activeInput && activeQuery && !root.hidden) {
       const rect = activeInput.getBoundingClientRect();
       const anchorRect = getQueryAnchorRect(activeQuery, rect);
@@ -190,7 +193,7 @@ export function startPromptSlashCommand(options: SlashPromptOptions = {}): Slash
       const maxTop = Math.max(8, window.innerHeight - listHeight - 8);
       root.style.top = `${Math.round(Math.max(8, Math.min(preferredTop, maxTop)))}px`;
     }
-    placements.position(theme);
+    placements.position();
   }
 
   /*
@@ -212,7 +215,7 @@ export function startPromptSlashCommand(options: SlashPromptOptions = {}): Slash
       // Anchored to the composer, not to the result list: the list has just
       // been closed and a hidden element has no rect to position against.
       anchor: query.input,
-      theme: detectPageScheme(),
+      theme: scheme(),
       labels: {
         insert: getTranslationSync('pm_fill_insert'),
         keepRaw: getTranslationSync('pm_fill_keep_raw'),
@@ -329,7 +332,7 @@ export function startPromptSlashCommand(options: SlashPromptOptions = {}): Slash
       hideGhost();
       return;
     }
-    showGhost(activeQuery, prompt.name);
+    showGhost(activeQuery, prompt.name, scheme());
   }
 
   function refresh(target: EventTarget | null): void {
@@ -570,7 +573,9 @@ export function startPromptSlashCommand(options: SlashPromptOptions = {}): Slash
   };
 }
 
-export async function startStoredPromptSlashCommand(): Promise<SlashPromptController> {
+export async function startStoredPromptSlashCommand(
+  scheme: () => PromptScheme,
+): Promise<SlashPromptController> {
   const [stored, sendMode] = await Promise.all([
     promptStorageService.get<PromptItem[]>(StorageKeys.PROMPT_ITEMS),
     browser.storage.sync
@@ -578,6 +583,7 @@ export async function startStoredPromptSlashCommand(): Promise<SlashPromptContro
       .catch(() => ({ [StorageKeys.CTRL_ENTER_SEND]: false })),
   ]);
   return startPromptSlashCommand({
+    scheme,
     initialItems: stored.success && Array.isArray(stored.data) ? stored.data : [],
     initialCtrlEnterSend: sendMode[StorageKeys.CTRL_ENTER_SEND] === true,
   });
