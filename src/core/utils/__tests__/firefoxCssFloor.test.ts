@@ -15,6 +15,8 @@ import manifestChrome from '../../../../manifest.json';
  */
 const STATIC_CONTENT_STYLESHEETS = [
   'public/contentStyle.css',
+  'src/core/ui/tokens.css',
+  'src/core/ui/confirm.css',
   'src/features/timeline/timeline.css',
   'src/features/timeline/timelinePreview.css',
   'src/pages/content/defaultModel/styles.css',
