@@ -109,19 +109,3 @@ generation traffic detection.
   `period=2`; do not infer unknown periods by position.
 - **Guard:** `src/pages/content/usageStatus/__tests__/usageStatus.test.ts` ("ignores unfamiliar
   sibling quota buckets without dropping daily and weekly usage")
-
-## Usage refresh must retain its account and live feature lifetime
-
-- **Trap:** A replay sent on `/u/1` could return after navigation to `/u/2` and be
-  displayed and saved as the second account's usage. A delayed navigation load or
-  language callback could also render the pill or restart its observer after stop,
-  including after a new feature session started. A null replay payload threw before
-  the existing payload check.
-- **Rule:** Bind replay metadata to its originating account and feature generation;
-  reject untracked or mismatched replies before updating UI or storage. Cancel the
-  navigation delay on stop and check the captured lifetime before applying async
-  snapshot or locale results. Check null payloads before reading message fields.
-- **Guard:** `src/pages/content/usageStatus/__tests__/usageLifecycle.test.ts`
-  ("does not show or save a late replay from another account or a stopped session",
-  "does not revive the pill or observer after stop or apply old loads to a restarted session",
-  "does not throw on a null replay payload and still adopts a valid refresh").
