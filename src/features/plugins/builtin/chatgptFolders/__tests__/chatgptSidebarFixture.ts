@@ -197,7 +197,17 @@ function buildSidebar(rows: readonly FixtureRow[]): HTMLElement {
   );
 }
 
-const MENU_ITEMS = ['Rename', 'Pin', 'Move to project', null, 'Share', null, 'Archive', 'Delete'];
+/** The "Chat actions" menu as captured; `null` is a separator. */
+const MENU_ITEMS: readonly (string | null)[] = [
+  'Rename',
+  'Pin',
+  'Move to project',
+  null,
+  'Share',
+  null,
+  'Archive',
+  'Delete',
+];
 
 function menuItem(label: string): HTMLElement {
   const submenu = label === 'Move to project';
@@ -260,7 +270,15 @@ export interface SidebarFixture {
   destroy(): void;
 }
 
-export function mountSidebarFixture(rows: readonly FixtureRow[]): SidebarFixture {
+export interface SidebarFixtureOptions {
+  /** The "Chat actions" menu's items in order, for a build that orders them differently. */
+  readonly menuItems?: readonly (string | null)[];
+}
+
+export function mountSidebarFixture(
+  rows: readonly FixtureRow[],
+  { menuItems = MENU_ITEMS }: SidebarFixtureOptions = {},
+): SidebarFixture {
   const rail = el(
     'nav',
     { role: 'navigation', 'aria-label': 'App navigation' },
@@ -337,7 +355,7 @@ export function mountSidebarFixture(rows: readonly FixtureRow[]): SidebarFixture
           'aria-labelledby': trigger.id,
           tabindex: '-1',
         },
-        ...MENU_ITEMS.map((label) => (label ? menuItem(label) : el('div', {}, el('div')))),
+        ...menuItems.map((label) => (label ? menuItem(label) : el('div', {}, el('div')))),
       );
       const close = (): void => {
         trigger.setAttribute('aria-expanded', 'false');
@@ -349,12 +367,15 @@ export function mountSidebarFixture(rows: readonly FixtureRow[]): SidebarFixture
         el('div', {}, el('div', { 'data-radix-popper-content-wrapper': '' }, menu)),
       );
       // Radix (observed live): Escape unmounts the menu, then returns focus to
-      // the trigger a task later.
-      menu.querySelector('[role="menuitem"]')!.addEventListener('click', () => {
-        close();
-        portal.remove();
-        requestAnimationFrame(() => startRename(id));
-      });
+      // the trigger a task later. Any item but Rename does the same here.
+      for (const item of menu.querySelectorAll('[role="menuitem"]:not([aria-haspopup])')) {
+        item.addEventListener('click', () => {
+          close();
+          portal.remove();
+          if (item.textContent === 'Rename') requestAnimationFrame(() => startRename(id));
+          else setTimeout(() => trigger.focus(), 0);
+        });
+      }
       menu.addEventListener('keydown', (event) => {
         if (event.key !== 'Escape') return;
         close();

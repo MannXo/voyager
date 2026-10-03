@@ -209,6 +209,27 @@ describe('ChatGPT folder section: renaming a filed chat', () => {
     expect(alpha.title).toBe('Alpha, renamed');
   });
 
+  it('writes nothing when the first plain item of the menu is not Rename', async () => {
+    sidebar.destroy();
+    sidebar = mountSidebarFixture(ROWS, { menuItems: ['Pin', 'Rename', 'Share'] });
+    memory.values.local.set(KEY, data({ title: 'My own name', customTitle: true }));
+    const view = await activate();
+    const writes = folderWrites();
+
+    titleOf(view, 'work', 'My own name').dispatchEvent(
+      new MouseEvent('dblclick', { bubbles: true, cancelable: true, composed: true }),
+    );
+    await frames(12);
+
+    expect(sidebar.nameField()).toBeNull();
+    expect(folderWrites()).toBe(writes);
+    expect(stored().folderContents.work[0]).toMatchObject({
+      title: 'My own name',
+      customTitle: true,
+    });
+    expect(view.outline()).toContain('  · My own name');
+  });
+
   it('does nothing for a filed chat the sidebar has not loaded', async () => {
     const view = await activate();
     const writes = folderWrites();

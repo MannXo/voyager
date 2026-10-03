@@ -7,6 +7,10 @@
  * The trigger is a Radix menu trigger, which opens on a primary pointerdown,
  * not on click. Rename is the menu's first plain item; "Move to project" is a
  * submenu and "Move to folder" is Voyager's own (see `chatgptMoveMenu.ts`).
+ * Position is all there is to go on: the labels are translated and the
+ * captured items carry no attribute that names them. So only ChatGPT's name
+ * field taking focus in the row confirms the item was Rename; anything else
+ * reports no rename, and the folders keep their titles.
  */
 import { MOVE_ENTRY_ATTR } from './chatgptMoveMenu';
 import {
@@ -50,6 +54,18 @@ async function waitFor<T>(
   return null;
 }
 
+/** ChatGPT's name field for conversation `id`: focused, editable, and in its row. */
+function focusedNameField(sidebar: HTMLElement | null, id: string): HTMLElement | null {
+  const field = document.activeElement;
+  if (!(field instanceof HTMLElement)) return null;
+  const editable =
+    field instanceof HTMLInputElement ||
+    field instanceof HTMLTextAreaElement ||
+    field.isContentEditable;
+  // Radix gives focus back to the trigger, which is in the row too, after any other item.
+  return editable && findSidebarRow(sidebar, id)?.row.contains(field) ? field : null;
+}
+
 function renameItemOf(menu: HTMLElement): HTMLElement | null {
   return (
     menuItemsOf(menu).find(
@@ -60,9 +76,9 @@ function renameItemOf(menu: HTMLElement): HTMLElement | null {
 
 /**
  * Opens ChatGPT's name field for conversation `id` (its bare id). Resolves to
- * the title the row showed before once Rename was chosen, or `null` when the
- * row or its menu never appeared, as for a chat on a history page the sidebar
- * has not loaded.
+ * the title the row showed before once the field has focus, or `null` when the
+ * row, its menu or the field never appeared: a chat on a history page the
+ * sidebar has not loaded, or a menu whose first plain item is not Rename.
  */
 export async function openNativeRename(
   id: string,
@@ -93,12 +109,12 @@ export async function openNativeRename(
     rename.click();
     // Keep the row shown until the field has focus. React may render the row
     // again, so look it up by id each frame.
-    await waitFor(
-      () => findSidebarRow(options.sidebar(), id)?.row.contains(document.activeElement) || null,
+    const field = await waitFor(
+      () => focusedNameField(options.sidebar(), id),
       FIELD_WAIT_FRAMES,
       options.active,
     );
-    return nativeTitle;
+    return field ? nativeTitle : null;
   } finally {
     // The hiding rule spares a row that holds focus, so the field stays shown.
     release();
