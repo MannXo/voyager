@@ -3326,6 +3326,9 @@
   "highlightSaved": {
     "message": "Texto resaltado guardado"
   },
+  "highlightConfirmationPending": {
+    "message": "Seguimos esperando la confirmación. Puedes cerrar este editor; conservaremos tu borrador."
+  },
   "highlightSaveFailed": {
     "message": "No se pudo guardar el texto resaltado"
   },

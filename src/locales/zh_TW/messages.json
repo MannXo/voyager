@@ -3326,6 +3326,9 @@
   "highlightSaved": {
     "message": "醒目標示已儲存"
   },
+  "highlightConfirmationPending": {
+    "message": "仍在等待確認。你可以關閉編輯器，草稿會保留。"
+  },
   "highlightSaveFailed": {
     "message": "無法儲存醒目標示"
   },

@@ -3326,6 +3326,9 @@
   "highlightSaved": {
     "message": "ハイライトを保存しました"
   },
+  "highlightConfirmationPending": {
+    "message": "確認を待っています。エディターを閉じても下書きは保持されます。"
+  },
   "highlightSaveFailed": {
     "message": "ハイライトを保存できませんでした"
   },

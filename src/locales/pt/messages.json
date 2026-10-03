@@ -3326,6 +3326,9 @@
   "highlightSaved": {
     "message": "Destaque salvo"
   },
+  "highlightConfirmationPending": {
+    "message": "Ainda aguardando confirmação. Você pode fechar este editor; seu rascunho será mantido."
+  },
   "highlightSaveFailed": {
     "message": "Não foi possível salvar o destaque"
   },

@@ -3326,6 +3326,9 @@
   "highlightSaved": {
     "message": "高亮已保存"
   },
+  "highlightConfirmationPending": {
+    "message": "仍在等待确认。你可以关闭编辑器，草稿会保留。"
+  },
   "highlightSaveFailed": {
     "message": "无法保存高亮"
   },

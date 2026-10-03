@@ -3326,6 +3326,9 @@
   "highlightSaved": {
     "message": "하이라이트를 저장했습니다"
   },
+  "highlightConfirmationPending": {
+    "message": "아직 확인을 기다리고 있어요. 편집기를 닫아도 초안은 유지됩니다."
+  },
   "highlightSaveFailed": {
     "message": "하이라이트를 저장하지 못했습니다"
   },

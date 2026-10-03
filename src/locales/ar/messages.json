@@ -3326,6 +3326,9 @@
   "highlightSaved": {
     "message": "تم حفظ التمييز"
   },
+  "highlightConfirmationPending": {
+    "message": "ما زلنا ننتظر التأكيد. يمكنك إغلاق هذا المحرر؛ سنحتفظ بمسودتك."
+  },
   "highlightSaveFailed": {
     "message": "تعذر حفظ التمييز"
   },

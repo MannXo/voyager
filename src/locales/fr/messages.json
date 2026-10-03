@@ -3326,6 +3326,9 @@
   "highlightSaved": {
     "message": "Surlignage enregistré"
   },
+  "highlightConfirmationPending": {
+    "message": "En attente de confirmation. Vous pouvez fermer cet éditeur ; votre brouillon sera conservé."
+  },
   "highlightSaveFailed": {
     "message": "Impossible d’enregistrer le surlignage"
   },

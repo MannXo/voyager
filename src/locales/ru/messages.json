@@ -3326,6 +3326,9 @@
   "highlightSaved": {
     "message": "Выделение сохранено"
   },
+  "highlightConfirmationPending": {
+    "message": "Всё ещё ждём подтверждения. Можно закрыть редактор — черновик сохранится."
+  },
   "highlightSaveFailed": {
     "message": "Не удалось сохранить выделение"
   },

@@ -3326,6 +3326,9 @@
   "highlightSaved": {
     "message": "Highlight saved"
   },
+  "highlightConfirmationPending": {
+    "message": "Still waiting for confirmation. You can close this editor; your draft will be kept."
+  },
   "highlightSaveFailed": {
     "message": "Could not save highlight"
   },
