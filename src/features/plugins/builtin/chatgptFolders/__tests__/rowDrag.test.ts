@@ -251,6 +251,31 @@ describe('dragging a ChatGPT sidebar row onto a folder', () => {
     expect(status(root)).toBe('Added to folder.');
   });
 
+  it('puts the row after what the folder already holds, as on Gemini', async () => {
+    const other = ROWS[0];
+    const held = {
+      conversationId: `chatgpt:conv:${other.id}`,
+      title: other.title,
+      url: `https://chatgpt.com/c/${other.id}`,
+      addedAt: 1,
+      sortIndex: 0,
+    };
+    memory.values.local.set(KEY, {
+      ...structuredClone(DATA),
+      folderContents: { ...DATA.folderContents, trips: [held] },
+    });
+    const { view } = await activate();
+
+    dragRowOnto(TARGET.id, view.folderNameElement('Trips'));
+    await nextPass();
+
+    const order = stored().folderContents.trips.toSorted(
+      (a, b) => (a.sortIndex ?? 0) - (b.sortIndex ?? 0),
+    );
+    expect(order.map((c) => c.conversationId)).toEqual([held.conversationId, FILED.conversationId]);
+    expect(view.outline()).toEqual(['Work', 'Trips', `  · ${other.title}`, `  · ${TARGET.title}`]);
+  });
+
   it('lights the folder under a dragged row, and only while it is there', async () => {
     const { view } = await activate();
     const work = screen.place(view.folderNameElement('Work'));

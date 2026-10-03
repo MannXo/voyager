@@ -136,6 +136,38 @@ describe('"Move to folder" in a sidebar row menu', () => {
     expect(document.querySelector(PICKER)).toBeNull();
   });
 
+  it('puts the row first in the picked folder', async () => {
+    const other = ROWS[0];
+    const held = {
+      conversationId: `chatgpt:conv:${other.id}`,
+      title: other.title,
+      url: `https://chatgpt.com/c/${other.id}`,
+      addedAt: 1,
+      sortIndex: 0,
+    };
+    await scope.dispose();
+    memory.values.local.set(StorageKeys.FOLDER_DATA_CHATGPT, {
+      ...structuredClone(DATA),
+      folderContents: { ...DATA.folderContents, f2: [held] },
+    });
+    scope = new PluginScope();
+    await activateChatGptFolders(scope);
+    await nextPass();
+
+    sidebar.openMenu(TARGET.id);
+    await nextPass();
+    document.querySelector<HTMLElement>(ENTRY)!.click();
+    await nextPass();
+    pick('Trips');
+    await settle(20);
+
+    const order = stored('f2').toSorted((a, b) => (a.sortIndex ?? 0) - (b.sortIndex ?? 0));
+    expect(order.map((c) => c.conversationId)).toEqual([
+      `chatgpt:conv:${TARGET.id}`,
+      held.conversationId,
+    ]);
+  });
+
   it('is reachable with the arrow keys and opens the picker with Enter', async () => {
     const menu = sidebar.openMenu(TARGET.id);
     await nextPass();

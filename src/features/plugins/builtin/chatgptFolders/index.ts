@@ -12,6 +12,7 @@ import {
 } from '@/core/icons/folderIcons';
 import type { ConversationReference } from '@/core/types/folder';
 import type { EditOutcome, FolderCommands } from '@/features/folder/commands/folderCommands';
+import type { AddVia } from '@/features/folder/owner/folderOwnerPolicy';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
 import type { PluginScope } from '@/features/plugins/runtime/pluginScope';
 import type { PluginSettings } from '@/features/plugins/types';
@@ -219,15 +220,19 @@ class ChatGptFoldersView {
     return surface?.dropTargetAt(x, y) ?? null;
   }
 
-  /** Files `conversation` into `folderId` and confirms the result in both trees. */
-  file(folderId: string, conversation: DroppedConversation): void {
+  /**
+   * Files `conversation` into `folderId` and confirms the result in both trees.
+   * A sidebar row dragged onto a folder (`outside-drop`) lands last, as on
+   * Gemini; a picked folder puts it first.
+   */
+  file(folderId: string, conversation: DroppedConversation, via: AddVia = 'picker'): void {
     const { conversationId, title, url } = conversation;
     void this.commands
       .run({
         kind: 'addConversations',
         target: folderId,
         seeds: [{ conversationId, title, url }],
-        via: 'picker',
+        via,
       })
       .then((outcome) => {
         const key = addOutcomeKey(outcome);
@@ -415,7 +420,7 @@ export async function activateChatGptFolders(
   bindChatGptRowDrag(scope, {
     untitled: () => t('chatgptFoldersUntitled'),
     dropTargetAt: (x, y) => view.dropTargetAt(x, y),
-    onDrop: (folderId, conversation) => view.file(folderId, conversation),
+    onDrop: (folderId, conversation) => view.file(folderId, conversation, 'outside-drop'),
   });
   const hideFiled = settings[HIDE_FILED_SETTING] === true ? new ChatGptHideFiled(scope) : null;
   sidebar.onChange((nav) => {

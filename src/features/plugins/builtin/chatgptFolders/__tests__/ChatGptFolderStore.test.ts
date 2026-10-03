@@ -72,8 +72,8 @@ describe('ChatGptFolderStore', () => {
 
     s.createFolder('Work', null);
     const folderId = s.data.folders[0].id;
-    s.addConversation(folderId, conversation('a'));
-    s.addConversation(ROOT_CONVERSATIONS_ID, conversation('b'));
+    s.addConversation(folderId, conversation('a'), 'top');
+    s.addConversation(ROOT_CONVERSATIONS_ID, conversation('b'), 'top');
     s.renameFolder(folderId, 'Projects');
     s.toggleStar(folderId, 'chatgpt:conv:a');
     s.setFolderColor(folderId, 'blue');
@@ -123,8 +123,8 @@ describe('ChatGptFolderStore', () => {
     const s = await ready();
     s.createFolder('Work', null);
     const folderId = s.data.folders[0].id;
-    expect(s.addConversation(folderId, conversation('a', 'Trip plan'))).toBe('added');
-    expect(s.addConversation(folderId, conversation('a', 'Again'))).toBe('present');
+    expect(s.addConversation(folderId, conversation('a', 'Trip plan'), 'top')).toBe('added');
+    expect(s.addConversation(folderId, conversation('a', 'Again'), 'top')).toBe('present');
     await settle();
 
     const stored = memory.values.local.get(StorageKeys.FOLDER_DATA_CHATGPT) as FolderData;
@@ -137,14 +137,14 @@ describe('ChatGptFolderStore', () => {
     s.createFolder('Work', null);
     s.createFolder('Gone', null);
     const [work, gone] = s.data.folders.map((folder) => folder.id);
-    s.addConversation(work, conversation('a'));
+    s.addConversation(work, conversation('a'), 'top');
     s.removeFolder(gone);
     await settle();
     const writes = memory.writes.length;
 
-    expect(s.addConversation(gone, conversation('b'))).toBe('missing');
+    expect(s.addConversation(gone, conversation('b'), 'top')).toBe('missing');
     s.moveConversation('chatgpt:conv:a', work, gone);
-    expect(s.addConversation(ROOT_CONVERSATIONS_ID, conversation('c'))).toBe('added');
+    expect(s.addConversation(ROOT_CONVERSATIONS_ID, conversation('c'), 'top')).toBe('added');
     await settle();
 
     const stored = memory.values.local.get(StorageKeys.FOLDER_DATA_CHATGPT) as FolderData;

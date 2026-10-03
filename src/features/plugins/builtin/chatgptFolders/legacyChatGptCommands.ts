@@ -15,6 +15,7 @@ import {
 } from '@/features/folder/commands/folderCommands';
 import { cloneFolderData, ownBucket } from '@/features/folder/model/folderData';
 import { type ConversationSeed, rejected } from '@/features/folder/owner/folderOps';
+import { FOLDER_SITE_POLICIES } from '@/features/folder/owner/folderOwnerPolicy';
 
 import type { AddOutcome, ChatGptFolderStore, MoveOutcome } from './ChatGptFolderStore';
 import { CHATGPT_CONVERSATION_ID_PREFIX } from './chatgptIdentity';
@@ -89,8 +90,9 @@ export function createLegacyChatGptCommands(store: ChatGptFolderStore): FolderCo
         store.toggleFolderExpanded(folderId),
       );
     },
-    addConversations: ({ target, seeds }) => {
-      const results = seeds.map((seed) => store.addConversation(target, recordOf(seed)));
+    addConversations: ({ target, seeds, via }) => {
+      const placement = FOLDER_SITE_POLICIES.chatgpt.addPlacement(via);
+      const results = seeds.map((seed) => store.addConversation(target, recordOf(seed), placement));
       const best = ADD_RANK.find((rank) => results.includes(rank)) ?? 'closed';
       return ADD_OUTCOMES[best];
     },

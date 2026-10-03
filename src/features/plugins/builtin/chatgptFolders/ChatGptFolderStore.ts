@@ -7,7 +7,10 @@ import {
   reorderConversations,
   setBucket,
 } from '@/features/folder/model/folderData';
-import { placeConversations } from '@/features/folder/model/placeConversations';
+import {
+  type ConversationPlacement,
+  placeConversations,
+} from '@/features/folder/model/placeConversations';
 import { FolderRepository } from '@/pages/content/folder/FolderRepository';
 import { applyNativeTitle } from '@/pages/content/folder/conversationTitleSync';
 import { AIStudioFolderStorageAdapter } from '@/pages/content/folder/storage/AIStudioFolderStorageAdapter';
@@ -164,14 +167,18 @@ export class ChatGptFolderStore {
     return this.replaceIfChanged(reorderConversations(this.data, ids, from, target, index));
   }
   /**
-   * Files `conversation` into `target`. A picker or menu may still offer a folder
-   * another tab has deleted; filing into it would leave an orphan bucket that no
-   * tree shows, so that is refused.
+   * Files `conversation` into `target` at `placement`. A picker or menu may still
+   * offer a folder another tab has deleted; filing into it would leave an orphan
+   * bucket that no tree shows, so that is refused.
    */
-  addConversation(target: string, conversation: ConversationReference): AddOutcome {
+  addConversation(
+    target: string,
+    conversation: ConversationReference,
+    placement: ConversationPlacement,
+  ): AddOutcome {
     if (!this.ready) return 'closed';
     if (!this.hasBucketOwner(target)) return 'missing';
-    const placed = placeConversations(this.data, [conversation], { target, placement: 'top' });
+    const placed = placeConversations(this.data, [conversation], { target, placement });
     if (placed.added.length === 0) return 'present';
     this.commit(() => (this.repository.data = placed.data));
     return 'added';
