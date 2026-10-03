@@ -80,6 +80,7 @@ export class AIStudioFolderManager {
           result === 'recovered' ? 'warning' : 'error',
         ),
       onExternalChange: () => {
+        // Sidebar rendering leaves /library rows untouched; refresh their archive classes too.
         if (this.folderEnabled) void this.load().then(() => this.applyHideArchived());
       },
       onAccountReleased: () => this.releaseAccountUi(),

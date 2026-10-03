@@ -1159,6 +1159,7 @@ export class GoogleDriveSyncService {
 
   /**
    * Resolve the app-owned Drive folder without relying on its display name.
+   * Serialize discovery so concurrent first uploads do not create duplicates.
    *
    * Resolution order is deliberately conservative:
    * 1. A folder carrying Voyager's private appProperties marker.

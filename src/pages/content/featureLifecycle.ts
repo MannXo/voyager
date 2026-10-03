@@ -14,8 +14,7 @@ import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContex
  *   the page lives, without a reload, by `createNativeFeatureToggle`.
  *
  * Sidebar remounts and account changes are *not* covered: those lifetimes
- * differ per feature (see the folders/timeline regression notes) and stay
- * inside each module.
+ * differ per feature and stay inside each module.
  *
  * `src/pages/content/__tests__/nativeFeatureLifecycle.test.ts` enforces the
  * contract for every entry of `NATIVE_FEATURE_LIST`.

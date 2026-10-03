@@ -797,18 +797,7 @@ export class FolderRepository {
     }
   }
 
-  /**
-   * Re-attempt a failed scope resolution a few times, with growing gaps.
-   *
-   * Firefox is the only target that resolves the scope through the background
-   * page (`AccountIsolationService.shouldResolveScopeInBackground`), so a
-   * background that is not listening yet — right after an extension update, say
-   * — fails the whole round trip. An unbound store is not inert: the panel
-   * renders empty and `saveData` drops every edit while still repainting it, so
-   * a folder the user creates looks saved and is gone on reload. Binding to the
-   * global bucket instead is not an option, because an ownerless bucket can
-   * belong to another account (see `.github/docs/regressions/state-identity-sync.md`).
-   */
+  /** Retry transient scope failures; the global bucket may belong to another account. */
   private scheduleAccountScopeRetry(request: number): void {
     if (this.destroyed || request !== this.accountScopeRequest) return;
     const delay = ACCOUNT_SCOPE_RETRY_DELAYS[this.accountScopeRetryAttempt];
