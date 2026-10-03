@@ -11,17 +11,19 @@ import {
   measureWatermarkSignal,
 } from '../watermarkDetector';
 import {
+  WatermarkEngine,
+  detectWatermarkConfig,
+  getWatermarkConfigOptions,
+} from '../watermarkEngine';
+import {
   type WatermarkAnchorOption,
   type WatermarkConfig,
-  WatermarkEngine,
   calculateWatermarkPosition,
   chooseDifficultWatermarkAnchorOption,
   chooseWatermarkAnchorOption,
-  detectWatermarkConfig,
-  getWatermarkConfigOptions,
   removeWatermarkFromAnchorOptions,
   removeWatermarkWithResidualCheck,
-} from '../watermarkEngine';
+} from '../watermarkPixels';
 
 const TEST_ALPHA_MAP = Float32Array.from([
   0.02, 0.15, 0.15, 0.02, 0.15, 0.8, 0.8, 0.15, 0.15, 0.8, 0.8, 0.15, 0.02, 0.15, 0.15, 0.02,
