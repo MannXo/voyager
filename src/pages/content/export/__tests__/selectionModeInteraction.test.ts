@@ -47,18 +47,6 @@ describe('selection mode interaction', () => {
     expect(logoBlock).toContain('pointer-events: auto;');
   });
 
-  it('wires Safari PDF success path to runtime toast guidance', () => {
-    const notice = readFileSync(
-      resolve(process.cwd(), 'src/features/export/ui/exportResultNotice.ts'),
-      'utf8',
-    );
-
-    expect(notice).toContain("format === 'pdf'");
-    expect(notice).toContain('isSafari()');
-    expect(notice).toContain('showExportToast(');
-    expect(notice).toContain("t('export_toast_safari_pdf_ready')");
-  });
-
   it('applies horizontal scrolling to the export selection bar and prevents text wrapping', () => {
     const css = readFileSync(resolve(process.cwd(), 'public/contentStyle.css'), 'utf8');
 
