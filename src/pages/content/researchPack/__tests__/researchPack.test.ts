@@ -108,6 +108,30 @@ describe('research pack on Gemini', () => {
     expect(text).toContain('Answer text.');
   });
 
+  it('clears the pack only once confirmed, and Escape answers the confirm, not the panel', async () => {
+    const host = turn('<p>Answer text.</p>');
+    const { store, stored } = memoryStore();
+    stop = startResearchPack({ store, resolveKey: async () => KEY });
+    clickAdd(host);
+    await flush();
+    document.querySelector<HTMLButtonElement>('.gv-rp-launcher')!.click();
+    // Footer order: Insert, Copy, Download, Clear.
+    const clear = document.querySelectorAll<HTMLButtonElement>('.gv-rp-actions button')[3];
+
+    clear.click();
+    document.activeElement!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true }),
+    );
+    await flush();
+    expect(document.querySelector<HTMLElement>('.gv-rp-panel')!.hidden).toBe(false);
+    expect(stored()!.items).toHaveLength(1);
+
+    clear.click();
+    document.querySelector<HTMLButtonElement>('.gv-pm-confirm-yes')!.click();
+    await flush();
+    expect(stored()!.items).toHaveLength(0);
+  });
+
   describe('exports the instruction exactly as typed, even before it is saved', () => {
     const typeInstruction = (value: string): void => {
       const textarea = document.querySelector<HTMLTextAreaElement>('#gv-rp-instruction')!;
