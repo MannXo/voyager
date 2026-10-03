@@ -471,6 +471,7 @@ export class DefaultModelAutoApply {
   }
 
   private shouldYieldToUserComposerActivity(): boolean {
+    // Opening the picker steals focus while the user is composing.
     const input = this.findChatInputElement();
     const text = input ? this.getChatInputText(input).trim() : '';
     if (text.length > 0) return true;

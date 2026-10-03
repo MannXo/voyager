@@ -58,6 +58,7 @@ export class ModelPicker {
   }
 
   public describeMenu(panel: HTMLElement) {
+    // Table menus share generic labels; require model-specific evidence before adding stars.
     const items = Array.from(panel.querySelectorAll<HTMLElement>(MODE_ITEM_SELECTOR));
     const kind =
       panel.matches('.cdk-overlay-pane') && this.isThinkingLevelSubmenuPane(panel)
