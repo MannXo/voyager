@@ -230,22 +230,12 @@ describe.each(CONSUMERS)('$name: naming folders', ({ consumer }) => {
   });
 });
 
-describe('rename with the name the folder already has', () => {
-  it.each(['panel', 'aistudio'] as const)('%s does not ask to rename', (consumer) => {
+describe.each(CONSUMERS)('$name: rename with the name the folder already has', ({ consumer }) => {
+  it('does not ask to rename', () => {
     const { view, actions } = mount(consumer);
     view.startRename('Beta');
     view.pressInInput('Enter');
     expect(actions.onRenameFolder).not.toHaveBeenCalled();
-  });
-
-  // DIVERGENCE: the ChatGPT section renders the tree without the controller's
-  // live-name guard, so an unchanged name still reaches the store, which saves
-  // it with a new `updatedAt` (sectionCharacterization pins that write).
-  it('chatgpt asks to rename to the same name', () => {
-    const { view, actions } = mount('chatgpt');
-    view.startRename('Beta');
-    view.pressInInput('Enter');
-    expect(actions.onRenameFolder.mock.calls).toEqual([['b', 'Beta']]);
   });
 });
 
@@ -382,60 +372,72 @@ describe.each(CONSUMERS)('$name: the folder menu', ({ consumer }) => {
 });
 
 describe('where the folder menu renders', () => {
-  it.each(['panel', 'chatgpt'] as const)('%s keeps it inside its own shadow root', (consumer) => {
-    const { tree, view } = mount(consumer);
+  it('the floating panel keeps it inside its own shadow root', () => {
+    const { tree, view } = mount('panel');
     view.openMenuByRightClick('Beta');
     expect(openMenu()!.getRootNode()).toBe(tree.root);
   });
 
-  // The nav may transform or clip, which would capture a fixed menu.
-  it('AI Studio renders it in a body-level layer, outside the nav and the tree', () => {
-    const { tree, view } = mount('aistudio');
-    view.openMenuByButton('Beta');
-    const menu = openMenu()!;
-    expect(menu.getRootNode()).not.toBe(tree.root);
-    const host = topLevelHost(menu)!;
-    expect(host.parentElement).toBe(document.body);
-    expect(host.contains(tree.host)).toBe(false);
-    expect(host.hasAttribute('data-gv-shadow-surface')).toBe(true);
-  });
+  // The nav or sidebar may transform, scroll or clip, which would capture a fixed menu.
+  it.each(['aistudio', 'chatgpt'] as const)(
+    '%s renders it in a body-level layer, outside its sidebar and the tree',
+    (consumer) => {
+      const { tree, view } = mount(consumer);
+      view.openMenuByButton('Beta');
+      const menu = openMenu()!;
+      expect(menu.getRootNode()).not.toBe(tree.root);
+      const host = topLevelHost(menu)!;
+      expect(host.parentElement).toBe(document.body);
+      expect(host.contains(tree.host)).toBe(false);
+      expect(host.hasAttribute('data-gv-shadow-surface')).toBe(true);
+    },
+  );
 
-  it('AI Studio opens it from a labelled button and from a right-click alike', () => {
-    const { view } = mount('aistudio');
-    expect(view.menuButton('Beta')!.getAttribute('aria-label')).toBe(label('folder_settings'));
-    view.openMenuByRightClick('Beta');
-    expect(openMenu()).not.toBeNull();
-  });
+  it.each(['aistudio', 'chatgpt'] as const)(
+    '%s opens it from a labelled button and from a right-click alike',
+    (consumer) => {
+      const { view } = mount(consumer);
+      expect(view.menuButton('Beta')!.getAttribute('aria-label')).toBe(label('folder_settings'));
+      view.openMenuByRightClick('Beta');
+      expect(openMenu()).not.toBeNull();
+    },
+  );
 });
 
 describe('Escape and focus on the folder menu', () => {
-  it.each(['panel', 'aistudio'] as const)('%s closes the menu on Escape', (consumer) => {
+  it.each(['panel', 'aistudio', 'chatgpt'] as const)('%s closes the menu on Escape', (consumer) => {
     const { view } = mount(consumer);
     view.openMenuByRightClick('Beta');
     pressEscape();
     expect(openMenu()).toBeNull();
   });
 
-  it('AI Studio moves focus into a menu opened from the keyboard and back on Escape', () => {
-    const { view } = mount('aistudio');
-    const button = view.menuButton('Beta')!;
-    button.focus();
-    view.openMenuByButton('Beta', true);
+  it.each(['aistudio', 'chatgpt'] as const)(
+    '%s moves focus into a menu opened from the keyboard and back on Escape',
+    (consumer) => {
+      const { view } = mount(consumer);
+      const button = view.menuButton('Beta')!;
+      button.focus();
+      view.openMenuByButton('Beta', true);
 
-    expect(deepActiveElement()).toBe(menuItems()[0]);
-    pressEscape();
-    expect(openMenu()).toBeNull();
-    expect(deepActiveElement()).toBe(button);
-  });
+      expect(deepActiveElement()).toBe(menuItems()[0]);
+      pressEscape();
+      expect(openMenu()).toBeNull();
+      expect(deepActiveElement()).toBe(button);
+    },
+  );
 
-  it('AI Studio leaves focus alone for a menu opened with the pointer', () => {
-    const { view } = mount('aistudio');
-    const outside = document.createElement('button');
-    document.body.appendChild(outside);
-    outside.focus();
-    view.openMenuByButton('Beta');
-    expect(deepActiveElement()).toBe(outside);
-  });
+  it.each(['aistudio', 'chatgpt'] as const)(
+    '%s leaves focus alone for a menu opened with the pointer',
+    (consumer) => {
+      const { view } = mount(consumer);
+      const outside = document.createElement('button');
+      document.body.appendChild(outside);
+      outside.focus();
+      view.openMenuByButton('Beta');
+      expect(deepActiveElement()).toBe(outside);
+    },
+  );
 });
 
 describe('folder menu near the viewport edge', () => {

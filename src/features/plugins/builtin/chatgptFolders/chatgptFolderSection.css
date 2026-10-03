@@ -6,7 +6,12 @@
  *
  * `:host(.gv-chatgpt-folder-section[data-gv-scheme])` outranks the panel's
  * `:host([data-gv-scheme=...])` rules, and this sheet comes after them; host
- * rules stay `!important` (see floatingPanel.css). */
+ * rules stay `!important` (see floatingPanel.css).
+ *
+ * The folder menu renders in the tree's body-level popover layer
+ * (`gv-folder-tree-popover-layer`), which takes this sheet too: the tokens and
+ * the menu rules name that host as well. The section's own host rules must
+ * never match it, or the 0×0 fixed layer would become a block in the page. */
 :host(.gv-chatgpt-folder-section),
 :host(.gv-chatgpt-folder-section[data-gv-scheme]) {
   position: relative !important;
@@ -43,7 +48,8 @@
  * Its unprefixed `--text-primary` family belongs to another theme layer and must
  * not be used here. Outlines are mixed from the row text, so they follow the
  * theme as well. The fallbacks are ChatGPT's own values. */
-:host(.gv-chatgpt-folder-section[data-gv-scheme]) {
+:host(.gv-chatgpt-folder-section[data-gv-scheme]),
+:host(.gv-folder-tree-popover-layer[data-gv-scheme]) {
   --gv-chatgpt-folder-section__heading: var(--color-text-tertiary, #8f8f8f);
   --gv-floating-folder-panel__text: var(--color-text, #0d0d0d);
   --gv-floating-folder-panel__text-muted: var(--color-text-secondary, #5d5d5d);
@@ -69,7 +75,8 @@
   );
 }
 
-:host(.gv-chatgpt-folder-section[data-gv-scheme='dark']) {
+:host(.gv-chatgpt-folder-section[data-gv-scheme='dark']),
+:host(.gv-folder-tree-popover-layer[data-gv-scheme='dark']) {
   --gv-chatgpt-folder-section__heading: var(--color-text-tertiary, rgba(255, 255, 255, 0.5));
   --gv-floating-folder-panel__text: var(--color-text, #ffffff);
   --gv-floating-folder-panel__text-muted: var(--color-text-secondary, rgba(255, 255, 255, 0.7));
@@ -83,7 +90,8 @@
 
 /* Rows take ChatGPT's row height and radius tokens. One nesting step is the
  * chevron and its gap, so a child's chevron sits under its parent's folder icon. */
-:host(.gv-chatgpt-folder-section) {
+:host(.gv-chatgpt-folder-section),
+:host(.gv-folder-tree-popover-layer) {
   --gv-chatgpt-folder-section__row-height: var(--height-token-row, 36px);
   --gv-chatgpt-folder-section__row-radius: var(--radius-lg, 10px);
   --gv-tree-step: 24px;
@@ -320,12 +328,19 @@
 }
 
 /* ─── Folder menu: ChatGPT's menu shape, in the page's font ────────────── */
-:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__context-menu {
+/* The layer is a child of body: the page's font, not the panel's. */
+:host(.gv-folder-tree-popover-layer) {
+  font-family: inherit !important;
+}
+
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__context-menu,
+:host(.gv-folder-tree-popover-layer[data-gv-scheme]) .gv-floating-folder-panel__context-menu {
   border-radius: 16px;
   font-family: inherit;
 }
 
-:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__menu-item {
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__menu-item,
+:host(.gv-folder-tree-popover-layer[data-gv-scheme]) .gv-floating-folder-panel__menu-item {
   min-height: 36px;
   border-radius: var(--gv-chatgpt-folder-section__row-radius);
   font-size: 14px;

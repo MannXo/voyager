@@ -9,26 +9,21 @@ import { createPlusIcon } from '@/core/icons/folderIcons';
  */
 import type { FolderData } from '@/core/types/folder';
 import panelCss from '@/pages/content/folder/floatingPanel.css?raw';
-import { renderFolderTree } from '@/pages/content/folder/floatingTree/FolderTree';
 import {
   type FolderDropTarget,
   folderDropTargetAt,
 } from '@/pages/content/folder/floatingTree/dropTargets';
 import {
-  type ContextMenuState,
   FLOATING_PANEL_CLASS,
   FOLDER_TOGGLE_DELAY_MS,
-  type InlineEditorState,
   type TreeActions,
-  type TreeChange,
   type TreeSiteOptions,
 } from '@/pages/content/folder/floatingTree/shared';
 import {
-  type ShadowSurface,
-  attachShadowSurface,
-  eventPassedThrough,
-} from '@/pages/content/folder/shadowHost';
-import type { Folder } from '@/pages/content/folder/types';
+  type FolderTreeController,
+  mountFolderTree,
+} from '@/pages/content/folder/floatingTree/treeController';
+import { type ShadowSurface, attachShadowSurface } from '@/pages/content/folder/shadowHost';
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
 import sectionCss from './chatgptFolderSection.css?raw';
@@ -84,15 +79,14 @@ export class ChatGptFolderSection {
   private readonly body: HTMLElement;
   private readonly headerButtons: HTMLButtonElement[];
   private readonly status: HTMLElement;
+  private readonly tree: FolderTreeController;
   private statusTimer: ReturnType<typeof setTimeout> | null = null;
-  private inlineEditor: InlineEditorState | null = null;
-  private contextMenu: ContextMenuState | null = null;
   private activeConversationId: string | null = null;
 
   constructor(
-    private data: FolderData,
-    private readonly rootBucketId: string,
-    private readonly actions: TreeActions,
+    data: FolderData,
+    rootBucketId: string,
+    actions: TreeActions,
     headerActions: readonly SectionHeaderAction[] = [],
   ) {
     this.element = document.createElement('div');
@@ -124,7 +118,7 @@ export class ChatGptFolderSection {
     );
     createButton.addEventListener('click', (event) => {
       event.stopPropagation();
-      this.apply({ inlineEditor: { mode: 'create', parentId: null }, contextMenu: null });
+      this.tree.apply({ inlineEditor: { mode: 'create', parentId: null }, contextMenu: null });
     });
     this.headerButtons.push(createButton);
     toolbar.append(...this.headerButtons);
@@ -138,11 +132,22 @@ export class ChatGptFolderSection {
     this.status.setAttribute('role', 'status');
     this.status.hidden = true;
 
-    this.surface = attachShadowSurface(this.element, `${panelCss}\n${sectionCss}`);
+    const css = `${panelCss}\n${sectionCss}`;
+    this.surface = attachShadowSurface(this.element, css);
     this.surface.root.append(header, this.status, this.body);
 
-    document.addEventListener('click', this.closeMenuOutside);
-    this.render();
+    // The sidebar scrolls and clips, so the folder menu renders in a body-level layer.
+    this.tree = mountFolderTree({
+      body: this.body,
+      boundary: this.element,
+      focusRoot: this.surface.root,
+      data,
+      rootBucketId,
+      conversationSortMode: 'manual',
+      actions,
+      site: SITE,
+      popoverLayer: { css },
+    });
   }
 
   /**
@@ -168,23 +173,14 @@ export class ChatGptFolderSection {
   }
 
   update(data: FolderData): void {
-    this.data = data;
-    if (this.inlineEditor?.mode === 'rename') {
-      const folderId = this.inlineEditor.folderId;
-      if (!data.folders.some((folder) => folder.id === folderId)) this.inlineEditor = null;
-    }
-    const menu = this.contextMenu;
-    if (menu && !data.folders.some((folder) => folder.id === menu.folderId)) {
-      this.contextMenu = null;
-    }
-    this.renderUnlessTyping();
+    this.tree.update(data);
   }
 
   /** Marks the rows of the conversation the page has open (its stored id), or none. */
   setActiveConversation(conversationId: string | null): void {
     if (conversationId === this.activeConversationId) return;
     this.activeConversationId = conversationId;
-    this.renderUnlessTyping();
+    this.tree.setSite({ ...SITE, activeConversationId: conversationId });
   }
 
   setDataReady(ready: boolean): void {
@@ -195,7 +191,7 @@ export class ChatGptFolderSection {
 
   /** True while the section's own folder menu or name field is open. */
   get busy(): boolean {
-    return this.contextMenu !== null || this.inlineEditor !== null;
+    return this.tree.busy();
   }
 
   /** The folder drop target under a viewport point, for a drag driven by pointer events. */
@@ -213,8 +209,7 @@ export class ChatGptFolderSection {
 
   destroy(): void {
     this.clearStatus();
-    document.removeEventListener('click', this.closeMenuOutside);
-    renderFolderTree(this.body, null);
+    this.tree.destroy();
     this.surface.disconnect();
     this.element.remove();
   }
@@ -224,52 +219,5 @@ export class ChatGptFolderSection {
     this.statusTimer = null;
     this.status.hidden = true;
     this.status.textContent = '';
-  }
-
-  // Rebuilding the tree under an open inline form would empty it; every way out
-  // of the form renders again and picks up the latest state.
-  private renderUnlessTyping(): void {
-    if (this.inlineEditor && this.isTyping()) return;
-    this.render();
-  }
-
-  private isTyping(): boolean {
-    return !!this.surface.root.activeElement?.classList.contains(
-      `${FLOATING_PANEL_CLASS}__inline-input`,
-    );
-  }
-
-  private readonly closeMenuOutside = (event: MouseEvent): void => {
-    if (this.contextMenu && !eventPassedThrough(event, this.element)) {
-      this.apply({ contextMenu: null });
-    }
-  };
-
-  private readonly isExpanded = (folder: Folder): boolean => folder.isExpanded;
-
-  private readonly apply = (change: TreeChange, effect?: () => void): void => {
-    if (change.inlineEditor !== undefined) this.inlineEditor = change.inlineEditor;
-    if (change.contextMenu !== undefined) this.contextMenu = change.contextMenu;
-    if (change.expand) {
-      const { folderId, expanded } = change.expand;
-      const folder = this.data.folders.find((candidate) => candidate.id === folderId);
-      if (folder && folder.isExpanded !== expanded) this.actions.onToggleFolderExpanded?.(folderId);
-    }
-    effect?.();
-    this.render();
-  };
-
-  private render(): void {
-    renderFolderTree(this.body, {
-      data: this.data,
-      rootBucketId: this.rootBucketId,
-      conversationSortMode: 'manual',
-      actions: this.actions,
-      inlineEditor: this.inlineEditor,
-      contextMenu: this.contextMenu,
-      isExpanded: this.isExpanded,
-      apply: this.apply,
-      site: { ...SITE, activeConversationId: this.activeConversationId },
-    });
   }
 }

@@ -45,6 +45,8 @@ export type FolderTreeController = {
   reset: (data: FolderData, conversationSortMode?: ConversationSortMode) => void;
   /** Changes site options, such as the open conversation, and re-renders. */
   setSite: (site: TreeSiteOptions) => void;
+  /** Whether the folder menu or an inline name form is open. */
+  busy: () => boolean;
   /** Unmounts the tree and removes its document listener; the caller removes `body`. */
   destroy: () => void;
 };
@@ -185,6 +187,7 @@ export function mountFolderTree({
 
   return {
     apply,
+    busy: () => contextMenu !== null || inlineEditor !== null,
     setSite: (next) => {
       const reorders =
         next.folderOrder !== currentSite?.folderOrder ||

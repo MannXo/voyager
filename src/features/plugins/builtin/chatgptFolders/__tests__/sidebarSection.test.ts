@@ -7,6 +7,7 @@ import type { FolderData } from '@/core/types/folder';
 import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
 import { PluginScope } from '@/features/plugins/runtime/pluginScope';
+import { openMenu } from '@/pages/content/folder/floatingTree/__tests__/treeDriver';
 import { initI18n, getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
 import { activateChatGptFolders } from '../index';
@@ -257,7 +258,7 @@ describe('ChatGPT folder section in the sidebar', () => {
         .querySelector('[data-folder-id="f1"]')!
         .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
       await settle(5);
-      [...root.querySelectorAll<HTMLElement>('[role="menu"] button')]
+      [...openMenu()!.querySelectorAll<HTMLElement>('button')]
         .find((button) => button.textContent?.includes('Add current conversation here'))!
         .click();
       await settle(20);

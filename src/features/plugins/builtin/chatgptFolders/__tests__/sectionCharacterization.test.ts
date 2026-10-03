@@ -183,8 +183,7 @@ describe('ChatGPT folder section: what it writes', () => {
     expect(stored()).toEqual(DATA);
   });
 
-  // DIVERGENCE from the floating panel and AI Studio, which write nothing here.
-  it('saves a rename to the same name, changing only updatedAt', async () => {
+  it('writes nothing for a rename to the same name, as the panel and AI Studio', async () => {
     const view = await activate();
     const before = folderWrites();
 
@@ -192,9 +191,8 @@ describe('ChatGPT folder section: what it writes', () => {
     view.pressInInput('Enter');
     await nextPass();
 
-    expect(folderWrites()).toBe(before + 1);
-    expect(withoutTimes(stored())).toEqual(withoutTimes(DATA));
-    expect(stored().folders.find((f) => f.id === 'work')!.updatedAt).not.toBe(1);
+    expect(folderWrites()).toBe(before);
+    expect(stored()).toEqual(DATA);
   });
 
   it('saves a rename as the new name on that folder alone', async () => {
