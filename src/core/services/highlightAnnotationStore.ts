@@ -155,7 +155,7 @@ function createDefaultStorageAdapter(): HighlightStorageAdapter {
 /** Owns storage boundaries and keeps admission plus writes in the same budget step. */
 export class HighlightAnnotationStore {
   constructor(private readonly dependencies: HighlightAnnotationServiceDependencies) {}
-  get storage(): HighlightStorageAdapter {
+  private get storage(): HighlightStorageAdapter {
     return this.dependencies.storage ?? createDefaultStorageAdapter();
   }
 
@@ -209,6 +209,36 @@ export class HighlightAnnotationStore {
       const bucket = parseBucket(raw[entry.bucketKey], scope, entry.conversationId, this.now);
       buckets.set(entry.conversationKey, { key: entry.bucketKey, bucket });
     }
+    return buckets;
+  }
+
+  /** Read indexed and orphaned import buckets without changing stored data. */
+  async readImportBuckets(
+    scope: HighlightStoredAccountScope,
+    index: HighlightIndexV1,
+    importedRecords: readonly HighlightRecordV1[],
+  ): Promise<Map<string, { key: string; bucket: HighlightConversationBucketV1 }>> {
+    const indexedBuckets = await this.readBucketsFromIndex(scope, index);
+    const buckets = new Map<string, { key: string; bucket: HighlightConversationBucketV1 }>();
+    for (const { key, bucket } of indexedBuckets.values()) {
+      buckets.set(bucket.conversationId, { key, bucket });
+    }
+
+    const missingConversationIds = Array.from(
+      new Set(importedRecords.map((record) => record.conversationId)),
+    ).filter((conversationId) => !buckets.has(conversationId));
+    const missingKeys = missingConversationIds.map((conversationId) =>
+      getHighlightBucketStorageKey(scope, conversationId),
+    );
+    const missingRaw = missingKeys.length > 0 ? await this.storage.get(missingKeys) : {};
+    missingConversationIds.forEach((conversationId, indexPosition) => {
+      const key = missingKeys[indexPosition];
+      buckets.set(conversationId, {
+        key,
+        bucket: parseBucket(missingRaw[key], scope, conversationId, this.now),
+      });
+    });
+
     return buckets;
   }
 

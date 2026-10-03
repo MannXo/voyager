@@ -61,10 +61,7 @@ export function compareHighlightRecords(left: HighlightRecordV1, right: Highligh
   return deviceOrder !== 0 ? deviceOrder : compareStrings(left.id, right.id);
 }
 
-export function compareClearMarkers(
-  left: HighlightClearMarkerV1,
-  right: HighlightClearMarkerV1,
-): number {
+function compareClearMarkers(left: HighlightClearMarkerV1, right: HighlightClearMarkerV1): number {
   if (left.generation && right.generation) {
     if (left.generation.counter !== right.generation.counter) {
       return left.generation.counter - right.generation.counter;
@@ -93,6 +90,17 @@ export function compareClearMarkers(
     return left.revision.counter - right.revision.counter;
   }
   return compareStrings(left.revision.deviceId, right.revision.deviceId);
+}
+
+export function resolveHighlightClearMarker(
+  localMarker: HighlightClearMarkerV1 | undefined,
+  importedMarker: HighlightClearMarkerV1 | undefined,
+): HighlightClearMarkerV1 | undefined {
+  return localMarker && importedMarker
+    ? compareClearMarkers(localMarker, importedMarker) >= 0
+      ? localMarker
+      : importedMarker
+    : (localMarker ?? importedMarker);
 }
 
 export function isClearedByMarker(
@@ -148,7 +156,7 @@ export function getHighlightIndexStorageKey(scope: HighlightScope): string {
   return `${HIGHLIGHT_INDEX_KEY_PREFIX}${getHighlightAccountHash(scope)}`;
 }
 
-export function getHighlightConversationKey(
+function getHighlightConversationKey(
   scope: Pick<HighlightStoredAccountScope, 'platform'>,
   conversationId: string,
 ): string {
