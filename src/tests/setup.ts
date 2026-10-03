@@ -14,7 +14,10 @@ globalThis.chrome = {
       clear: vi.fn(),
     },
     local: {
-      get: vi.fn(),
+      get: vi.fn((_keys: unknown, callback?: (items: Record<string, unknown>) => void) => {
+        callback?.({});
+        return Promise.resolve({});
+      }),
       set: vi.fn(),
       remove: vi.fn(),
       clear: vi.fn(),

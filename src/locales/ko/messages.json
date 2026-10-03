@@ -678,6 +678,10 @@
     "message": "클라우드 동기화",
     "description": "Tooltip for the merged cloud button that opens an upload/sync popover"
   },
+  "folder_reload_required": {
+    "message": "Voyager가 업데이트되었습니다. 폴더를 계속 편집하려면 이 탭을 새로고침하세요.",
+    "description": "Shown when a newer Voyager build owns folder writes and this tab must be reloaded"
+  },
   "folder_cloud_merge_interrupted": {
     "message": "Google Drive 병합이 중단되었습니다. 다시 실행하세요.",
     "description": "Shown when a Google Drive merge of folders was interrupted before it was applied"

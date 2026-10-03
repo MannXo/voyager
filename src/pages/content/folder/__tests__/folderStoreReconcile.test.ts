@@ -144,6 +144,7 @@ describe('FolderStore reconciles external writes after local work settles', () =
     });
     store.data.folders[0].name = 'Mine';
     const saving = store.saveData();
+    await vi.advanceTimersByTimeAsync(0);
     emit(stored); // the echo of this tab's own write
     writeFromElsewhere(folders('Mine', 'From another tab'));
 
@@ -599,7 +600,7 @@ describe('FolderStore keeps an observed external write with its own account', ()
   }
 
   /** An own write to account A that has committed while its adapter promise is pending. */
-  function pendingOwnWrite(): () => Promise<void> {
+  async function pendingOwnWrite(): Promise<() => Promise<void>> {
     const write = deferred<boolean>();
     vi.mocked(adapter.saveData).mockImplementationOnce(async (key, data) => {
       disk[key] = structuredClone(data);
@@ -607,6 +608,7 @@ describe('FolderStore keeps an observed external write with its own account', ()
     });
     store.data.folders[0].name = 'Mine';
     const saving = store.saveData();
+    await vi.advanceTimersByTimeAsync(0);
     emit(KEY_A, disk[KEY_A]);
     return async () => {
       write.resolve(true);
@@ -662,7 +664,7 @@ describe('FolderStore keeps an observed external write with its own account', ()
   });
 
   it('applies a write seen before leaving the account once its own write settles', async () => {
-    const finishOwnWrite = pendingOwnWrite();
+    const finishOwnWrite = await pendingOwnWrite();
     writeFromElsewhere(KEY_A, folders('Mine', 'From another tab'));
 
     await switchTo('b');
@@ -677,7 +679,7 @@ describe('FolderStore keeps an observed external write with its own account', ()
   });
 
   it('applies a write that lands while away once its own write settles', async () => {
-    const finishOwnWrite = pendingOwnWrite();
+    const finishOwnWrite = await pendingOwnWrite();
     await switchTo('b');
     writeFromElsewhere(KEY_A, folders('Mine', 'From another tab'));
 
@@ -712,7 +714,7 @@ describe('FolderStore keeps an observed external write with its own account', ()
   });
 
   it('does not reload another account for a write seen in this one', async () => {
-    const finishOwnWrite = pendingOwnWrite();
+    const finishOwnWrite = await pendingOwnWrite();
     writeFromElsewhere(KEY_A, folders('Mine', 'From another tab'));
     await switchTo('b');
     writeFromElsewhere(KEY_A, folders('Mine', 'Again from another tab'));

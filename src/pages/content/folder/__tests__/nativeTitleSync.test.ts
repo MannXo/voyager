@@ -108,7 +108,12 @@ describe('Gemini native conversation title sync', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.mocked(chrome.storage.local.get).mockImplementation(async () => ({}));
+    vi.mocked(chrome.storage.local.get).mockImplementation(
+      (_keys: unknown, callback?: (items: Record<string, unknown>) => void) => {
+        callback?.({});
+        return Promise.resolve({});
+      },
+    );
     vi.mocked(chrome.storage.local.set).mockResolvedValue(undefined);
     localStorage.clear();
   });

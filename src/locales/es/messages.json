@@ -678,6 +678,10 @@
     "message": "Sincronización en la nube",
     "description": "Tooltip for the merged cloud button that opens an upload/sync popover"
   },
+  "folder_reload_required": {
+    "message": "Voyager se ha actualizado. Recarga esta pestaña para seguir editando las carpetas.",
+    "description": "Shown when a newer Voyager build owns folder writes and this tab must be reloaded"
+  },
   "folder_cloud_merge_interrupted": {
     "message": "La combinación con Google Drive se interrumpió. Vuelve a ejecutarla.",
     "description": "Shown when a Google Drive merge of folders was interrupted before it was applied"

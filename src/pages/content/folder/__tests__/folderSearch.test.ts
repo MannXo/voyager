@@ -291,7 +291,7 @@ describe('folder sidebar search', () => {
     expect(harness!.store.data.folderContents.__root_conversations__[0].title).toBe(
       'Fresh native title',
     );
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(0);
     expect(harness!.saved.folderContents.__root_conversations__[0].title).toBe(
       'Fresh native title',
     );

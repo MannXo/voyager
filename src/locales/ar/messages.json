@@ -678,6 +678,10 @@
     "message": "المزامنة السحابية",
     "description": "Tooltip for the merged cloud button that opens an upload/sync popover"
   },
+  "folder_reload_required": {
+    "message": "تم تحديث Voyager. أعد تحميل علامة التبويب هذه لمتابعة تعديل المجلدات.",
+    "description": "Shown when a newer Voyager build owns folder writes and this tab must be reloaded"
+  },
   "folder_cloud_merge_interrupted": {
     "message": "تمت مقاطعة الدمج مع Google Drive. شغّله مرة أخرى.",
     "description": "Shown when a Google Drive merge of folders was interrupted before it was applied"

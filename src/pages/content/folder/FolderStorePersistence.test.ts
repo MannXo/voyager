@@ -199,6 +199,7 @@ describe('FolderStore editable account and save completion', () => {
       expect(store.createFolder('While saving')).toBeNull();
       await store.loadData();
       expect(store.data).toEqual(original);
+      await vi.advanceTimersByTimeAsync(0);
       expect(writes).toHaveLength(1);
 
       gates[0].resolve();

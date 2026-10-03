@@ -678,6 +678,10 @@
     "message": "云同步",
     "description": "合并后的云按钮提示，点击弹出上传/同步选项"
   },
+  "folder_reload_required": {
+    "message": "Voyager 已更新。请刷新此标签页以继续编辑文件夹。",
+    "description": "Shown when a newer Voyager build owns folder writes and this tab must be reloaded"
+  },
   "folder_cloud_merge_interrupted": {
     "message": "Google 云端硬盘合并已中断，请重新运行。",
     "description": "Shown when a Google Drive merge of folders was interrupted before it was applied"

@@ -9,10 +9,13 @@ import {
 } from '@/core/services/AccountIsolationService';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
 import { cloneFolderData, validateFolderData } from '@/features/folder/model/folderData';
+import { AUTHORITY_FENCE_KEY } from '@/features/folder/owner/authorityFence';
+import { LegacyFolderFence } from '@/features/folder/owner/legacyFolderFence';
 
 import { FolderDataSession } from './FolderDataSession';
 import { mergeDebouncedEdits } from './debouncedEditMerge';
 import { GEMINI_FOLDER_CONFIG, type PlatformFolderConfig } from './platformFolderConfig';
+import { FencedFolderStorageAdapter } from './storage/FencedFolderStorageAdapter';
 import type { IFolderStorageAdapter } from './storage/FolderStorageAdapter';
 import {
   type StorageEcho,
@@ -87,7 +90,8 @@ export const folderDebugWarn = createDebugLog(GEMINI_FOLDER_CONFIG, 'warn');
  * serialized saves, draft replacement, storage echoes and account-scope retry.
  */
 export class FolderRepository {
-  private readonly storageInitializations = new Map<string, Promise<void>>();
+  private readonly fence: LegacyFolderFence;
+  private readonly storage: IFolderStorageAdapter;
   private dataSession: FolderDataSession | null;
   private readonly dataSessions = new Map<string, FolderDataSession>();
   private unresolvedData: FolderData = { folders: [], folderContents: {} };
@@ -115,7 +119,10 @@ export class FolderRepository {
     area: string,
   ): void => {
     if (this.destroyed) return;
-    if (area === 'local') this.markExternalChanges(changes);
+    if (area === 'local') {
+      if (changes[AUTHORITY_FENCE_KEY]) this.fence.observe(changes[AUTHORITY_FENCE_KEY].newValue);
+      this.markExternalChanges(changes);
+    }
     if (area === 'sync' && this.config.isolationSettingKeys.some((key) => changes[key])) {
       void accountIsolationService
         .isIsolationEnabled({
@@ -128,14 +135,17 @@ export class FolderRepository {
 
   constructor(
     private readonly config: PlatformFolderConfig,
-    private readonly storage: IFolderStorageAdapter,
+    storage: IFolderStorageAdapter,
     private readonly hooks: FolderRepositoryHooks,
   ) {
+    this.fence = new LegacyFolderFence(config.storageKey, () => this.fenceChanged());
+    this.storage = new FencedFolderStorageAdapter(storage, this.fence);
     this.dataSession = new FolderDataSession(
       config.storageKey,
       config.backupNamespace,
       null,
       validateFolderData,
+      () => this.fence.canWrite,
     );
     this.activeStorageKey = config.storageKey;
     this.tag = config.logPrefix;
@@ -155,7 +165,13 @@ export class FolderRepository {
   }
   get canEdit(): boolean {
     const session = this.dataSession;
-    return !this.destroyed && !!session?.ready && !session.replacingData && !session.readFailed;
+    return (
+      !this.destroyed &&
+      this.fence.canWrite &&
+      !!session?.ready &&
+      !session.replacingData &&
+      !session.readFailed
+    );
   }
   get activation(): number {
     return this.accountScopeRequest;
@@ -174,7 +190,11 @@ export class FolderRepository {
   }
 
   async init(): Promise<void> {
-    await this.initializeStorage(this.config.storageKey);
+    this.watchStorage();
+    // A refused migration must still allow account binding to use its normal retry path.
+    await this.storage.init(this.config.storageKey).catch((error) => {
+      if (this.fence.canWrite) throw error;
+    });
     if (this.destroyed) return;
     this.beforeUnloadFlushHandler = () => this.flushPendingSaveData();
     window.addEventListener('beforeunload', this.beforeUnloadFlushHandler);
@@ -182,7 +202,6 @@ export class FolderRepository {
     if (this.destroyed) return;
     await this.refreshAccountScope();
     await this.loadData();
-    this.watchStorage();
   }
 
   /** Reload on writes to the active bucket from other contexts. */
@@ -220,6 +239,7 @@ export class FolderRepository {
     if (this.beforeUnloadFlushHandler)
       window.removeEventListener('beforeunload', this.beforeUnloadFlushHandler);
     this.beforeUnloadFlushHandler = null;
+    this.fence.destroy();
   }
 
   /** Record the isolation switch without rebinding; the caller refreshes the scope. */
@@ -235,19 +255,6 @@ export class FolderRepository {
     if (this.hooks.isEnabled()) this.hooks.onChange('data');
   }
 
-  private initializeStorage(key: string): Promise<void> {
-    const existing = this.storageInitializations.get(key);
-    if (existing) return existing;
-    // init() performs a best-effort migration that can write to storage. Run it
-    // once per key so revisiting an account cannot race that account's save queue.
-    const initialization = this.storage.init(key).catch((error) => {
-      this.storageInitializations.delete(key);
-      throw error;
-    });
-    this.storageInitializations.set(key, initialization);
-    return initialization;
-  }
-
   async loadData(): Promise<void> {
     const session = this.dataSession;
     if (!session) return;
@@ -259,8 +266,12 @@ export class FolderRepository {
       return;
     }
     const version = ++session.loadVersion;
+    // A fenced reload must not replace the unsaved memory retained for the reload notice.
     const isCurrent = () =>
-      this.dataSession === session && session.loadVersion === version && !this.destroyed;
+      this.fence.canWrite &&
+      this.dataSession === session &&
+      session.loadVersion === version &&
+      !this.destroyed;
     session.loadsInFlight += 1;
     session.storageChangedDuringRead = false;
     session.reconcileAttempted = true;
@@ -600,7 +611,9 @@ export class FolderRepository {
       session.loadVersion += 1;
       session.markReady();
       // Backups stay off the save chain: a slow or failed copy never delays or fails a save.
-      void session.backup.createEmergencyBackup(snapshot);
+      void this.fence
+        .check()
+        .then((allowed) => allowed && session.backup.createEmergencyBackup(snapshot));
       if (session.saveInProgress) {
         session.pendingSave = snapshot;
         // Calls coalesced into this trailing snapshot share its storage result.
@@ -710,7 +723,8 @@ export class FolderRepository {
       if (success) session.settleFailedEdit(gen);
       else if (carriesEdit) session.failedEditGen = gen;
       // A newer queued snapshot can still persist this edit; report only a final failure.
-      if (!success && this.dataSession === session && !session.pendingSave) {
+      // A refused write already has a fence notice; do not cover it with a save-failed notice.
+      if (!success && this.fence.canWrite && this.dataSession === session && !session.pendingSave) {
         this.hooks.onSaveFailed?.();
       }
       session.saveInProgress = false;
@@ -750,11 +764,13 @@ export class FolderRepository {
   }
 
   async refreshAccountScope(): Promise<void> {
+    // A reload-required tab must keep the unsaved session rather than release it for rebinding.
+    if (this.fence.reloadRequired) return;
     const request = ++this.accountScopeRequest;
     this.clearAccountScopeRetry();
     this.clearReadRetry();
     if (!this.accountScopeRetrying) this.accountScopeRetryAttempt = 0;
-    const previous = this.dataSession;
+    const previous = this.dataSession ?? this.releasingSession;
     // Flush the old account's pending debounce before releasing its data owner.
     this.flushPendingSaveData();
     previous?.deactivate();
@@ -768,6 +784,7 @@ export class FolderRepository {
     this.activeStorageKey = '';
     this.hooks.onAccountReleased();
     this.hooks.onChange('account');
+    let storageKey: string | null = null;
     try {
       let resolvedScope: AccountScope | null = null;
       let context: AccountContext | null = null;
@@ -780,10 +797,10 @@ export class FolderRepository {
         });
       }
       if (request !== this.accountScopeRequest || this.destroyed) return;
-      const storageKey = resolvedScope
+      storageKey = resolvedScope
         ? buildScopedStorageKey(this.config.storageKey, resolvedScope.accountKey)
         : this.config.storageKey;
-      await this.initializeStorage(storageKey);
+      await this.storage.init(storageKey);
       if (request !== this.accountScopeRequest || this.destroyed) return;
       const session =
         this.dataSessions.get(storageKey) ??
@@ -794,6 +811,7 @@ export class FolderRepository {
               this.config.backupNamespace,
               resolvedScope,
               validateFolderData,
+              () => this.fence.canWrite,
             ));
       this.dataSessions.set(storageKey, session);
       session.accountScope = resolvedScope;
@@ -814,6 +832,16 @@ export class FolderRepository {
       this.tryReconcile();
       if (session.readFailed) this.scheduleReadRetry(session);
     } catch (error) {
+      if (request !== this.accountScopeRequest || this.destroyed) return;
+      if (previous) {
+        previous.ready = false;
+        previous.reconcilePending = true;
+        // Show retained edits only for the resolved bucket; persistence stays unbound until retry.
+        if (storageKey === previous.storageKey) {
+          this.unresolvedData = previous.data;
+          this.hooks.onChange('availability');
+        }
+      }
       console.error(`${this.tag} Failed to resolve account scope:`, error);
       // Keep persistence unbound on failure. A global fallback has no known owner.
       this.scheduleAccountScopeRetry(request);
@@ -873,5 +901,40 @@ export class FolderRepository {
     if (this.readRetry === null) return;
     window.clearTimeout(this.readRetry);
     this.readRetry = null;
+  }
+
+  private fenceChanged(): void {
+    if (!this.fence.canWrite) {
+      this.clearAccountScopeRetry();
+      this.clearReadRetry();
+      if (this.fence.reloadRequired) {
+        this.accountScopeRequest += 1;
+        if (this.releasingSession) {
+          this.dataSession = this.releasingSession;
+          this.releasingSession = null;
+          this.activeStorageKey = this.dataSession.storageKey;
+          this.resolvedAccountScope = this.dataSession.accountScope;
+        }
+      }
+      if (this.saveDebounceTimer !== null) window.clearTimeout(this.saveDebounceTimer);
+      this.saveDebounceTimer = null;
+      const sessions = new Set(this.dataSessions.values());
+      if (this.dataSession) sessions.add(this.dataSession);
+      if (this.releasingSession) sessions.add(this.releasingSession);
+      for (const session of sessions) {
+        session.loadVersion += 1;
+        session.backup.destroy();
+        session.pendingSave = null;
+        session.pendingSaveCompletion?.resolve(false);
+        session.pendingSaveCompletion = null;
+      }
+      if (!this.fence.reloadRequired) {
+        this.hooks.onRecovery('unreadable');
+        if (this.dataSession) this.scheduleReadRetry(this.dataSession);
+      }
+    } else if (this.dataSession?.ready) {
+      this.dataSession.markReady();
+    }
+    this.hooks.onChange('availability');
   }
 }

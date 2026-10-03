@@ -72,6 +72,7 @@ export class DataBackupService<T = unknown> {
   constructor(
     private readonly namespace: string,
     private readonly validateData: (data: T) => boolean = () => true,
+    private readonly canWrite: () => boolean = () => true,
   ) {
     this.primaryKey = `gvBackup_${namespace}_primary`;
     this.emergencyKey = `gvBackup_${namespace}_emergency`;
@@ -151,6 +152,7 @@ export class DataBackupService<T = unknown> {
    * sent before any await, so an unloading page still dispatches it.
    */
   private async putExtensionCopy(key: string, value: string, version: number): Promise<boolean> {
+    if (!this.canWrite()) return false;
     const saved = await requestBudgetCopy(key, value);
     if (!saved) {
       console.warn(`[BackupService:${this.namespace}] Skipped ${key}: extension copy not admitted`);
@@ -161,6 +163,7 @@ export class DataBackupService<T = unknown> {
   }
 
   private async removeExtensionCopy(key: string, version: number): Promise<boolean> {
+    if (!this.canWrite()) return false;
     try {
       await browser.storage.local.remove(key);
       if (this.slotVersions.get(key) === version) this.durableBackups.delete(key);
@@ -191,6 +194,7 @@ export class DataBackupService<T = unknown> {
    * another tab may have just written a newer one there.
    */
   private async writeBackup(key: string, serialized: string, now = false): Promise<boolean> {
+    if (!this.canWrite()) return false;
     let localSaved = false;
     try {
       // setItem is atomic on failure: never remove the previous backup to make room.
@@ -222,7 +226,7 @@ export class DataBackupService<T = unknown> {
           continue;
         }
         this.durableBackups.set(key, value);
-        if (!this.useDurableMirror) continue;
+        if (!this.useDurableMirror || !this.canWrite()) continue;
         try {
           if (localStorage.getItem(key) === null) {
             localStorage.setItem(key, value);
@@ -295,6 +299,8 @@ export class DataBackupService<T = unknown> {
     if (this.beforeUnloadHandler) {
       window.removeEventListener('beforeunload', this.beforeUnloadHandler);
     }
+
+    if (!this.canWrite()) return;
 
     this.beforeUnloadHandler = () => {
       try {
@@ -424,6 +430,7 @@ export class DataBackupService<T = unknown> {
    * Update metadata tracking
    */
   private updateMetadata(type: string, metadata: BackupMetadata): void {
+    if (!this.canWrite()) return;
     try {
       const allMetadata = this.getAllMetadata();
       allMetadata[type] = metadata;
@@ -451,6 +458,7 @@ export class DataBackupService<T = unknown> {
    * Clear all backups (for testing or cleanup)
    */
   clearAllBackups(): void {
+    if (!this.canWrite()) return;
     try {
       localStorage.removeItem(this.primaryKey);
       localStorage.removeItem(this.emergencyKey);

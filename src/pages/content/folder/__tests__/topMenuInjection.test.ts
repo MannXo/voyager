@@ -178,12 +178,13 @@ describe('native move menu → folder command', () => {
     return move!;
   }
 
-  function selectFolder(): void {
+  async function selectFolder(): Promise<void> {
     const target = document.querySelector<HTMLButtonElement>(
       '.gv-folder-dialog-item[data-folder-id="f1"]',
     );
     expect(target).not.toBeNull();
     target!.click();
+    await vi.advanceTimersByTimeAsync(0);
   }
 
   it.each([
@@ -219,7 +220,7 @@ describe('native move menu → folder command', () => {
     await vi.advanceTimersByTimeAsync(80);
     expect(menu.querySelectorAll('.gv-move-to-folder-btn')).toHaveLength(1);
     menu.querySelector<HTMLElement>('.gv-move-to-folder-btn')!.click();
-    selectFolder();
+    await selectFolder();
 
     expect(owners.store.data.folderContents.f1).toEqual([
       expect.objectContaining({
@@ -243,7 +244,7 @@ describe('native move menu → folder command', () => {
     row.querySelector('.title-text')!.textContent = 'Renamed sidebar title';
 
     move.click();
-    selectFolder();
+    await selectFolder();
 
     expect(owners.store.data.folderContents.f1).toEqual([
       expect.objectContaining({
@@ -264,7 +265,7 @@ describe('native move menu → folder command', () => {
     const move = await openMenu(document.body);
 
     move.click();
-    selectFolder();
+    await selectFolder();
 
     expect(owners.store.data.folderContents.f1).toEqual([
       expect.objectContaining({

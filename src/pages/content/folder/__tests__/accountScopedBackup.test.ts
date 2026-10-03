@@ -406,7 +406,6 @@ describe.each<Platform>(['gemini', 'aistudio'])('%s backup account ownership', (
     expect(backupData(bKeys.backup, 'beforeUnload')?.folders[0]?.name).toBe('Private b');
     expect(backupData(aKeys.backup, 'beforeUnload')?.folders[0]?.name).toBe('Private a');
   });
-
   it('discards an old account load that completes after the new account load', async () => {
     const aKeys = await accountKeys(platform, 'a');
     const bKeys = await accountKeys(platform, 'b');
@@ -415,8 +414,10 @@ describe.each<Platform>(['gemini', 'aistudio'])('%s backup account ownership', (
     const harness = await makeHarness(platform, 'a');
     const pending = deferred<Record<string, unknown>>();
     const started = deferred<void>();
-    mockBrowser.storage.local.get.mockImplementationOnce((key) => {
-      expect(key).toBe(aKeys.live);
+    let first = true;
+    mockBrowser.storage.local.get.mockImplementation(async (key: unknown) => {
+      if (key !== aKeys.live || !first) return pick(extensionLocal, key);
+      first = false;
       started.resolve();
       return pending.promise;
     });

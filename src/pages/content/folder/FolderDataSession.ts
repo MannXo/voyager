@@ -45,12 +45,14 @@ export class FolderDataSession {
     namespace: string,
     public accountScope: AccountScope | null,
     validateData: (data: unknown) => boolean,
+    canWrite: () => boolean = () => true,
   ) {
     // Global recovery slots have no account owner. Keep them compatible only
     // when isolation is off; never migrate or remove them during account setup.
     this.backup = new DataBackupService<FolderData>(
       accountScope ? buildScopedStorageKey(namespace, accountScope.accountKey) : namespace,
       validateData,
+      canWrite,
     );
   }
 

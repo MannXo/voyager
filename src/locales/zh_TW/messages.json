@@ -638,6 +638,10 @@
     "message": "雲端同步",
     "description": "合併後的雲端按鈕提示，點擊彈出上傳/同步選項"
   },
+  "folder_reload_required": {
+    "message": "Voyager 已更新。請重新整理此分頁以繼續編輯資料夾。",
+    "description": "Shown when a newer Voyager build owns folder writes and this tab must be reloaded"
+  },
   "folder_cloud_merge_interrupted": {
     "message": "Google 雲端硬碟合併已中斷，請重新執行。",
     "description": "Shown when a Google Drive merge of folders was interrupted before it was applied"
