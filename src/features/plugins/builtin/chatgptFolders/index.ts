@@ -176,17 +176,14 @@ class ChatGptFoldersView {
   }
 
   /**
-   * The folder drop target under a viewport point. The panel floats over the
-   * sidebar, so the surface on top there answers; anything of ChatGPT's above
-   * it, such as the row its own drag carries along, is looked through.
+   * The folder drop target under a viewport point, in whichever tree is showing:
+   * the panel stands in only while the section is out of the page. Anything of
+   * ChatGPT's above the tree, such as the row its own drag carries along, is
+   * looked through.
    */
   dropTargetAt(x: number, y: number): FolderDropTarget | null {
-    const { panel, section } = this;
-    for (const element of document.elementsFromPoint(x, y)) {
-      if (element === panel?.element) return panel.dropTargetAt(x, y);
-      if (element === section?.element) return section.dropTargetAt(x, y);
-    }
-    return null;
+    const surface = this.section?.element.isConnected ? this.section : this.panel;
+    return surface?.dropTargetAt(x, y) ?? null;
   }
 
   /** Files `conversation` into `folderId` and confirms the result in both trees. */

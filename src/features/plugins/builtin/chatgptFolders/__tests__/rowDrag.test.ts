@@ -303,24 +303,6 @@ describe('dragging a ChatGPT sidebar row onto a folder', () => {
     expect(stored().folderContents.work).toEqual([expect.objectContaining(FILED)]);
   });
 
-  it('files nothing into a section folder the floating panel covers', async () => {
-    memory.values.local.set(StorageKeys.CHATGPT_FOLDER_PANEL, { open: true });
-    const { view } = await activate();
-    const panelTitle = shadowOf('.gv-floating-folder-panel').querySelector(
-      '.gv-floating-folder-panel__title',
-    )!;
-    const covered = screen.place([panelTitle, view.folderNameElement('Trips')]);
-    const before = folderWrites();
-
-    pressRow(TARGET.id);
-    moveTo(TARGET.id, covered);
-    expect(view.folderRow('Trips').classList.contains(HIGHLIGHT)).toBe(false);
-    releaseAt(TARGET.id, covered);
-    await nextPass();
-
-    expect(folderWrites()).toBe(before);
-  });
-
   it('a click without movement files nothing and still opens the chat', async () => {
     const { view } = await activate();
     const before = folderWrites();
