@@ -5,6 +5,7 @@ import { resolveExportAdapter } from '@/pages/content/export/adapter/platformAda
 import { DOMContentExtractor } from '../DOMContentExtractor';
 import { renderElementToImageBlob } from '../ImageRenderService';
 import { PDFPrintService } from '../PDFPrintService';
+import { resolveNativeSidebarTitle } from '../pdfPrintTitles';
 
 vi.mock('../ImageRenderService', () => ({
   renderElementToImageBlob: vi.fn(async () => new Blob(['png'], { type: 'image/png' })),
@@ -612,11 +613,7 @@ describe('PDFPrintService', () => {
 
     let title: string | null = null;
     expect(() => {
-      title = (
-        PDFPrintService as unknown as {
-          extractTitleFromNativeSidebarByConversationId: (id: unknown) => string | null;
-        }
-      ).extractTitleFromNativeSidebarByConversationId(conversationId);
+      title = resolveNativeSidebarTitle(conversationId);
     }).not.toThrow();
     expect(title).toBe('Escaped Selector Title');
   });
