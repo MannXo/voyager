@@ -139,6 +139,39 @@ describe.each([
     expect(memory.values.local.get(config.storageKey)).toEqual(data('Trailing edit'));
   });
 
+  it.each([0, 5_000])(
+    'retains a failed trailing edit when its own active write completes %i ms after resume',
+    async (delay) => {
+      await ready(config);
+      const set = memory.api.local.set.bind(memory.api.local);
+      const activeWrite = Promise.withResolvers<void>();
+      let folderWrites = 0;
+      vi.spyOn(memory.api.local, 'set').mockImplementation(async (items) => {
+        if (config.storageKey in items) {
+          folderWrites += 1;
+          if (folderWrites === 1) await activeWrite.promise;
+          else throw new Error('Trailing edit failed');
+        }
+        await set(items);
+      });
+      repository.data = data('Active edit');
+      const active = repository.saveData();
+      repository.data = data('Unsaved trailing edit');
+      const trailing = repository.saveData();
+      enabled = false;
+      repository.suspend();
+      await resume();
+      await vi.advanceTimersByTimeAsync(delay);
+      activeWrite.resolve();
+      await expect(active).resolves.toBe(true);
+      await expect(trailing).resolves.toBe(false);
+      await settle(60);
+      expect(repository.canEdit).toBe(true);
+      expect(repository.data).toEqual(data('Unsaved trailing edit'));
+      expect(memory.values.local.get(config.storageKey)).toEqual(data('Active edit'));
+    },
+  );
+
   it('persists an accepted debounce when suspension outlasts its timer', async () => {
     await ready(config);
     repository.data.folders[0].isExpanded = false;
@@ -162,16 +195,26 @@ describe.each([
     { scenario: 'unchanged storage', replacedElsewhere: false, legacyMetadata: false },
     { scenario: 'new external storage', replacedElsewhere: true, legacyMetadata: false },
     {
+      scenario: 'unchanged after earlier restore',
+      replacedElsewhere: false,
+      legacyMetadata: false,
+    },
+    {
       scenario: 'unchanged storage with legacy metadata',
       replacedElsewhere: false,
       legacyMetadata: true,
     },
   ])(
     'keeps failed trailing edits after resumption unless $scenario contains a replacement',
-    async ({ replacedElsewhere, legacyMetadata }) => {
+    async ({ scenario, replacedElsewhere, legacyMetadata }) => {
       await ready(config);
+      const initial = data(scenario.includes('earlier restore') ? 'Earlier restore' : 'Initial');
+      if (scenario.includes('earlier restore')) {
+        memory.external('local', config.storageKey, initial);
+        await settle(30);
+      }
       if (legacyMetadata) {
-        memory.values.local.set(config.storageKey, { ...data('Initial'), version: 2 });
+        memory.values.local.set(config.storageKey, { ...initial, version: 2 });
         await repository.loadData();
       }
       const set = memory.api.local.set.bind(memory.api.local);
@@ -211,8 +254,8 @@ describe.each([
         replacedElsewhere
           ? data('Restored elsewhere')
           : legacyMetadata
-            ? { ...data('Initial'), version: 2 }
-            : data('Initial'),
+            ? { ...initial, version: 2 }
+            : initial,
       );
     },
   );
@@ -276,6 +319,47 @@ describe.each([
     expect(memory.values.local.get(config.storageKey)).toEqual(data('Restored elsewhere'));
   });
 
+  it('a folder restored elsewhere is not deleted again by an earlier failed edit', async () => {
+    await ready(config);
+    const restored = structuredClone(repository.data);
+    const set = memory.api.local.set.bind(memory.api.local);
+    const writes = vi.spyOn(memory.api.local, 'set').mockImplementation(async (items) => {
+      if (config.storageKey in items) throw new Error('Folder deletion failed');
+      await set(items);
+    });
+    repository.data = { folders: [], folderContents: {} };
+    await expect(repository.saveData()).resolves.toBe(false);
+    writes.mockRestore();
+    enabled = false;
+    repository.suspend();
+
+    const get = memory.api.local.get.bind(memory.api.local);
+    const staleRead = Promise.withResolvers<void>();
+    let holdReads = true;
+    vi.spyOn(memory.api.local, 'get').mockImplementation(async (keys: unknown) => {
+      const captured = await get(keys as string);
+      if (keys === config.storageKey && holdReads) await staleRead.promise;
+      return captured;
+    });
+    enabled = true;
+    await repository.refreshAccountScope();
+    const loading = repository.loadData();
+    await settle(30);
+    memory.external('local', config.storageKey, data('Temporary replacement'));
+    memory.external('local', config.storageKey, restored);
+    await settle(30);
+    holdReads = false;
+    staleRead.resolve();
+    await loading;
+    await settle(30);
+    expect(repository.canEdit).toBe(false);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(repository.canEdit).toBe(true);
+    await expect(repository.saveData()).resolves.toBe(true);
+    expect(memory.values.local.get(config.storageKey)).toEqual(restored);
+    expect(repository.data).toEqual(restored);
+  });
+
   it('backs off superseded resume reads until writes stop, then enables editing', async () => {
     await ready(config);
     enabled = false;
@@ -308,9 +392,14 @@ describe.each([
     expect(repository.data).toEqual(data(`External ${bucketReads - 1}`));
   });
 
-  it.each(['rename', 'last-folder deletion'])(
-    'recovers an unsaved %s after suspension instead of restoring an older backup',
-    async (edit) => {
+  it.each([
+    { edit: 'rename', externalChange: false },
+    { edit: 'last-folder deletion', externalChange: false },
+    { edit: 'rename', externalChange: true },
+    { edit: 'last-folder deletion', externalChange: true },
+  ])(
+    'recovers corrupt storage after a failed $edit, with observed external change: $externalChange',
+    async ({ edit, externalChange }) => {
       await ready(config);
       const edited =
         edit === 'rename' ? data('Unsaved rename') : { folders: [], folderContents: {} };
@@ -327,14 +416,16 @@ describe.each([
       enabled = false;
       repository.suspend();
       failFolderWrites = false;
-      memory.external('local', config.storageKey, { corrupted: true });
+      if (externalChange) memory.external('local', config.storageKey, { corrupted: true });
+      else memory.values.local.set(config.storageKey, { corrupted: true });
       await settle(30);
       expect(repository.canEdit).toBe(false);
 
       await resume();
       expect(repository.canEdit).toBe(true);
-      expect(repository.data).toEqual(edited);
-      expect(memory.values.local.get(config.storageKey)).toEqual(edited);
+      const recovered = externalChange ? data('Initial') : edited;
+      expect(repository.data).toEqual(recovered);
+      expect(memory.values.local.get(config.storageKey)).toEqual(recovered);
     },
   );
 });

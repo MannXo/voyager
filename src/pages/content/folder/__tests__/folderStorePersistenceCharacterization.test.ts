@@ -503,16 +503,6 @@ describe('FolderStore persistence characterization', () => {
       expect(reload).toHaveBeenCalledTimes(2);
     });
 
-    it('drops pending echoes when the account binding is refreshed', async () => {
-      const { folderStore, listener } = await loadedStore();
-      const reload = vi.spyOn(folderStore, 'reloadFoldersFromStorage').mockResolvedValue();
-
-      await folderStore.saveData();
-      await folderStore.refreshAccountScope();
-      listener({ [GLOBAL_KEY]: { newValue: saved.get(GLOBAL_KEY) } }, 'local');
-      expect(reload).toHaveBeenCalledTimes(1);
-    });
-
     it('ignores other keys and other storage areas', async () => {
       const { folderStore, listener } = await loadedStore();
       const reload = vi.spyOn(folderStore, 'reloadFoldersFromStorage').mockResolvedValue();

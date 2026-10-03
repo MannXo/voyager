@@ -29,6 +29,8 @@ export class FolderDataSession {
    * edit: it is newer than every backup. Null once a later write or applied load supersedes it.
    */
   failedEditGen: number | null = null;
+  /** External-write counter when the in-memory edit was accepted for saving. */
+  failedEditExternalWrites = 0;
   /** `externalWrites` when a reload was last requested for this session. */
   reconcileAttemptedAt = 0;
   /** What this context last read from or wrote to storage: the base for merging debounced edits. */
@@ -57,6 +59,11 @@ export class FolderDataSession {
   /** An operation that started at write generation `gen` succeeded; it supersedes older failures only. */
   settleFailedEdit(gen: number): void {
     if (this.failedEditGen !== null && this.failedEditGen <= gen) this.failedEditGen = null;
+  }
+
+  get hasRetainedFailedEdit(): boolean {
+    // A restore elsewhere outranks failed edits even when it restores identical bytes.
+    return this.failedEditGen !== null && this.failedEditExternalWrites === this.externalWrites;
   }
 
   markReady(): void {

@@ -301,13 +301,9 @@ export class FolderRepository {
         // Validate and repair data integrity
         const fresh = this.config.normalize(loadedData);
         const base = session.baseline;
-        // A resumed read of unchanged storage must not roll back failed local edits.
+        // A resumed read preserves failed edits only until an external change is observed.
         retainedFailedEdits =
-          !session.ready &&
-          session.failedEditGen !== null &&
-          base !== null &&
-          serializeStoredValue(cloneFolderData(fresh)) === serializeStoredValue(base) &&
-          validateFolderData(this.data);
+          !session.ready && session.hasRetainedFailedEdit && validateFolderData(this.data);
         session.baseline = cloneFolderData(fresh);
         // Edits still waiting on the debounce were made after `base`; keep them.
         if (this.saveDebounceTimer !== null && base) mergeDebouncedEdits(fresh, this.data, base);
@@ -434,7 +430,7 @@ export class FolderRepository {
 
     // Memory holding an edit whose save failed is newer than every backup (the
     // primary predates it); repair storage from it instead of rolling it back.
-    if (session.failedEditGen !== null && validateFolderData(this.data)) {
+    if (session.hasRetainedFailedEdit && validateFolderData(this.data)) {
       this.data = this.config.normalize(this.data);
       session.markReady();
       this.hooks.onRecovery('kept');
@@ -601,6 +597,7 @@ export class FolderRepository {
     try {
       this.data = this.config.normalize(this.data);
       const snapshot = cloneFolderData(session.data);
+      if (carriesEdit) session.failedEditExternalWrites = session.externalWrites;
       // A mutation supersedes any storage read already in flight for this session.
       session.loadVersion += 1;
       session.markReady();
@@ -650,8 +647,7 @@ export class FolderRepository {
     session.saveInProgress = true;
     const gen = ++session.writeGen;
     let success = false;
-    // Only the active session's echo arrives under the watched key.
-    const serialized = this.dataSession === session ? serializeStoredValue(snapshot) : undefined;
+    const serialized = serializeStoredValue(snapshot);
     let echo: StorageEcho | null = null;
 
     try {
@@ -683,14 +679,16 @@ export class FolderRepository {
       // this value so the echo doesn't trigger a redundant full reload.
       echo = this.storageEchoes.arm(session.storageKey, serialized);
       success = (await this.writeSnapshot(session.storageKey, snapshot, companions)) !== false;
-      if (!success) this.storageEchoes.disarm(echo);
+      if (success) this.storageEchoes.settle(echo);
+      else this.storageEchoes.disarm(echo);
 
       // Retry once if the first attempt fails (for transient errors)
       if (!success && this.config.retryFailedSave) {
         console.warn(`${this.tag} Save failed, retrying once...`);
         echo = this.storageEchoes.arm(session.storageKey, serialized);
         success = (await this.writeSnapshot(session.storageKey, snapshot, companions)) !== false;
-        if (!success) this.storageEchoes.disarm(echo);
+        if (success) this.storageEchoes.settle(echo);
+        else this.storageEchoes.disarm(echo);
       }
 
       if (success) {
@@ -772,7 +770,6 @@ export class FolderRepository {
     this.unresolvedData = { folders: [], folderContents: {} };
     this.resolvedAccountScope = null;
     this.activeStorageKey = '';
-    this.storageEchoes.reset();
     this.hooks.onAccountReleased();
     this.hooks.onChange('account');
     try {

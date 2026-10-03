@@ -1,10 +1,10 @@
-/** How long an armed write may wait for its storage.onChanged echo. */
+/** How long a completed write may wait for its storage.onChanged echo. */
 export const STORAGE_ECHO_SUPPRESS_WINDOW_MS = 2000;
 
 export interface StorageEcho {
   readonly key: string;
   readonly serialized: string;
-  readonly armedAt: number;
+  settledAt: number | null;
 }
 
 /**
@@ -23,13 +23,7 @@ export function serializeStoredValue(value: unknown): string | undefined {
   });
 }
 
-/**
- * Recognises this context's own storage writes so their echo can skip a
- * reload. An optimisation only: a missed echo costs one reload of this
- * context's own data. An echo matches only the exact value written, since
- * Chrome emits nothing for an unchanged or rejected write while Firefox
- * reports unchanged ones too.
- */
+/** Own echoes must not invalidate failed edits; pending writes remain attributable until settled. */
 export class StorageEchoTracker {
   private echoes: StorageEcho[] = [];
 
@@ -41,7 +35,7 @@ export class StorageEchoTracker {
   arm(key: string, serialized: string | undefined): StorageEcho | null {
     this.echoes = this.live();
     if (serialized === undefined) return null;
-    const echo: StorageEcho = { key, serialized, armedAt: Date.now() };
+    const echo: StorageEcho = { key, serialized, settledAt: null };
     this.echoes.push(echo);
     return echo;
   }
@@ -51,25 +45,30 @@ export class StorageEchoTracker {
     if (echo) this.echoes = this.echoes.filter((entry) => entry !== echo);
   }
 
+  /** Pending writes may finish after a suspension or a slow storage call. */
+  settle(echo: StorageEcho | null): void {
+    if (echo) echo.settledAt = Date.now();
+  }
+
   /** True when a storage change for `key` is the echo of an armed write. */
   consume(key: string, newValue: unknown): boolean {
     const serialized = serializeStoredValue(newValue);
     const live = this.live();
     const index = live.findIndex((echo) => echo.key === key && echo.serialized === serialized);
     // Events arrive in write order, so earlier echoes for this key will never come.
-    // On a mismatch, drop them all: a later external write could restore their value.
+    // On a mismatch, drop completed writes; pending writes can still produce their own echo.
     const cutoff = index === -1 ? Infinity : index;
-    this.echoes = live.filter((echo, position) => echo.key !== key || position > cutoff);
+    this.echoes = live.filter(
+      (echo, position) =>
+        echo.key !== key || position > cutoff || (index === -1 && echo.settledAt === null),
+    );
     return index !== -1;
-  }
-
-  /** Forget everything, e.g. when the account binding changes. */
-  reset(): void {
-    this.echoes = [];
   }
 
   private live(): StorageEcho[] {
     const now = Date.now();
-    return this.echoes.filter((echo) => now - echo.armedAt <= STORAGE_ECHO_SUPPRESS_WINDOW_MS);
+    return this.echoes.filter(
+      (echo) => echo.settledAt === null || now - echo.settledAt <= STORAGE_ECHO_SUPPRESS_WINDOW_MS,
+    );
   }
 }
