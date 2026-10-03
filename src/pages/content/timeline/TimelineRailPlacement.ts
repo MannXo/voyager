@@ -5,6 +5,7 @@ import type { ExtGlobal, TimelinePositionData } from './types';
 interface TimelineRailPlacementOptions {
   getStyle: () => TimelineStyle;
   onWidthChange: () => void;
+  onPositionRestore: () => void;
 }
 
 /** Owns rail resize/drag arbitration, responsive placement and persisted width/position. */
@@ -26,6 +27,65 @@ export class TimelineRailPlacement {
   private readonly lifetime = new AbortController();
 
   constructor(private readonly options: TimelineRailPlacementOptions) {}
+
+  restoreWidth(value: unknown): boolean {
+    if (typeof value === 'number' && value >= this.barWidthMin && value <= this.barWidthMax) {
+      this.barWidth = value;
+      return true;
+    }
+    return false;
+  }
+
+  // Load position with auto-migration from v1 to v2
+  restorePosition(position: TimelinePositionData | undefined): void {
+    const g = globalThis as ExtGlobal;
+    this.savedPosition = position ?? null;
+    if (position) {
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+
+      // v2 format: use percentage (responsive)
+      if (
+        position.version === 2 &&
+        position.topPercent !== undefined &&
+        position.leftPercent !== undefined
+      ) {
+        const top = (position.topPercent / 100) * viewportHeight;
+        const left = (position.leftPercent / 100) * viewportWidth;
+        this.applyPosition(top, left);
+        if (this.bar) this.options.onPositionRestore();
+      }
+      // v1 format: migrate to v2 (auto-upgrade)
+      else if (position.top !== undefined && position.left !== undefined) {
+        // Apply old position first
+        this.applyPosition(position.top, position.left);
+        if (this.bar) this.options.onPositionRestore();
+
+        // Migrate to v2 format (percentage-based)
+        const migratedPosition = {
+          version: 2,
+          topPercent: (position.top / viewportHeight) * 100,
+          leftPercent: (position.left / viewportWidth) * 100,
+        };
+        this.savedPosition = migratedPosition;
+        (g.chrome?.storage?.sync || g.browser?.storage?.sync)?.set?.({
+          geminiTimelinePosition: migratedPosition,
+        });
+      }
+    }
+  }
+
+  updateSavedPosition(position: TimelinePositionData | null): void {
+    this.savedPosition = position ?? null;
+    if (!position) {
+      if (this.bar) {
+        this.bar.style.top = '';
+        this.bar.style.left = '';
+      }
+      this.updateRulerDirection();
+      this.options.onPositionRestore();
+    }
+  }
 
   mount(bar: HTMLElement): void {
     this.bar = bar;

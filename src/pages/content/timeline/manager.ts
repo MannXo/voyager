@@ -100,15 +100,15 @@ export class TimelineManager {
       navigate: (index, id) => this.navigation.navigateToMarker(id, index),
       toggleStar: (id) => void this.state.toggleStar(id),
       getHierarchy: (id) =>
-        this.state.markerLevelEnabled
+        this.state.hierarchy.markerLevelEnabled
           ? {
-              level: this.state.getMarkerLevel(id),
-              collapsed: this.state.isMarkerCollapsed(id),
-              canCollapse: this.state.canCollapseMarker(id),
+              level: this.state.hierarchy.getMarkerLevel(id),
+              collapsed: this.state.hierarchy.isMarkerCollapsed(id),
+              canCollapse: this.state.hierarchy.canCollapseMarker(id),
             }
           : null,
-      setLevel: (id, level) => this.state.setMarkerLevel(id, level),
-      toggleCollapse: (id) => this.state.toggleCollapse(id),
+      setLevel: (id, level) => this.state.hierarchy.setMarkerLevel(id, level),
+      toggleCollapse: (id) => this.state.hierarchy.toggleCollapse(id),
     });
   }
   private onStateChange(): void {
@@ -121,7 +121,7 @@ export class TimelineManager {
     this.tooltip?.refreshCurrent();
   }
   private setMarkerLevelEnabled(enabled: boolean): void {
-    this.state.markerLevelEnabled = enabled;
+    this.state.hierarchy.markerLevelEnabled = enabled;
     if (!enabled) this.interactions?.closeMenu();
     this.onStateChange();
   }
@@ -257,14 +257,7 @@ export class TimelineManager {
         this.view.timelineStyle = storedTimelineStyle;
       }
       this.view.hideContainer = !!res?.geminiTimelineHideContainer;
-      const storedWidth = res?.geminiTimelineBarWidth;
-      if (
-        typeof storedWidth === 'number' &&
-        storedWidth >= this.view.barWidthMin &&
-        storedWidth <= this.view.barWidthMax
-      ) {
-        this.view.barWidth = storedWidth;
-      }
+      this.view.placement.restoreWidth(res?.geminiTimelineBarWidth);
       this.view.applyContainerVisibility();
       this.view.applyTimelineStyle();
       this.view.toggleDraggable(!!res?.geminiTimelineDraggable);
@@ -272,40 +265,9 @@ export class TimelineManager {
       this.view.previewPanel?.setPinned(res?.[StorageKeys.TIMELINE_PREVIEW_PINNED] === true);
       this.view.rtl = applyRTLClass(res?.[StorageKeys.LANGUAGE] as string | null | undefined);
 
-      // Load position with auto-migration from v1 to v2
-      const position = res?.geminiTimelinePosition as TimelinePositionData | undefined;
-      this.view.savedTimelinePosition = position ?? null;
-      if (position) {
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
-
-        // v2 format: use percentage (responsive)
-        if (
-          position.version === 2 &&
-          position.topPercent !== undefined &&
-          position.leftPercent !== undefined
-        ) {
-          const top = (position.topPercent / 100) * viewportHeight;
-          const left = (position.leftPercent / 100) * viewportWidth;
-          this.view.applyPosition(top, left);
-        }
-        // v1 format: migrate to v2 (auto-upgrade)
-        else if (position.top !== undefined && position.left !== undefined) {
-          // Apply old position first
-          this.view.applyPosition(position.top, position.left);
-
-          // Migrate to v2 format (percentage-based)
-          const migratedPosition = {
-            version: 2,
-            topPercent: (position.top / viewportHeight) * 100,
-            leftPercent: (position.left / viewportWidth) * 100,
-          };
-          this.view.savedTimelinePosition = migratedPosition;
-          (g.chrome?.storage?.sync || g.browser?.storage?.sync)?.set?.({
-            geminiTimelinePosition: migratedPosition,
-          });
-        }
-      }
+      this.view.placement.restorePosition(
+        res?.geminiTimelinePosition as TimelinePositionData | undefined,
+      );
       this.view.updateRulerDirection();
       this.view.previewPanel?.reposition();
 
@@ -349,9 +311,7 @@ export class TimelineManager {
           this.view.applyContainerVisibility();
         }
         if (changes?.geminiTimelineBarWidth) {
-          const w = changes.geminiTimelineBarWidth.newValue;
-          if (typeof w === 'number' && w >= this.view.barWidthMin && w <= this.view.barWidthMax) {
-            this.view.barWidth = w;
+          if (this.view.placement.restoreWidth(changes.geminiTimelineBarWidth.newValue)) {
             this.view.applyContainerVisibility();
           }
         }
@@ -367,16 +327,9 @@ export class TimelineManager {
           );
         }
         if (changes?.geminiTimelinePosition) {
-          this.view.savedTimelinePosition =
-            (changes.geminiTimelinePosition.newValue as TimelinePositionData | null) ?? null;
-          if (!changes.geminiTimelinePosition.newValue) {
-            if (this.view.ui.timelineBar) {
-              this.view.ui.timelineBar.style.top = '';
-              this.view.ui.timelineBar.style.left = '';
-            }
-            this.view.updateRulerDirection();
-            this.view.previewPanel?.reposition();
-          }
+          this.view.placement.updateSavedPosition(
+            changes.geminiTimelinePosition.newValue as TimelinePositionData | null,
+          );
         }
         if (changes?.[StorageKeys.LANGUAGE]) {
           const newLang = changes[StorageKeys.LANGUAGE].newValue as string | null | undefined;
@@ -397,34 +350,6 @@ export class TimelineManager {
       g.browser?.storage?.onChanged?.removeListener?.(this.onSyncSettingsChanged);
     } catch {}
     this.onSyncSettingsChanged = null;
-  }
-
-  private computeElementTopsInScrollContainer(elements: HTMLElement[]): number[] {
-    if (!this.navigation.viewport || elements.length === 0) return [];
-
-    const containerRect = this.navigation.viewport.getBoundingClientRect();
-    const scrollTop = this.navigation.viewport.scrollTop;
-
-    const first = elements[0];
-    const firstOffsetParent = first.offsetParent;
-    const firstOffsetTop = first.offsetTop;
-    const firstTop = first.getBoundingClientRect().top - containerRect.top + scrollTop;
-
-    const sameOffsetParent =
-      firstOffsetParent !== null && elements.every((el) => el.offsetParent === firstOffsetParent);
-
-    const tops = elements.map((el) => {
-      if (sameOffsetParent) {
-        return firstTop + (el.offsetTop - firstOffsetTop);
-      }
-      return el.getBoundingClientRect().top - containerRect.top + scrollTop;
-    });
-
-    for (let i = 1; i < tops.length; i++) {
-      if (tops[i] < tops[i - 1]) return [];
-    }
-
-    return tops;
   }
 
   private updateIntersectionObserverTargetsFromMarkers(): void {
@@ -541,12 +466,7 @@ export class TimelineManager {
     );
     if (nextMarkers.length === 0) return;
     const elements = nextMarkers.map((marker) => marker.element);
-    this.view.markerTops = this.computeElementTopsInScrollContainer(elements);
-    this.view.firstUserTurnOffset = elements[0].offsetTop;
-    this.view.contentSpanPx = Math.max(
-      1,
-      elements[elements.length - 1].offsetTop - elements[0].offsetTop,
-    );
+    this.view.measureMarkers(elements);
     this.state.replaceMarkers(nextMarkers);
     this.timestamps.update(previousMarkers, nextMarkers);
     this.view.updateTimelineGeometry();

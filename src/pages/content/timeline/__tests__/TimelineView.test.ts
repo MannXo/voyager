@@ -36,7 +36,12 @@ function fixture(count = 2) {
   Object.defineProperty(bar, 'setPointerCapture', { value: vi.fn() });
   Object.defineProperty(handle, 'setPointerCapture', { value: vi.fn() });
   vi.spyOn(bar!, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 50, 24, 400));
-  view.contentSpanPx = 1000;
+  state.markers.forEach((marker, index) => {
+    Object.defineProperty(marker.element, 'offsetTop', {
+      value: (index / Math.max(1, count - 1)) * 1000,
+    });
+  });
+  view.measureMarkers(state.markers.map((marker) => marker.element));
   view.render();
   return {
     view,
@@ -77,7 +82,7 @@ describe('TimelineView', () => {
   it('starts with the thinnest visual bar width without a saved width', () => {
     const { view, bar } = fixture();
     view.applyContainerVisibility();
-    expect(view.barWidth).toBe(view.barWidthMin);
+    expect(view.placement.barWidth).toBe(view.placement.barWidthMin);
     expect(bar.style.getPropertyValue('--timeline-bar-width')).toBe('4px');
   });
 
@@ -126,12 +131,12 @@ describe('TimelineView', () => {
     bar.dispatchEvent(pointer('pointerdown', 110));
     expect(bar.classList.contains('timeline-resizing')).toBe(true);
     window.dispatchEvent(pointer('pointermove', 122));
-    expect(view.barWidth).toBe(20);
+    expect(view.placement.barWidth).toBe(20);
 
     window.dispatchEvent(pointer('pointercancel'));
     expect(bar.classList.contains('timeline-resizing')).toBe(false);
     window.dispatchEvent(pointer('pointermove', 100));
-    expect(view.barWidth).toBe(20);
+    expect(view.placement.barWidth).toBe(20);
     expect(chrome.storage.sync.set).toHaveBeenCalledWith({ geminiTimelineBarWidth: 20 });
   });
 
@@ -170,7 +175,7 @@ describe('TimelineView', () => {
 
   it('reapplies the cached position without reading storage', () => {
     const { view, bar } = fixture();
-    view.savedTimelinePosition = { version: 2, topPercent: 10, leftPercent: 20 };
+    view.placement.savedPosition = { version: 2, topPercent: 10, leftPercent: 20 };
     view.reapplyPosition();
     expect(chrome.storage.sync.get).not.toHaveBeenCalled();
     expect(bar.style.top).toBe(`${window.innerHeight * 0.1}px`);
@@ -189,7 +194,7 @@ describe('TimelineView', () => {
     const visualViewport = new EventTarget();
     vi.stubGlobal('visualViewport', visualViewport);
     const { view, bar, onResize } = fixture();
-    view.savedTimelinePosition = { version: 2, topPercent: 10, leftPercent: 20 };
+    view.placement.savedPosition = { version: 2, topPercent: 10, leftPercent: 20 };
     window.dispatchEvent(new Event('resize'));
     vi.advanceTimersByTime(70);
     visualViewport.dispatchEvent(new Event('resize'));

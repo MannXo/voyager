@@ -30,7 +30,7 @@ async function setup(
   });
   states.push(state);
   await state.init();
-  state.markerLevelEnabled = true;
+  state.hierarchy.markerLevelEnabled = true;
   state.replaceMarkers(
     [PARENT_ID, CHILD_ID].map((id, index) => ({
       id,
@@ -67,35 +67,35 @@ describe('TimelineState identity aliases', () => {
       { 'u-61': 2 },
       ['u-60'],
     );
-    expect(state.getMarkerLevel(CHILD_ID)).toBe(2);
-    expect(state.getHiddenMarkerIndices()).toEqual(new Set([1]));
+    expect(state.hierarchy.getMarkerLevel(CHILD_ID)).toBe(2);
+    expect(state.hierarchy.getHiddenMarkerIndices()).toEqual(new Set([1]));
   });
   it('does not apply an unverified legacy position to the first mounted tail turn', async () => {
     const state = await setup(new Map(), { 'u-0': 2 }, ['u-0']);
-    expect(state.getMarkerLevel(PARENT_ID)).toBe(1);
-    expect(state.getHiddenMarkerIndices()).toEqual(new Set());
+    expect(state.hierarchy.getMarkerLevel(PARENT_ID)).toBe(1);
+    expect(state.hierarchy.getHiddenMarkerIndices()).toEqual(new Set());
   });
   it('does not persist actions from a mounted positional fallback', async () => {
     const state = await setup(new Map([['u-0', 'u-0']]));
-    state.setMarkerLevel('u-0', 2);
-    state.toggleCollapse('u-0');
+    state.hierarchy.setMarkerLevel('u-0', 2);
+    state.hierarchy.toggleCollapse('u-0');
     expect(localStorage.getItem(levelsKey)).toBe('{}');
     expect(localStorage.getItem(collapsedKey)).toBe('[]');
     expect(chrome.storage.local.set).not.toHaveBeenCalled();
   });
   it('converges verified legacy aliases to the server id when the user edits them', async () => {
     const state = await setup(new Map([[CHILD_ID, 'u-61']]), { 'u-61': 2 });
-    state.setMarkerLevel(CHILD_ID, 3);
-    expect(state.getMarkerLevel(CHILD_ID)).toBe(3);
+    state.hierarchy.setMarkerLevel(CHILD_ID, 3);
+    expect(state.hierarchy.getMarkerLevel(CHILD_ID)).toBe(3);
     expect(JSON.parse(localStorage.getItem(levelsKey)!)).toEqual({ [CHILD_ID]: 3 });
-    state.setMarkerLevel(CHILD_ID, 1);
-    expect(state.getMarkerLevel(CHILD_ID)).toBe(1);
+    state.hierarchy.setMarkerLevel(CHILD_ID, 1);
+    expect(state.hierarchy.getMarkerLevel(CHILD_ID)).toBe(1);
     expect(JSON.parse(localStorage.getItem(levelsKey)!)).toEqual({});
   });
   it('removes the verified legacy collapse alias when expanding', async () => {
     const state = await setup(new Map([[PARENT_ID, 'u-60']]), {}, ['u-60']);
-    state.toggleCollapse(PARENT_ID);
-    expect(state.isMarkerCollapsed(PARENT_ID)).toBe(false);
+    state.hierarchy.toggleCollapse(PARENT_ID);
+    expect(state.hierarchy.isMarkerCollapsed(PARENT_ID)).toBe(false);
     expect(localStorage.getItem(collapsedKey)).toBe('[]');
   });
   it('does not restore a late hierarchy snapshot after the owner is destroyed', async () => {

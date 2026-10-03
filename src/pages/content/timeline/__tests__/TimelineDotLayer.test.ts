@@ -57,10 +57,10 @@ afterEach(() => {
 describe('TimelineDotLayer', () => {
   it('spaces only visible markers after collapse and uses pixel tops when CSS cannot resolve them', () => {
     const { layer, state, content } = fixture([0, 0.001, 0.002, 0.003, 0.004, 1]);
-    state.markerLevelEnabled = true;
-    state.setMarkerLevel('turn-1', 2);
-    state.setMarkerLevel('turn-2', 3);
-    state.toggleCollapse('turn-0');
+    state.hierarchy.markerLevelEnabled = true;
+    state.hierarchy.setMarkerLevel('turn-1', 2);
+    state.hierarchy.setMarkerLevel('turn-2', 3);
+    state.hierarchy.toggleCollapse('turn-0');
 
     layer.layout();
     layer.render();
@@ -77,7 +77,7 @@ describe('TimelineDotLayer', () => {
     expect(dots.map((dot) => dot.style.top)).toEqual(['10px', '30px', '50px', '90px']);
     expect(dots[0].getAttribute('aria-expanded')).toBe('false');
 
-    state.toggleCollapse('turn-0');
+    state.hierarchy.toggleCollapse('turn-0');
     layer.layout();
     layer.render();
 

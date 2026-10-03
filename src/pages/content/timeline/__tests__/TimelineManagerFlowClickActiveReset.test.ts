@@ -85,13 +85,13 @@ afterEach(() => {
 describe('TimelineManager navigation surfaces', () => {
   it('preserves the manually scrolled rail when a marker level changes', () => {
     const { view, state, viewport } = fixture(100);
-    state.markerLevelEnabled = true;
+    state.hierarchy.markerLevelEnabled = true;
     view.ui.track!.scrollTop = 320;
     view.updateVirtualRangeAndRender();
 
-    state.setMarkerLevel('s-50', 2);
+    state.hierarchy.setMarkerLevel('s-50', 2);
 
-    expect(state.getMarkerLevel('s-50')).toBe(2);
+    expect(state.hierarchy.getMarkerLevel('s-50')).toBe(2);
     expect(view.ui.track!.scrollTop).toBe(320);
     expect(viewport.scrollTop).toBe(0);
   });

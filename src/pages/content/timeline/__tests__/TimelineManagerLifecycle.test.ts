@@ -97,7 +97,7 @@ describe('TimelineManager lifecycle', () => {
       },
       'sync',
     );
-    expect(owners.view.savedTimelinePosition).toEqual(position);
+    expect(owners.view.placement.savedPosition).toEqual(position);
     expect(owners.navigation.mode).toBe('jump');
     listener(
       {
@@ -106,10 +106,10 @@ describe('TimelineManager lifecycle', () => {
       },
       'local',
     );
-    expect(owners.view.savedTimelinePosition).toEqual(position);
+    expect(owners.view.placement.savedPosition).toEqual(position);
     expect(owners.navigation.mode).toBe('jump');
     listener({ geminiTimelinePosition: { newValue: null } }, 'sync');
-    expect(owners.view.savedTimelinePosition).toBeNull();
+    expect(owners.view.placement.savedPosition).toBeNull();
   });
 
   it('does not initialize a destroyed instance', async () => {

@@ -6,7 +6,6 @@ import { TimelinePreviewPanel } from './TimelinePreviewPanel';
 import { TimelineRailPlacement } from './TimelineRailPlacement';
 import { TimelineSlider } from './TimelineSlider';
 import type { TimelineState } from './TimelineState';
-import type { TimelinePositionData } from './types';
 interface TimelineViewOptions {
   getViewport: () => HTMLElement | null;
   getActiveId: () => string | null;
@@ -29,9 +28,9 @@ export class TimelineView {
 
   hideContainer: boolean = false;
 
-  firstUserTurnOffset = 0;
+  private firstUserTurnOffset = 0;
 
-  contentSpanPx = 1;
+  private contentSpanPx = 1;
 
   private resizeIdleTimer: number | null = null;
 
@@ -55,6 +54,7 @@ export class TimelineView {
     this.placement = new TimelineRailPlacement({
       getStyle: () => this.timelineStyle,
       onWidthChange: () => this.applyContainerVisibility(),
+      onPositionRestore: () => this.previewPanel?.reposition(),
     });
   }
   private readonly dotLayer: TimelineDotLayer;
@@ -64,8 +64,13 @@ export class TimelineView {
   get markerTops(): number[] {
     return this.dotLayer.markerTops;
   }
-  set markerTops(value: number[]) {
-    this.dotLayer.markerTops = value;
+  measureMarkers(elements: HTMLElement[]): void {
+    this.dotLayer.measureMarkerTops(elements);
+    this.firstUserTurnOffset = elements[0].offsetTop;
+    this.contentSpanPx = Math.max(
+      1,
+      elements[elements.length - 1].offsetTop - elements[0].offsetTop,
+    );
   }
   updateTimelineGeometry(): void {
     if (!this.ui.timelineBar || !this.ui.trackContent) return;
@@ -78,27 +83,9 @@ export class TimelineView {
   startRunner(fromIdx: number, toIdx: number, duration: number): void {
     this.dotLayer.startRunner(fromIdx, toIdx, duration);
   }
-  private readonly placement: TimelineRailPlacement;
+  readonly placement: TimelineRailPlacement;
   private slider: TimelineSlider | null = null;
 
-  get barWidth(): number {
-    return this.placement.barWidth;
-  }
-  set barWidth(value: number) {
-    this.placement.barWidth = value;
-  }
-  get barWidthMin(): number {
-    return this.placement.barWidthMin;
-  }
-  get barWidthMax(): number {
-    return this.placement.barWidthMax;
-  }
-  get savedTimelinePosition(): TimelinePositionData | null {
-    return this.placement.savedPosition;
-  }
-  set savedTimelinePosition(value: TimelinePositionData | null) {
-    this.placement.savedPosition = value;
-  }
   updateSlider(): void {
     this.slider?.update();
   }
@@ -245,7 +232,7 @@ export class TimelineView {
     if (!this.ui.timelineBar) return;
     const bar = this.ui.timelineBar;
     // Visual background width (::before is centered, bar stays 24px for dots)
-    bar.style.setProperty('--timeline-bar-width', `${this.barWidth}px`);
+    bar.style.setProperty('--timeline-bar-width', `${this.placement.barWidth}px`);
     // hideContainer is an independent binary toggle
     bar.classList.toggle('timeline-no-container', !!this.hideContainer);
   }

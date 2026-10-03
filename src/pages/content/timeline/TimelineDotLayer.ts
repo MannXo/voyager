@@ -29,20 +29,45 @@ export class TimelineDotLayer {
   private track: HTMLElement | null = null;
   private content: HTMLElement | null = null;
   constructor(
-    private readonly state: Pick<
-      TimelineState,
-      | 'markers'
-      | 'getHiddenMarkerIndices'
-      | 'calculateCollapsedPositions'
-      | 'isMarkerCollapsed'
-      | 'getMarkerLevel'
-    >,
+    private readonly state: Pick<TimelineState, 'markers' | 'hierarchy'>,
     private readonly options: {
       getStyle: () => TimelineStyle;
       getViewport: () => HTMLElement | null;
       getActiveId: () => string | null;
     },
   ) {}
+  measureMarkerTops(elements: HTMLElement[]): void {
+    this.markerTops = this.computeElementTopsInScrollContainer(elements);
+  }
+
+  private computeElementTopsInScrollContainer(elements: HTMLElement[]): number[] {
+    if (!this.scrollContainer || elements.length === 0) return [];
+
+    const containerRect = this.scrollContainer.getBoundingClientRect();
+    const scrollTop = this.scrollContainer.scrollTop;
+
+    const first = elements[0];
+    const firstOffsetParent = first.offsetParent;
+    const firstOffsetTop = first.offsetTop;
+    const firstTop = first.getBoundingClientRect().top - containerRect.top + scrollTop;
+
+    const sameOffsetParent =
+      firstOffsetParent !== null && elements.every((el) => el.offsetParent === firstOffsetParent);
+
+    const tops = elements.map((el) => {
+      if (sameOffsetParent) {
+        return firstTop + (el.offsetTop - firstOffsetTop);
+      }
+      return el.getBoundingClientRect().top - containerRect.top + scrollTop;
+    });
+
+    for (let i = 1; i < tops.length; i++) {
+      if (tops[i] < tops[i - 1]) return [];
+    }
+
+    return tops;
+  }
+
   mount(bar: HTMLElement, track: HTMLElement, content: HTMLElement): void {
     this.bar = bar;
     this.track = track;
@@ -115,7 +140,7 @@ export class TimelineDotLayer {
     const minGap = this.getMinGap();
     const N = this.markers.length;
     // Get hidden markers for collapse feature
-    const hiddenIndices = this.state.getHiddenMarkerIndices();
+    const hiddenIndices = this.state.hierarchy.getHiddenMarkerIndices();
     const visibleCount = N - hiddenIndices.size;
     const desired = Math.max(
       H,
@@ -126,7 +151,11 @@ export class TimelineDotLayer {
 
     const usableC = Math.max(1, this.contentHeight - 2 * pad);
     // Calculate Y positions with collapse - using effective baseN for repositioning
-    const { desiredY } = this.state.calculateCollapsedPositions(hiddenIndices, pad, usableC);
+    const { desiredY } = this.state.hierarchy.calculateCollapsedPositions(
+      hiddenIndices,
+      pad,
+      usableC,
+    );
 
     // Apply min gap only to visible markers
     const gapMultipliers: number[] = new Array(N).fill(1.0);
@@ -350,7 +379,7 @@ export class TimelineDotLayer {
       if (!marker) continue;
       const dot = this.dots.get(marker.id);
       if (!dot) continue;
-      const level = this.state.getMarkerLevel(marker.id);
+      const level = this.state.hierarchy.getMarkerLevel(marker.id);
       const baseScale = level === 3 ? 0.54 : level === 2 ? 0.42 : 0.29;
       const distance = Math.abs(index - focusIndex);
       const crest = Math.exp(-(distance * distance) / (2 * sigma * sigma));
@@ -397,7 +426,7 @@ export class TimelineDotLayer {
   }
   render(): void {
     if (!this.track || !this.content) return;
-    const hidden = this.state.getHiddenMarkerIndices();
+    const hidden = this.state.hierarchy.getHiddenMarkerIndices();
     const dense = this.options.getStyle() !== 'dots';
     const top = this.track.scrollTop;
     const height = this.track.clientHeight;
@@ -426,13 +455,13 @@ export class TimelineDotLayer {
       dot.dataset.markerIndex = String(index);
       dot.setAttribute('aria-label', marker.summary);
       this.applyDotPosition(dot, index, offsets.get(index));
-      const collapsed = this.state.isMarkerCollapsed(marker.id);
+      const collapsed = this.state.hierarchy.isMarkerCollapsed(marker.id);
       dot.classList.toggle('active', marker.id === this.activeTurnId);
       dot.classList.toggle('starred', marker.starred);
       dot.classList.toggle('collapsed', collapsed);
       dot.setAttribute('aria-pressed', String(marker.starred));
       dot.setAttribute('aria-expanded', String(!collapsed));
-      dot.dataset.level = String(this.state.getMarkerLevel(marker.id));
+      dot.dataset.level = String(this.state.hierarchy.getMarkerLevel(marker.id));
     }
     for (const [id, dot] of this.dots) {
       if (visibleIds.has(id)) continue;

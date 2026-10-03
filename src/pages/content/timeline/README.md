@@ -6,18 +6,22 @@ it observes Gemini DOM changes and rebinds the live scroll viewport.
 | Change                                                                              | Owner                           |
 | ----------------------------------------------------------------------------------- | ------------------------------- |
 | Find turns, stable IDs, prompt/response summaries                                   | `TimelineTurns.ts`              |
-| Stars, verified legacy aliases, levels, collapse, persistence                       | `TimelineState.ts`              |
+| Marker snapshot, stars, verified legacy aliases and star persistence                | `TimelineState.ts`              |
+| Scoped hierarchy persistence, level/collapse edits and collapsed positions          | `TimelineHierarchy.ts`          |
 | Dot/preview/shortcut navigation, active turn, scrolling and navigation cancellation | `TimelineNavigation.ts`         |
 | Rail composition, styling, preview, viewport sync and resize debounce               | `TimelineView.ts`               |
-| Marker geometry, virtual/dense dots, ruler wave and runner animation                | `TimelineDotLayer.ts`           |
+| Marker measurements/geometry, virtual/dense dots, ruler wave and runner animation   | `TimelineDotLayer.ts`           |
 | Slider geometry, scroll dragging and hover fade                                     | `TimelineSlider.ts`             |
-| Rail width, position dragging and cached placement                                  | `TimelineRailPlacement.ts`      |
+| Persisted width/position restoration, migration, dragging and cached placement      | `TimelineRailPlacement.ts`      |
 | Preview list, search, pinning and compact hover bridge                              | `TimelinePreviewPanel.ts`       |
+| Preview long-press timing, cancellation and click suppression                       | `TimelinePreviewPress.ts`       |
 | Hover delay, tooltip content layout and visibility                                  | `TimelineTooltip.ts`            |
 | Marker clicks, long press and hierarchy menu                                        | `TimelineMarkerInteractions.ts` |
 | Timestamp opt-in, draft adoption, history matching and timestamp DOM                | `TimelineTimestamps.ts`         |
 
-`TimelineState` owns the marker snapshot. `TimelineDotLayer` owns dot elements and measured positions;
+`TimelineState` owns the marker snapshot and exposes its hierarchy owner directly. Its shared storage
+listener routes hierarchy changes after star changes; `TimelineHierarchy` owns the account context,
+level/collapse maps and pending-load teardown. `TimelineDotLayer` owns dot elements and measured positions;
 DOM nodes do not belong in persisted state. Owners take their required data/actions explicitly,
 without a reference back to the manager. Rendering reads state; user actions and storage events
 update state and notify the manager.
@@ -35,6 +39,9 @@ Keep these less obvious boundaries intact:
 
 - A mounted `u-N` is a DOM-window position. Only a complete history mapping can prove that it is a
   stored full-conversation alias. Use `TimelineState` for alias resolution before star/hierarchy edits.
+- Placement restoration belongs to `TimelineRailPlacement`, including the v1 pixel-to-v2 percentage
+  migration. The manager loads settings and preserves application order; it does not write placement
+  or measured-marker fields. `TimelineView.measureMarkers` updates the dot measurements and viewport span.
 - A state repaint preserves the user's manually scrolled rail position. Synchronize the rail to the
   native viewport only for navigation, native scrolling or layout changes that require it.
 - Keep setup and cleanup together when moving UI behavior. Closing a surface must cancel its pending

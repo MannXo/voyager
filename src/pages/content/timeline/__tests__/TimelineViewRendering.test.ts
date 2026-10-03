@@ -138,7 +138,12 @@ describe('TimelineView rendering', () => {
 
   it('moves the longest ruler tick continuously with the scroll focus', () => {
     const { view, viewport } = setup();
-    view.markerTops = [100, 200, 300];
+    const measuredElements = [100, 200, 300].map((top) => {
+      const element = document.createElement('div');
+      vi.spyOn(element, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, top, 0, 0));
+      return element;
+    });
+    view.measureMarkers(measuredElements);
     view.timelineStyle = 'ruler';
     const scales = () =>
       dots().map((dot) => Number(dot.style.getPropertyValue('--gv-timeline-ruler-scale')));
