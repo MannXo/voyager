@@ -338,21 +338,6 @@ export function createConversationCollector(adapter: ExportPlatformAdapter): Con
   };
 
   const selectionMessagesFromPairs = (pairsInput: ChatTurn[]): ExportMessage[] => {
-    const turnContainers = adapter.collectTurnContainers?.();
-    if (turnContainers) {
-      // ChatGPT virtualizes its thread, so the DOM holds only a few turns. The
-      // adapter's list (crawled up front, or retained containers on the earlier
-      // DOM) is the only reliable source for selection identity and order.
-      return turnContainers.map((turn) => ({
-        messageId: turn.id,
-        role: turn.role,
-        hostElement: turn.container,
-        exportElement: turn.container,
-        text: '',
-        starred: false,
-      }));
-    }
-
     const messages = buildExportMessagesFromPairs(pairsInput);
     return messages
       .map((message) => {

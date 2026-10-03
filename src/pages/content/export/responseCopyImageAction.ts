@@ -14,9 +14,9 @@ import type {
 } from '../../../features/export/types/export';
 import { DEFAULT_IMAGE_EXPORT_WIDTH } from '../../../features/export/types/export';
 import { showExportToast } from '../../../features/export/ui/ExportToast';
-import type { ExportPlatformAdapter } from './adapter/platformAdapters';
-import { type ConversationCollector, removeCanvasExportSections } from './conversationCollector';
+import { removeCanvasExportSections } from './conversationCollector';
 import { type ExportDictionaries, createExportTranslator } from './exportLocale';
+import type { ExportSite } from './exportSite';
 import { injectResponseActionCopyImageButtons } from './responseActionImageButton';
 import { showResponseActionCopyImageMenu } from './responseActionImageMenu';
 import {
@@ -30,8 +30,7 @@ export interface ResponseCopyImageOptions {
   dict: ExportDictionaries;
   /** Current UI language, read on every click and injection. */
   language: () => AppLanguage;
-  collector: Pick<ConversationCollector, 'assistantMessageIdFor' | 'turnsForMessageIds'>;
-  adapter: Pick<ExportPlatformAdapter, 'extractConversationTitle' | 'site'>;
+  site: Pick<ExportSite, 'label' | 'title' | 'turns' | 'page'>;
 }
 
 type ResponseCopyImageTexts = {
@@ -133,7 +132,7 @@ async function copyResponseAsImage(
   }
   trigger.dataset.gvCopyImageBusy = '1';
 
-  const { dict, collector, adapter } = options;
+  const { dict, site } = options;
   const lang = options.language();
   const texts = getResponseCopyImageTexts(lang, dict);
   const t = createExportTranslator(dict, lang);
@@ -141,7 +140,7 @@ async function copyResponseAsImage(
     user: t('export_speaker_user_default'),
     assistant: t('export_speaker_assistant_default'),
   };
-  const messageId = collector.assistantMessageIdFor(trigger);
+  const messageId = site.page.assistantMessageIdFor(trigger);
   let blobForFallback: Blob | null = null;
   try {
     if (!messageId) {
@@ -149,7 +148,7 @@ async function copyResponseAsImage(
       return;
     }
 
-    const turnsForExport = collector.turnsForMessageIds(new Set<string>([messageId]));
+    const turnsForExport = await site.turns.build(new Set<string>([messageId]), {});
     if (turnsForExport.length === 0) {
       showExportToast(texts.targetMissing);
       return;
@@ -159,8 +158,8 @@ async function copyResponseAsImage(
       url: location.href,
       exportedAt: new Date().toISOString(),
       count: turnsForExport.length,
-      title: adapter.extractConversationTitle(),
-      platform: adapter.site.label,
+      title: site.title(),
+      platform: site.label,
     };
 
     const blob = await renderResponseImageBlob(turnsForExport, metadata, {

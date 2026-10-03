@@ -194,7 +194,6 @@ export function buildGeminiAdapter(site: SiteAdapter): ExportPlatformAdapter {
     getAssistantSelectors: geminiAssistantTurnSelectors,
     extractConversationTitle,
     extractConversationIdFromUrl: extractConversationId,
-    shouldPreloadHistory: () => true,
     resolveConversationRoot: resolveRoot,
     extractUserImage,
     extractUserText,

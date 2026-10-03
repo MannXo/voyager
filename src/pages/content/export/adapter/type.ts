@@ -25,12 +25,6 @@ export interface ChatGptTurnContainer {
   empty?: boolean;
 }
 
-/** What a preparation keeps for its export session. */
-export interface ConversationPreparation {
-  /** Drop what this preparation kept; a no-op once a newer preparation has started. */
-  release(): void;
-}
-
 export interface ExportSelectionOptions {
   /** Cancels virtual-list scrolling when the plugin is disabled or the user cancels. */
   readonly signal?: AbortSignal;

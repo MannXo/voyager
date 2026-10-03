@@ -22,6 +22,7 @@ import { collectForkChatPairs } from '../../fork/chatPairs';
 import { buildChatGptAdapter } from '../adapter/platform/chatgpt';
 import { buildGeminiAdapter } from '../adapter/platform/gemini';
 import { createConversationCollector } from '../conversationCollector';
+import { createChatGptExportSite } from '../sites/chatgpt';
 
 const GEMINI_CONVERSATION = `
   <main>
@@ -382,7 +383,7 @@ describe('ChatGPT conversation export output', () => {
   async function chatgptTurns(): Promise<ChatTurn[]> {
     document.body.innerHTML = CHATGPT_CONVERSATION;
     const ids = new Set(['11111111-aaaa', '22222222-bbbb']);
-    return await chatgptExportAdapter.buildTurnsForSelection!(ids);
+    return await createChatGptExportSite(chatgptExportAdapter).turns.build(ids, {});
   }
 
   const metadata: ConversationMetadata = {

@@ -4,7 +4,8 @@
  * Gemini lazy-loads history, so a run first clicks the topmost message until
  * the conversation stops growing. That click can reload the page: the run is
  * kept in sessionStorage and `resumePending` continues it on the next load.
- * Platforms without lazy history scroll to the top instead. The run then shows
+ * Other hosts let their turn source read the conversation, or scroll to the
+ * top when it does not. The run then shows
  * the selection session and exports the chosen messages.
  *
  * The runner owns the active operation: starting a run aborts the previous one
@@ -20,8 +21,7 @@ import type {
 } from '../../../features/export/types/export';
 import { resolveExportErrorMessage } from '../../../features/export/ui/ExportErrorMessage';
 import { reportFinishedExport } from '../../../features/export/ui/exportResultNotice';
-import type { ExportPlatformAdapter } from './adapter/platformAdapters';
-import { type ConversationCollector, removeCanvasExportSections } from './conversationCollector';
+import { removeCanvasExportSections } from './conversationCollector';
 import { waitForAnyElement, waitForElement } from './domWait';
 import { isAbortError, throwIfExportCancelled } from './exportCancellation';
 import { withExportCollectingBanner } from './exportCollectingBanner';
@@ -37,6 +37,7 @@ import {
   type ExportSelectionConfirmation,
   startExportSelectionSession,
 } from './exportSelectionSession';
+import type { ExportSite, ExportTurnReader } from './exportSite';
 import {
   captureGeneratedUiScreenshots,
   ensureGeneratedUiScreenshotPermission,
@@ -82,8 +83,7 @@ export interface ExportRunLocale {
 }
 
 export interface ExportRunnerDeps {
-  adapter: ExportPlatformAdapter;
-  collector: ConversationCollector;
+  site: ExportSite;
 }
 
 export interface ExportRunner {
@@ -109,7 +109,8 @@ function exportRouteKey(url: string): string {
 }
 
 export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
-  const { adapter: exportAdapter, collector } = deps;
+  const { site } = deps;
+  const collector = site.page;
   let activeExportController: AbortController | null = null;
   let activeExportSelectionCleanup: (() => void) | null = null;
 
@@ -175,14 +176,16 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
     const signal = activeExportController?.signal;
     throwIfExportCancelled(signal);
 
-    // No preload loop: the adapter reads the thread itself, or we scroll to the top.
-    if (!exportAdapter.shouldPreloadHistory()) {
+    // No preload loop: the source reads the thread itself, or we scroll to the top.
+    const history = site.history;
+    if (!history) {
       return runPreparedExport(
-        exportAdapter,
+        site.turns,
         { signal, expectedUrl: state.url },
         {
           scrollToTop: scrollToTopAndRender,
-          exportSelection: () => performFinalExport(state, dict, lang),
+          exportSelection: (session) =>
+            performFinalExport(state, dict, lang, session ?? site.turns),
         },
       );
     }
@@ -197,8 +200,7 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
     // 1. Find Top Node
     if (state.attempt > 0) {
       logger.debug('[Gemini Voyager] Resuming export... waiting for content load.');
-      const userSelectors = exportAdapter.getUserSelectors();
-      await waitForAnyElement(userSelectors, 15000);
+      await waitForAnyElement(history.userSelectors(), 15000);
     }
 
     // Wait a bit if we just reloaded
@@ -214,14 +216,11 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
     if (!topNode) {
       logger.debug('[Gemini Voyager] No top node found, proceeding to export directly.');
       clearPendingExportState(sessionStorage);
-      await performFinalExport(state, dict, lang);
+      await performFinalExport(state, dict, lang, site.turns);
       return;
     }
 
-    const fingerprintSelectors = [
-      ...exportAdapter.getUserSelectors(),
-      ...exportAdapter.getAssistantSelectors(),
-    ];
+    const fingerprintSelectors = [...history.userSelectors(), ...history.assistantSelectors()];
     const beforeFingerprint = computeConversationFingerprint(
       document.body,
       fingerprintSelectors,
@@ -262,7 +261,7 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
 
     logger.debug('[Gemini Voyager] No refresh or update detected. Exporting...');
     clearPendingExportState(sessionStorage);
-    await performFinalExport(state, dict, lang);
+    await performFinalExport(state, dict, lang, site.turns);
   }
 
   async function executeExportSequenceWithProgress(
@@ -294,6 +293,7 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
     state: PendingExportState,
     dict: ExportDictionaries,
     lang: AppLanguage,
+    reader: ExportTurnReader,
   ) {
     const t = createExportTranslator(dict, lang);
     const signal = activeExportController?.signal;
@@ -304,7 +304,7 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
     await captureGeneratedUiScreenshots();
     throwIfExportCancelled(signal);
 
-    const messages = collector.collectSelectionMessages();
+    const messages = reader.messages();
     if (!noteExportTurns(messages.length > 0, () => collector.collectChatPairs().length > 0)) {
       alert(t('export_dialog_warning'));
       return;
@@ -312,13 +312,12 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
     removeExportProgressOverlays();
 
     const selectionUrl = location.href;
-    const selectionTitle = exportAdapter.extractConversationTitle();
+    const selectionTitle = site.title();
     const showCollectingBanner = () =>
       showExportProgressOverlay(collector, t, {
         title: t('export_collecting_title'),
         desc: t('export_collecting_desc'),
       });
-    const resolveSelectionRoles = exportAdapter.resolveSelectionRoles;
 
     const exportSelection = async ({ takeSelection }: ExportSelectionConfirmation) => {
       let hideProgress: (() => void) | null = null;
@@ -329,15 +328,11 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
         await captureGeneratedUiScreenshots();
         throwIfExportCancelled(signal);
 
-        const buildTurnsForSelection = exportAdapter.buildTurnsForSelection;
-        const turnsForExport = buildTurnsForSelection
-          ? await withExportCollectingBanner(showCollectingBanner, () =>
-              buildTurnsForSelection(selectedIdsForExport, {
-                signal,
-                expectedUrl: selectionUrl,
-              }),
-            )
-          : collector.turnsForMessageIds(selectedIdsForExport);
+        const buildTurns = () =>
+          reader.build(selectedIdsForExport, { signal, expectedUrl: selectionUrl });
+        const turnsForExport = site.turns.scrollsWhileBuilding
+          ? await withExportCollectingBanner(showCollectingBanner, buildTurns)
+          : await buildTurns();
         throwIfExportCancelled(signal);
         if (exportRouteKey(location.href) !== exportRouteKey(selectionUrl)) {
           throw new Error('export_conversation_changed');
@@ -349,7 +344,7 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
           exportedAt: new Date().toISOString(),
           count: turnsForExport.length,
           title: selectionTitle,
-          platform: exportAdapter.site.label,
+          platform: site.label,
         };
 
         let includeImageSource = true;
@@ -391,18 +386,19 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
       }
     };
 
+    const resolveRoles = reader.roles;
     const session = startExportSelectionSession({
       t,
       signal,
       abortExport: () => activeExportController?.abort(),
-      readMessages: () => collector.collectSelectionMessages(),
+      readMessages: () => reader.messages(),
       initialSelectedMessageId: state.initialSelectedMessageId || null,
       anchors: collector,
       isSameConversation: () => exportRouteKey(location.href) === exportRouteKey(selectionUrl),
-      resolveRoles: resolveSelectionRoles
+      resolveRoles: resolveRoles
         ? (messageIds) =>
             withExportCollectingBanner(showCollectingBanner, () =>
-              resolveSelectionRoles(messageIds, { signal, expectedUrl: selectionUrl }),
+              resolveRoles(messageIds, { signal, expectedUrl: selectionUrl }),
             )
         : undefined,
       onConfirm: exportSelection,

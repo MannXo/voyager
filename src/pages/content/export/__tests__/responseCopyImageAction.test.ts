@@ -22,8 +22,7 @@ vi.mock('../responseImageCopy', () => ({
   downloadImageBlob: mocks.downloadImageBlob,
 }));
 
-const { resolveExportAdapter } = await import('../adapter/platformAdapters');
-const { createConversationCollector } = await import('../conversationCollector');
+const { resolveExportSite } = await import('../sites/resolveExportSite');
 const { startResponseCopyImageActions } = await import('../responseCopyImageAction');
 
 const emptyDict = {
@@ -72,12 +71,10 @@ function renderResponse(): void {
 }
 
 async function copyFirstResponseAsImage(): Promise<void> {
-  const adapter = resolveExportAdapter();
   startResponseCopyImageActions({
     dict: emptyDict,
     language: () => 'en',
-    collector: createConversationCollector(adapter),
-    adapter,
+    site: resolveExportSite(),
   });
   const button = document.querySelector<HTMLElement>('[data-test-id="gv-copy-image-button"]');
   expect(button).not.toBeNull();

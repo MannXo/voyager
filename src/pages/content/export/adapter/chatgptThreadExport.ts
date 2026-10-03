@@ -1,10 +1,6 @@
 import type { ChatTurn } from '@/features/export/types/export';
 
-import {
-  buildChatGptTurnsForSelection,
-  chatgptCollectTurnContainers,
-  resolveChatGptSelectionRoles,
-} from './chatgpt';
+import { chatgptCollectTurnContainers } from './chatgpt';
 import { type ChatGptCrawlOptions, crawlChatGptThread } from './chatgptCrawl';
 import { assertActive, normalizedConversationUrl } from './chatgptShared';
 import {
@@ -19,13 +15,7 @@ import {
   userSelectionHost,
 } from './chatgptThread';
 import { type ThreadVersionWatch, watchThreadVersions } from './chatgptThreadWatch';
-import type {
-  ChatGptReadOptions,
-  ChatGptTurnContainer,
-  ChatGptTurnRole,
-  ConversationPreparation,
-  ExportSelectionOptions,
-} from './type';
+import type { ChatGptTurnContainer, ChatGptTurnRole, ExportSelectionOptions } from './type';
 
 /**
  * Export entry points for ChatGPT.
@@ -53,81 +43,143 @@ interface ThreadSnapshot {
   readonly failure: string;
 }
 
-let snapshot: ThreadSnapshot | null = null;
-/** Watches the thread from the start of the crawl that produced `snapshot`. */
-let watch: ThreadVersionWatch | null = null;
-/** Counts preparations, so only the latest one publishes its crawl. */
-let preparation = 0;
-/**
- * The element each message's checkbox was last bound to. An unmounted message
- * keeps it, so selection mode does not rebind it on every refresh.
- */
-const lastHosts = new Map<string, HTMLElement>();
+/** What one preparation read, for the selection session that follows it. */
+export interface ChatGptThreadSession {
+  /** Every message the crawl read, bound to its live element where mounted; empty once unusable. */
+  containers(): ChatGptTurnContainer[];
+  /**
+   * Selected messages as export turns, in conversation order. A prompt and its
+   * reply share an item, so they form one turn when both are selected; either
+   * alone becomes a one-sided turn.
+   */
+  build(selectedIds: ReadonlySet<string>, options: ExportSelectionOptions): Promise<ChatTurn[]>;
+  roles(
+    selectedIds: ReadonlySet<string>,
+    options: ExportSelectionOptions,
+  ): Promise<ReadonlyMap<string, ChatGptTurnRole>>;
+  /** Drop the crawl and stop watching the thread. */
+  release(): void;
+}
 
-/** Forget the last crawl and stop watching the thread. */
-export function resetChatGptThreadSnapshot(): void {
-  snapshot = null;
-  watch?.stop();
-  watch = null;
-  lastHosts.clear();
+export interface ChatGptThreadPreparer {
+  /**
+   * Crawl the current thread before selection mode opens. Resolves with its
+   * session when it handled the preparation: a failed crawl yields a session
+   * with nothing to select. Resolves null on the earlier DOM; cancellation
+   * rejects after releasing.
+   *
+   * Starting a preparation releases the previous one, so an export that ends
+   * late (one cancelled during its scroll restore, say) cannot publish over
+   * the export that replaced it.
+   */
+  prepare(options: ChatGptCrawlOptions): Promise<ChatGptThreadSession | null>;
 }
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
 
-/**
- * Crawl the current thread before selection mode opens. Resolves with the
- * release for its session when it handled the preparation: a failed crawl
- * leaves an empty snapshot and still resolves. Resolves null on the earlier
- * DOM; cancellation rejects after releasing.
- *
- * The release drops the snapshot and its watch only while this is still the
- * latest preparation, so an export that ends late (one cancelled during its
- * scroll restore, say) cannot clear the export that replaced it.
- */
-export async function prepareChatGptExport(
-  options: ChatGptCrawlOptions,
-): Promise<ConversationPreparation | null> {
-  resetChatGptThreadSnapshot();
-  // The earlier DOM keeps its scroll-to-top preparation.
-  if (!hasRenderedThread()) return null;
-  const current = ++preparation;
-  const route = normalizedConversationUrl(options.expectedUrl ?? location.href);
-  snapshot = { route, messages: null, failure: 'chatgpt_export_thread_incomplete' };
-  const versions = watchThreadVersions();
-  watch = versions;
-  // A newer preparation has already stopped this one's watch and replaced its snapshot.
-  const release = (): void => {
-    if (current === preparation) resetChatGptThreadSnapshot();
-  };
-  try {
-    const messages = await crawlChatGptThread(options);
-    // A newer preparation owns the snapshot, even when it failed.
-    if (current === preparation && snapshot?.route === route) {
-      versions.adopt(messages);
-      snapshot = { route, messages, failure: '' };
+export function createChatGptThreadPreparer(): ChatGptThreadPreparer {
+  let latest: ChatGptThreadSession | null = null;
+
+  async function prepare(options: ChatGptCrawlOptions): Promise<ChatGptThreadSession | null> {
+    latest?.release();
+    latest = null;
+    // The earlier DOM keeps its scroll-to-top preparation.
+    if (!hasRenderedThread()) return null;
+    const route = normalizedConversationUrl(options.expectedUrl ?? location.href);
+    const versions = watchThreadVersions();
+    const session = createThreadSession(route, versions);
+    latest = session;
+    try {
+      const messages = await crawlChatGptThread(options);
+      // A newer preparation has released this one, even when it failed.
+      if (latest === session) session.publish(messages);
+    } catch (error) {
+      if (isAbortError(error)) {
+        session.release();
+        throw error;
+      }
+      versions.stop();
+      console.warn('[Gemini Voyager] ChatGPT export could not read the whole conversation:', error);
     }
-  } catch (error) {
-    if (isAbortError(error)) {
-      release();
-      throw error;
-    }
-    versions.stop();
-    console.warn('[Gemini Voyager] ChatGPT export could not read the whole conversation:', error);
+    return session;
   }
-  return { release };
+
+  return { prepare };
 }
 
-function currentSnapshot(): ThreadSnapshot | null {
-  if (!snapshot) return null;
-  if (snapshot.route !== normalizedConversationUrl()) {
-    return { ...snapshot, messages: null, failure: 'chatgpt_export_conversation_changed' };
+function createThreadSession(
+  route: string,
+  watch: ThreadVersionWatch,
+): ChatGptThreadSession & { publish(messages: readonly ChatGptThreadMessage[]): void } {
+  let snapshot: ThreadSnapshot | null = {
+    route,
+    messages: null,
+    failure: 'chatgpt_export_thread_incomplete',
+  };
+  /**
+   * The element each message's checkbox was last bound to. An unmounted message
+   * keeps it, so selection mode does not rebind it on every refresh.
+   */
+  const lastHosts = new Map<string, HTMLElement>();
+
+  function currentSnapshot(): ThreadSnapshot | null {
+    if (!snapshot) return null;
+    if (snapshot.route !== normalizedConversationUrl()) {
+      return { ...snapshot, messages: null, failure: 'chatgpt_export_conversation_changed' };
+    }
+    if (snapshot.messages && watch.changed()) {
+      snapshot = { ...snapshot, messages: null, failure: 'chatgpt_export_thread_changed' };
+    }
+    return snapshot;
   }
-  if (snapshot.messages && watch?.changed()) {
-    snapshot = { ...snapshot, messages: null, failure: 'chatgpt_export_thread_changed' };
+
+  function crawledMessages(selectedIds: ReadonlySet<string>): readonly ChatGptThreadMessage[] {
+    const current = currentSnapshot();
+    if (!current?.messages) throw new Error(current?.failure || 'chatgpt_export_thread_incomplete');
+    const known = new Set(current.messages.map((message) => message.id));
+    const missing = Array.from(selectedIds).filter((id) => !known.has(id));
+    if (missing.length > 0) throw new Error(`chatgpt_export_messages_missing:${missing.join(',')}`);
+    return current.messages;
   }
-  return snapshot;
+
+  return {
+    publish(messages) {
+      if (!snapshot) return;
+      watch.adopt(messages);
+      snapshot = { route, messages, failure: '' };
+    },
+    containers() {
+      const messages = currentSnapshot()?.messages;
+      if (!messages) return [];
+      const hosts = liveHosts();
+      return messages.map((message, sequence) => {
+        const container = hosts.get(message.id) ?? lastHosts.get(message.id) ?? message.host;
+        lastHosts.set(message.id, container);
+        return { id: message.id, sequence, role: message.role, container };
+      });
+    },
+    async build(selectedIds, options) {
+      assertActive(options);
+      return turnsFromMessages(
+        crawledMessages(selectedIds).filter((message) => selectedIds.has(message.id)),
+      );
+    },
+    async roles(selectedIds, options) {
+      assertActive(options);
+      const roles = new Map<string, ChatGptTurnRole>();
+      for (const message of crawledMessages(selectedIds)) {
+        if (selectedIds.has(message.id)) roles.set(message.id, message.role);
+      }
+      return roles;
+    },
+    release() {
+      snapshot = null;
+      watch.stop();
+      lastHosts.clear();
+    },
+  };
 }
 
 /** Where each message's checkbox goes now: its live element, else the one it was read from. */
@@ -143,45 +195,13 @@ function liveHosts(): Map<string, HTMLElement> {
   return hosts;
 }
 
-export function collectChatGptTurnContainers(): ChatGptTurnContainer[] {
-  const current = currentSnapshot();
-  if (!current) {
-    // A thread on the current DOM that was not crawled would list only the
-    // few mounted items; refuse rather than offer a partial selection.
-    return hasRenderedThread() ? [] : chatgptCollectTurnContainers();
-  }
-  if (!current.messages) return [];
-  const hosts = liveHosts();
-  return current.messages.map((message, sequence) => {
-    const container = hosts.get(message.id) ?? lastHosts.get(message.id) ?? message.host;
-    lastHosts.set(message.id, container);
-    return { id: message.id, sequence, role: message.role, container };
-  });
-}
-
-function crawledMessages(selectedIds: ReadonlySet<string>): readonly ChatGptThreadMessage[] {
-  const current = currentSnapshot();
-  if (!current?.messages) throw new Error(current?.failure || 'chatgpt_export_thread_incomplete');
-  const known = new Set(current.messages.map((message) => message.id));
-  const missing = Array.from(selectedIds).filter((id) => !known.has(id));
-  if (missing.length > 0) throw new Error(`chatgpt_export_messages_missing:${missing.join(',')}`);
-  return current.messages;
-}
-
 /**
- * Selected messages as export turns, in conversation order. A prompt and its
- * reply share an item, so they form one turn when both are selected; either
- * alone becomes a one-sided turn.
+ * Selectable messages without a crawl: the earlier DOM's retained containers.
+ * A thread on the current DOM that was not crawled would list only the few
+ * mounted items, so it offers nothing rather than a partial selection.
  */
-export async function buildChatGptExportTurns(
-  selectedIds: ReadonlySet<string>,
-  options: ChatGptReadOptions,
-): Promise<ChatTurn[]> {
-  if (!snapshot) return buildChatGptTurnsForSelection(selectedIds, options);
-  assertActive(options);
-  return turnsFromMessages(
-    crawledMessages(selectedIds).filter((message) => selectedIds.has(message.id)),
-  );
+export function uncrawledChatGptTurnContainers(): ChatGptTurnContainer[] {
+  return hasRenderedThread() ? [] : chatgptCollectTurnContainers();
 }
 
 function turnsFromMessages(messages: readonly ChatGptThreadMessage[]): ChatTurn[] {
@@ -204,19 +224,6 @@ function turnsFromMessages(messages: readonly ChatGptThreadMessage[]): ChatTurn[
     }
   }
   return turns;
-}
-
-export async function resolveChatGptExportRoles(
-  selectedIds: ReadonlySet<string>,
-  options: ExportSelectionOptions = {},
-): Promise<ReadonlyMap<string, ChatGptTurnRole>> {
-  if (!snapshot) return resolveChatGptSelectionRoles(selectedIds, options);
-  assertActive(options);
-  const roles = new Map<string, ChatGptTurnRole>();
-  for (const message of crawledMessages(selectedIds)) {
-    if (selectedIds.has(message.id)) roles.set(message.id, message.role);
-  }
-  return roles;
 }
 
 /**

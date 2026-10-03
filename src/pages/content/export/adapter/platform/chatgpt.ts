@@ -1,18 +1,8 @@
-import {
-  type ExtractedContent,
-  createContentExtractor,
-} from '@/features/export/services/DOMContentExtractor';
-import type { ExportContentDialect } from '@/features/export/services/exportContentDialect';
+import type { ExtractedContent } from '@/features/export/services/DOMContentExtractor';
 import { escapeHtml, escapeHtmlAttribute } from '@/features/export/services/exportDomPolicy';
 import type { SiteAdapter } from '@/features/plugins/types';
 
-import { prepareChatGptExportWithProgress } from '../../chatgptCrawlProgress';
 import { TURN_ITEM_SELECTOR, resolveVisibleConversationRoot } from '../chatgptThread';
-import {
-  buildChatGptExportTurns,
-  collectChatGptTurnContainers,
-  resolveChatGptExportRoles,
-} from '../chatgptThreadExport';
 import type { ExportPlatformAdapter } from './contract';
 
 function extractTitle(): string {
@@ -232,7 +222,13 @@ export function chatgptExtractInlineFormula(
 }
 
 export function buildChatGptAdapter(site: SiteAdapter): ExportPlatformAdapter {
-  const dialect: ExportContentDialect = {
+  return {
+    site,
+    getUserSelectors: () => [site.selectors.userTurn],
+    getAssistantSelectors: () => [site.selectors.assistantTurn],
+    extractConversationTitle: extractTitle,
+    extractConversationIdFromUrl: extractId,
+    resolveConversationRoot: resolveRoot,
     extractUserImage,
     extractUserText: chatgptExtractUserText,
     getUserAttachmentCandidates,
@@ -240,22 +236,5 @@ export function buildChatGptAdapter(site: SiteAdapter): ExportPlatformAdapter {
     extractFormula: chatgptExtractFormula,
     extractCodeBlock,
     extractInlineFormula: chatgptExtractInlineFormula,
-  };
-  const extractor = createContentExtractor(dialect);
-  return {
-    ...dialect,
-    site,
-    getUserSelectors: () => [site.selectors.userTurn],
-    getAssistantSelectors: () => [site.selectors.assistantTurn],
-    extractConversationTitle: extractTitle,
-    extractConversationIdFromUrl: extractId,
-    shouldPreloadHistory: () => false,
-    isConversationPage: chatgptIsConversationPage,
-    resolveConversationRoot: resolveRoot,
-    prepareConversation: (options) => prepareChatGptExportWithProgress({ ...options, extractor }),
-    collectTurnContainers: collectChatGptTurnContainers,
-    buildTurnsForSelection: (selectedIds, options) =>
-      buildChatGptExportTurns(selectedIds, { ...options, extractor }),
-    resolveSelectionRoles: resolveChatGptExportRoles,
   };
 }

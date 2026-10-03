@@ -10,12 +10,13 @@ import { normalizeText } from '@/features/export/services/exportDomPolicy';
 import { makeTurns, mountThreadFixture } from '../adapter/__tests__/chatgptThreadFixture';
 import type { ChatGptCrawlTiming } from '../adapter/chatgptCrawl';
 import {
-  collectChatGptTurnContainers,
-  resetChatGptThreadSnapshot,
+  type ChatGptThreadPreparer,
+  createChatGptThreadPreparer,
 } from '../adapter/chatgptThreadExport';
 import { prepareChatGptExportWithProgress } from '../chatgptCrawlProgress';
 
 let extractor: ContentExtractor;
+let preparer: ChatGptThreadPreparer;
 
 const FAST: Partial<ChatGptCrawlTiming> = {
   pollMs: 1,
@@ -31,7 +32,7 @@ function pill(): HTMLElement | null {
 
 beforeEach(() => {
   document.body.replaceChildren();
-  resetChatGptThreadSnapshot();
+  preparer = createChatGptThreadPreparer();
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   extractor = createContentExtractor({
     extractUserImage: (element: HTMLElement) => element.querySelectorAll('img'),
@@ -64,22 +65,20 @@ describe('prepareChatGptExportWithProgress', () => {
     document.body.appendChild(exportPill);
     const shown: string[] = [];
 
-    await expect(
-      prepareChatGptExportWithProgress({
-        extractor,
-        timing: FAST,
-        onProgress: () => {
-          expect(exportPill.hidden).toBe(true);
-          shown.push(pill()?.textContent ?? '');
-        },
-      }),
-    ).resolves.not.toBeNull();
+    const session = await prepareChatGptExportWithProgress(preparer, {
+      extractor,
+      timing: FAST,
+      onProgress: () => {
+        expect(exportPill.hidden).toBe(true);
+        shown.push(pill()?.textContent ?? '');
+      },
+    });
 
     expect(shown.at(-1)).toContain('Reading conversation');
     expect(shown.at(-1)).toContain('Turns read: 5');
     expect(pill()).toBeNull();
     expect(exportPill.hidden).toBe(false);
-    expect(collectChatGptTurnContainers()).toHaveLength(10);
+    expect(session?.containers()).toHaveLength(10);
   });
 
   it('cancels from its button: restores the scroll, keeps nothing and rejects quietly', async () => {
@@ -92,13 +91,12 @@ describe('prepareChatGptExportWithProgress', () => {
     };
 
     await expect(
-      prepareChatGptExportWithProgress({ extractor, timing: FAST, onProgress }),
+      prepareChatGptExportWithProgress(preparer, { extractor, timing: FAST, onProgress }),
     ).rejects.toMatchObject({ name: 'AbortError' });
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(pill()).toBeNull();
     expect(fixture.range() - fixture.offset()).toBe(fromEnd);
-    expect(collectChatGptTurnContainers()).toEqual([]);
   });
 
   it('stops when the export itself is cancelled', async () => {
@@ -109,7 +107,7 @@ describe('prepareChatGptExportWithProgress', () => {
     };
 
     await expect(
-      prepareChatGptExportWithProgress({
+      prepareChatGptExportWithProgress(preparer, {
         extractor,
         signal: controller.signal,
         timing: FAST,
@@ -122,7 +120,9 @@ describe('prepareChatGptExportWithProgress', () => {
   it('shows nothing on the earlier DOM, which has no crawl', async () => {
     document.body.innerHTML = '<main><div data-turn-id-container="a"></div></main>';
 
-    await expect(prepareChatGptExportWithProgress({ extractor, timing: FAST })).resolves.toBeNull();
+    await expect(
+      prepareChatGptExportWithProgress(preparer, { extractor, timing: FAST }),
+    ).resolves.toBeNull();
     expect(pill()).toBeNull();
   });
 });

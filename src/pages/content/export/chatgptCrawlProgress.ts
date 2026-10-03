@@ -3,8 +3,7 @@ import type { TranslationKey } from '@/utils/translations';
 
 import type { ChatGptCrawlOptions } from './adapter/chatgptCrawl';
 import { hasRenderedThread } from './adapter/chatgptThread';
-import { prepareChatGptExport } from './adapter/chatgptThreadExport';
-import type { ConversationPreparation } from './adapter/type';
+import type { ChatGptThreadPreparer, ChatGptThreadSession } from './adapter/chatgptThreadExport';
 
 /**
  * Progress for ChatGPT's thread crawl, which reads a long conversation for a
@@ -71,14 +70,15 @@ function showCrawlProgress(t: Translate, onCancel: () => void): CrawlProgressPil
 }
 
 /**
- * {@link prepareChatGptExport} with the progress pill. The earlier DOM has no
- * crawl, so it gets no pill.
+ * A ChatGPT preparation with the progress pill. The earlier DOM has no crawl,
+ * so it gets no pill.
  */
 export async function prepareChatGptExportWithProgress(
+  preparer: ChatGptThreadPreparer,
   options: ChatGptCrawlOptions,
   t: Translate = getTranslationSync,
-): Promise<ConversationPreparation | null> {
-  if (!hasRenderedThread()) return prepareChatGptExport(options);
+): Promise<ChatGptThreadSession | null> {
+  if (!hasRenderedThread()) return preparer.prepare(options);
 
   const crawl = new AbortController();
   const forward = () => crawl.abort();
@@ -86,7 +86,7 @@ export async function prepareChatGptExportWithProgress(
   options.signal?.addEventListener('abort', forward, { once: true });
   const pill = showCrawlProgress(t, () => crawl.abort());
   try {
-    return await prepareChatGptExport({
+    return await preparer.prepare({
       ...options,
       signal: crawl.signal,
       onProgress: (turns) => {

@@ -10,14 +10,16 @@ import { normalizeText } from '@/features/export/services/exportDomPolicy';
 import { makeTurns, mountThreadFixture } from '../adapter/__tests__/chatgptThreadFixture';
 import type { ChatGptCrawlTiming } from '../adapter/chatgptCrawl';
 import {
-  collectChatGptTurnContainers,
-  resetChatGptThreadSnapshot,
+  type ChatGptThreadPreparer,
+  type ChatGptThreadSession,
+  createChatGptThreadPreparer,
 } from '../adapter/chatgptThreadExport';
-import type { ExportPlatformAdapter } from '../adapter/platformAdapters';
+import type { ExportSelectionOptions } from '../adapter/type';
 import { prepareChatGptExportWithProgress } from '../chatgptCrawlProgress';
 import { runPreparedExport } from '../preparedExport';
 
 let extractor: ContentExtractor;
+let preparer: ChatGptThreadPreparer;
 
 const FAST: Partial<ChatGptCrawlTiming> = {
   pollMs: 1,
@@ -43,21 +45,26 @@ class TrackedMutationObserver extends MutationObserver {
 }
 
 /**
- * The ChatGPT export adapter's preparation, crawling at test speed.
+ * The ChatGPT export's preparation, crawling at test speed.
  * `onProgress` lets a test act mid-crawl.
  */
-function chatGptAdapter(
-  onProgress?: (turns: number) => void,
-): Pick<ExportPlatformAdapter, 'prepareConversation'> {
+function chatGptSource(onProgress?: (turns: number) => void): {
+  prepare: (options: ExportSelectionOptions) => Promise<ChatGptThreadSession | null>;
+} {
   return {
-    prepareConversation: (options) =>
-      prepareChatGptExportWithProgress({ extractor, ...options, timing: FAST, onProgress }),
+    prepare: (options) =>
+      prepareChatGptExportWithProgress(preparer, {
+        extractor,
+        ...options,
+        timing: FAST,
+        onProgress,
+      }),
   };
 }
 
 beforeEach(() => {
   document.body.replaceChildren();
-  resetChatGptThreadSnapshot();
+  preparer = createChatGptThreadPreparer();
   observing.clear();
   vi.stubGlobal('MutationObserver', TrackedMutationObserver);
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -89,16 +96,18 @@ describe('runPreparedExport', () => {
     mountThreadFixture({ turns: makeTurns(4) });
     let observedDuringSelection = 0;
     let listed = 0;
+    let read = null as ChatGptThreadSession | null;
 
     await runPreparedExport(
-      chatGptAdapter(),
+      chatGptSource(),
       { expectedUrl: location.href },
       {
         scrollToTop: async () => {},
         // The session ends by export, Cancel, Escape or teardown alike: it resolves.
-        exportSelection: async () => {
+        exportSelection: async (session) => {
+          read = session;
           observedDuringSelection = observing.size;
-          listed = collectChatGptTurnContainers().length;
+          listed = session?.containers().length ?? 0;
         },
       },
     );
@@ -106,7 +115,7 @@ describe('runPreparedExport', () => {
     expect(observedDuringSelection).toBeGreaterThan(0);
     expect(listed).toBe(8);
     expect(observing.size).toBe(0);
-    expect(collectChatGptTurnContainers()).toEqual([]);
+    expect(read?.containers()).toEqual([]);
   });
 
   it('stops watching the ChatGPT thread when the session fails', async () => {
@@ -114,7 +123,7 @@ describe('runPreparedExport', () => {
 
     await expect(
       runPreparedExport(
-        chatGptAdapter(),
+        chatGptSource(),
         { expectedUrl: location.href },
         {
           scrollToTop: async () => {},
@@ -132,7 +141,7 @@ describe('runPreparedExport', () => {
     const turns = makeTurns(6);
     mountThreadFixture({ turns });
     const controller = new AbortController();
-    const adapter = chatGptAdapter((count) => {
+    const adapter = chatGptSource((count) => {
       if (count === 2) controller.abort();
     });
     const exportSelection = vi.fn(async () => {});
@@ -158,20 +167,20 @@ describe('runPreparedExport', () => {
     const seen = { listed: 0, observing: 0 };
     const startSecond = () =>
       runPreparedExport(
-        chatGptAdapter(),
+        chatGptSource(),
         { expectedUrl: location.href },
         {
           scrollToTop: async () => {},
-          exportSelection: async () => {
+          exportSelection: async (session) => {
             // The cancelled export's cleanup has run by now.
             await firstEnded;
-            seen.listed = collectChatGptTurnContainers().length;
+            seen.listed = session?.containers().length ?? 0;
             seen.observing = observing.size;
           },
         },
       );
     // Export B starts once A has read everything: A is cancelled and restores the scroll.
-    const adapter = chatGptAdapter((count) => {
+    const adapter = chatGptSource((count) => {
       if (count !== turns.length || second) return;
       first.abort();
       second = startSecond();
@@ -191,15 +200,15 @@ describe('runPreparedExport', () => {
 
   it('ignores a release from a preparation that a newer one replaced', async () => {
     mountThreadFixture({ turns: makeTurns(3) });
-    const older = await prepareChatGptExportWithProgress({ extractor, timing: FAST });
-    const newer = await prepareChatGptExportWithProgress({ extractor, timing: FAST });
+    const older = await prepareChatGptExportWithProgress(preparer, { extractor, timing: FAST });
+    const newer = await prepareChatGptExportWithProgress(preparer, { extractor, timing: FAST });
 
     older?.release();
-    expect(collectChatGptTurnContainers()).toHaveLength(6);
+    expect(newer?.containers()).toHaveLength(6);
     expect(observing.size).toBe(1);
 
     newer?.release();
-    expect(collectChatGptTurnContainers()).toEqual([]);
+    expect(newer?.containers()).toEqual([]);
     expect(observing.size).toBe(0);
   });
 
@@ -209,7 +218,7 @@ describe('runPreparedExport', () => {
 
     await expect(
       runPreparedExport(
-        { prepareConversation: async () => null },
+        { prepare: async () => null },
         { signal: controller.signal, expectedUrl: location.href },
         { scrollToTop: async () => controller.abort(), exportSelection },
       ),
@@ -222,7 +231,7 @@ describe('runPreparedExport', () => {
     const steps: string[] = [];
 
     await runPreparedExport(
-      { prepareConversation: async () => null },
+      { prepare: async () => null },
       { expectedUrl: location.href },
       {
         scrollToTop: async () => {

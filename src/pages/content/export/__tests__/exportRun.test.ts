@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ExportFormat } from '../../../../features/export/types/export';
 import { nativeHealthReporter } from '../../nativeHealth';
-import type { ExportPlatformAdapter } from '../adapter/platformAdapters';
 import type { ChatTurn, ConversationCollector, ExportMessage } from '../conversationCollector';
 import type { ExportDictionaries } from '../exportLocale';
+import type { ExportSite, ExportTurnReader, ExportTurnSession } from '../exportSite';
 
 const mocks = vi.hoisted(() => ({
   exportPendingConversation: vi.fn(),
@@ -46,14 +46,26 @@ async function settle(running: Promise<void>): Promise<void> {
   await until(() => done);
 }
 
-function fakeAdapter(): ExportPlatformAdapter {
+/** A host without lazy history whose messages and turns come from `page`. */
+function fakeSite(page: ConversationCollector): ExportSite {
   return {
-    site: { id: 'test', label: 'Test Chat' },
-    shouldPreloadHistory: () => false,
-    getUserSelectors: () => ['.user'],
-    getAssistantSelectors: () => ['.assistant'],
-    extractConversationTitle: () => 'A conversation',
-  } as unknown as ExportPlatformAdapter;
+    id: 'test',
+    label: 'Test Chat',
+    title: () => 'A conversation',
+    page,
+    turns: { scrollsWhileBuilding: false, ...pageReader(page) },
+  };
+}
+
+function pageReader(page: ConversationCollector): ExportTurnReader {
+  return {
+    messages: () => page.collectSelectionMessages(),
+    build: async (ids) => page.turnsForMessageIds(ids),
+  };
+}
+
+function preparedSession(page: ConversationCollector, release: () => void): ExportTurnSession {
+  return { ...pageReader(page), release };
 }
 
 function fakeCollector(messages: ExportMessage[]): ConversationCollector {
@@ -114,11 +126,11 @@ describe('createExportRunner', () => {
     const result = { success: true };
     mocks.exportPendingConversation.mockResolvedValue(result);
     const release = vi.fn();
-    const adapter = fakeAdapter();
-    adapter.prepareConversation = vi.fn(async () => ({ release }));
+    const collector = fakeCollector(renderMessages());
+    const prepareConversation = vi.fn(async () => preparedSession(collector, release));
+    const site = fakeSite(collector);
     const runner = createExportRunner({
-      adapter,
-      collector: fakeCollector(renderMessages()),
+      site: { ...site, turns: { ...site.turns, prepare: prepareConversation } },
     });
     const prepare = vi.fn(async () => {});
 
@@ -133,7 +145,7 @@ describe('createExportRunner', () => {
     await settle(running);
 
     expect(prepare).toHaveBeenCalledWith(expect.any(AbortSignal));
-    expect(adapter.prepareConversation).toHaveBeenCalledWith({
+    expect(prepareConversation).toHaveBeenCalledWith({
       signal: expect.any(AbortSignal),
       expectedUrl: location.href,
     });
@@ -156,10 +168,7 @@ describe('createExportRunner', () => {
   it('alerts the export error instead of reporting success', async () => {
     mocks.exportPendingConversation.mockResolvedValue({ success: false, error: 'boom' });
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
-    const runner = createExportRunner({
-      adapter: fakeAdapter(),
-      collector: fakeCollector(renderMessages()),
-    });
+    const runner = createExportRunner({ site: fakeSite(fakeCollector(renderMessages())) });
 
     const running = runner.run({ format: ExportFormat.JSON }, { dict, lang: 'en' });
     await until(() => selectionBar() !== null);
@@ -176,7 +185,7 @@ describe('createExportRunner', () => {
     const found = vi.spyOn(nativeHealthReporter, 'reportFound');
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
     const collector = fakeCollector([]);
-    const runner = createExportRunner({ adapter: fakeAdapter(), collector });
+    const runner = createExportRunner({ site: fakeSite(collector) });
 
     await settle(runner.run({ format: ExportFormat.MARKDOWN }, { dict, lang: 'en' }));
 
@@ -197,10 +206,7 @@ describe('createExportRunner', () => {
   });
 
   it('cancel dismisses the selection and ends the run without exporting', async () => {
-    const runner = createExportRunner({
-      adapter: fakeAdapter(),
-      collector: fakeCollector(renderMessages()),
-    });
+    const runner = createExportRunner({ site: fakeSite(fakeCollector(renderMessages())) });
 
     const running = runner.run({ format: ExportFormat.JSON }, { dict, lang: 'en' });
     await until(() => selectionBar() !== null);
@@ -212,19 +218,19 @@ describe('createExportRunner', () => {
     expect(mocks.exportPendingConversation).not.toHaveBeenCalled();
   });
 
-  it('waits for adapter preparation and keeps its resources until selection is cancelled', async () => {
-    const adapter = fakeAdapter();
+  it('waits for the source preparation and keeps its resources until selection is cancelled', async () => {
     const collector = fakeCollector([]);
     const release = vi.fn();
     let completePreparation: () => void = () => {};
-    adapter.prepareConversation = () =>
-      new Promise((resolve) => {
+    const site = fakeSite(collector);
+    const prepare = () =>
+      new Promise<ExportTurnSession>((resolve) => {
         completePreparation = () => {
           collector.collectSelectionMessages = () => renderMessages();
-          resolve({ release });
+          resolve(preparedSession(collector, release));
         };
       });
-    const runner = createExportRunner({ adapter, collector });
+    const runner = createExportRunner({ site: { ...site, turns: { ...site.turns, prepare } } });
 
     const running = runner.run({ format: ExportFormat.JSON }, { dict, lang: 'en' });
     await vi.advanceTimersByTimeAsync(1000);
@@ -242,10 +248,7 @@ describe('createExportRunner', () => {
 
   it('a new run replaces the selection of the previous one', async () => {
     mocks.exportPendingConversation.mockResolvedValue({ success: true });
-    const runner = createExportRunner({
-      adapter: fakeAdapter(),
-      collector: fakeCollector(renderMessages()),
-    });
+    const runner = createExportRunner({ site: fakeSite(fakeCollector(renderMessages())) });
 
     const first = runner.run({ format: ExportFormat.JSON }, { dict, lang: 'en' });
     await until(() => selectionBar() !== null);
@@ -266,10 +269,7 @@ describe('createExportRunner', () => {
 
   it('stays silent when preparation is cancelled', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const runner = createExportRunner({
-      adapter: fakeAdapter(),
-      collector: fakeCollector(renderMessages()),
-    });
+    const runner = createExportRunner({ site: fakeSite(fakeCollector(renderMessages())) });
 
     await settle(
       runner.run({ format: ExportFormat.JSON }, { dict, lang: 'en' }, async () => {

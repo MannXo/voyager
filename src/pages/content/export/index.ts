@@ -14,8 +14,6 @@ import {
 import { type ExportSpeakerLabels } from '../../../features/export/types/export';
 import { ExportDialog } from '../../../features/export/ui/ExportDialog';
 import { watchRouteChanges } from '../utils/routeWatcher';
-import { ExportPlatformAdapter, resolveExportAdapter } from './adapter/platformAdapters';
-import { createConversationCollector } from './conversationCollector';
 import { watchConversationMenusForExport } from './conversationMenuExportObserver';
 import { waitForElement } from './domWait';
 import { startExportEntryGate } from './exportEntryGate';
@@ -32,11 +30,11 @@ import { mountLogoExportButton } from './logoExportButton';
 import { mountPersistentExportToolbar } from './persistentExportToolbar';
 import { startResponseCopyImageActions } from './responseCopyImageAction';
 import { openSidebarConversationForExport } from './sidebarConversationNavigation';
+import { resolveExportSite } from './sites/resolveExportSite';
 
-// Platform adapter — resolved once per page load
-const exportAdapter: ExportPlatformAdapter = resolveExportAdapter();
-const collector = createConversationCollector(exportAdapter);
-const exportRunner = createExportRunner({ adapter: exportAdapter, collector });
+// Resolved once per page load
+const exportSite = resolveExportSite();
+const exportRunner = createExportRunner({ site: exportSite });
 
 let activeExportDialog: ExportDialog | null = null;
 
@@ -53,7 +51,8 @@ export async function startExportButton(
   const noCleanup = () => {};
   if (options.signal?.aborted) return noCleanup;
   // Check for pending export immediately
-  if (exportAdapter.shouldPreloadHistory()) {
+  const history = exportSite.history;
+  if (history) {
     void exportRunner.resumePending();
   }
 
@@ -64,7 +63,7 @@ export async function startExportButton(
   const t = (key: TranslationKey) => dict[lang]?.[key] ?? dict.en?.[key] ?? key;
 
   // Platforms without Gemini's logo/menu UI: mount the persistent toolbar directly.
-  if (!exportAdapter.shouldPreloadHistory()) {
+  if (!history) {
     let toolbarHandle: ReturnType<typeof mountPersistentExportToolbar> | null = null;
     const mountToolbar = () => {
       toolbarHandle = mountPersistentExportToolbar({
@@ -72,7 +71,7 @@ export async function startExportButton(
         tooltip: t('exportChatJson'),
         onClick: () => void showExportDialog(dict, lang, { signal: options.signal }),
       });
-      toolbarHandle.root.setAttribute('data-gv-platform', exportAdapter.site.id);
+      toolbarHandle.root.setAttribute('data-gv-platform', exportSite.id);
     };
     const unmountToolbar = () => {
       exportRunner.cancel();
@@ -84,7 +83,7 @@ export async function startExportButton(
     // A host whose chat UI shares the origin with unrelated pages only gets
     // the entry point where a conversation can exist, and loses it again when
     // the SPA navigates away from one.
-    const isConversationPage = exportAdapter.isConversationPage;
+    const isConversationPage = exportSite.isConversationPage;
     let stopEntryGate: () => void;
     if (isConversationPage) {
       stopEntryGate = startExportEntryGate({
@@ -131,18 +130,13 @@ export async function startExportButton(
       if (context.menuType === 'sidebar' && context.trigger) {
         const trigger = context.trigger;
         void (async () => {
-          if (
-            !(await openSidebarConversationForExport(trigger, () =>
-              exportAdapter.getUserSelectors(),
-            ))
-          )
-            return;
+          if (!(await openSidebarConversationForExport(trigger, history.userSelectors))) return;
           await showExportDialog(dict, lang);
         })();
         return;
       }
       if (context.menuType === 'message') {
-        const initialSelectedMessageId = collector.assistantMessageIdFor(context.trigger);
+        const initialSelectedMessageId = exportSite.page.assistantMessageIdFor(context.trigger);
         void showExportDialog(dict, lang, { initialSelectedMessageId });
         return;
       }
@@ -152,8 +146,7 @@ export async function startExportButton(
   const copyImageActions = startResponseCopyImageActions({
     dict,
     language: () => lang,
-    collector,
-    adapter: exportAdapter,
+    site: exportSite,
   });
 
   // The lr26 UI removed the logo entirely; resolveExportLogoAnchor short-circuits

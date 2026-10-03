@@ -8,7 +8,6 @@ import type { ExportContentDialect } from '@/features/export/services/exportCont
 import { normalizeText } from '@/features/export/services/exportDomPolicy';
 
 import { type ChatGptCrawlTiming, crawlChatGptThread } from '../chatgptCrawl';
-import { resetChatGptThreadSnapshot } from '../chatgptThreadExport';
 import { type FixtureTurn, makeTurns, mountThreadFixture } from './chatgptThreadFixture';
 
 let extractor: ContentExtractor;
@@ -23,7 +22,6 @@ const FAST: Partial<ChatGptCrawlTiming> = {
 
 beforeEach(() => {
   document.body.replaceChildren();
-  resetChatGptThreadSnapshot();
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   extractor = createContentExtractor({
     extractUserImage: (element: HTMLElement) => element.querySelectorAll('img'),
