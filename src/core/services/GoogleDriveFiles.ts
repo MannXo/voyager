@@ -85,7 +85,6 @@ export class GoogleDriveFiles {
         fileName,
         this.fileIdByName[fileName] ?? null,
       );
-
       this.fileIdByName[fileName] = fileId;
       return fileId;
     }
@@ -114,7 +113,6 @@ export class GoogleDriveFiles {
     const existingId = await this.find(token, fileName);
     if (existingId) {
       // Found existing file
-
       this.fileIdByName[fileName] = existingId;
 
       // Check if it needs moving
@@ -129,7 +127,6 @@ export class GoogleDriveFiles {
     // 4. Create new file in the backup folder
     logger.info(`[GoogleDriveSyncService] Creating new file ${fileName} in backup folder`);
     const newId = await this.createFile(token, fileName, folderId);
-
     this.fileIdByName[fileName] = newId;
     return newId;
   }
