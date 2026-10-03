@@ -3,26 +3,6 @@
 Read this file when changing Gemini scrolling, model or thinking controls, usage parsing, or
 generation traffic detection.
 
-## Prevent auto scroll swallowed `scrollIntoView` layout side effects
-
-- **Trap:** With prevent-auto-scroll enabled, sending a Gemini message could make the sidebar/folder
-  area render far too wide. Collapsing and reopening the sidebar restored the layout. The page
-  script returned early from Gemini's native `scrollIntoView`. That blocked the downward chat jump,
-  but it also swallowed Gemini's own layout side effects for the sidebar.
-- **Rule:** Let the native `scrollIntoView` run, then restore protected vertical scroll positions
-  for the chat/viewport.
-- **Guard:** `src/pages/content/preventAutoScroll/__tests__/preventAutoScrollScript.test.ts`
-
-## Prevent auto scroll must keep reading position after generation settles
-
-- **Trap:** With the toggle on, a finished conversation could still yank the viewport from ~40% back
-  to the bottom after a delay. The #741 restore fix gated blocking on a 120s post-submit window, so
-  idle reading (no recent submit / window expired) let Gemini's delayed scroll-to-bottom through.
-- **Rule:** When enabled, block downward chat auto-scroll whenever the user is scrolled up, except
-  during short load/route restore windows. Cancel those windows on user wheel/touch in the chat so
-  reading intent wins over delayed Gemini jumps. Still re-allow briefly after conversation switches.
-- **Guard:** `src/pages/content/preventAutoScroll/__tests__/preventAutoScrollScript.test.ts`
-
 ## Gemini table menus are not model menus
 
 - **Trap:** Gemini table option menus showed Voyager default-model star buttons, including the "Set
@@ -107,17 +87,6 @@ generation traffic detection.
   fast-path, and bail without opening the menu when the pill is not readable yet (retry next tick).
 - **Guard:** `src/pages/content/defaultModel/__tests__/modelLocker.test.ts` ("does not open the
   picker while the trigger pill is still empty")
-
-## Gemini native copy traffic is not generation traffic
-
-- **Trap:** Clicking Gemini's native copy response button could make the page feel stuck or trigger
-  generation-related observers. The observers looked at `batchexecute` request bodies and could
-  match generation-looking text inside copy-related traffic. Both `fetch` and XHR paths needed the
-  same guard.
-- **Rule:** Ignore copy/non-generation `batchexecute` requests before treating traffic as generation
-  completion or usage refresh evidence.
-- **Guard:** `src/pages/content/responseNotification/__tests__/pageObserver.test.ts`
-  `src/pages/content/usageStatus/__tests__/usageObserver.test.ts`
 
 ## Gemini usage buckets must use the period enum, not reset order
 
