@@ -10,7 +10,10 @@
  * - promptPanelPlacement.ts: anchoring, lock, drag
  * - promptListView.ts: tag filter and prompt rows
  * - savedLibraryView.ts: starred messages and highlights
- * - promptEditForm.ts, promptPreview.ts, promptVersionBadge.ts
+ * - promptEditForm.ts: add and edit a prompt
+ * - promptPreview.ts: the hover card with the rendered prompt (via promptMarkdownLoader.ts)
+ * - promptVersionBadge.ts, promptThemeToggle.ts, promptViewModeToggle.ts: header controls
+ * - promptPrefs.ts: how panel and trigger preferences are read and written
  */
 import browser from 'webextension-polyfill';
 

@@ -1,4 +1,3 @@
-import { createLockIcon, createLockOpenIcon } from '@/core/icons/promptManagerIcons';
 /**
  * Where the Prompt Manager panel sits.
  *
@@ -7,6 +6,7 @@ import { createLockIcon, createLockOpenIcon } from '@/core/icons/promptManagerIc
  * (persisted across pages), clamped into the viewport so a narrower window can
  * never strand the unlock button off-screen (#635).
  */
+import { createLockIcon, createLockOpenIcon } from '@/core/icons/promptManagerIcons';
 import { StorageKeys } from '@/core/types/common';
 import type { TranslationKey } from '@/utils/translations';
 
