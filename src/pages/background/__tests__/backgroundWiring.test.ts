@@ -1,112 +1,15 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const wiring = vi.hoisted(() => {
-  const pending = () => new Promise<void>(() => {});
-  const siteAccess = {
-    syncCustom: vi.fn(pending),
-    syncPlugins: vi.fn(pending),
-    refreshPluginSiteDomains: vi.fn(pending),
-    syncPromptNudgeIcon: vi.fn(),
-    permissionAdded: vi.fn(),
-    permissionRemoved: vi.fn(),
-  };
-  const refresher = { refresh: vi.fn(async () => ({ ok: true })) };
-  return {
-    pending,
-    createCatalog: vi.fn(),
-    siteAccess,
-    refresher,
-    target: 'chrome',
-    plugin: vi.fn(),
-    image: vi.fn(),
-    page: vi.fn(),
-    highlight: vi.fn(),
-    cloud: vi.fn(),
-    capture: {
-      cleanupLegacyGeneratedUiCapturePermission: vi.fn(pending),
-      handle: vi.fn(),
-    },
-    notifications: {
-      connectNativeOpenConversationPort: vi.fn(),
-      registerClickListener: vi.fn(() => {
-        chrome.notifications.onClicked.addListener(() => {});
-      }),
-      handle: vi.fn(),
-    },
-  };
-});
+import { SAFARI_NATIVE_APP_ID } from '@/core/utils/safariNativeClipboard';
+import {
+  PLUGIN_CATALOG_REFRESH_MESSAGE,
+  PLUGIN_CONTENT_SCRIPT_SYNC_MESSAGE,
+} from '@/features/plugins/runtime/messages';
 
-vi.mock('@/core/utils/browser', () => ({ getVoyagerBuildTarget: () => wiring.target }));
-vi.mock('@/features/announcements/background', () => ({
-  startRemoteAnnouncementBackgroundService: () => {
-    return { getPendingAnnouncements: vi.fn(), acknowledgeAnnouncement: vi.fn() };
-  },
-  isRemoteAnnouncementRuntimeMessage: () => false,
-}));
-vi.mock('@/features/onboarding/welcomePage', () => ({
-  registerWelcomePageOnInstall: vi.fn(),
-}));
-vi.mock('../watermarkDefaultMigration', () => ({
-  registerWatermarkDefaultMigrationOnInstall: vi.fn(),
-}));
-vi.mock('../devAutoReload', () => ({ startDevAutoReload: vi.fn() }));
-vi.mock('@/features/plugins/remote/hostCatalogRefresh', () => ({
-  HostCatalogRefresher: class {
-    constructor() {
-      wiring.createCatalog();
-      return wiring.refresher;
-    }
-  },
-}));
-vi.mock('@/features/plugins/builtin/chatgptTemporaryHandoff/background', () => ({
-  startChatGptTemporaryHandoffBackgroundService: vi.fn(),
-  isChatGptHandoffExpiryMessage: () => false,
-  handleChatGptHandoffExpiryMessage: vi.fn(),
-  chatGptHandoffTabIdResponse: vi.fn(),
-}));
-vi.mock('@/features/storageQuotaWarning/background', () => ({
-  startStorageQuotaWarningBackgroundService: vi.fn(),
-}));
-vi.mock('../researchPackOwner', () => ({
-  startResearchPackOwner: vi.fn(),
-}));
-vi.mock('../queueOwners', () => ({ startQueueOwners: vi.fn() }));
-vi.mock('../responseNotifications', () => ({
-  createResponseNotifications: () => wiring.notifications,
-}));
-vi.mock('../siteAccessRegistration', () => ({
-  createSiteAccessRegistration: () => wiring.siteAccess,
-}));
-vi.mock('../mainWorldRegistration', () => ({
-  createMainWorldRegistration: () => ({
-    registerFetchInterceptor: wiring.pending,
-    syncResponseCompleteObserverRegistration: wiring.pending,
-  }),
-}));
-vi.mock('../generatedUiCapture', () => ({ createGeneratedUiCapture: () => wiring.capture }));
-vi.mock('../backgroundSettings', () => ({
-  disableRetiredTabTitleUpdateSetting: wiring.pending,
-  migrateOptionalHighlightSetting: wiring.pending,
-}));
-vi.mock('../starredMessages', () => ({
-  createStarredMessagesOwner: () => ({
-    handle: () => null,
-    getAllStarredMessages: vi.fn(),
-  }),
-}));
-vi.mock('../forkMessages', () => ({
-  createForkMessagesOwner: () => ({
-    handle: () => null,
-    getAllForkNodes: vi.fn(),
-  }),
-}));
-vi.mock('../cloudSyncMessages', () => ({ createCloudSyncMessageHandler: () => wiring.cloud }));
-vi.mock('../pageRuntimeMessages', () => ({ handlePageRuntimeMessage: wiring.page }));
-vi.mock('../highlightMessages', () => ({ handleHighlightRuntimeMessage: wiring.highlight }));
-vi.mock('../pluginRuntimeMessages', () => ({ handlePluginRuntimeMessage: wiring.plugin }));
-vi.mock('../runtimeImageMessages', () => ({
-  isRuntimeImageMessage: (message: { type?: string }) => message.type === 'gv.fetchImage',
-  handleRuntimeImageMessage: wiring.image,
+// The real background owners run; only browser I/O is replaced. The polyfill reads the
+// current global so each started background sees its own stubbed browser.
+vi.mock('webextension-polyfill', () => ({
+  default: new Proxy({}, { get: (_target, key) => Reflect.get(chrome, key) }),
 }));
 
 type MessageListener = (
@@ -114,84 +17,170 @@ type MessageListener = (
   sender: chrome.runtime.MessageSender,
   sendResponse: (response: unknown) => void,
 ) => boolean | undefined;
-const originalPermissions = Object.getOwnPropertyDescriptor(chrome, 'permissions');
-let listener: MessageListener;
 
-beforeEach(() => {
-  vi.resetModules();
-  vi.clearAllMocks();
-  wiring.target = 'chrome';
-  wiring.plugin.mockReturnValue(null);
-  wiring.page.mockReturnValue(null);
-  wiring.highlight.mockReturnValue(null);
-  wiring.cloud.mockReturnValue(null);
-  wiring.capture.handle.mockReturnValue(null);
-  wiring.notifications.handle.mockReturnValue(null);
-  vi.stubEnv('VOYAGER_DEV_AUTO_RELOAD', '');
-  Object.defineProperty(chrome, 'permissions', {
-    configurable: true,
-    value: {
-      onAdded: { addListener: vi.fn() },
-      onRemoved: { addListener: vi.fn() },
-    },
-  });
-  vi.spyOn(chrome.runtime.onMessage, 'addListener').mockImplementation((callback) => {
-    listener = callback as unknown as MessageListener;
-  });
-});
+const CHATGPT_CATALOG_URL = 'https://voyager.nagi.fun/catalog/hosts/chatgpt.com.json';
+const PLUGIN_SCRIPT_ID = 'gv-plugin-content-script';
 
 afterEach(() => {
-  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   vi.unstubAllEnvs();
-  if (originalPermissions) Object.defineProperty(chrome, 'permissions', originalPermissions);
-  else Reflect.deleteProperty(chrome, 'permissions');
+  vi.resetModules();
 });
 
-describe('background owner wiring', () => {
-  it('leaves unrelated channels alone and answers recognized asynchronous plugin messages exactly once', async () => {
-    await import('../index');
-    const reply = vi.fn();
-    expect(listener({ type: 'gv.chatgptExport.open' }, {}, reply)).toBeUndefined();
-    expect(wiring.plugin).not.toHaveBeenCalled();
-    expect(reply).not.toHaveBeenCalled();
-
-    let finish!: (value: unknown) => void;
-    wiring.plugin.mockReturnValue(
-      new Promise((resolve) => {
-        finish = resolve;
+async function startBackground(target: 'chrome' | 'safari') {
+  vi.resetModules();
+  vi.stubEnv('VOYAGER_BUILD_TARGET', target);
+  vi.stubEnv('VOYAGER_DEV_AUTO_RELOAD', '');
+  const read = async (keys: unknown) =>
+    keys && typeof keys === 'object' && !Array.isArray(keys) ? keys : {};
+  const event = () => ({ addListener: vi.fn(), removeListener: vi.fn() });
+  let listener: MessageListener | undefined;
+  const scripting = {
+    getRegisteredContentScripts: vi.fn(async () => [] as Array<{ id: string }>),
+    registerContentScripts: vi.fn(async () => {}),
+    unregisterContentScripts: vi.fn(async () => {}),
+    executeScript: vi.fn(async () => []),
+  };
+  const connectNative = vi.fn(() => ({ onMessage: event(), onDisconnect: event() }));
+  const catalogFetch = vi.fn<typeof fetch>(async () => new Response('', { status: 404 }));
+  vi.stubGlobal('fetch', catalogFetch);
+  vi.stubGlobal('chrome', {
+    ...chrome,
+    runtime: {
+      ...chrome.runtime,
+      getManifest: () => ({
+        permissions: [],
+        host_permissions: [],
+        content_scripts: [{ matches: [], js: ['content.js'] }],
       }),
-    );
-    const { PLUGIN_CONTENT_SCRIPT_SYNC_MESSAGE } =
-      await import('@/features/plugins/runtime/messages');
-    const message = { type: PLUGIN_CONTENT_SCRIPT_SYNC_MESSAGE };
-    const sender = { id: 'test-extension-id' };
-    expect(listener(message, sender, reply)).toBe(true);
-    expect(reply).not.toHaveBeenCalled();
-    const hooks = wiring.plugin.mock.calls[0][2] as {
-      syncContentScripts: () => Promise<void>;
-      refreshCatalog: (host: string, force: boolean) => Promise<unknown>;
-    };
-    expect(hooks.syncContentScripts).toBe(wiring.siteAccess.syncPlugins);
-    await hooks.refreshCatalog('chatgpt.com', true);
-    expect(wiring.refresher.refresh).toHaveBeenCalledWith('chatgpt.com', { force: true });
-    expect(wiring.createCatalog).toHaveBeenCalledOnce();
-    finish({ ok: true });
-    await Promise.resolve();
-    expect(reply).toHaveBeenCalledExactlyOnceWith({ ok: true });
+      connectNative,
+      onMessage: {
+        addListener: (callback: MessageListener) => {
+          listener = callback;
+        },
+      },
+      onInstalled: event(),
+      onStartup: event(),
+    },
+    storage: {
+      ...chrome.storage,
+      local: { ...chrome.storage.local, get: read, set: vi.fn(async () => {}) },
+      sync: { ...chrome.storage.sync, get: read, set: vi.fn(async () => {}) },
+      session: { get: read, set: vi.fn(async () => {}), remove: vi.fn(async () => {}) },
+      onChanged: event(),
+    },
+    permissions: {
+      contains: vi.fn(async () => false),
+      getAll: vi.fn(async () => ({ origins: [] })),
+      onAdded: event(),
+      onRemoved: event(),
+    },
+    scripting,
+    notifications: { ...chrome.notifications, onClicked: event() },
+    alarms: { ...chrome.alarms, create: vi.fn(async () => {}), onAlarm: event() },
+    tabs: { ...chrome.tabs, query: vi.fn(async () => []), onRemoved: event() },
   });
 
-  it('registers Safari native delivery and answers image rejection through the dedicated path', async () => {
-    wiring.target = 'safari';
-    await import('../index');
-    expect(wiring.notifications.connectNativeOpenConversationPort).toHaveBeenCalledOnce();
+  await import('../index');
+  // Let the startup syncs settle so later observations belong to the message under test.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  scripting.getRegisteredContentScripts.mockClear();
+  scripting.unregisterContentScripts.mockClear();
+  catalogFetch.mockClear();
+  if (!listener) throw new Error('background registered no runtime message listener');
+  const send = (
+    message: unknown,
+    sender: chrome.runtime.MessageSender = { id: chrome.runtime.id },
+  ) => {
     const reply = vi.fn();
-    wiring.image.mockRejectedValueOnce(new Error('image unavailable'));
-    expect(
-      listener({ type: 'gv.fetchImage', url: 'https://example.com/image.png' }, {}, reply),
-    ).toBe(true);
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(reply).toHaveBeenCalledExactlyOnceWith({ ok: false, error: 'image unavailable' });
-    expect(wiring.plugin).not.toHaveBeenCalled();
+    return { open: listener!(message, sender, reply), reply };
+  };
+  const catalogRequests = () =>
+    catalogFetch.mock.calls.filter(([input]) => String(input) === CHATGPT_CATALOG_URL);
+  return { send, scripting, connectNative, catalogRequests };
+}
+
+describe('background runtime messages', () => {
+  it('leaves channels owned by other listeners closed', async () => {
+    const { send } = await startBackground('chrome');
+
+    const { open, reply } = send({ type: 'gv.chatgptExport.open' });
+
+    expect(open).toBeUndefined();
+    expect(reply).not.toHaveBeenCalled();
+  });
+
+  it('answers a content-script repair request once, after the stale plugin registration is removed', async () => {
+    const { send, scripting } = await startBackground('chrome');
+    let release!: () => void;
+    const registryRead = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    scripting.getRegisteredContentScripts.mockImplementation(async () => {
+      await registryRead;
+      return [{ id: PLUGIN_SCRIPT_ID }];
+    });
+
+    const { open, reply } = send({ type: PLUGIN_CONTENT_SCRIPT_SYNC_MESSAGE });
+    expect(open).toBe(true);
+    await vi.waitFor(() => expect(scripting.getRegisteredContentScripts).toHaveBeenCalled());
+    expect(reply).not.toHaveBeenCalled();
+
+    release();
+    await vi.waitFor(() => expect(reply).toHaveBeenCalledExactlyOnceWith({ ok: true }));
+    expect(scripting.unregisterContentScripts).toHaveBeenCalledWith({ ids: [PLUGIN_SCRIPT_ID] });
+  });
+
+  it('shares one forced catalog request between concurrent refresh messages', async () => {
+    const { send, catalogRequests } = await startBackground('chrome');
+    const refresh = {
+      type: PLUGIN_CATALOG_REFRESH_MESSAGE,
+      payload: { host: 'chatgpt.com', force: true },
+    };
+
+    const first = send(refresh);
+    const second = send(refresh);
+
+    expect([first.open, second.open]).toEqual([true, true]);
+    for (const { reply } of [first, second]) {
+      await vi.waitFor(() =>
+        expect(reply).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ ok: true, status: 'missing' }),
+        ),
+      );
+    }
+    expect(catalogRequests()).toHaveLength(1);
+  });
+
+  it('opens the Safari native port only in the Safari build', async () => {
+    const chromeBuild = await startBackground('chrome');
+    expect(chromeBuild.connectNative).not.toHaveBeenCalled();
+
+    const safariBuild = await startBackground('safari');
+    expect(safariBuild.connectNative).toHaveBeenCalledExactlyOnceWith(SAFARI_NATIVE_APP_ID);
+  });
+
+  it('answers a Safari image fetch whose body fails with the error instead of leaving the page waiting', async () => {
+    const { send } = await startBackground('safari');
+    const brokenBody = new ReadableStream({
+      pull(controller) {
+        controller.error(new Error('image unavailable'));
+      },
+    });
+    const image = new Response(brokenBody, { headers: { 'Content-Type': 'image/png' } });
+    vi.mocked(fetch).mockResolvedValue(image);
+
+    const { open, reply } = send(
+      { type: 'gv.fetchImage', url: 'https://lh3.googleusercontent.com/image.png' },
+      {
+        id: chrome.runtime.id,
+        tab: { id: 7, url: 'https://gemini.google.com/app/abc' } as chrome.tabs.Tab,
+      },
+    );
+
+    expect(open).toBe(true);
+    await vi.waitFor(() =>
+      expect(reply).toHaveBeenCalledExactlyOnceWith({ ok: false, error: 'image unavailable' }),
+    );
   });
 });
