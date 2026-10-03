@@ -185,6 +185,18 @@
   color: var(--gv-floating-folder-panel__text);
 }
 
+/* Drops: "into" lights the whole row in the pressed-row token, as ChatGPT
+ * shows a row it is acting on; "beside" is a line in the row text colour, as
+ * ChatGPT has no accent. */
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) {
+  --gv-floating-folder-panel__drop-line: var(--gv-floating-folder-panel__text);
+}
+
+:host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__drop-target {
+  background: var(--gv-floating-folder-panel__surface-active) !important;
+  box-shadow: none;
+}
+
 :host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__folder-name,
 :host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__conv-title {
   font-size: 14px;
