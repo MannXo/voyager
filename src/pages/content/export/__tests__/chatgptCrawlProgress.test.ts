@@ -14,9 +14,12 @@ import {
   createChatGptThreadPreparer,
 } from '../adapter/chatgptThreadExport';
 import { prepareChatGptExportWithProgress } from '../chatgptCrawlProgress';
+import { trackMutationObservers } from './observerTracking';
 
 let extractor: ContentExtractor;
 let preparer: ChatGptThreadPreparer;
+/** Observers that are observing right now. */
+let observing: ReadonlySet<MutationObserver>;
 
 const FAST: Partial<ChatGptCrawlTiming> = {
   pollMs: 1,
@@ -33,6 +36,7 @@ function pill(): HTMLElement | null {
 beforeEach(() => {
   document.body.replaceChildren();
   preparer = createChatGptThreadPreparer();
+  observing = trackMutationObservers();
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   extractor = createContentExtractor({
     extractUserImage: (element: HTMLElement) => element.querySelectorAll('img'),
@@ -53,6 +57,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -81,7 +86,7 @@ describe('prepareChatGptExportWithProgress', () => {
     expect(session?.containers()).toHaveLength(10);
   });
 
-  it('cancels from its button: restores the scroll, keeps nothing and rejects quietly', async () => {
+  it('cancels from its button: restores the scroll, stops watching the thread and rejects quietly', async () => {
     const turns = makeTurns(8);
     const fixture = mountThreadFixture({ turns });
     fixture.setOffset(3000);
@@ -97,6 +102,7 @@ describe('prepareChatGptExportWithProgress', () => {
 
     expect(pill()).toBeNull();
     expect(fixture.range() - fixture.offset()).toBe(fromEnd);
+    expect(observing.size).toBe(0);
   });
 
   it('stops when the export itself is cancelled', async () => {

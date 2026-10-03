@@ -17,9 +17,12 @@ import {
 import type { ExportSelectionOptions } from '../adapter/type';
 import { prepareChatGptExportWithProgress } from '../chatgptCrawlProgress';
 import { runPreparedExport } from '../preparedExport';
+import { trackMutationObservers } from './observerTracking';
 
 let extractor: ContentExtractor;
 let preparer: ChatGptThreadPreparer;
+/** Observers that are observing right now. */
+let observing: ReadonlySet<MutationObserver>;
 
 const FAST: Partial<ChatGptCrawlTiming> = {
   pollMs: 1,
@@ -28,21 +31,6 @@ const FAST: Partial<ChatGptCrawlTiming> = {
   historyIdleMs: 25,
   historyStallMs: 150,
 };
-
-/** Observers that are observing right now. */
-const observing = new Set<MutationObserver>();
-
-class TrackedMutationObserver extends MutationObserver {
-  override observe(target: Node, options?: MutationObserverInit): void {
-    observing.add(this);
-    super.observe(target, options);
-  }
-
-  override disconnect(): void {
-    observing.delete(this);
-    super.disconnect();
-  }
-}
 
 /**
  * The ChatGPT export's preparation, crawling at test speed.
@@ -65,8 +53,7 @@ function chatGptSource(onProgress?: (turns: number) => void): {
 beforeEach(() => {
   document.body.replaceChildren();
   preparer = createChatGptThreadPreparer();
-  observing.clear();
-  vi.stubGlobal('MutationObserver', TrackedMutationObserver);
+  observing = trackMutationObservers();
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   extractor = createContentExtractor({
     extractUserImage: (element: HTMLElement) => element.querySelectorAll('img'),
