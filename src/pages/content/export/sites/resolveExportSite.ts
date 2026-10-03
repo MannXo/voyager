@@ -1,12 +1,18 @@
-import { resolveExportAdapter } from '../adapter/platformAdapters';
+import type { ExportPlatformAdapter } from '../adapter/platformAdapters';
+import { type ExportHostId, resolveExportHost } from '../adapter/platformAdapters';
 import type { ExportSite } from '../exportSite';
 import { createChatGptExportSite } from './chatgpt';
 import { createGeminiExportSite } from './gemini';
 
-/** The conversation export for the current host; any host other than ChatGPT reads like Gemini. */
+/** One export site per registered exporter, keyed like the adapter factories. */
+const EXPORT_SITE_FACTORIES: Record<ExportHostId, (adapter: ExportPlatformAdapter) => ExportSite> =
+  {
+    gemini: createGeminiExportSite,
+    chatgpt: createChatGptExportSite,
+  };
+
+/** The conversation export for the current host. */
 export function resolveExportSite(): ExportSite {
-  const adapter = resolveExportAdapter();
-  return adapter.site.id === 'chatgpt'
-    ? createChatGptExportSite(adapter)
-    : createGeminiExportSite(adapter);
+  const { id, adapter } = resolveExportHost();
+  return EXPORT_SITE_FACTORIES[id](adapter);
 }
