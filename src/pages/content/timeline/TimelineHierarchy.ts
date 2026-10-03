@@ -15,6 +15,7 @@ import {
   getLegacyTimelineCollapsedStorageKey,
   getLegacyTimelineLevelsStorageKey,
 } from './hierarchyTypes';
+import { safeLocalStorageGet, safeLocalStorageSet } from './timelineLocalStorage';
 import type { MarkerLevel, TimelineMarker } from './types';
 
 interface TimelineHierarchyOptions {
@@ -39,21 +40,6 @@ export class TimelineHierarchy {
   private collapsedMarkers = new Set<string>();
   private timelineHierarchyAccountScope: AccountScope | null = null;
   private timelineHierarchyStorageKey: string = StorageKeys.TIMELINE_HIERARCHY;
-  private safeLocalStorageGet(key: string): string | null {
-    try {
-      return localStorage.getItem(key);
-    } catch (error) {
-      console.warn('[Timeline] Failed to read from localStorage:', error);
-      return null;
-    }
-  }
-  private safeLocalStorageSet(key: string, value: string): void {
-    try {
-      localStorage.setItem(key, value);
-    } catch (error) {
-      console.warn('[Timeline] Failed to write to localStorage:', error);
-    }
-  }
   // ===== Marker Level Methods =====
 
   private getLevelsStorageKey(): string | null {
@@ -65,7 +51,7 @@ export class TimelineHierarchy {
     const key = this.getLevelsStorageKey();
     if (!key) return;
 
-    const raw = this.safeLocalStorageGet(key);
+    const raw = safeLocalStorageGet(key);
     if (!raw) return;
 
     try {
@@ -96,7 +82,7 @@ export class TimelineHierarchy {
     const key = this.getCollapsedStorageKey();
     if (!key) return;
 
-    const raw = this.safeLocalStorageGet(key);
+    const raw = safeLocalStorageGet(key);
     if (!raw) return;
 
     try {
@@ -136,7 +122,7 @@ export class TimelineHierarchy {
     const levels: Record<string, MarkerLevel> = {};
     const levelsKey = this.getLevelsStorageKey();
     if (levelsKey) {
-      const rawLevels = this.safeLocalStorageGet(levelsKey);
+      const rawLevels = safeLocalStorageGet(levelsKey);
       if (rawLevels) {
         try {
           const parsedLevels = JSON.parse(rawLevels) as Record<string, unknown>;
@@ -154,7 +140,7 @@ export class TimelineHierarchy {
     let collapsed: string[] = [];
     const collapsedKey = this.getCollapsedStorageKey();
     if (collapsedKey) {
-      const rawCollapsed = this.safeLocalStorageGet(collapsedKey);
+      const rawCollapsed = safeLocalStorageGet(collapsedKey);
       if (rawCollapsed) {
         try {
           const parsedCollapsed = JSON.parse(rawCollapsed);
@@ -223,12 +209,12 @@ export class TimelineHierarchy {
       this.markerLevels.forEach((level, turnId) => {
         levels[turnId] = level;
       });
-      this.safeLocalStorageSet(levelsKey, JSON.stringify(levels));
+      safeLocalStorageSet(levelsKey, JSON.stringify(levels));
     }
 
     const collapsedKey = this.getCollapsedStorageKey();
     if (collapsedKey) {
-      this.safeLocalStorageSet(collapsedKey, JSON.stringify(Array.from(this.collapsedMarkers)));
+      safeLocalStorageSet(collapsedKey, JSON.stringify(Array.from(this.collapsedMarkers)));
     }
   }
   private async loadTimelineHierarchyFromExtensionStorage(): Promise<void> {

@@ -17,6 +17,7 @@ import { TimelineHierarchy } from './TimelineHierarchy';
 import { findMatchingStarredMessages } from './starredLookup';
 import { resolveStarredDisplay } from './starredResolution';
 import type { StarredMessage, StarredMessagesData } from './starredTypes';
+import { safeLocalStorageGet, safeLocalStorageSet } from './timelineLocalStorage';
 import type { TimelineMarker } from './types';
 
 /** Conversation-scoped stars and hierarchy. Rendering never writes storage. */
@@ -144,23 +145,6 @@ export class TimelineState {
   private getRouteStarsStorageKey(): string | null {
     const routeConversationId = buildRouteConversationIdFromUrl(this.url);
     return routeConversationId ? `geminiTimelineStars:${routeConversationId}` : null;
-  }
-
-  private safeLocalStorageGet(key: string): string | null {
-    try {
-      return localStorage.getItem(key);
-    } catch (error) {
-      console.warn('[Timeline] Failed to read from localStorage:', error);
-      return null;
-    }
-  }
-
-  private safeLocalStorageSet(key: string, value: string): void {
-    try {
-      localStorage.setItem(key, value);
-    } catch (error) {
-      console.warn('[Timeline] Failed to write to localStorage:', error);
-    }
   }
 
   private areStarredSetsEqual(a: Set<string>, b: Set<string>): boolean {
@@ -367,7 +351,7 @@ export class TimelineState {
   private saveStars(): void {
     const key = this.getStarsStorageKey();
     if (!key) return;
-    this.safeLocalStorageSet(key, JSON.stringify(Array.from(this.starred)));
+    safeLocalStorageSet(key, JSON.stringify(Array.from(this.starred)));
   }
 
   private loadStars(): void {
@@ -379,12 +363,12 @@ export class TimelineState {
       (candidate): candidate is string => Boolean(candidate && candidate !== key),
     );
 
-    let raw = this.safeLocalStorageGet(key);
+    let raw = safeLocalStorageGet(key);
     if (!raw) {
       for (const fallbackKey of fallbackKeys) {
-        raw = this.safeLocalStorageGet(fallbackKey);
+        raw = safeLocalStorageGet(fallbackKey);
         if (raw) {
-          this.safeLocalStorageSet(key, raw);
+          safeLocalStorageSet(key, raw);
           break;
         }
       }
