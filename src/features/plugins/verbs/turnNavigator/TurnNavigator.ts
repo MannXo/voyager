@@ -25,15 +25,8 @@ import { initI18n } from '@/utils/i18n';
 
 import type { PrimitiveHandle } from '../types';
 import { buildConversationId, starConversationId, turnConversationId } from './conversationId';
+import { TurnNavigation } from './navigation';
 import { NavigatorStars } from './navigatorStars';
-import {
-  afterScrollSettles,
-  navigationScrollBehavior,
-  readScrollOffset,
-  scrollElementToAnchor,
-  scrollToCenter,
-} from './scrollMotion';
-import { extractTurnHash } from './starSnapshot';
 import {
   type Marker,
   type MountedTurn,
@@ -43,9 +36,6 @@ import {
 } from './turnMerge';
 import { mountedOwnershipTurns } from './turnOwnership';
 import { renderedCheck, togglesVisibility } from './turnVisibility';
-export { buildConversationId } from './conversationId';
-export { extractTurnHash } from './starSnapshot';
-export { buildTurnId, TURN_ID_ATTR } from './turnMerge';
 
 export interface TurnNavigatorConfig {
   /** Site adapter id; prefixes conversation ids and marks the rail. */
@@ -78,12 +68,7 @@ const TOOLTIP_ID = 'gv-turn-navigator-tooltip';
 const TOOLTIP_TEXT_CLASS = 'gv-turn-navigator-tooltip-text';
 const REFRESH_DELAY_MS = 120;
 const LONG_PRESS_MS = 550;
-const ACTIVE_ANCHOR = 0.45;
-const NAVIGATION_ACTIVE_LOCK_MS = 900;
 const TOOLTIP_DELAY_MS = 150;
-const PENDING_NAVIGATION_TIMEOUT_MS = 8000;
-const PENDING_NAVIGATION_HOP_MS = 200;
-const LONG_JUMP_VIEWPORTS = 3;
 const COMPACT_VIEW_SETTING = 'compactView';
 /** Compact ticks keep this pitch until the conversation outgrows the track. */
 const COMPACT_TICK_PITCH_PX = 10;
@@ -103,9 +88,6 @@ export class TurnNavigator {
   private previewPanel: TimelinePreviewPanel | null = null;
   private observing = false;
   private markers: Marker[] = [];
-  private markerCenters: number[] = [];
-  /** Merge mode: counts measuring passes so stale centres can be told from fresh ones. */
-  private measuringPass = 0;
   /** Route the merged markers were collected under; star reads never change it. */
   private markerRouteId = '';
   private readonly stars = new NavigatorStars({
@@ -119,27 +101,25 @@ export class TurnNavigator {
   private stopTooltipTimer: Dispose | null = null;
   private longPressDot: Dot | null = null;
   private suppressClickUntil = 0;
-  private activeTurnId: string | null = null;
   private timelineStyle: TimelineStyle = 'dots';
-  private navigationActiveLockUntil = 0;
-  private pendingNavigationId: string | null = null;
-  private pendingNavigationUntil = 0;
-  private stopPendingNavigationTimer: Dispose | null = null;
-  private stopUserScrollListeners: Dispose[] = [];
-  private pendingNavigationLo = 0;
-  private pendingNavigationHi = 0;
-  private pendingNavigationProbed = false;
-  private lastHandledHash: string | null = null;
-  private scrollTarget: HTMLElement | Window | null = null;
-  private stopScrollListener: Dispose | null = null;
-
   private readonly barSelector: string;
+  private readonly navigation: TurnNavigation;
 
   constructor(
     private readonly scope: PluginScope,
     private readonly config: TurnNavigatorConfig,
   ) {
     this.barSelector = `.gemini-timeline-bar[data-gv-turn-navigator="${config.siteId}"]`;
+    this.navigation = new TurnNavigation(
+      scope,
+      config.scrollContainerSelector,
+      () => this.markers,
+      (turnId, previousTurnId) => {
+        if (turnId !== previousTurnId) this.updateDotActive(previousTurnId, false);
+        this.updateDotActive(turnId, true);
+        if (turnId !== previousTurnId) this.previewPanel?.updateActiveTurn(turnId);
+      },
+    );
   }
 
   /** `<siteId>:conv:<id>` from the site's route pattern, else a hash of the path. */
@@ -186,7 +166,7 @@ export class TurnNavigator {
     await this.refresh();
     if (this.disposed) return;
     this.observe();
-    this.scope.on(window, 'hashchange', this.handleHash);
+    this.scope.on(window, 'hashchange', this.navigation.handleHash);
     // A route change with no turn mutation (new chat getting its id, leaving
     // for a page without turns) must still re-key or clear the rail.
     this.scope.effect(() => watchRouteChanges(() => this.scheduleRefresh()), 'route-watch');
@@ -331,7 +311,7 @@ export class TurnNavigator {
     if (!this.previewPanel) {
       this.previewPanel = new TimelinePreviewPanel(bar);
       this.previewPanel.init(
-        (turnId) => this.navigateTo(turnId),
+        (turnId) => this.navigation.navigateTo(turnId),
         undefined,
         (turnId) => this.toggleStar(turnId),
       );
@@ -376,32 +356,29 @@ export class TurnNavigator {
     if (this.disposed) return;
     const previousIds = this.markers.map((marker) => marker.id);
     const readText = (element: HTMLElement) => this.extractText(element);
-    const centerOf = (element: HTMLElement) => this.computeElementCenter(element);
+    const centerOf = (element: HTMLElement) => this.navigation.centerOf(element);
     const mounted: MountedTurn[] = Array.from(
       document.querySelectorAll<HTMLElement>(this.config.turnSelector),
     )
       .filter(renderedCheck())
       .map((element) => ({ element, summary: readText(element) }));
-    if (mounted[0]) this.setScrollTarget(this.getScrollTarget(mounted[0].element));
+    if (mounted[0]) this.navigation.prepare(mounted[0].element);
     this.markers = mergeMountedTurns(rememberedMarkers(this.markers, mounted), mounted, centerOf);
     // A press that began under the previous route must not land under this one.
     if (this.stars.observe(mountedOwnershipTurns(mounted))) this.cancelLongPress();
-    this.markerCenters = this.computeMarkerCenters();
+    this.navigation.measure();
     const sameMarkers =
       previousIds.length === this.markers.length &&
       previousIds.every((id, index) => id === this.markers[index]?.id);
     if (!sameMarkers || this.markers.some((marker) => !marker.dotElement)) this.renderDots();
     this.applyStarredState();
-    this.refreshActive();
-    this.handleHash();
+    this.navigation.refreshActive();
+    this.navigation.handleHash();
   }
 
   private resetConversationState(): void {
     this.markers = [];
-    this.markerCenters = [];
-    this.activeTurnId = null;
-    this.clearPendingNavigation();
-    this.lastHandledHash = null;
+    this.navigation.reset();
     if (this.trackContent) this.trackContent.textContent = '';
   }
 
@@ -423,9 +400,9 @@ export class TurnNavigator {
       }
       dot.setAttribute('aria-label', marker.summary || `Message ${index + 1}`);
       dot.setAttribute('aria-pressed', marker.starred ? 'true' : 'false');
-      dot.setAttribute('aria-current', marker.id === this.activeTurnId ? 'true' : 'false');
+      dot.setAttribute('aria-current', marker.id === this.navigation.activeId ? 'true' : 'false');
       dot.classList.toggle('starred', marker.starred);
-      dot.classList.toggle('active', marker.id === this.activeTurnId);
+      dot.classList.toggle('active', marker.id === this.navigation.activeId);
       dot.addEventListener('click', (event) => {
         // The compact rail is itself the preview-panel toggle: a tick click
         // must jump, not toggle the panel it bubbles up to.
@@ -434,7 +411,7 @@ export class TurnNavigator {
           event.preventDefault();
           return;
         }
-        this.navigateTo(marker.id);
+        this.navigation.navigateTo(marker.id);
       });
       dot.addEventListener('pointerdown', () => this.startLongPress(dot));
       dot.addEventListener('pointerup', () => this.cancelLongPress());
@@ -528,16 +505,7 @@ export class TurnNavigator {
       starredAt: marker.starredAt,
     }));
     this.previewPanel?.updateMarkers(previewMarkers);
-    this.previewPanel?.updateActiveTurn(this.activeTurnId);
-  }
-
-  private setActiveTurn(turnId: string | null): void {
-    if (this.activeTurnId === turnId) return;
-    const previousTurnId = this.activeTurnId;
-    this.activeTurnId = turnId;
-    this.updateDotActive(previousTurnId, false);
-    this.updateDotActive(turnId, true);
-    this.previewPanel?.updateActiveTurn(turnId);
+    this.previewPanel?.updateActiveTurn(this.navigation.activeId);
   }
 
   private updateDotActive(turnId: string | null, active: boolean): void {
@@ -597,260 +565,6 @@ export class TurnNavigator {
     return (this.tooltip?.firstElementChild as HTMLElement | null) ?? this.tooltip!;
   }
 
-  private refreshActive(): void {
-    if (this.activeTurnId && this.markers.some((marker) => marker.id === this.activeTurnId)) {
-      this.updateDotActive(this.activeTurnId, true);
-      return;
-    }
-    this.updateActiveFromScroll();
-  }
-
-  private updateActiveFromScroll = (): void => {
-    if (!this.markers.length) {
-      this.setActiveTurn(null);
-      return;
-    }
-    if (Date.now() < this.navigationActiveLockUntil) return;
-    if (this.isAtScrollBottom()) {
-      this.setActiveTurn(this.markers[this.markers.length - 1]?.id ?? null);
-      return;
-    }
-    const ref = this.getScrollTop() + this.getViewportHeight() * ACTIVE_ANCHOR;
-    let low = 0;
-    let high = this.markerCenters.length;
-    while (low < high) {
-      const mid = (low + high) >> 1;
-      if (this.markerCenters[mid] <= ref) low = mid + 1;
-      else high = mid;
-    }
-    const previous = Math.max(0, low - 1);
-    const next = Math.min(this.markerCenters.length - 1, low);
-    const index =
-      Math.abs(this.markerCenters[next] - ref) < Math.abs(this.markerCenters[previous] - ref)
-        ? next
-        : previous;
-    this.setActiveTurn(this.markers[index]?.id ?? null);
-  };
-
-  private setScrollTarget(target: HTMLElement | Window | null): void {
-    if (this.scrollTarget === target) return;
-    void this.stopScrollListener?.();
-    this.stopScrollListener = null;
-    this.scrollTarget = target;
-    if (target && !this.disposed) {
-      this.stopScrollListener = this.scope.on(target, 'scroll', this.updateActiveFromScroll, {
-        passive: true,
-      });
-    }
-  }
-
-  private findMarker(turnId: string): Marker | undefined {
-    return (
-      this.markers.find((item) => item.id === turnId) ??
-      this.markers.find((item) => item.hash === extractTurnHash(turnId))
-    );
-  }
-
-  private navigateTo(turnId: string): void {
-    const marker = this.findMarker(turnId);
-    if (!marker) return;
-    this.navigationActiveLockUntil = Date.now() + NAVIGATION_ACTIVE_LOCK_MS;
-    this.setActiveTurn(marker.id);
-    if (marker.element.isConnected) {
-      const center = this.computeElementCenter(marker.element);
-      const anchorOffset = this.getViewportHeight() * ACTIVE_ANCHOR;
-      const distance = Math.abs(center - (this.getScrollTop() + anchorOffset));
-      if (distance <= this.getViewportHeight() * LONG_JUMP_VIEWPORTS) {
-        this.clearPendingNavigation();
-        scrollElementToAnchor(
-          this.getScrollTarget(marker.element),
-          marker.element,
-          this.getScrollTop(),
-          this.getViewportHeight(),
-        );
-        return;
-      }
-      // Long jump to a mounted turn: Claude re-measures once the landing region
-      // mounts, so the homing loop still fine-aims — after the scroll settles,
-      // never into one still travelling. See scrollMotion.ts.
-      this.beginPendingNavigation(marker);
-      this.pendingNavigationProbed = true;
-      const hop = (): void => this.schedulePendingNavigationHop();
-      const behavior = navigationScrollBehavior();
-      scrollToCenter(this.scrollTarget, center, this.getViewportHeight(), behavior);
-      if (behavior !== 'smooth') hop();
-      else {
-        const timer = (run: () => void, ms: number): void => void this.scope.timer(run, ms);
-        afterScrollSettles(
-          () => this.getScrollTop(),
-          timer,
-          () => this.disposed,
-          hop,
-        );
-      }
-      return;
-    }
-    // Virtualized out: the remembered offset is only an estimate (Claude
-    // re-measures content as it mounts), so home in iteratively instead of
-    // trusting a single jump.
-    this.beginPendingNavigation(marker);
-    this.homePendingNavigation();
-  }
-
-  private beginPendingNavigation(marker: Marker): void {
-    this.clearPendingNavigation();
-    this.pendingNavigationId = marker.id;
-    this.pendingNavigationUntil = Date.now() + PENDING_NAVIGATION_TIMEOUT_MS;
-    this.pendingNavigationLo = 0;
-    this.pendingNavigationHi = Math.max(
-      this.getScrollHeight(),
-      marker.center + this.getViewportHeight(),
-    );
-    this.pendingNavigationProbed = false;
-    if (this.disposed) return;
-    this.stopUserScrollListeners = [
-      this.scope.on(window, 'wheel', this.cancelPendingNavigationOnUserScroll, { passive: true }),
-      this.scope.on(window, 'touchmove', this.cancelPendingNavigationOnUserScroll, {
-        passive: true,
-      }),
-    ];
-  }
-
-  private clearPendingNavigation(): void {
-    this.pendingNavigationId = null;
-    void this.stopPendingNavigationTimer?.();
-    this.stopPendingNavigationTimer = null;
-    for (const stop of this.stopUserScrollListeners.splice(0)) void stop();
-  }
-
-  private cancelPendingNavigationOnUserScroll = (): void => {
-    this.clearPendingNavigation();
-  };
-
-  /**
-   * One homing step toward a virtualized-out turn: bisect on the target's
-   * position (bounds tightened from which side of the mounted window the turn
-   * sits on), jump instantly, and let Claude mount content at the landing
-   * point. Once the turn's element is back in the DOM, aim precisely.
-   */
-  private homePendingNavigation = (): void => {
-    this.stopPendingNavigationTimer = null;
-    if (!this.pendingNavigationId || this.disposed) return;
-    if (Date.now() > this.pendingNavigationUntil) {
-      this.clearPendingNavigation();
-      return;
-    }
-    const marker = this.markers.find((item) => item.id === this.pendingNavigationId);
-    if (!marker) {
-      this.clearPendingNavigation();
-      return;
-    }
-    this.navigationActiveLockUntil = Date.now() + NAVIGATION_ACTIVE_LOCK_MS;
-    if (marker.element.isConnected) {
-      this.clearPendingNavigation();
-      scrollElementToAnchor(
-        this.getScrollTarget(marker.element),
-        marker.element,
-        this.getScrollTop(),
-        this.getViewportHeight(),
-      );
-      return;
-    }
-    const mountedIndexes = this.markers.reduce<number[]>((acc, item, index) => {
-      if (item.element.isConnected) acc.push(index);
-      return acc;
-    }, []);
-    if (mountedIndexes.length) {
-      // Direction info is only trustworthy once the mounted window has caught
-      // up with the last jump; otherwise wait a tick instead of moving.
-      const windowCurrent = mountedIndexes.some((index) =>
-        this.isElementInViewport(this.markers[index].element),
-      );
-      if (!windowCurrent) {
-        this.schedulePendingNavigationHop();
-        return;
-      }
-      const targetIndex = this.markers.indexOf(marker);
-      const firstMounted = mountedIndexes[0];
-      const lastMounted = mountedIndexes[mountedIndexes.length - 1];
-      if (targetIndex < firstMounted) {
-        this.pendingNavigationHi = Math.min(this.pendingNavigationHi, this.getScrollTop());
-      } else if (targetIndex > lastMounted) {
-        this.pendingNavigationLo = Math.max(
-          this.pendingNavigationLo,
-          this.getScrollTop() + this.getViewportHeight(),
-        );
-      } else {
-        // Inside a virtualization gap: bracket the target between its nearest
-        // mounted neighbours. (A truly deleted turn collapses the bracket and
-        // ends the search below.)
-        let beforeIndex = -1;
-        let afterIndex = -1;
-        for (const index of mountedIndexes) {
-          if (index < targetIndex) beforeIndex = index;
-          else if (index > targetIndex) {
-            afterIndex = index;
-            break;
-          }
-        }
-        if (beforeIndex >= 0) {
-          this.pendingNavigationLo = Math.max(
-            this.pendingNavigationLo,
-            this.computeElementCenter(this.markers[beforeIndex].element),
-          );
-        }
-        if (afterIndex >= 0) {
-          this.pendingNavigationHi = Math.min(
-            this.pendingNavigationHi,
-            this.computeElementCenter(this.markers[afterIndex].element),
-          );
-        }
-      }
-    }
-    if (this.pendingNavigationHi - this.pendingNavigationLo < 1) {
-      this.clearPendingNavigation();
-      return;
-    }
-    const staleCenterUsable =
-      !this.pendingNavigationProbed &&
-      marker.center > this.pendingNavigationLo &&
-      marker.center < this.pendingNavigationHi;
-    const probe = staleCenterUsable
-      ? marker.center
-      : (this.pendingNavigationLo + this.pendingNavigationHi) / 2;
-    this.pendingNavigationProbed = true;
-    scrollToCenter(this.scrollTarget, probe, this.getViewportHeight(), 'instant');
-    this.schedulePendingNavigationHop();
-  };
-
-  private schedulePendingNavigationHop(): void {
-    if (this.stopPendingNavigationTimer !== null || this.disposed) return;
-    this.stopPendingNavigationTimer = this.scope.timer(
-      this.homePendingNavigation,
-      PENDING_NAVIGATION_HOP_MS,
-    );
-  }
-
-  private isElementInViewport(element: HTMLElement): boolean {
-    const rect = element.getBoundingClientRect();
-    const top = this.getViewportTop();
-    const bottom = top + this.getViewportHeight();
-    return rect.bottom >= top && rect.top <= bottom;
-  }
-
-  private handleHash = (): void => {
-    const hash = location.hash;
-    if (!hash.startsWith('#gv-turn-') || hash === this.lastHandledHash) return;
-    const turnId = decodeURIComponent(hash.slice('#gv-turn-'.length));
-    if (!turnId) return;
-    const marker = this.findMarker(turnId);
-    // Not discovered yet (virtualized out and never mounted): leave the hash
-    // unconsumed so later refreshes retry once the turn appears.
-    if (!marker) return;
-    this.lastHandledHash = hash;
-    this.navigateTo(marker.id);
-  };
-
   private handleResize = (): void => {
     this.applyCompactOffsets();
     this.scheduleRefresh();
@@ -866,86 +580,6 @@ export class TurnNavigator {
     const title = document.title.replace(new RegExp(`\\s*[|-]\\s*${label}.*$`, 'i'), '').trim();
     return (
       title || this.markers[0]?.summary.slice(0, 50) || `${this.config.siteLabel} conversation`
-    );
-  }
-
-  private getScrollTarget(element: HTMLElement): HTMLElement | Window {
-    const configured = this.config.scrollContainerSelector;
-    if (configured) {
-      try {
-        const container = document.querySelector<HTMLElement>(configured);
-        if (container && container.contains(element)) return container;
-      } catch {
-        // Invalid selector from a site file: fall back to auto-detection.
-      }
-    }
-    for (let parent = element.parentElement; parent && parent !== document.body;) {
-      const style = getComputedStyle(parent);
-      if (
-        /(auto|scroll|overlay)/.test(style.overflowY) &&
-        parent.scrollHeight > parent.clientHeight
-      )
-        return parent;
-      parent = parent.parentElement;
-    }
-    return window;
-  }
-
-  private computeMarkerCenters(): number[] {
-    const scrollTop = this.getScrollTop();
-    const viewportTop = this.getViewportTop();
-    const pass = ++this.measuringPass;
-    const centers: number[] = [];
-    for (const marker of this.markers) {
-      if (marker.element.isConnected) {
-        marker.center = this.computeElementCenter(marker.element, scrollTop, viewportTop);
-        marker.measuredAt = pass;
-      }
-      // Keep the array monotonic for the active-turn binary search: stale
-      // centers of virtualized-out turns can lag behind re-measured neighbours.
-      const previous = centers[centers.length - 1];
-      centers.push(previous !== undefined && marker.center < previous ? previous : marker.center);
-    }
-    return centers;
-  }
-
-  private computeElementCenter(
-    element: HTMLElement,
-    scrollTop = this.getScrollTop(),
-    viewportTop = this.getViewportTop(),
-  ): number {
-    const rect = element.getBoundingClientRect();
-    return scrollTop + rect.top - viewportTop + rect.height / 2;
-  }
-
-  private getViewportTop(): number {
-    return this.scrollTarget && this.scrollTarget !== window
-      ? (this.scrollTarget as HTMLElement).getBoundingClientRect().top
-      : 0;
-  }
-
-  /** Offset from the conversation's start, also on a `column-reverse` scroller. */
-  private getScrollTop(): number {
-    return readScrollOffset(this.scrollTarget);
-  }
-
-  private getViewportHeight(): number {
-    return this.scrollTarget && this.scrollTarget !== window
-      ? (this.scrollTarget as HTMLElement).clientHeight
-      : window.innerHeight || document.documentElement.clientHeight || 0;
-  }
-
-  private getScrollHeight(): number {
-    return this.scrollTarget && this.scrollTarget !== window
-      ? (this.scrollTarget as HTMLElement).scrollHeight
-      : (document.scrollingElement || document.documentElement).scrollHeight;
-  }
-
-  private isAtScrollBottom(): boolean {
-    const viewportHeight = this.getViewportHeight();
-    const scrollHeight = this.getScrollHeight();
-    return (
-      scrollHeight > viewportHeight && this.getScrollTop() + viewportHeight >= scrollHeight - 2
     );
   }
 }

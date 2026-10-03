@@ -4,8 +4,6 @@ import { hashString } from '@/core/utils/hash';
 
 import {
   buildClaudeConversationId,
-  buildClaudeTurnId,
-  extractClaudeTurnHash,
   startClaudeTimeline,
   stopClaudeTimeline,
   updateClaudeTimelineSettings,
@@ -14,6 +12,8 @@ import { requireBundledSiteAdapter } from '../../catalog/sites';
 import { PluginScope } from '../../runtime/pluginScope';
 import type { NativeOperation } from '../../types';
 import { turnNavigatorPrimitive } from '../../verbs/turnNavigator';
+import { extractTurnHash } from '../../verbs/turnNavigator/starSnapshot';
+import { buildTurnId } from '../../verbs/turnNavigator/turnMerge';
 import { BUILTIN_PLUGINS } from '../index';
 
 const {
@@ -116,10 +116,10 @@ describe('Claude timeline', () => {
   it('builds Claude-scoped conversation and turn ids', () => {
     expect(buildClaudeConversationId('https://claude.ai/chat/abc')).toBe('claude:conv:abc');
     expect(buildClaudeConversationId('https://claude.ai/new')).toMatch(/^claude:/);
-    expect(buildClaudeTurnId('hello')).toBe(`c-${hashString('hello')}`);
-    expect(extractClaudeTurnHash(`c-2-${hashString('hello')}`)).toBe(hashString('hello'));
-    expect(extractClaudeTurnHash(`c-${hashString('hello')}`)).toBe(hashString('hello'));
-    expect(extractClaudeTurnHash(`c-${hashString('hello')}~2`)).toBe(hashString('hello'));
+    expect(buildTurnId('hello')).toBe(`c-${hashString('hello')}`);
+    expect(extractTurnHash(`c-2-${hashString('hello')}`)).toBe(hashString('hello'));
+    expect(extractTurnHash(`c-${hashString('hello')}`)).toBe(hashString('hello'));
+    expect(extractTurnHash(`c-${hashString('hello')}~2`)).toBe(hashString('hello'));
   });
 
   it('renders one dot per Claude user message, scrolls on click, and highlights active dot', async () => {
@@ -364,7 +364,7 @@ describe('Claude timeline', () => {
 
     expect(addStarredMessage).toHaveBeenCalledTimes(1);
     expect(addStarredMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ turnId: buildClaudeTurnId('remember this') }),
+      expect.objectContaining({ turnId: buildTurnId('remember this') }),
     );
     expect(dot.classList.contains('starred')).toBe(true);
     expect(dot.getAttribute('aria-pressed')).toBe('true');
@@ -480,7 +480,7 @@ describe('Claude timeline', () => {
     item.click();
 
     expect(addStarredMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ turnId: buildClaudeTurnId('remember compact item') }),
+      expect.objectContaining({ turnId: buildTurnId('remember compact item') }),
     );
     expect(window.scrollTo).not.toHaveBeenCalled();
     expect(document.querySelector('.timeline-preview-item')?.classList.contains('starred')).toBe(
@@ -775,8 +775,8 @@ describe('Claude timeline', () => {
     const ids = queryDots().map((dot) => dot.dataset.targetTurnId);
     expect(ids).toHaveLength(2);
     expect(new Set(ids).size).toBe(2);
-    expect(ids[0]).toBe(buildClaudeTurnId('same text'));
-    expect(ids[1]).toBe(`${buildClaudeTurnId('same text')}~2`);
+    expect(ids[0]).toBe(buildTurnId('same text'));
+    expect(ids[1]).toBe(`${buildTurnId('same text')}~2`);
   });
 
   it('keeps homing toward a virtualized-out turn until it mounts, then aims precisely', async () => {

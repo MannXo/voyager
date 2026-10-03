@@ -6,7 +6,7 @@ import type { StarredMessage } from '@/pages/content/timeline/starredTypes';
 import { PluginScope } from '../runtime/pluginScope';
 import type { SiteAdapter } from '../types';
 import { turnNavigatorPrimitive } from './turnNavigator';
-import { buildTurnId } from './turnNavigator/TurnNavigator';
+import { buildTurnId } from './turnNavigator/turnMerge';
 import type { PrimitiveContext } from './types';
 
 const { addStarredMessage, getStarredMessagesForConversation, showTimelineStyleCoachmark } =

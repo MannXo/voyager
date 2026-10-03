@@ -17,7 +17,8 @@ import { requireBundledSiteAdapter } from '../catalog/sites';
 import { PluginScope } from '../runtime/pluginScope';
 import type { NativeOperation } from '../types';
 import { turnNavigatorPrimitive } from '../verbs/turnNavigator';
-import { buildConversationId, buildTurnId } from '../verbs/turnNavigator/TurnNavigator';
+import { buildConversationId } from '../verbs/turnNavigator/conversationId';
+import { buildTurnId } from '../verbs/turnNavigator/turnMerge';
 import { BUILTIN_PLUGINS } from './index';
 
 /** In-memory stand-in for the background's starred-message store. */

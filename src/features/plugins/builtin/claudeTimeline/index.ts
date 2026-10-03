@@ -2,8 +2,7 @@
  * Claude timeline builtin — a thin shell over the `turnNavigator` primitive's
  * engine (`verbs/turnNavigator/TurnNavigator.ts`) with Claude's configuration.
  * The manifest in `builtin/index.ts` invokes the primitive through a `native`
- * op; these exports keep the historical ids, helpers and the standalone
- * start/stop wrappers that tests and non-engine callers use.
+ * op; the standalone start/stop wrappers own a scope for non-engine callers.
  */
 import { PluginScope } from '@/features/plugins/runtime/pluginScope';
 import type { PluginSettings } from '@/features/plugins/types';
@@ -12,10 +11,8 @@ import {
   TIMELINE_STYLE_COACHMARK_ID,
   type TurnNavigatorConfig,
   activateTurnNavigator,
-  buildConversationId,
-  buildTurnId,
-  extractTurnHash,
 } from '../../verbs/turnNavigator/TurnNavigator';
+import { buildConversationId } from '../../verbs/turnNavigator/conversationId';
 import type { PrimitiveHandle } from '../../verbs/types';
 
 const CLAUDE_TIMELINE_PLUGIN_ID = 'voyager.claude-timeline';
@@ -44,9 +41,6 @@ export const CLAUDE_TURN_NAVIGATOR_CONFIG: TurnNavigatorConfig = {
 export function buildClaudeConversationId(input = location.href): string {
   return buildConversationId(CLAUDE_TURN_NAVIGATOR_CONFIG, input);
 }
-
-export const buildClaudeTurnId = buildTurnId;
-export const extractClaudeTurnHash = extractTurnHash;
 
 /** Claude renders artifacts in a sandboxed claudeusercontent.com iframe. */
 export function hasOpenClaudeArtifact(doc: Document = document): boolean {

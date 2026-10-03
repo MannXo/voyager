@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PluginScope } from '../runtime/pluginScope';
 import type { SiteAdapter } from '../types';
 import { turnNavigatorPrimitive } from './turnNavigator';
-import { buildConversationId } from './turnNavigator/TurnNavigator';
+import { buildConversationId } from './turnNavigator/conversationId';
 import type { PrimitiveContext } from './types';
 
 const { getStarredMessagesForConversation, showTimelineStyleCoachmark } = vi.hoisted(() => ({
