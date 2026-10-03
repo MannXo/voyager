@@ -5,11 +5,8 @@ import {
   chatgptCollectTurnContainers,
   resolveChatGptSelectionRoles,
 } from './chatgpt';
-import {
-  type ChatGptCrawlOptions,
-  crawlChatGptThread,
-  normalizedConversationUrl,
-} from './chatgptCrawl';
+import { type ChatGptCrawlOptions, crawlChatGptThread } from './chatgptCrawl';
+import { assertActive, normalizedConversationUrl } from './chatgptShared';
 import {
   type ChatGptThreadMessage,
   findAssistantReply,
@@ -160,18 +157,6 @@ export function collectChatGptTurnContainers(): ChatGptTurnContainer[] {
     lastHosts.set(message.id, container);
     return { id: message.id, sequence, role: message.role, container };
   });
-}
-
-function assertActive(options: ExportSelectionOptions): void {
-  if (options.signal?.aborted) {
-    throw new DOMException('ChatGPT export cancelled', 'AbortError');
-  }
-  if (
-    options.expectedUrl &&
-    normalizedConversationUrl(options.expectedUrl) !== normalizedConversationUrl()
-  ) {
-    throw new Error('chatgpt_export_conversation_changed');
-  }
 }
 
 function crawledMessages(selectedIds: ReadonlySet<string>): readonly ChatGptThreadMessage[] {

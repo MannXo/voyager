@@ -1,4 +1,5 @@
 import { type ScrollView, createScrollView, findScrollContainer } from './chatgptScrollView';
+import { assertActive, wait } from './chatgptShared';
 import {
   type ChatGptThreadMessage,
   assistantMessageId,
@@ -20,7 +21,7 @@ import {
   userMessageId,
   userSelectionHost,
 } from './chatgptThread';
-import type { ChatGptReadOptions, ExportSelectionOptions } from './type';
+import type { ChatGptReadOptions } from './type';
 
 /**
  * Walk ChatGPT's virtualized thread from its first turn to its last and
@@ -80,42 +81,6 @@ const EDGE_TOLERANCE_PX = 2;
  * the list, in a window that covers the viewport (items sit 12px apart live).
  */
 const COVER_SLACK_PX = 32;
-
-export function normalizedConversationUrl(url: string = location.href): string {
-  const parsed = new URL(url, location.href);
-  return `${parsed.origin}${parsed.pathname}${parsed.search}`;
-}
-
-function abortError(): DOMException {
-  return new DOMException('ChatGPT export cancelled', 'AbortError');
-}
-
-function assertActive(options: ExportSelectionOptions): void {
-  if (options.signal?.aborted) throw abortError();
-  if (
-    options.expectedUrl &&
-    normalizedConversationUrl(options.expectedUrl) !== normalizedConversationUrl()
-  ) {
-    throw new Error('chatgpt_export_conversation_changed');
-  }
-}
-
-function wait(ms: number, signal?: AbortSignal): Promise<void> {
-  if (signal?.aborted) return Promise.reject(abortError());
-  return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(done, ms);
-    function done(): void {
-      signal?.removeEventListener('abort', cancel);
-      resolve();
-    }
-    function cancel(): void {
-      window.clearTimeout(timer);
-      signal?.removeEventListener('abort', cancel);
-      reject(abortError());
-    }
-    signal?.addEventListener('abort', cancel, { once: true });
-  });
-}
 
 interface CrawlContext {
   readonly root: HTMLElement;

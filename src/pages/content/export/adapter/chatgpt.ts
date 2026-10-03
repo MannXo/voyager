@@ -5,6 +5,7 @@ import type {
 import type { ChatTurn } from '@/features/export/types/export';
 
 import { computeConversationFingerprint } from '../topNodePreload';
+import { assertActive, mergeExtractedContent, wait } from './chatgptShared';
 import type {
   ChatGptReadOptions,
   ChatGptTurnContainer,
@@ -69,21 +70,6 @@ function resolveTurnFrameRole(container: HTMLElement): ChatGptTurnRole {
   return role === 'user' || role === 'assistant' ? role : 'unknown';
 }
 
-function mergeExtractedContent(
-  primary: ExtractedContent,
-  supplemental: ExtractedContent,
-): ExtractedContent {
-  return {
-    text: [primary.text, supplemental.text].filter(Boolean).join('\n\n'),
-    html: [primary.html, supplemental.html].filter(Boolean).join('\n'),
-    attachments: [...primary.attachments, ...supplemental.attachments],
-    hasImages: primary.hasImages || supplemental.hasImages,
-    hasFormulas: primary.hasFormulas || supplemental.hasFormulas,
-    hasTables: primary.hasTables || supplemental.hasTables,
-    hasCode: primary.hasCode || supplemental.hasCode,
-  };
-}
-
 function extractSiblingGeneratedImages(
   container: HTMLElement,
   assistantElement: HTMLElement,
@@ -143,42 +129,6 @@ export function chatgptCollectTurnContainers(root: ParentNode = document): ChatG
 /*
   物化单条，确定角色
  */
-function normalizedConversationUrl(url = location.href): string {
-  const parsed = new URL(url, location.href);
-  return `${parsed.origin}${parsed.pathname}${parsed.search}`;
-}
-
-function abortError(): DOMException {
-  return new DOMException('ChatGPT export cancelled', 'AbortError');
-}
-
-function assertSelectionActive(options: ExportSelectionOptions): void {
-  if (options.signal?.aborted) throw abortError();
-  if (
-    options.expectedUrl &&
-    normalizedConversationUrl(options.expectedUrl) !== normalizedConversationUrl()
-  ) {
-    throw new Error('chatgpt_export_conversation_changed');
-  }
-}
-
-function wait(ms: number, signal?: AbortSignal): Promise<void> {
-  if (signal?.aborted) return Promise.reject(abortError());
-  return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(done, ms);
-    function done(): void {
-      signal?.removeEventListener('abort', cancel);
-      resolve();
-    }
-    function cancel(): void {
-      window.clearTimeout(timer);
-      signal?.removeEventListener('abort', cancel);
-      reject(abortError());
-    }
-    signal?.addEventListener('abort', cancel, { once: true });
-  });
-}
-
 function findTurnContainer(id: string): ChatGptTurnContainer | null {
   return chatgptCollectTurnContainers().find((turn) => turn.id === id) ?? null;
 }
@@ -255,7 +205,7 @@ export async function materializeChatGptTurnContainer(
   turn: ChatGptTurnContainer,
   options: ExportSelectionOptions = {},
 ): Promise<ChatGptTurnContainer> {
-  assertSelectionActive(options);
+  assertActive(options);
   let current = findTurnContainer(turn.id) ?? turn;
   current = { ...current, role: resolveTurnRole(current.container) };
   if (current.role !== 'unknown' && hasMountedContent(current) && !isGeneratingTurn(current)) {
@@ -271,7 +221,7 @@ export async function materializeChatGptTurnContainer(
   let stableSince = 0;
 
   while (Date.now() - startedAt < MATERIALIZATION_TIMEOUT_MS) {
-    assertSelectionActive(options);
+    assertActive(options);
     const latest = findTurnContainer(turn.id);
     if (latest) current = { ...latest, role: resolveTurnRole(latest.container) };
 
@@ -362,13 +312,13 @@ export async function resolveChatGptSelectionRoles(
   selectedContainerIds: ReadonlySet<string>,
   options: ExportSelectionOptions = {},
 ): Promise<ReadonlyMap<string, ChatGptTurnRole>> {
-  assertSelectionActive(options);
+  assertActive(options);
   const selectedContainers = resolveSelectedContainers(selectedContainerIds);
   const scrollState = captureScrollState(selectedContainers[0]?.container);
   const roles = new Map<string, ChatGptTurnRole>();
   try {
     for (const turn of selectedContainers) {
-      assertSelectionActive(options);
+      assertActive(options);
       const resolved =
         turn.role === 'unknown' ? await materializeChatGptTurnContainer(turn, options) : turn;
       if (resolved.role === 'unknown') {
@@ -409,7 +359,7 @@ export async function buildChatGptTurnsForSelection(
   // querySelectorAll returns ChatGPT's retained virtual-list order. Filtering
   // this registry, rather than sorting visual coordinates, prevents image cards
   // and independently positioned DOM wrappers from changing export order.
-  assertSelectionActive(options);
+  assertActive(options);
   const selectedContainers = resolveSelectedContainers(selectedContainerIds);
   const scrollState = captureScrollState(selectedContainers[0]?.container);
 
@@ -419,7 +369,7 @@ export async function buildChatGptTurnsForSelection(
 
   try {
     for (const turn of selectedContainers) {
-      assertSelectionActive(options);
+      assertActive(options);
       const materialized = await materializeChatGptTurnContainer(turn, options);
       if (materialized.empty) {
         // Nothing to export for this turn, but not a failure: ChatGPT itself

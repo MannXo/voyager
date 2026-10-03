@@ -3,6 +3,8 @@ import type {
   ExtractedContent,
 } from '@/features/export/services/DOMContentExtractor';
 
+import { mergeExtractedContent } from './chatgptShared';
+
 /**
  * ChatGPT's thread DOM as measured live (October 2026).
  *
@@ -259,21 +261,6 @@ export function extractUserMessage(
   extras.forEach((element) => detached.appendChild(element.cloneNode(true)));
   detached.appendChild(bubble.cloneNode(true));
   return extractor.extractUserContent(detached);
-}
-
-function mergeExtractedContent(
-  primary: ExtractedContent,
-  supplemental: ExtractedContent,
-): ExtractedContent {
-  return {
-    text: [primary.text, supplemental.text].filter(Boolean).join('\n\n'),
-    html: [primary.html, supplemental.html].filter(Boolean).join('\n'),
-    attachments: [...primary.attachments, ...supplemental.attachments],
-    hasImages: primary.hasImages || supplemental.hasImages,
-    hasFormulas: primary.hasFormulas || supplemental.hasFormulas,
-    hasTables: primary.hasTables || supplemental.hasTables,
-    hasCode: primary.hasCode || supplemental.hasCode,
-  };
 }
 
 /**
