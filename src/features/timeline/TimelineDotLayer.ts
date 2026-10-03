@@ -77,7 +77,10 @@ export class TimelineDotLayer {
     return this.getTrackPadding();
   }
   updateActive(): void {
-    for (const [id, dot] of this.dots) dot.classList.toggle('active', id === this.activeTurnId);
+    for (const [id, dot] of this.dots) {
+      dot.classList.toggle('active', id === this.activeTurnId);
+      dot.setAttribute('aria-current', String(id === this.activeTurnId));
+    }
   }
   destroy(): void {
     this.destroyed = true;
@@ -437,7 +440,7 @@ export class TimelineDotLayer {
       : Math.max(start - 1, this.upperBound(this.yPositions, top + height + buffer));
     const offsets = dense ? this.buildCompactMarkerOffsets(hidden) : new Map<number, number>();
     const visibleIds = new Set<string>();
-    const fragment = document.createDocumentFragment();
+    const orderedDots: DotElement[] = [];
     for (let index = start; index <= end; index++) {
       const marker = this.markers[index];
       if (!marker || hidden.has(index)) continue;
@@ -450,25 +453,31 @@ export class TimelineDotLayer {
         dot.setAttribute('tabindex', '0');
         dot.setAttribute('aria-describedby', 'gemini-timeline-tooltip');
         this.dots.set(marker.id, dot);
-        fragment.appendChild(dot);
       }
       dot.dataset.markerIndex = String(index);
       dot.setAttribute('aria-label', marker.summary);
       this.applyDotPosition(dot, index, offsets.get(index));
       const collapsed = this.state.hierarchy.isMarkerCollapsed(marker.id);
       dot.classList.toggle('active', marker.id === this.activeTurnId);
+      dot.setAttribute('aria-current', String(marker.id === this.activeTurnId));
       dot.classList.toggle('starred', marker.starred);
       dot.classList.toggle('collapsed', collapsed);
       dot.setAttribute('aria-pressed', String(marker.starred));
       dot.setAttribute('aria-expanded', String(!collapsed));
       dot.dataset.level = String(this.state.hierarchy.getMarkerLevel(marker.id));
+      orderedDots.push(dot);
     }
     for (const [id, dot] of this.dots) {
       if (visibleIds.has(id)) continue;
       dot.remove();
       this.dots.delete(id);
     }
-    this.content.appendChild(fragment);
+    // Prepending history must preserve keyboard order without detaching already ordered focused dots.
+    let nextNode: Element | null = this.content.querySelector('.timeline-dot');
+    for (const dot of orderedDots) {
+      if (dot === nextNode) nextNode = dot.nextElementSibling;
+      else this.content.insertBefore(dot, nextNode);
+    }
     this.visibleRange = { start, end };
     this.updateRulerWave();
   }

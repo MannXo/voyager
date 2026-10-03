@@ -6,6 +6,8 @@ import { TimelineDotLayer } from './TimelineDotLayer';
 import { TimelinePreviewPanel } from './TimelinePreviewPanel';
 import { TimelineRailPlacement } from './TimelineRailPlacement';
 import { TimelineSlider } from './TimelineSlider';
+import timelineStyles from './timeline.css?inline';
+import previewStyles from './timelinePreview.css?inline';
 interface TimelineViewOptions {
   mountAnchor?: HTMLElement;
   storagePrefix?: string;
@@ -44,6 +46,7 @@ export class TimelineView {
   rtl = false;
   private destroyed = false;
   private resizeObserver: ResizeObserver | null = null;
+  private styleElement: HTMLStyleElement | null = null;
   private readonly lifetime = new AbortController();
   constructor(
     private readonly state: TimelineStateOwner,
@@ -121,6 +124,10 @@ export class TimelineView {
   }
   mount(): void {
     if (this.destroyed) return;
+    this.styleElement = document.createElement('style');
+    this.styleElement.dataset.gvTimeline = '';
+    this.styleElement.textContent = `${timelineStyles}\n${previewStyles}`;
+    document.head.appendChild(this.styleElement);
     const anchor = this.options.mountAnchor ?? document.body;
     let bar = anchor.querySelector('.gemini-timeline-bar') as HTMLElement | null;
     if (!bar) {
@@ -132,6 +139,7 @@ export class TimelineView {
       bar.style.right = 'auto';
       bar.style.left = '15px';
     }
+    if (this.options.position) bar.dataset.gvPosition = this.options.position;
     this.ui.timelineBar = bar;
     let track = bar.querySelector('.timeline-track') as HTMLElement | null;
     if (!track) {
@@ -161,7 +169,7 @@ export class TimelineView {
     this.ui.slider = slider;
     this.ui.sliderHandle = slider.querySelector('.timeline-left-handle') as HTMLElement | null;
 
-    this.previewPanel = new TimelinePreviewPanel(bar, anchor);
+    this.previewPanel = new TimelinePreviewPanel(bar, anchor, this.options.position);
     this.previewPanel.init(this.options.navigate, this.options.search, (id) =>
       this.state.toggleStar(id),
     );
@@ -169,7 +177,7 @@ export class TimelineView {
       getLayout: () => ({
         contentHeight: this.dotLayer.contentHeight,
         padding: this.dotLayer.padding,
-        rtl: this.rtl,
+        rtl: this.options.position === 'left' || this.rtl,
       }),
       onScroll: () => this.updateVirtualRangeAndRender(),
     });
@@ -235,6 +243,8 @@ export class TimelineView {
     this.previewPanel = null;
     this.ui.slider?.remove();
     this.ui.timelineBar?.remove();
+    this.styleElement?.remove();
+    this.styleElement = null;
     this.ui = { timelineBar: null };
   }
   applyContainerVisibility(): void {
@@ -293,7 +303,7 @@ export class TimelineView {
       // Reset inline position so the CSS default for the new direction takes effect
       if (this.ui.timelineBar) {
         this.ui.timelineBar.style.top = '';
-        this.ui.timelineBar.style.left = '';
+        this.ui.timelineBar.style.left = this.options.position === 'left' ? '15px' : '';
       }
       this.updateRulerDirection();
       this.updateSlider();

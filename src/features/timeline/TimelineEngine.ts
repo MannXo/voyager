@@ -404,7 +404,9 @@ export class TimelineEngine {
     this.state.replaceMarkers(nextMarkers);
     this.timestamps?.update(previousMarkers, nextMarkers);
     this.view.updateTimelineGeometry();
-    if (!this.navigation.activeTurnId && this.state.markers.length > 0)
+    // Virtualized adapters select the viewport's nearest turn instead of Gemini's initial last turn.
+    if (this.adapter.virtualized) this.navigation.computeActiveByScroll();
+    else if (!this.navigation.activeTurnId && this.state.markers.length > 0)
       this.navigation.activeTurnId = this.state.markers[this.state.markers.length - 1].id;
     this.updateIntersectionObserverTargetsFromMarkers();
     this.view.syncTimelineTrackToMain();

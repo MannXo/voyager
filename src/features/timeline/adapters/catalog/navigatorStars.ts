@@ -34,6 +34,8 @@ interface StarEntry {
 interface StarSources {
   /** Conversation id of the current route, stable or not. */
   readonly routeId: () => string;
+  /** Timeline-local per-site ids; the Saved Library remains the cross-site mirror. */
+  readonly storageKey?: (conversationId: string) => string;
   /** Id stars are filed under for the current route, or null where starring is off. */
   readonly starId: () => string | null;
   readonly alive: () => boolean;
@@ -76,7 +78,7 @@ export class NavigatorStars {
   }
 
   /** Read the stars of the conversation the URL names now; joins a read already under way. */
-  load(force = false): Promise<void> {
+  load(force = false, synchronizeLibrary = false): Promise<void> {
     const conversationId = this.sources.starId();
     if (!force && conversationId === this.requestedFor) return this.read;
     this.requestedFor = conversationId;
@@ -89,12 +91,39 @@ export class NavigatorStars {
         ? await StarredMessagesService.getStarredMessagesForConversation(conversationId)
         : [];
       if (!isCurrent()) return;
-      this.byHash = new Map(
+      const saved = new Map(
         messages.map((message) => [
           extractTurnHash(message.turnId),
-          { turnId: message.turnId, starredAt: message.starredAt },
+          {
+            turnId: message.turnId,
+            starredAt: message.starredAt,
+          },
         ]),
       );
+      let primaryIds: string[] | null = null;
+      const key = conversationId && this.sources.storageKey?.(conversationId);
+      if (key && !synchronizeLibrary) {
+        try {
+          const raw =
+            localStorage.getItem(key) ??
+            localStorage.getItem(`geminiTimelineStars:${conversationId}`);
+          const parsed: unknown = raw === null ? null : JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.every((id) => typeof id === 'string'))
+            primaryIds = parsed;
+        } catch {
+          /* Read through to the Saved Library when host storage is unavailable. */
+        }
+      }
+      this.byHash =
+        primaryIds === null
+          ? saved
+          : new Map(
+              primaryIds.map((id) => {
+                const hash = extractTurnHash(id);
+                return [hash, saved.get(hash) ?? { turnId: id, starredAt: 0 }];
+              }),
+            );
+      if (synchronizeLibrary && conversationId) this.persist(conversationId);
       this.loadedFor = conversationId;
     })();
     return this.read;
@@ -158,12 +187,14 @@ export class NavigatorStars {
     const existing = this.byHash.get(hash);
     if (existing) {
       this.byHash.delete(hash);
+      this.persist(conversationId);
       // Remove by the stored id, which may still be in the legacy format.
       await StarredMessagesService.removeStarredMessage(conversationId, existing.turnId);
       return true;
     }
     const starredAt = Date.now();
     this.byHash.set(hash, { turnId: id, starredAt });
+    this.persist(conversationId);
     await StarredMessagesService.addStarredMessage({
       turnId: id,
       content: summary,
@@ -173,5 +204,17 @@ export class NavigatorStars {
       starredAt,
     });
     return true;
+  }
+  private persist(conversationId: string): void {
+    const key = this.sources.storageKey?.(conversationId);
+    if (!key) return;
+    try {
+      localStorage.setItem(
+        key,
+        JSON.stringify([...this.byHash.values()].map((entry) => entry.turnId)),
+      );
+    } catch {
+      /* Saved Library writes still work when the host blocks localStorage. */
+    }
   }
 }

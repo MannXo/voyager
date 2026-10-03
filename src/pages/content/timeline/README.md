@@ -1,7 +1,8 @@
 # Timeline ownership
 
-Start with the owner of the behavior being changed. `manager.ts` composes one conversation;
-it observes Gemini DOM changes and rebinds the live scroll viewport.
+Start with the owner of the behavior being changed. `manager.ts` creates a Gemini adapter for the
+[shared timeline engine and view](../../../features/timeline/README.md). `GeminiTimelineAdapter.ts`
+owns selector discovery, turn collection, scroll viewport discovery and native health reporting.
 
 | Change                                                                              | Owner                           |
 | ----------------------------------------------------------------------------------- | ------------------------------- |
@@ -50,6 +51,10 @@ Keep these less obvious boundaries intact:
 Owner tests exercise DOM behavior and data invariants. The `TimelineManager*` tests cover composition:
 viewport replacement, real navigation surfaces, initialization and teardown. Migrate those assertions
 with their owner instead of retaining private manager forwarding methods for old tests.
+
+View, navigation and interaction owners in the table now live in `src/features/timeline/`.
+Gemini state, hierarchy persistence, turns and timestamps remain in this directory. Their serialized
+formats, localStorage compatibility keys and account isolation are unchanged.
 
 ## Highlight integration
 

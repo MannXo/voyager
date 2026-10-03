@@ -60,6 +60,7 @@ export class TimelinePreviewPanel {
   constructor(
     private readonly anchorElement: HTMLElement,
     private readonly mountAnchor: HTMLElement = document.body,
+    private readonly railPosition?: 'left' | 'right',
   ) {}
 
   get isOpen(): boolean {
@@ -512,7 +513,8 @@ export class TimelinePreviewPanel {
       ? Math.min(700, window.innerHeight * 0.82)
       : Math.min(500, window.innerHeight * 0.7);
     const barCenterY = barRect.top + barRect.height / 2;
-    const isRTL = this.isRTLContext();
+    // RTL moves the default catalog rail left, so its preview must follow that side too.
+    const isRTL = this.railPosition === 'left' || this.isRTLContext();
 
     let left: number;
     if (isRTL) {
@@ -548,7 +550,7 @@ export class TimelinePreviewPanel {
     panelHeight: number,
   ): void {
     if (!this.hoverBridgeEl) return;
-    const isRTL = this.isRTLContext();
+    const isRTL = this.railPosition === 'left' || this.isRTLContext();
     const panelRight = panelLeft + panelWidth;
     const bridgeLeft = isRTL ? barRect.right : panelRight;
     const bridgeWidth = isRTL

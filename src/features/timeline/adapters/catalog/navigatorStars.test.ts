@@ -34,12 +34,14 @@ function stated(element: Element): string | null {
 function create(
   starId: () => string | null = () => route,
   turnConversation?: (element: Element) => string | null | undefined,
+  storageKey?: (id: string) => string,
 ): NavigatorStars {
   stars = new NavigatorStars({
     routeId: () => route,
     starId,
     alive: () => true,
     turnConversation,
+    storageKey,
   });
   stars.begin();
   return stars;
@@ -218,6 +220,52 @@ describe('navigator star writes', () => {
 
     expect(addStarredMessage).toHaveBeenCalledWith(
       expect.objectContaining({ turnId: 'c-same', content: 'Same prompt' }),
+    );
+  });
+});
+
+describe('catalog star primary storage', () => {
+  beforeEach(() => localStorage.clear());
+  const key = (id: string) => `gvTimelineStars:site:${id}`;
+
+  it('reads a primary star even when the Saved Library mirror is missing it', async () => {
+    localStorage.setItem(key(route), JSON.stringify(['c-same']));
+    getStarredMessagesForConversation.mockResolvedValueOnce([]);
+    create(() => route, undefined, key);
+    await stars.load();
+    expect(stars.get('same')?.turnId).toBe('c-same');
+  });
+
+  it('does not resurrect a Saved Library removal from the primary ids', async () => {
+    localStorage.setItem(key(route), JSON.stringify(['c-same']));
+    create(() => route, undefined, key);
+    await stars.load();
+    expect(stars.get('same')).toBeDefined();
+    getStarredMessagesForConversation.mockResolvedValueOnce([]);
+    await stars.load(true, true);
+    expect(stars.get('same')).toBeUndefined();
+    expect(JSON.parse(localStorage.getItem(key(route))!)).toEqual([]);
+  });
+
+  it('retains historical site stars without rewriting Gemini-prefixed compatibility keys', async () => {
+    const legacyKey = `geminiTimelineStars:${route}`;
+    localStorage.setItem(legacyKey, JSON.stringify(['c-old']));
+    create(() => route, undefined, key);
+    await stars.load();
+    expect(stars.get('old')?.turnId).toBe('c-old');
+    expect(localStorage.getItem(key(route))).toBeNull();
+    expect(localStorage.getItem(legacyKey)).toBe(JSON.stringify(['c-old']));
+  });
+
+  it('stores new stars in the per-site key and mirrors their existing message format', async () => {
+    create(() => route, undefined, key);
+    const element = insert();
+    stars.observe([seen(element)]);
+    await stars.load();
+    await stars.toggle({ ...turn, element }, () => ({ url: 'https://site/c/b', title: 'B' }));
+    expect(JSON.parse(localStorage.getItem(key(route))!)).toEqual(['c-same']);
+    expect(addStarredMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ turnId: 'c-same', conversationId: route }),
     );
   });
 });

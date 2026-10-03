@@ -4,15 +4,15 @@
  * usually needs no more than `{ "op": "native", "handler": "turnNavigator" }`.
  */
 import { logger } from '@/core/services/LoggerService';
+import { activateCatalogTimeline } from '@/features/timeline/adapters/catalog/activateCatalogTimeline';
+import {
+  TIMELINE_STYLE_COACHMARK_ID,
+  type CatalogTimelineConfig,
+} from '@/features/timeline/adapters/catalog/config';
 
 import type { ManifestIssue } from '../manifest/validate';
 import { isSafeRegexSource } from '../sites/safeRegex';
 import { getPrimitiveContract } from './contracts';
-import {
-  TIMELINE_STYLE_COACHMARK_ID,
-  type TurnNavigatorConfig,
-  activateTurnNavigator,
-} from './turnNavigator/TurnNavigator';
 import type { Primitive } from './types';
 
 export interface TurnNavigatorParams {
@@ -117,10 +117,11 @@ export const turnNavigatorPrimitive: Primitive<TurnNavigatorParams> = {
         return 0;
       }
     });
-    const config: TurnNavigatorConfig = {
+    const config: CatalogTimelineConfig = {
       siteId: adapter?.id ?? 'site',
       siteLabel: adapter?.label ?? 'Conversation',
       turnSelector,
+      assistantTurnSelector: adapter?.selectors.assistantTurn,
       conversationIdAttribute: params.conversationIdAttribute,
       turnItemSelector: params.turnItem,
       conversationIdPattern: params.conversationIdPattern ?? adapter?.conversationIdPattern,
@@ -130,6 +131,6 @@ export const turnNavigatorPrimitive: Primitive<TurnNavigatorParams> = {
       pluginId: context.pluginId,
       coachmarkId: TIMELINE_STYLE_COACHMARK_ID,
     };
-    return activateTurnNavigator(scope, config, context.settings);
+    return activateCatalogTimeline(scope, config, context.settings);
   },
 };

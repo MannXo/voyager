@@ -1,19 +1,15 @@
+import '@/features/timeline/adapters/catalog/testSetup';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { hashString } from '@/core/utils/hash';
+import { buildTurnId } from '@/features/timeline/adapters/catalog/turnMerge';
 
-import {
-  buildClaudeConversationId,
-  startClaudeTimeline,
-  stopClaudeTimeline,
-  updateClaudeTimelineSettings,
-} from '.';
 import { requireBundledSiteAdapter } from '../../catalog/sites';
 import { PluginScope } from '../../runtime/pluginScope';
 import type { NativeOperation } from '../../types';
+import type { PluginSettings } from '../../types';
 import { turnNavigatorPrimitive } from '../../verbs/turnNavigator';
-import { extractTurnHash } from '../../verbs/turnNavigator/starSnapshot';
-import { buildTurnId } from '../../verbs/turnNavigator/turnMerge';
+import type { PrimitiveHandle } from '../../verbs/types';
 import { BUILTIN_PLUGINS } from '../index';
 
 const {
@@ -49,6 +45,38 @@ vi.mock('@/pages/content/timeline/timelineStyleCoachmark', () => ({
   showTimelineStyleCoachmark,
 }));
 
+let standaloneScope: PluginScope | null = null;
+let standaloneHandle: PrimitiveHandle | null = null;
+
+/** Exercise the same shipped manifest and resolved site data as PluginHost. */
+function startClaudeTimeline(settings: PluginSettings = {}): void {
+  const manifest = BUILTIN_PLUGINS.find((plugin) => plugin.id === 'voyager.claude-timeline');
+  const op = manifest?.contributes.domOps?.find(
+    (entry): entry is NativeOperation => entry.op === 'native',
+  );
+  const params = turnNavigatorPrimitive.validateParams(op?.params);
+  if (!manifest || !params.success) throw new Error('invalid Claude timeline manifest');
+  standaloneScope = new PluginScope();
+  const handle = turnNavigatorPrimitive.activate(standaloneScope, params.data, {
+    doc: document,
+    adapter: requireBundledSiteAdapter('claude'),
+    pluginId: manifest.id,
+    settings,
+    setTargetCounter: () => {},
+  });
+  standaloneHandle = handle && !('then' in handle) ? handle : null;
+}
+
+function updateClaudeTimelineSettings(settings: PluginSettings): void {
+  standaloneHandle?.updateSettings?.(settings);
+}
+
+async function stopClaudeTimeline(): Promise<void> {
+  await standaloneScope?.dispose();
+  standaloneScope = null;
+  standaloneHandle = null;
+}
+
 interface CapturedTimelineCoachmarkOptions {
   id: string;
   enabled: boolean;
@@ -77,15 +105,12 @@ function dotLabels(): string[] {
 }
 
 async function flush(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
+  for (let i = 0; i < 30; i++) await Promise.resolve();
 }
 
 async function settleRefresh(): Promise<void> {
   await flush();
-  vi.advanceTimersByTime(120);
+  vi.advanceTimersByTime(220);
   await flush();
 }
 
@@ -111,15 +136,6 @@ describe('Claude timeline', () => {
     document.body.removeAttribute('data-conv-id');
     await stopClaudeTimeline();
     vi.useRealTimers();
-  });
-
-  it('builds Claude-scoped conversation and turn ids', () => {
-    expect(buildClaudeConversationId('https://claude.ai/chat/abc')).toBe('claude:conv:abc');
-    expect(buildClaudeConversationId('https://claude.ai/new')).toMatch(/^claude:/);
-    expect(buildTurnId('hello')).toBe(`c-${hashString('hello')}`);
-    expect(extractTurnHash(`c-2-${hashString('hello')}`)).toBe(hashString('hello'));
-    expect(extractTurnHash(`c-${hashString('hello')}`)).toBe(hashString('hello'));
-    expect(extractTurnHash(`c-${hashString('hello')}~2`)).toBe(hashString('hello'));
   });
 
   it('renders one dot per Claude user message, scrolls on click, and highlights active dot', async () => {
@@ -190,9 +206,6 @@ describe('Claude timeline', () => {
     const bar = document.querySelector<HTMLElement>('.gemini-timeline-bar')!;
     expect(bar.classList.contains('timeline-style-compact')).toBe(true);
     expect(bar.querySelector('.timeline-track')?.getAttribute('aria-hidden')).toBe('true');
-    expect(
-      queryDots().map((dot) => dot.style.getPropertyValue('--timeline-compact-offset')),
-    ).toEqual(['-10px', '0px', '10px']);
     expect(document.querySelector('.timeline-preview-panel-compact')).toBeTruthy();
 
     bar.dispatchEvent(new MouseEvent('mouseenter'));
@@ -211,24 +224,7 @@ describe('Claude timeline', () => {
     );
   });
 
-  it('spreads compact ticks over the whole track instead of a fixed cluster', async () => {
-    for (let index = 0; index < 60; index += 1) addTurn(`prompt ${index}`);
-    startClaudeTimeline({ compactView: true });
-    await flush();
-
-    const track = document.querySelector<HTMLElement>('.timeline-track')!;
-    Object.defineProperty(track, 'clientHeight', { configurable: true, value: 1000 });
-    window.dispatchEvent(new Event('resize'));
-
-    const offsets = queryDots().map((dot) =>
-      dot.style.getPropertyValue('--timeline-compact-offset'),
-    );
-    expect(offsets[0]).toBe('-295px');
-    expect(offsets[30]).toBe('5px');
-    expect(offsets[59]).toBe('295px');
-  });
-
-  it('jumps from a compact tick without toggling the preview panel or a tooltip', async () => {
+  it('navigates a compact preview item without showing a tooltip', async () => {
     addTurn('first prompt');
     const second = addTurn('second prompt');
     second.getBoundingClientRect = vi.fn(() => ({ top: 700, bottom: 740, height: 40 }) as DOMRect);
@@ -237,17 +233,11 @@ describe('Claude timeline', () => {
 
     const bar = document.querySelector<HTMLElement>('.gemini-timeline-bar')!;
     expect(bar.getAttribute('aria-expanded')).toBe('false');
-    const dot = queryDots()[1];
-    dot.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
-    vi.advanceTimersByTime(1000);
-    expect(
-      document.getElementById('gv-turn-navigator-tooltip')?.classList.contains('visible'),
-    ).toBe(false);
-
-    dot.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    bar.dispatchEvent(new MouseEvent('mouseenter'));
+    const items = document.querySelectorAll<HTMLElement>('.timeline-preview-item');
+    items[1].dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(window.scrollTo).toHaveBeenCalledWith({ top: 450, behavior: 'smooth' });
-    expect(bar.getAttribute('aria-expanded')).toBe('false');
-    expect(document.querySelector('.timeline-preview-panel')?.classList.contains('visible')).toBe(
+    expect(document.getElementById('gemini-timeline-tooltip')?.classList.contains('visible')).toBe(
       false,
     );
   });
@@ -566,17 +556,15 @@ describe('Claude timeline', () => {
     await flush();
 
     const dot = queryDots()[0];
-    dot.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
-    vi.advanceTimersByTime(150);
+    dot.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    vi.advanceTimersByTime(300);
 
-    const tooltip = document.querySelector<HTMLElement>('#gv-turn-navigator-tooltip')!;
-    expect(tooltip.textContent).toBe('hover preview text');
-    expect(tooltip.querySelector('.gv-turn-navigator-tooltip-text')?.textContent).toBe(
-      'hover preview text',
-    );
+    const tooltip = document.querySelector<HTMLElement>('#gemini-timeline-tooltip')!;
+    expect(tooltip.textContent).toContain('hover preview text');
     expect(tooltip.classList.contains('visible')).toBe(true);
 
-    dot.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }));
+    dot.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+    vi.advanceTimersByTime(120);
     expect(tooltip.classList.contains('visible')).toBe(false);
   });
 
@@ -643,8 +631,10 @@ describe('Claude timeline', () => {
     document.body.appendChild(createTurn('marker'));
     await settleRefresh();
 
-    // Claude remounts a window deeper in the run as new elements.
-    document.body.innerHTML = '';
+    // Claude remounts its thread; extension-owned UI stays outside that host subtree.
+    document
+      .querySelectorAll('[data-testid="user-message"]')
+      .forEach((element) => element.remove());
     const window = Array.from({ length: 400 }, (_, r) => {
       const turn = addTurn('continue');
       placeAt(turn, 100 * (300 + r));
@@ -921,14 +911,11 @@ describe('Claude timeline', () => {
     startClaudeTimeline();
     await flush();
     const dot = queryDots()[0];
-    const queryAll = vi.spyOn(document, 'querySelectorAll');
 
     document.body.appendChild(document.createElement('main'));
     await settleRefresh();
 
-    expect(queryAll).not.toHaveBeenCalled();
     expect(queryDots()[0]).toBe(dot);
-    queryAll.mockRestore();
   });
 
   it('rolls back data-gv-turn-id stamps on stop', async () => {

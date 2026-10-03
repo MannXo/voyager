@@ -1,12 +1,13 @@
+import '@/features/timeline/adapters/catalog/testSetup';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import { buildTurnId } from '@/features/timeline/adapters/catalog/turnMerge';
 import type { StarredMessage } from '@/pages/content/timeline/starredTypes';
 
 import { PluginScope } from '../runtime/pluginScope';
 import type { SiteAdapter } from '../types';
 import { turnNavigatorPrimitive } from './turnNavigator';
-import { buildTurnId } from './turnNavigator/turnMerge';
 import type { PrimitiveContext } from './types';
 
 const { addStarredMessage, getStarredMessagesForConversation, showTimelineStyleCoachmark } =
@@ -57,7 +58,7 @@ function context(adapter: SiteAdapter | null, settings = {}) {
 }
 
 async function flush(): Promise<void> {
-  for (let i = 0; i < 6; i += 1) await Promise.resolve();
+  for (let i = 0; i < 30; i += 1) await Promise.resolve();
 }
 
 beforeEach(() => {
@@ -88,8 +89,8 @@ describe('turnNavigator async star isolation', () => {
         }),
     );
     const callbacks = vi.mocked(chrome.storage.onChanged.addListener).mock.calls;
-    const notify = callbacks[callbacks.length - 1][0];
-    notify({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: [] } }, 'local');
+    for (const [notify] of callbacks)
+      notify({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: [] } }, 'local');
     history.replaceState({}, '', '/a/chat/s/new-chat');
     const starred = {
       turnId: buildTurnId('same prompt'),
@@ -139,7 +140,9 @@ describe('turnNavigator async star isolation', () => {
       expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('deepseek:conv:other'),
     );
     await new Promise((resolve) => setTimeout(resolve, 200));
-    document.querySelector('.timeline-dot')!.dispatchEvent(new Event('pointerdown'));
+    document
+      .querySelector('.timeline-dot')!
+      .dispatchEvent(new Event('pointerdown', { bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 700));
 
     expect(addStarredMessage).not.toHaveBeenCalled();
@@ -168,7 +171,7 @@ describe('turnNavigator async star isolation', () => {
     );
     await new Promise((resolve) => setTimeout(resolve, 200));
     const dots = Array.from(document.querySelectorAll('.timeline-dot'));
-    dots[dots.length - 1].dispatchEvent(new Event('pointerdown'));
+    dots[dots.length - 1].dispatchEvent(new Event('pointerdown', { bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 700));
 
     expect(addStarredMessage).not.toHaveBeenCalled();
@@ -196,7 +199,9 @@ describe('turnNavigator async star isolation', () => {
       ).toEqual(['prompt B']),
     );
     await new Promise((resolve) => setTimeout(resolve, 200));
-    document.querySelector('.timeline-dot')!.dispatchEvent(new Event('pointerdown'));
+    document
+      .querySelector('.timeline-dot')!
+      .dispatchEvent(new Event('pointerdown', { bubbles: true }));
 
     await vi.waitFor(() =>
       expect(addStarredMessage).toHaveBeenCalledWith(
@@ -225,7 +230,9 @@ describe('turnNavigator async star isolation', () => {
     document.body.append(pageB);
     await vi.waitFor(() => expect(labels()).toEqual(['prompt B']));
     await new Promise((resolve) => setTimeout(resolve, 200));
-    document.querySelector('.timeline-dot')!.dispatchEvent(new Event('pointerdown'));
+    document
+      .querySelector('.timeline-dot')!
+      .dispatchEvent(new Event('pointerdown', { bubbles: true }));
     await vi.waitFor(() =>
       expect(addStarredMessage).toHaveBeenCalledWith(
         expect.objectContaining({ conversationId: 'deepseek:conv:other', content: 'prompt B' }),
@@ -264,7 +271,9 @@ describe('turnNavigator async star isolation', () => {
     await vi.waitFor(() => expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1));
     // Let a refresh see the re-rendered turn, so the press targets it.
     await new Promise((resolve) => setTimeout(resolve, 200));
-    document.querySelector('.timeline-dot')!.dispatchEvent(new Event('pointerdown'));
+    document
+      .querySelector('.timeline-dot')!
+      .dispatchEvent(new Event('pointerdown', { bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 700));
 
     expect(addStarredMessage).not.toHaveBeenCalled();
@@ -289,7 +298,9 @@ describe('turnNavigator async star isolation', () => {
       expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('deepseek:conv:given'),
     );
     await new Promise((resolve) => setTimeout(resolve, 200));
-    document.querySelector('.timeline-dot')!.dispatchEvent(new Event('pointerdown'));
+    document
+      .querySelector('.timeline-dot')!
+      .dispatchEvent(new Event('pointerdown', { bubbles: true }));
     await vi.waitFor(() =>
       expect(addStarredMessage).toHaveBeenCalledWith(
         expect.objectContaining({ conversationId: 'deepseek:conv:given', content: 'first prompt' }),
@@ -307,8 +318,8 @@ describe('turnNavigator async star isolation', () => {
     history.pushState({}, '', '/a/chat/s/other');
     // Another tab starred something before this tab refreshed for the new route.
     const callbacks = vi.mocked(chrome.storage.onChanged.addListener).mock.calls;
-    const notify = callbacks[callbacks.length - 1][0];
-    notify({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: [] } }, 'local');
+    for (const [notify] of callbacks)
+      notify({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: [] } }, 'local');
     document.querySelector('.ds-user')!.replaceWith(
       Object.assign(document.createElement('div'), {
         className: 'ds-user',

@@ -111,6 +111,21 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   };
 }
 
+// jsdom does not implement viewport intersection observation.
+if (typeof globalThis.IntersectionObserver === 'undefined') {
+  globalThis.IntersectionObserver = class {
+    readonly root = null;
+    readonly rootMargin = '';
+    readonly thresholds = [];
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+    takeRecords(): IntersectionObserverEntry[] {
+      return [];
+    }
+  };
+}
+
 // Mock DOM API
 Object.defineProperty(window, 'matchMedia', {
   writable: true,

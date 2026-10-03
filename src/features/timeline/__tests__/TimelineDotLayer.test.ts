@@ -6,7 +6,7 @@ import { TimelineDotLayer } from '../TimelineDotLayer';
 
 const fixtures: Array<{ layer: TimelineDotLayer; state: TimelineState }> = [];
 
-function fixture(positions = [0, 0.5, 1]) {
+function fixture(positions = [0, 0.5, 1], getActiveId: () => string | null = () => null) {
   const bar = document.createElement('div');
   const track = document.createElement('div');
   const content = document.createElement('div');
@@ -31,7 +31,7 @@ function fixture(positions = [0, 0.5, 1]) {
   const layer = new TimelineDotLayer(state, {
     getStyle: () => 'dots',
     getViewport: () => null,
-    getActiveId: () => null,
+    getActiveId,
   });
   fixtures.push({ layer, state });
   layer.mount(bar, track, content);
@@ -56,6 +56,47 @@ afterEach(() => {
 });
 
 describe('TimelineDotLayer', () => {
+  it('keeps prepended history in keyboard order while preserving surviving focused dots', () => {
+    const { layer, state, content } = fixture();
+    layer.layout();
+    layer.render();
+    const surviving = content.querySelector<HTMLButtonElement>('[data-target-turn-id="turn-0"]')!;
+    surviving.focus();
+    state.replaceMarkers([
+      { ...state.markers[0], id: 'older-turn', summary: 'Earlier turn', baseN: 0 },
+      ...state.markers.map((marker, index) => ({ ...marker, baseN: (index + 1) / 3 })),
+    ]);
+    layer.layout();
+    layer.render();
+    expect(
+      Array.from(
+        content.querySelectorAll<HTMLElement>('.timeline-dot'),
+        (dot) => dot.dataset.targetTurnId,
+      ),
+    ).toEqual(['older-turn', 'turn-0', 'turn-1', 'turn-2']);
+    expect(content.querySelector('[data-target-turn-id="turn-0"]')).toBe(surviving);
+    expect(document.activeElement).toBe(surviving);
+  });
+
+  it('announces the current turn both on render and after navigation changes', () => {
+    let activeId: string | null = 'turn-0';
+    const { layer, content } = fixture(undefined, () => activeId);
+    layer.layout();
+    layer.render();
+    const current = () =>
+      Array.from(
+        content.querySelectorAll<HTMLElement>('[aria-current="true"]'),
+        (dot) => dot.dataset.targetTurnId,
+      );
+    expect(current()).toEqual(['turn-0']);
+    activeId = 'turn-2';
+    layer.updateActive();
+    expect(current()).toEqual(['turn-2']);
+    activeId = null;
+    layer.updateActive();
+    expect(current()).toEqual([]);
+  });
+
   it('spaces only visible markers after collapse and uses pixel tops when CSS cannot resolve them', () => {
     const { layer, state, content } = fixture([0, 0.001, 0.002, 0.003, 0.004, 1]);
     state.hierarchy.markerLevelEnabled = true;

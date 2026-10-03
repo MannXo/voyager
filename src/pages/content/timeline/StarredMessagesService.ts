@@ -118,7 +118,11 @@ export class StarredMessagesService {
     action: 'add' | 'remove',
   ): void {
     try {
-      const key = `geminiTimelineStars:${conversationId}`;
+      // Catalog timelines use their own local keys; Gemini's legacy key remains unchanged.
+      const site = /^(claude|chatgpt|deepseek):/.exec(conversationId)?.[1];
+      const key = site
+        ? `gvTimelineStars:${site}:${conversationId}`
+        : `geminiTimelineStars:${conversationId}`;
       const raw = localStorage.getItem(key);
       let ids: string[] = [];
 

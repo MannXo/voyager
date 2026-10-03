@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { TimelineState } from '../TimelineState';
+import { TimelineState } from '@/pages/content/timeline/TimelineState';
+
 import { TimelineView } from '../TimelineView';
 
 const views: TimelineView[] = [];
 
-function fixture(count = 2) {
+function fixture(
+  count = 2,
+  options: { mountAnchor?: HTMLElement; storagePrefix?: string; position?: 'left' | 'right' } = {},
+) {
   const viewport = document.createElement('div');
   Object.defineProperty(viewport, 'clientHeight', { value: 400 });
   const state = new TimelineState(() => {});
@@ -21,6 +25,7 @@ function fixture(count = 2) {
   );
   const onResize = vi.fn();
   const view = new TimelineView(state, {
+    ...options,
     getViewport: () => viewport,
     getActiveId: () => null,
     navigate: vi.fn(),
@@ -79,6 +84,57 @@ afterEach(() => {
 });
 
 describe('TimelineView', () => {
+  it('owns its injected stylesheet and mounts controls in the requested anchor', () => {
+    const anchor = document.createElement('div');
+    document.body.appendChild(anchor);
+    const { view, bar } = fixture(2, { mountAnchor: anchor });
+    expect(bar.parentElement).toBe(anchor);
+    expect(view.ui.slider?.parentElement).toBe(anchor);
+    expect(anchor.querySelector('.timeline-preview-toggle')).not.toBeNull();
+    const style = document.head.querySelector('[data-gv-timeline]');
+    expect(style).not.toBeNull();
+    view.destroy();
+    expect(style?.isConnected).toBe(false);
+    expect(anchor.children).toHaveLength(0);
+  });
+
+  it('persists plugin placement without changing Gemini placement keys', () => {
+    const { view, bar } = fixture(2, { storagePrefix: 'claudeTimeline' });
+    bar.dispatchEvent(pointer('pointerdown', 110));
+    window.dispatchEvent(pointer('pointermove', 122));
+    window.dispatchEvent(pointer('pointercancel'));
+    view.placement.restorePosition({ top: 50, left: 100 });
+    expect(chrome.storage.sync.set).toHaveBeenCalledWith({ claudeTimelineBarWidth: 20 });
+    expect(chrome.storage.sync.set).toHaveBeenCalledWith({
+      claudeTimelinePosition: expect.objectContaining({ version: 2 }),
+    });
+    for (const [saved] of vi.mocked(chrome.storage.sync.set).mock.calls) {
+      expect(saved).not.toHaveProperty('geminiTimelineBarWidth');
+      expect(saved).not.toHaveProperty('geminiTimelinePosition');
+    }
+  });
+
+  it('places the slider and preview inside the viewport beside an explicit left rail', () => {
+    const { view, bar } = fixture(80, { position: 'left' });
+    expect(bar.style.left).toBe('15px');
+    expect(view.ui.slider?.style.left).toBe('132px');
+    view.previewPanel?.open();
+    const panel = document.querySelector<HTMLElement>('.timeline-preview-panel');
+    expect(panel?.style.left).toBe('136px');
+    expect(panel?.getAttribute('dir')).toBe('ltr');
+  });
+
+  it('keeps plugin preview and slider inside the viewport after switching to RTL', () => {
+    const { view } = fixture(80, { position: 'right' });
+    view.applyRTLUpdate('ar');
+    expect(view.ui.slider?.style.left).toBe('132px');
+    view.previewPanel?.open();
+    expect(document.querySelector<HTMLElement>('.timeline-preview-panel')?.style.left).toBe(
+      '136px',
+    );
+    view.applyRTLUpdate('en');
+  });
+
   it('starts with the thinnest visual bar width without a saved width', () => {
     const { view, bar } = fixture();
     view.applyContainerVisibility();

@@ -15,6 +15,8 @@ import { describe, expect, it } from 'vitest';
  */
 const STYLESHEETS = [
   'public/contentStyle.css',
+  'src/features/timeline/timeline.css',
+  'src/features/timeline/timelinePreview.css',
   'src/pages/content/defaultModel/styles.css',
   'src/pages/content/folder/floatingPanel.css',
   'src/features/plugins/catalog/sites/chatgpt/plugins/reading-width/style.css',

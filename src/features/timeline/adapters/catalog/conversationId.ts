@@ -3,8 +3,7 @@
  * the URL at the moment of each star read or write; markers never carry one.
  */
 import { hashString } from '@/core/utils/hash';
-
-import { MAX_REGEX_INPUT_LENGTH } from '../../sites/safeRegex';
+import { MAX_REGEX_INPUT_LENGTH } from '@/features/plugins/sites/safeRegex';
 
 interface ConversationIdConfig {
   readonly siteId: string;

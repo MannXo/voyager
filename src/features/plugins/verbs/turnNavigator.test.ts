@@ -1,9 +1,11 @@
+import '@/features/timeline/adapters/catalog/testSetup';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { buildConversationId } from '@/features/timeline/adapters/catalog/conversationId';
 
 import { PluginScope } from '../runtime/pluginScope';
 import type { SiteAdapter } from '../types';
 import { turnNavigatorPrimitive } from './turnNavigator';
-import { buildConversationId } from './turnNavigator/conversationId';
 import type { PrimitiveContext } from './types';
 
 const { getStarredMessagesForConversation, showTimelineStyleCoachmark } = vi.hoisted(() => ({
@@ -52,7 +54,7 @@ function context(adapter: SiteAdapter | null, settings = {}) {
 }
 
 async function flush(): Promise<void> {
-  for (let i = 0; i < 6; i += 1) await Promise.resolve();
+  for (let i = 0; i < 30; i += 1) await Promise.resolve();
 }
 
 beforeEach(() => {

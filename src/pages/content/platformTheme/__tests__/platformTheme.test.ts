@@ -303,7 +303,13 @@ describe('platform theme CSS', () => {
   });
 
   it('re-hues tinted accents via var(--gv-pm-brand-h), not the low-support oklch(from …) syntax', () => {
-    const css = readFileSync(resolve(process.cwd(), 'public/contentStyle.css'), 'utf8');
+    const css = [
+      'public/contentStyle.css',
+      'src/features/timeline/timeline.css',
+      'src/features/timeline/timelinePreview.css',
+    ]
+      .map((path) => readFileSync(resolve(process.cwd(), path), 'utf8'))
+      .join('\n');
     // CSS relative-colour syntax is too new (Chrome 119+/Safari 16.4+/Firefox 128+);
     // tints must use the broadly-supported oklch(L C var(--gv-pm-brand-h)) form.
     // Matched as a regex, not a substring: the formatter wraps long values, and a

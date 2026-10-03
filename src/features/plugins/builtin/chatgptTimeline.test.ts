@@ -1,3 +1,4 @@
+import '@/features/timeline/adapters/catalog/testSetup';
 /**
  * The ChatGPT timeline is the `voyager.chatgpt-timeline` builtin manifest
  * driving the `turnNavigator` primitive with the bundled ChatGPT adapter.
@@ -11,14 +12,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import { buildConversationId } from '@/features/timeline/adapters/catalog/conversationId';
+import { buildTurnId } from '@/features/timeline/adapters/catalog/turnMerge';
 import type { StarredMessage } from '@/pages/content/timeline/starredTypes';
 
 import { requireBundledSiteAdapter } from '../catalog/sites';
 import { PluginScope } from '../runtime/pluginScope';
 import type { NativeOperation } from '../types';
 import { turnNavigatorPrimitive } from '../verbs/turnNavigator';
-import { buildConversationId } from '../verbs/turnNavigator/conversationId';
-import { buildTurnId } from '../verbs/turnNavigator/turnMerge';
 import { BUILTIN_PLUGINS } from './index';
 
 /** In-memory stand-in for the background's starred-message store. */
@@ -106,7 +107,7 @@ async function mount(adapter = requireBundledSiteAdapter('chatgpt')): Promise<vo
   await settle();
 }
 
-async function settle(ms = 150): Promise<void> {
+async function settle(ms = 250): Promise<void> {
   await vi.advanceTimersByTimeAsync(ms);
 }
 
@@ -215,12 +216,12 @@ function starred(conversation: string): string[] | undefined {
 /** The storage echo every star write sends to open tabs. */
 function notifyStars(): void {
   const listeners = vi.mocked(chrome.storage.onChanged.addListener).mock.calls;
-  const notify = listeners[listeners.length - 1][0];
-  notify({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: {} } }, 'local');
+  for (const [notify] of listeners)
+    notify({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: {} } }, 'local');
 }
 
 async function longPress(dot: HTMLElement): Promise<void> {
-  dot.dispatchEvent(new Event('pointerdown'));
+  dot.dispatchEvent(new Event('pointerdown', { bubbles: true }));
   await vi.advanceTimersByTimeAsync(600);
 }
 
@@ -733,7 +734,7 @@ describe('ChatGPT timeline', () => {
     exchange('Prompt A');
     await mount();
 
-    dots()[0].dispatchEvent(new Event('pointerdown'));
+    dots()[0].dispatchEvent(new Event('pointerdown', { bubbles: true }));
     await vi.advanceTimersByTimeAsync(549);
     history.pushState({}, '', '/c/second');
     await settle(ROUTE_SETTLE_MS);
@@ -778,7 +779,7 @@ describe('ChatGPT timeline', () => {
     exchange('Same prompt');
     await mount();
 
-    dots()[0].dispatchEvent(new Event('pointerdown'));
+    dots()[0].dispatchEvent(new Event('pointerdown', { bubbles: true }));
     await vi.advanceTimersByTimeAsync(100);
     history.pushState({}, '', '/c/second');
     thread.replaceChildren();
@@ -799,7 +800,7 @@ describe('ChatGPT timeline', () => {
         }),
     );
 
-    dots()[0].dispatchEvent(new Event('pointerdown'));
+    dots()[0].dispatchEvent(new Event('pointerdown', { bubbles: true }));
     await vi.advanceTimersByTimeAsync(549);
     history.pushState({}, '', '/c/second');
     await vi.advanceTimersByTimeAsync(1);

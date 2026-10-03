@@ -3,7 +3,11 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 function readContentStyle(): string {
-  return ['public/contentStyle.css', 'src/features/timeline/timeline.css']
+  return [
+    'public/contentStyle.css',
+    'src/features/timeline/timeline.css',
+    'src/features/timeline/timelinePreview.css',
+  ]
     .map((path) => readFileSync(resolve(process.cwd(), path), 'utf8'))
     .join('\n');
 }
