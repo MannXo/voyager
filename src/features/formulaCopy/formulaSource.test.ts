@@ -1,9 +1,9 @@
 // Load shared mocks before the service and its dependencies.
-import './formulaCopyTestHarness';
+import './__tests__/formulaCopyTestHarness';
 import { describe, expect, it } from 'vitest';
 
 import { FormulaCopyService } from './FormulaCopyService';
-import { resetSingleton, setupFormulaCopyTestSuite } from './formulaCopyTestHarness';
+import { resetSingleton, setupFormulaCopyTestSuite } from './__tests__/formulaCopyTestHarness';
 
 describe('Formula copy source', () => {
   const context = setupFormulaCopyTestSuite();

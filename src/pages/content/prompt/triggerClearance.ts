@@ -126,13 +126,13 @@ export function watchPromptTrigger(onChange: () => void): () => void {
 
   let watched: HTMLElement | null = null;
   let watchedComposer: HTMLElement | null = null;
-  const composerResize = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null;
+  const composerResize = new ResizeObserver(schedule);
   const bindComposer = () => {
     const current = composerElement();
     if (current === watchedComposer) return;
-    composerResize?.disconnect();
+    composerResize.disconnect();
     watchedComposer = current;
-    if (current) composerResize?.observe(current);
+    if (current) composerResize.observe(current);
   };
   const ballObserver = new MutationObserver(schedule);
   const bind = () => {
@@ -176,7 +176,7 @@ export function watchPromptTrigger(onChange: () => void): () => void {
   return () => {
     mountObserver.disconnect();
     ballObserver.disconnect();
-    composerResize?.disconnect();
+    composerResize.disconnect();
     if (frame !== null) cancelAnimationFrame(frame);
     frame = null;
   };

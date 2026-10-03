@@ -1,14 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { isGenericLanguageLabel } from '../../codeBlock';
 import { renderMermaid } from '../codeBlock';
 import { openFullscreen } from '../fullscreen';
 import { MermaidRenderer, resolveMermaidTheme } from '../renderer';
-import {
-  isGenericLanguageLabel,
-  isMermaidCode,
-  normalizeMermaidCode,
-  normalizeWhitespace,
-} from '../source';
+import { isMermaidCode, normalizeMermaidCode, normalizeWhitespace } from '../source';
 
 // Mock the dynamic import of 'mermaid'
 vi.mock('mermaid', () => ({
@@ -101,30 +97,34 @@ describe('Mermaid rendering', () => {
   });
 
   describe('fullscreen lifecycle', () => {
-    it.each(['button', 'escape', 'backdrop'])(
-      'removes document listeners when closed by %s',
+    it.each(['button', 'escape', 'backdrop'] as const)(
+      'closes after the fade and stops document dragging via %s',
       (path) => {
         vi.useFakeTimers();
-        const removeSpy = vi.spyOn(document, 'removeEventListener');
-
-        openFullscreen('<svg width="100" height="100"><path d="M0 0" /></svg>');
-        if (path === 'button') {
-          document
-            .querySelector<HTMLButtonElement>('.gv-mermaid-modal-toolbar button:last-child')!
-            .click();
-        } else if (path === 'escape') {
+        try {
+          openFullscreen('<svg width="100" height="100"><path d="M0 0" /></svg>');
+          const modal = document.querySelector<HTMLElement>('.gv-mermaid-modal')!;
+          const content = modal.querySelector<HTMLElement>('.gv-mermaid-modal-content')!;
+          vi.advanceTimersToNextFrame();
+          content.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: 20 }));
+          const close = {
+            button: () => modal.querySelector<HTMLButtonElement>('button:last-child')!.click(),
+            escape: () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })),
+            backdrop: () => modal.click(),
+          }[path];
+          close();
+          const transform = content.style.transform;
+          document.dispatchEvent(new MouseEvent('mousemove', { clientX: 70, clientY: 80 }));
+          expect(content.style.transform).toBe(transform);
+          expect(content.classList.contains('dragging')).toBe(false);
+          expect(modal.classList.contains('visible')).toBe(false);
+          vi.advanceTimersByTime(300);
+          expect(modal.isConnected).toBe(false);
+        } finally {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-        } else {
-          document.querySelector<HTMLElement>('.gv-mermaid-modal')!.click();
+          vi.runAllTimers();
+          vi.useRealTimers();
         }
-
-        expect(removeSpy).toHaveBeenCalledWith('keydown', expect.any(Function));
-        expect(removeSpy).toHaveBeenCalledWith('mousemove', expect.any(Function));
-        expect(removeSpy).toHaveBeenCalledWith('mouseup', expect.any(Function));
-
-        vi.runAllTimers();
-        expect(document.querySelector('.gv-mermaid-modal')).toBeNull();
-        vi.useRealTimers();
       },
     );
   });

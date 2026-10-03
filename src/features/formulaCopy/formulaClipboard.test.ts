@@ -1,5 +1,5 @@
 // Load shared mocks before the service and its dependencies.
-import './formulaCopyTestHarness';
+import './__tests__/formulaCopyTestHarness';
 import temml from 'temml';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -8,7 +8,7 @@ import {
   TestClipboardItem,
   resetSingleton,
   setupFormulaCopyTestSuite,
-} from './formulaCopyTestHarness';
+} from './__tests__/formulaCopyTestHarness';
 
 describe('Formula copy clipboard', () => {
   const context = setupFormulaCopyTestSuite();

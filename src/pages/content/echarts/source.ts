@@ -1,4 +1,4 @@
-import { isGenericLanguageLabel } from '../mermaid/source';
+import { isGenericLanguageLabel } from '../codeBlock';
 
 /**
  * Chart series types understood by the renderer. Anything outside this set is

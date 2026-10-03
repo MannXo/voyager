@@ -26,12 +26,8 @@ export class HighlightNavigation {
   ): HighlightNavigationResult {
     const mark = this.marks.get(id)?.find(isVisibleHighlightMark);
     if (mark) {
-      mark.scrollIntoView?.({ behavior, block: 'center', inline: 'nearest' });
-      try {
-        mark.focus({ preventScroll: true });
-      } catch {
-        mark.focus();
-      }
+      mark.scrollIntoView({ behavior, block: 'center', inline: 'nearest' });
+      mark.focus({ preventScroll: true });
       document.querySelectorAll('.gv-highlight-active').forEach((element) => {
         element.classList.remove('gv-highlight-active');
       });
@@ -48,7 +44,7 @@ export class HighlightNavigation {
     const record = this.records.get(id);
     const turn = record ? findHighlightTurn(record.turnId) : null;
     if (turn) {
-      turn.userElement.scrollIntoView?.({ behavior, block: 'center', inline: 'nearest' });
+      turn.userElement.scrollIntoView({ behavior, block: 'center', inline: 'nearest' });
       return 'turn';
     }
     return 'missing';

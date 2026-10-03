@@ -1,8 +1,9 @@
 import { logger } from '@/core/services/LoggerService';
 
+import { isGenericLanguageLabel } from '../codeBlock';
 import { createStyles, renderMermaid } from './codeBlock';
 import { MermaidRenderer } from './renderer';
-import { isGenericLanguageLabel, isMermaidCode } from './source';
+import { isMermaidCode } from './source';
 
 const renderer = new MermaidRenderer();
 

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { setupFormulaCopyTestSuite } from './formulaCopyTestHarness';
+import { setupFormulaCopyTestSuite } from './__tests__/formulaCopyTestHarness';
 
 describe('Formula copy interaction', () => {
   const context = setupFormulaCopyTestSuite();

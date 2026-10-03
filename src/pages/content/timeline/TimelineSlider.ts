@@ -148,13 +148,11 @@ export class TimelineSlider {
 
   private endSliderDrag(): void {
     this.sliderDragging = false;
-    try {
-      if (this.onSliderMove) window.removeEventListener('pointermove', this.onSliderMove);
-      if (this.onSliderUp) {
-        window.removeEventListener('pointerup', this.onSliderUp);
-        window.removeEventListener('pointercancel', this.onSliderUp);
-      }
-    } catch {}
+    if (this.onSliderMove) window.removeEventListener('pointermove', this.onSliderMove);
+    if (this.onSliderUp) {
+      window.removeEventListener('pointerup', this.onSliderUp);
+      window.removeEventListener('pointercancel', this.onSliderUp);
+    }
     this.onSliderMove = null;
     this.onSliderUp = null;
     this.hideSliderDeferred();

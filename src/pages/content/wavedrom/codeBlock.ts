@@ -1,6 +1,6 @@
 import { logger } from '@/core/services/LoggerService';
 
-import { isGenericLanguageLabel } from '../mermaid/source';
+import { isGenericLanguageLabel } from '../codeBlock';
 import {
   getAppTheme,
   isWaveJsonCode,

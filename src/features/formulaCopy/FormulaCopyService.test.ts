@@ -1,12 +1,16 @@
 // Load shared mocks before the service and its dependencies.
-import './formulaCopyTestHarness';
+import './__tests__/formulaCopyTestHarness';
 import { describe, expect, it, vi } from 'vitest';
 import browser from 'webextension-polyfill';
 
 import { setCachedLanguage } from '@/utils/i18n';
 
 import { FormulaCopyService } from './FormulaCopyService';
-import { resetSingleton, setupFormulaCopyTestSuite, storageMocks } from './formulaCopyTestHarness';
+import {
+  resetSingleton,
+  setupFormulaCopyTestSuite,
+  storageMocks,
+} from './__tests__/formulaCopyTestHarness';
 
 describe('Formula copy service', () => {
   const context = setupFormulaCopyTestSuite();

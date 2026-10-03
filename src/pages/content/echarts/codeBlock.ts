@@ -1,4 +1,4 @@
-import { isGenericLanguageLabel } from '../mermaid/source';
+import { isGenericLanguageLabel } from '../codeBlock';
 import {
   getAppTheme,
   PANEL_BG,

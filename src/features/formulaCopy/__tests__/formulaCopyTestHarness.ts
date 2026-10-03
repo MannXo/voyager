@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, vi } from 'vitest';
 
-import { FormulaCopyService } from './FormulaCopyService';
+import { FormulaCopyService } from '../FormulaCopyService';
 
 // Mock dependencies
 const storageMocks = vi.hoisted(() => ({

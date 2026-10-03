@@ -58,7 +58,7 @@ export class TimelinePreviewPress {
 
   private readonly onListPointerDown = (event: PointerEvent): void => {
     if (!this.onToggleStar || event.isPrimary === false) return;
-    if (typeof event.button === 'number' && event.button !== 0) return;
+    if (event.button !== 0) return;
     const target = event.target;
     if (!(target instanceof Element)) return;
     const item = target.closest<HTMLElement>('.timeline-preview-item');
@@ -69,7 +69,7 @@ export class TimelinePreviewPress {
     this.pressTargetItem = item;
     this.pressStartPosition = { x: event.clientX, y: event.clientY };
     item.classList.add('holding');
-    this.longPressTimer = window.setTimeout(() => {
+    this.longPressTimer = window.setTimeout(async () => {
       const pressedItem = this.pressTargetItem;
       const turnId = pressedItem?.dataset.turnId;
       this.longPressTimer = null;
@@ -80,9 +80,7 @@ export class TimelinePreviewPress {
 
       this.longPressTriggeredTurnId = turnId;
       try {
-        void Promise.resolve(this.onToggleStar(turnId)).catch((error) => {
-          console.error('[TimelinePreviewPanel] Failed to toggle star:', error);
-        });
+        await this.onToggleStar(turnId);
       } catch (error) {
         console.error('[TimelinePreviewPanel] Failed to toggle star:', error);
       }
