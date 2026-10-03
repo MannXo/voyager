@@ -92,9 +92,7 @@ export function createChatGptThreadPreparer(): ChatGptThreadPreparer {
     const session = createThreadSession(route, versions);
     latest = session;
     try {
-      const messages = await crawlChatGptThread(options);
-      // A newer preparation has released this one, even when it failed.
-      if (latest === session) session.publish(messages);
+      session.publish(await crawlChatGptThread(options));
     } catch (error) {
       if (isAbortError(error)) {
         session.release();
@@ -146,6 +144,7 @@ function createThreadSession(
 
   return {
     publish(messages) {
+      // Released: a newer preparation superseded this one while it crawled.
       if (!snapshot) return;
       watch.adopt(messages);
       snapshot = { route, messages, failure: '' };
