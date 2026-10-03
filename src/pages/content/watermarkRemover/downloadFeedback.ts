@@ -6,7 +6,7 @@ import { findNativeDownloadButton } from './downloadButton';
 import type { ImageHealthFingerprint } from './imageHealthDetector';
 import type { StatusToastManager } from './statusToast';
 
-/** Owns native download intents and their token-correlated feedback lifetime. */
+/** Correlate intents and status tokens so an older download cannot finish newer feedback. */
 export function createDownloadFeedback({
   getBridge,
   capturePreview,

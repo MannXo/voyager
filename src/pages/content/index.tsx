@@ -612,6 +612,7 @@ function handleVisibilityChange(): void {
       changes: Record<string, chrome.storage.StorageChange>,
       areaName: string,
     ) => {
+      // Storage changes must not start the runtime before Gemini's normal startup.
       if (
         watermarkRemoverStarted &&
         areaName === 'sync' &&
