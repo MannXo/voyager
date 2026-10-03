@@ -19,13 +19,14 @@ function fixture(count = 2) {
       starred: false,
     })),
   );
+  const onResize = vi.fn();
   const view = new TimelineView(state, {
     getViewport: () => viewport,
     getActiveId: () => null,
     navigate: vi.fn(),
     search: vi.fn(),
     onStyleChange: vi.fn(),
-    onResize: vi.fn(),
+    onResize,
   });
   views.push(view);
   view.mount();
@@ -37,7 +38,15 @@ function fixture(count = 2) {
   vi.spyOn(bar!, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 50, 24, 400));
   view.contentSpanPx = 1000;
   view.render();
-  return { view, viewport, bar: bar!, track: track!, trackContent: trackContent!, handle: handle! };
+  return {
+    view,
+    viewport,
+    bar: bar!,
+    track: track!,
+    trackContent: trackContent!,
+    handle: handle!,
+    onResize,
+  };
 }
 
 function pointer(type: string, clientX = 0, clientY = 0) {
@@ -174,6 +183,31 @@ describe('TimelineView', () => {
     expect(chrome.storage.sync.get).not.toHaveBeenCalled();
     expect(bar.style.top).toBe('');
     expect(bar.style.left).toBe('');
+  });
+
+  it('shares one trailing resize debounce and cancels pending work on destroy', () => {
+    const visualViewport = new EventTarget();
+    vi.stubGlobal('visualViewport', visualViewport);
+    const { view, bar, onResize } = fixture();
+    view.savedTimelinePosition = { version: 2, topPercent: 10, leftPercent: 20 };
+    window.dispatchEvent(new Event('resize'));
+    vi.advanceTimersByTime(70);
+    visualViewport.dispatchEvent(new Event('resize'));
+    vi.advanceTimersByTime(139);
+    expect(onResize).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(onResize).toHaveBeenCalledTimes(1);
+    expect(bar.style.top).toBe(`${window.innerHeight * 0.1}px`);
+    expect(chrome.storage.sync.get).not.toHaveBeenCalled();
+
+    visualViewport.dispatchEvent(new Event('resize'));
+    view.destroy();
+    vi.advanceTimersByTime(140);
+    window.dispatchEvent(new Event('resize'));
+    visualViewport.dispatchEvent(new Event('resize'));
+    vi.advanceTimersByTime(140);
+    expect(onResize).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('releases pointer listeners so detached controls cannot restart work after destroy', () => {

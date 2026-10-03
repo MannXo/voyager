@@ -3,8 +3,10 @@ import { applyRTLClass } from '@/core/utils/rtl';
 
 import { getTimelineSpringProfile } from './TimelineNavigation';
 import { TimelinePreviewPanel } from './TimelinePreviewPanel';
+import { TimelineRailPlacement } from './TimelineRailPlacement';
+import { TimelineSlider } from './TimelineSlider';
 import type { TimelineState } from './TimelineState';
-import type { ExtGlobal, TimelinePositionData } from './types';
+import type { TimelinePositionData } from './types';
 import type { DotElement } from './types';
 interface TimelineViewOptions {
   getViewport: () => HTMLElement | null;
@@ -28,18 +30,6 @@ export class TimelineView {
 
   hideContainer: boolean = false;
 
-  barWidth: number = 4;
-
-  readonly barWidthMin = 4;
-
-  readonly barWidthMax = 24;
-
-  private resizing = false;
-
-  private onResizeMove: ((ev: PointerEvent) => void) | null = null;
-
-  private onResizeUp: ((ev: PointerEvent) => void) | null = null;
-
   private runnerRing: HTMLElement | null = null;
 
   private runnerAnimationGeneration = 0;
@@ -60,43 +50,9 @@ export class TimelineView {
 
   private _cssVarTopSupported: boolean | null = null;
 
-  private sliderDragging = false;
-
-  private sliderFadeTimer: number | null = null;
-
-  private sliderFadeDelay = 1000;
-
-  private sliderAlwaysVisible = false;
-
-  private onSliderMove: ((ev: PointerEvent) => void) | null = null;
-
-  private onSliderUp: ((ev: PointerEvent) => void) | null = null;
-
-  private sliderStartClientY = 0;
-
-  private sliderStartTop = 0;
-
-  private sliderMaxTop = 0;
-
-  private sliderScrollRange = 1;
-
   private resizeIdleTimer: number | null = null;
 
   private resizeIdleDelay = 140;
-
-  savedTimelinePosition: TimelinePositionData | null = null;
-
-  private draggable = false;
-
-  private barDragging = false;
-
-  private barStartPos = { x: 0, y: 0 };
-
-  private barStartOffset = { x: 0, y: 0 };
-
-  private onBarPointerMove: ((ev: PointerEvent) => void) | null = null;
-
-  private onBarPointerUp: ((ev: PointerEvent) => void) | null = null;
 
   previewPanel: TimelinePreviewPanel | null = null;
 
@@ -110,7 +66,53 @@ export class TimelineView {
   constructor(
     private readonly state: TimelineState,
     private readonly options: TimelineViewOptions,
-  ) {}
+  ) {
+    this.placement = new TimelineRailPlacement({
+      getStyle: () => this.timelineStyle,
+      onWidthChange: () => this.applyContainerVisibility(),
+    });
+  }
+  private readonly placement: TimelineRailPlacement;
+  private slider: TimelineSlider | null = null;
+
+  get barWidth(): number {
+    return this.placement.barWidth;
+  }
+  set barWidth(value: number) {
+    this.placement.barWidth = value;
+  }
+  get barWidthMin(): number {
+    return this.placement.barWidthMin;
+  }
+  get barWidthMax(): number {
+    return this.placement.barWidthMax;
+  }
+  get savedTimelinePosition(): TimelinePositionData | null {
+    return this.placement.savedPosition;
+  }
+  set savedTimelinePosition(value: TimelinePositionData | null) {
+    this.placement.savedPosition = value;
+  }
+  updateSlider(): void {
+    this.slider?.update();
+  }
+  updateSliderPosition(): void {
+    this.slider?.updatePosition();
+  }
+  toggleDraggable(enabled: boolean): void {
+    this.placement.toggleDraggable(enabled);
+  }
+  applyPosition(top: number, left: number): void {
+    if (!this.ui.timelineBar) return;
+    this.placement.applyPosition(top, left);
+    this.previewPanel?.reposition();
+  }
+  updateRulerDirection(left?: number): void {
+    this.placement.updateRulerDirection(left);
+  }
+  reapplyPosition(): void {
+    if (this.placement.reapplyPosition()) this.previewPanel?.reposition();
+  }
   private get markers() {
     return this.state.markers;
   }
@@ -163,6 +165,15 @@ export class TimelineView {
     this.previewPanel.init(this.options.navigate, this.options.search, (id) =>
       this.state.toggleStar(id),
     );
+    this.slider = new TimelineSlider(bar, track, slider, this.ui.sliderHandle, {
+      getLayout: () => ({
+        contentHeight: this.contentHeight,
+        padding: this.getTrackPadding(),
+        rtl: this.rtl,
+      }),
+      onScroll: () => this.updateVirtualRangeAndRender(),
+    });
+    this.placement.mount(bar);
     this.setupEventListeners();
     this.resizeObserver = new ResizeObserver(() => this.render());
     this.resizeObserver.observe(bar);
@@ -242,7 +253,7 @@ export class TimelineView {
       'wheel',
       (event) => {
         if (this.scrollContainer) this.scrollContainer.scrollTop += event.deltaY;
-        this.showSlider();
+        this.slider?.show();
         event.preventDefault();
       },
       { passive: false, signal },
@@ -257,93 +268,6 @@ export class TimelineView {
         signal: this.lifetime.signal,
       });
     }
-
-    const onSliderDown = (ev: PointerEvent) => {
-      if (!this.ui.sliderHandle) return;
-      try {
-        this.ui.sliderHandle.setPointerCapture(ev.pointerId);
-      } catch {}
-      this.sliderDragging = true;
-      this.showSlider();
-      this.sliderStartClientY = ev.clientY;
-      const rect = this.ui.sliderHandle.getBoundingClientRect();
-      this.sliderStartTop = rect.top;
-      this.onSliderMove = (e: PointerEvent) => this.handleSliderDrag(e);
-      this.onSliderUp = (e: PointerEvent) => this.endSliderDrag(e);
-      window.addEventListener('pointermove', this.onSliderMove, { signal: this.lifetime.signal });
-      // pointercancel must end the drag too, otherwise sliderDragging stays
-      // true forever and syncTimelineTrackToMain() short-circuits.
-      window.addEventListener('pointerup', this.onSliderUp, { signal: this.lifetime.signal });
-      window.addEventListener('pointercancel', this.onSliderUp, { signal: this.lifetime.signal });
-    };
-    this.ui.sliderHandle?.addEventListener('pointerdown', onSliderDown, {
-      signal: this.lifetime.signal,
-    });
-
-    const onBarEnter = () => this.showSlider();
-    const onBarLeave = () => this.hideSliderDeferred();
-    const onSliderEnter = () => this.showSlider();
-    const onSliderLeave = () => this.hideSliderDeferred();
-    this.ui.timelineBar!.addEventListener('pointerenter', onBarEnter, {
-      signal: this.lifetime.signal,
-    });
-    this.ui.timelineBar!.addEventListener('pointerleave', onBarLeave, {
-      signal: this.lifetime.signal,
-    });
-    this.ui.slider?.addEventListener('pointerenter', onSliderEnter, {
-      signal: this.lifetime.signal,
-    });
-    this.ui.slider?.addEventListener('pointerleave', onSliderLeave, {
-      signal: this.lifetime.signal,
-    });
-
-    const onBarPointerDown = (ev: PointerEvent) => {
-      if ((ev.target as HTMLElement).closest('.timeline-dot, .timeline-thumb')) {
-        return;
-      }
-      // Resize takes priority over position drag
-      if (this.isInResizeEdge(ev)) {
-        this.startResize(ev);
-        return;
-      }
-      // Position drag only when enabled
-      if (!this.draggable) return;
-      this.barDragging = true;
-      this.barStartPos = { x: ev.clientX, y: ev.clientY };
-      const rect = this.ui.timelineBar!.getBoundingClientRect();
-      this.barStartOffset = { x: rect.left, y: rect.top };
-      this.ui.timelineBar!.setPointerCapture(ev.pointerId);
-      this.onBarPointerMove = (e: PointerEvent) => this.handleBarDrag(e);
-      this.onBarPointerUp = (e: PointerEvent) => this.endBarDrag(e);
-      window.addEventListener('pointermove', this.onBarPointerMove, {
-        signal: this.lifetime.signal,
-      });
-      // pointercancel shares the pointerup path so a cancelled touch drag
-      // cannot leave barDragging stuck true.
-      window.addEventListener('pointerup', this.onBarPointerUp, { signal: this.lifetime.signal });
-      window.addEventListener('pointercancel', this.onBarPointerUp, {
-        signal: this.lifetime.signal,
-      });
-    };
-    // Always attach pointerdown for resize (drag is gated by this.draggable inside)
-    this.ui.timelineBar!.addEventListener('pointerdown', onBarPointerDown, {
-      signal: this.lifetime.signal,
-    });
-
-    // Cursor management: show resize cursor near inner edge
-    const onBarCursorMove = (ev: PointerEvent) => {
-      if (this.resizing || this.barDragging) return;
-      if (this.isInResizeEdge(ev)) {
-        this.ui.timelineBar!.style.cursor = 'ew-resize';
-      } else if (this.draggable) {
-        this.ui.timelineBar!.style.cursor = 'move';
-      } else {
-        this.ui.timelineBar!.style.cursor = '';
-      }
-    };
-    this.ui.timelineBar!.addEventListener('pointermove', onBarCursorMove, {
-      signal: this.lifetime.signal,
-    });
   }
   destroy(): void {
     this.destroyed = true;
@@ -352,7 +276,8 @@ export class TimelineView {
     this.resizeObserver?.disconnect();
     if (this.runnerRaf !== null) cancelAnimationFrame(this.runnerRaf);
     if (this.resizeIdleTimer !== null) clearTimeout(this.resizeIdleTimer);
-    if (this.sliderFadeTimer !== null) clearTimeout(this.sliderFadeTimer);
+    this.slider?.destroy();
+    this.placement.destroy();
     this.previewPanel?.destroy();
     this.previewPanel = null;
     this.ui.slider?.remove();
@@ -393,66 +318,6 @@ export class TimelineView {
     this.previewPanel?.setFloatingToggleSuppressed(ruler);
     this.updateVirtualRangeAndRender();
     this.updateSlider();
-  }
-
-  /** Check if pointer is near either edge of the visual background (::before, centered in the 24px bar). */
-  private isInResizeEdge(ev: PointerEvent): boolean {
-    if (this.timelineStyle !== 'dots') return false;
-    if (!this.ui.timelineBar) return false;
-    const rect = this.ui.timelineBar.getBoundingClientRect();
-    const barCenter = rect.left + rect.width / 2;
-    const halfWidth = this.barWidth / 2;
-    const ZONE = 6;
-
-    const leftEdge = barCenter - halfWidth;
-    const rightEdge = barCenter + halfWidth;
-    const nearLeft = ev.clientX >= leftEdge - 2 && ev.clientX <= leftEdge + ZONE;
-    const nearRight = ev.clientX >= rightEdge - ZONE && ev.clientX <= rightEdge + 2;
-    return nearLeft || nearRight;
-  }
-
-  private startResize(ev: PointerEvent): void {
-    this.resizing = true;
-    this.ui.timelineBar!.classList.add('timeline-resizing');
-    this.ui.timelineBar!.setPointerCapture(ev.pointerId);
-    const barRect = this.ui.timelineBar!.getBoundingClientRect();
-    const barCenterX = barRect.left + barRect.width / 2;
-
-    this.onResizeMove = (e: PointerEvent) => {
-      // Width = 2 × distance from pointer to bar center (symmetric expansion)
-      const dist = Math.abs(e.clientX - barCenterX);
-      this.barWidth = Math.max(this.barWidthMin, Math.min(this.barWidthMax, dist * 2));
-      this.applyContainerVisibility();
-    };
-
-    this.onResizeUp = (_e: PointerEvent) => {
-      this.resizing = false;
-      this.ui.timelineBar?.classList.remove('timeline-resizing');
-      window.removeEventListener('pointermove', this.onResizeMove!);
-      window.removeEventListener('pointerup', this.onResizeUp!);
-      window.removeEventListener('pointercancel', this.onResizeUp!);
-      this.onResizeMove = null;
-      this.onResizeUp = null;
-      this.saveBarWidth();
-    };
-
-    window.addEventListener('pointermove', this.onResizeMove, { signal: this.lifetime.signal });
-    // pointercancel shares the pointerup path so a cancelled touch drag
-    // (e.g. browser gesture takeover) cannot leave `resizing` stuck true.
-    window.addEventListener('pointerup', this.onResizeUp, { signal: this.lifetime.signal });
-    window.addEventListener('pointercancel', this.onResizeUp, { signal: this.lifetime.signal });
-    ev.preventDefault();
-    ev.stopPropagation();
-  }
-
-  private saveBarWidth(): void {
-    const g = globalThis as ExtGlobal;
-    const value = Math.round(this.barWidth);
-    if (g.chrome?.storage?.sync?.set) {
-      g.chrome.storage.sync.set({ geminiTimelineBarWidth: value });
-    } else if (g.browser?.storage?.sync?.set) {
-      g.browser.storage.sync.set({ geminiTimelineBarWidth: value });
-    }
   }
 
   private getCSSVarNumber(el: Element, name: string, fallback: number): number {
@@ -540,10 +405,7 @@ export class TimelineView {
       this._cssVarTopSupported = this.detectCssVarTopSupport(pad, usableC);
       this.usePixelTop = !this._cssVarTopSupported;
     }
-    this.updateSlider();
-    const barH = this.ui.timelineBar.clientHeight || 0;
-    this.sliderAlwaysVisible = this.contentHeight > barH + 1;
-    if (this.sliderAlwaysVisible) this.showSlider();
+    this.slider?.updateGeometry();
   }
 
   /* Apply minimum gap between visible markers, skipping hidden ones */
@@ -669,7 +531,7 @@ export class TimelineView {
 
   syncTimelineTrackToMain(): void {
     if (this.timelineStyle !== 'dots') return;
-    if (this.sliderDragging) return;
+    if (this.slider?.dragging) return;
     if (!this.ui.track || !this.scrollContainer || !this.contentHeight) return;
     const scrollTop = this.scrollContainer.scrollTop;
     const ref = scrollTop + this.scrollContainer.clientHeight * 0.45;
@@ -796,165 +658,7 @@ export class TimelineView {
     }
   }
 
-  updateSlider(): void {
-    if (!this.ui.slider || !this.ui.sliderHandle) return;
-    if (!this.contentHeight || !this.ui.timelineBar || !this.ui.track) return;
-    const barRect = this.ui.timelineBar.getBoundingClientRect();
-    const barH = barRect.height || 0;
-    const pad = this.getTrackPadding();
-    const innerH = Math.max(0, barH - 2 * pad);
-    if (this.contentHeight <= barH + 1 || innerH <= 0) {
-      this.sliderAlwaysVisible = false;
-      this.sliderMaxTop = 0;
-      this.sliderScrollRange = 1;
-      this.ui.slider.classList.remove('visible');
-      this.ui.slider.style.opacity = '';
-      return;
-    }
-    this.sliderAlwaysVisible = true;
-    const railLen = Math.max(120, Math.min(240, Math.floor(barH * 0.45)));
-    const railTop = Math.round(barRect.top + pad + (innerH - railLen) / 2);
-    const railLeftGap = 8;
-    const sliderWidth = 12;
-    // In RTL, bar is on the left side — position slider to its right instead
-    const left = this.rtl
-      ? Math.round(barRect.right + railLeftGap)
-      : Math.round(barRect.left - railLeftGap - sliderWidth);
-    this.ui.slider.style.left = `${left}px`;
-    this.ui.slider.style.top = `${railTop}px`;
-    this.ui.slider.style.height = `${railLen}px`;
-    const handleH = 22;
-    const maxTop = Math.max(0, railLen - handleH);
-    const range = Math.max(1, this.contentHeight - barH);
-    this.sliderMaxTop = maxTop;
-    this.sliderScrollRange = range;
-    this.ui.sliderHandle.style.height = `${handleH}px`;
-    this.updateSliderPosition();
-    this.ui.slider.classList.add('visible');
-    this.ui.slider.style.opacity = '';
-  }
-
-  updateSliderPosition(): void {
-    if (!this.ui.track || !this.ui.sliderHandle || !this.sliderAlwaysVisible) return;
-    const st = this.ui.track.scrollTop || 0;
-    const ratio = Math.max(0, Math.min(1, st / this.sliderScrollRange));
-    const top = `${Math.round(ratio * this.sliderMaxTop)}px`;
-    if (this.ui.sliderHandle.style.top !== top) this.ui.sliderHandle.style.top = top;
-  }
-
-  private showSlider(): void {
-    if (!this.ui.slider) return;
-    this.ui.slider.classList.add('visible');
-    if (this.sliderFadeTimer) {
-      clearTimeout(this.sliderFadeTimer);
-      this.sliderFadeTimer = null;
-    }
-    this.updateSlider();
-  }
-
-  private hideSliderDeferred(): void {
-    if (this.sliderDragging || this.sliderAlwaysVisible) return;
-    if (this.sliderFadeTimer) clearTimeout(this.sliderFadeTimer);
-    this.sliderFadeTimer = window.setTimeout(() => {
-      this.sliderFadeTimer = null;
-      this.ui.slider?.classList.remove('visible');
-    }, this.sliderFadeDelay);
-  }
-
-  private handleSliderDrag(e: PointerEvent): void {
-    if (!this.sliderDragging || !this.ui.timelineBar || !this.ui.track) return;
-    const barRect = this.ui.timelineBar.getBoundingClientRect();
-    const barH = barRect.height || 0;
-    const railLen =
-      parseFloat(this.ui.slider!.style.height || '0') ||
-      Math.max(120, Math.min(240, Math.floor(barH * 0.45)));
-    const handleH = this.ui.sliderHandle!.getBoundingClientRect().height || 22;
-    const maxTop = Math.max(0, railLen - handleH);
-    const delta = e.clientY - this.sliderStartClientY;
-    let top = Math.max(
-      0,
-      Math.min(maxTop, this.sliderStartTop + delta - (parseFloat(this.ui.slider!.style.top) || 0)),
-    );
-    const r = maxTop > 0 ? top / maxTop : 0;
-    const range = Math.max(1, this.contentHeight - barH);
-    this.ui.track.scrollTop = Math.round(r * range);
-    this.updateVirtualRangeAndRender();
-    // showSlider() already refreshes slider geometry via updateSlider()
-    this.showSlider();
-  }
-
-  private endSliderDrag(_e: PointerEvent): void {
-    this.sliderDragging = false;
-    try {
-      if (this.onSliderMove) window.removeEventListener('pointermove', this.onSliderMove);
-      if (this.onSliderUp) {
-        window.removeEventListener('pointerup', this.onSliderUp);
-        window.removeEventListener('pointercancel', this.onSliderUp);
-      }
-    } catch {}
-    this.onSliderMove = null;
-    this.onSliderUp = null;
-    this.hideSliderDeferred();
-  }
-
-  toggleDraggable(enabled: boolean): void {
-    this.draggable = enabled;
-    // Cursor is managed dynamically by onBarCursorMove; just update the flag
-    if (!this.ui.timelineBar) return;
-    if (!this.draggable) {
-      this.ui.timelineBar.style.cursor = '';
-    }
-  }
-
-  private handleBarDrag(e: PointerEvent): void {
-    if (!this.barDragging) return;
-    const dx = e.clientX - this.barStartPos.x;
-    const dy = e.clientY - this.barStartPos.y;
-    const left = this.barStartOffset.x + dx;
-    this.ui.timelineBar!.style.left = `${left}px`;
-    this.ui.timelineBar!.style.top = `${this.barStartOffset.y + dy}px`;
-    this.updateRulerDirection(left);
-  }
-
-  private endBarDrag(_e: PointerEvent): void {
-    this.barDragging = false;
-    this.savePosition();
-    try {
-      if (this.onBarPointerMove) window.removeEventListener('pointermove', this.onBarPointerMove);
-      if (this.onBarPointerUp) {
-        window.removeEventListener('pointerup', this.onBarPointerUp);
-        window.removeEventListener('pointercancel', this.onBarPointerUp);
-      }
-    } catch {}
-    this.onBarPointerMove = null;
-    this.onBarPointerUp = null;
-  }
-
-  private savePosition(): void {
-    if (!this.ui.timelineBar) return;
-    const rect = this.ui.timelineBar.getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-
-    // Save position as percentage of viewport for responsive design
-    const position = {
-      version: 2,
-      topPercent: (rect.top / viewportHeight) * 100,
-      leftPercent: (rect.left / viewportWidth) * 100,
-    };
-    this.savedTimelinePosition = position;
-
-    const g = globalThis as ExtGlobal;
-    if (g.chrome?.storage?.sync?.set) {
-      g.chrome.storage.sync.set({ geminiTimelinePosition: position });
-    } else if (g.browser?.storage?.sync?.set) {
-      g.browser.storage.sync.set({ geminiTimelinePosition: position });
-    }
-  }
-
-  /**
-   * Apply position with boundary checks to keep timeline visible
-   */
+  /** Reset inline placement when the page direction changes. */
   applyRTLUpdate(language?: string | null): void {
     const wasRTL = this.rtl;
     this.rtl = applyRTLClass(language);
@@ -967,64 +671,6 @@ export class TimelineView {
       this.updateRulerDirection();
       this.updateSlider();
       this.previewPanel?.reposition();
-    }
-  }
-
-  applyPosition(top: number, left: number): void {
-    if (!this.ui.timelineBar) return;
-
-    const barWidth = this.ui.timelineBar.offsetWidth || 24; // fallback to default width
-    const barHeight = this.ui.timelineBar.offsetHeight || 100;
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-
-    // Clamp to viewport bounds (with small padding)
-    const padding = 10;
-    const clampedTop = Math.max(padding, Math.min(top, viewportHeight - barHeight - padding));
-    const clampedLeft = Math.max(padding, Math.min(left, viewportWidth - barWidth - padding));
-
-    this.ui.timelineBar.style.top = `${clampedTop}px`;
-    this.ui.timelineBar.style.left = `${clampedLeft}px`;
-    this.updateRulerDirection(clampedLeft);
-    this.previewPanel?.reposition();
-  }
-
-  /** Grow ruler ticks toward page content, including after the rail is dragged across the viewport. */
-  updateRulerDirection(left?: number): void {
-    const bar = this.ui.timelineBar;
-    if (!bar) return;
-    const barLeft = left ?? bar.getBoundingClientRect().left;
-    const center = barLeft + (bar.offsetWidth || 24) / 2;
-    bar.classList.toggle('gv-timeline-ruler-inward-right', center < window.innerWidth / 2);
-  }
-
-  /**
-   * Reapply position after window resize. Uses the in-memory cache populated
-   * during init/savePosition/onSyncSettingsChanged instead of a storage read,
-   * so resizes never trigger storage IPC.
-   */
-  reapplyPosition(): void {
-    if (!this.ui.timelineBar) return;
-
-    const position = this.savedTimelinePosition;
-    if (!position) return;
-
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-
-    // v2 format: use percentage (responsive)
-    if (
-      position.version === 2 &&
-      position.topPercent !== undefined &&
-      position.leftPercent !== undefined
-    ) {
-      const top = (position.topPercent / 100) * viewportHeight;
-      const left = (position.leftPercent / 100) * viewportWidth;
-      this.applyPosition(top, left);
-    }
-    // v1 format: keep absolute position (no resize adjustment for legacy)
-    else if (position.top !== undefined && position.left !== undefined) {
-      this.applyPosition(position.top, position.left);
     }
   }
 

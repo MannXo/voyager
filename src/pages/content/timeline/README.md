@@ -8,7 +8,10 @@ it observes Gemini DOM changes and rebinds the live scroll viewport.
 | Find turns, stable IDs, prompt/response summaries                                   | `TimelineTurns.ts`              |
 | Stars, verified legacy aliases, levels, collapse, persistence                       | `TimelineState.ts`              |
 | Dot/preview/shortcut navigation, active turn, scrolling and navigation cancellation | `TimelineNavigation.ts`         |
-| Rail geometry, virtual dots, slider, dragging, runner animation                     | `TimelineView.ts`               |
+| Rail composition, styling, preview, viewport sync and resize debounce               | `TimelineView.ts`               |
+| Marker geometry, virtual dots and runner animation                                  | `TimelineView.ts`               |
+| Slider geometry, scroll dragging and hover fade                                     | `TimelineSlider.ts`             |
+| Rail width, position dragging and cached placement                                  | `TimelineRailPlacement.ts`      |
 | Preview list, search, pinning and compact hover bridge                              | `TimelinePreviewPanel.ts`       |
 | Hover delay, tooltip content layout and visibility                                  | `TimelineTooltip.ts`            |
 | Marker clicks, long press and hierarchy menu                                        | `TimelineMarkerInteractions.ts` |
