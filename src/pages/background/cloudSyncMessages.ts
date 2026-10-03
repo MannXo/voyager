@@ -6,10 +6,10 @@ import {
   extractRouteUserIdFromUrl,
 } from '@/core/services/AccountIsolationService';
 import { googleDriveSyncService } from '@/core/services/GoogleDriveSyncService';
-import { getHighlightAccountHash } from '@/core/services/HighlightAnnotationService';
 import { highlightDriveSyncCoordinator } from '@/core/services/HighlightDriveSyncCoordinator';
 import { logger } from '@/core/services/LoggerService';
 import { exportBackupableSyncSettings } from '@/core/services/SettingsBackupService';
+import { getHighlightAccountHash } from '@/core/services/highlightAnnotationData';
 import { StorageKeys } from '@/core/types/common';
 import type { FolderData } from '@/core/types/folder';
 import type { PromptItem, SyncAccountScope, SyncMode, SyncProvider } from '@/core/types/sync';

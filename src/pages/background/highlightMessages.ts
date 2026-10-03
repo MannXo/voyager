@@ -2,11 +2,11 @@ import {
   accountIsolationService,
   detectAccountPlatformFromUrl,
 } from '@/core/services/AccountIsolationService';
+import { highlightAnnotationService } from '@/core/services/HighlightAnnotationService';
 import {
   HighlightAnnotationError,
   getHighlightAccountHash,
-  highlightAnnotationService,
-} from '@/core/services/HighlightAnnotationService';
+} from '@/core/services/highlightAnnotationData';
 import { StorageKeys } from '@/core/types/common';
 import type {
   HighlightAccountScope,

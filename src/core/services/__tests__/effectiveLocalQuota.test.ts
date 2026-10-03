@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { HighlightAnnotationService } from '../HighlightAnnotationService';
+import { StorageQuotaService, storageQuotaService } from '../StorageQuotaService';
 import {
   HighlightAnnotationError,
-  HighlightAnnotationService,
   createHighlightSourceTextHash,
-} from '../HighlightAnnotationService';
-import { StorageQuotaService, storageQuotaService } from '../StorageQuotaService';
+} from '../highlightAnnotationData';
 
 const MIB = 1024 * 1024;
 

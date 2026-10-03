@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   HighlightAnnotationService,
   type HighlightStorageAdapter,
-  createHighlightSourceTextHash,
 } from '@/core/services/HighlightAnnotationService';
+import { createHighlightSourceTextHash } from '@/core/services/highlightAnnotationData';
 import type { HighlightAccountScope, HighlightRecordV1 } from '@/core/types/highlight';
 
 import { type StorageBudget, createStorageBudget } from '../storageBudget';

@@ -29,15 +29,6 @@ import {
 import type { HighlightScope } from './highlightAnnotationData';
 import { validateHighlightImport, planHighlightImport } from './highlightAnnotationMerge';
 import { HighlightAnnotationStore } from './highlightAnnotationStore';
-export {
-  HighlightAnnotationError,
-  compareHighlightRecords,
-  createHighlightSourceTextHash,
-  getHighlightAccountHash,
-  getHighlightIndexStorageKey,
-  getHighlightBucketStorageKey,
-} from './highlightAnnotationData';
-export type { HighlightScope } from './highlightAnnotationData';
 
 export interface HighlightAddResult {
   record: HighlightRecordV1;

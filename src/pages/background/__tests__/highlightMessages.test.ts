@@ -1,7 +1,7 @@
 import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { accountIsolationService } from '@/core/services/AccountIsolationService';
-import { getHighlightBucketStorageKey } from '@/core/services/HighlightAnnotationService';
+import { getHighlightBucketStorageKey } from '@/core/services/highlightAnnotationData';
 import type {
   HighlightAccountScope,
   HighlightCreateInput,

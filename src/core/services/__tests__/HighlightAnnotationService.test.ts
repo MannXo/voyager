@@ -8,15 +8,17 @@ import type {
 } from '@/core/types/highlight';
 
 import {
-  HighlightAnnotationError,
   HighlightAnnotationService,
   type HighlightImportMergeOptions,
   type HighlightStorageAdapter,
+} from '../HighlightAnnotationService';
+import {
+  HighlightAnnotationError,
   createHighlightSourceTextHash,
   getHighlightAccountHash,
   getHighlightBucketStorageKey,
   getHighlightIndexStorageKey,
-} from '../HighlightAnnotationService';
+} from '../highlightAnnotationData';
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;

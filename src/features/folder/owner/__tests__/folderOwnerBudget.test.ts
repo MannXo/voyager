@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  HighlightAnnotationService,
-  createHighlightSourceTextHash,
-} from '@/core/services/HighlightAnnotationService';
+import { HighlightAnnotationService } from '@/core/services/HighlightAnnotationService';
+import { createHighlightSourceTextHash } from '@/core/services/highlightAnnotationData';
 import type { FolderData } from '@/core/types/folder';
 import {
   type StorageBudget,
