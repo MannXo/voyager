@@ -83,6 +83,11 @@ function pendingRetained(): boolean {
   return sessionStorage.getItem(PENDING_HANDOFF_TAB_KEY) === TAB_TOKEN && pendingStored();
 }
 
+// Cancellation detaches the tab token synchronously, before the composer change it guards lands.
+function expectRecoveryDetachedNow(): void {
+  expect(sessionStorage.getItem(PENDING_HANDOFF_TAB_KEY)).toBeNull();
+}
+
 function readBlob(blob: Blob): Promise<string> {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -500,12 +505,29 @@ describe('ChatGPT temporary handoff plugin', () => {
     await vi.waitFor(() => expect(composer.textContent).toBe('Continue this transcript'));
   });
 
+  it('keeps a delivered composer the user cleared instead of restoring the handoff', async () => {
+    const { composer } = mountComposerForm();
+    seedPending({ mode: 'inline', text: 'Continue this transcript' });
+    await activateChatGptTemporaryHandoff(createScope());
+    await vi.waitFor(() =>
+      expect(extensionStorage.get(PENDING_STORAGE_KEY)).toMatchObject({ deliveredRoute: '/' }),
+    );
+
+    composer.dispatchEvent(new InputEvent('beforeinput', { bubbles: true }));
+    composer.replaceChildren();
+    await settle();
+
+    expect(composer.textContent).toBe('');
+    await vi.waitFor(() => expect(pendingStored()).toBe(false));
+  });
+
   it('stops recovery before a user edit changes the delivered composer', async () => {
     const { composer } = mountComposerForm();
     await activateChatGptTemporaryHandoff(createScope());
     seedPending({ mode: 'inline', text: 'Continue' });
 
     composer.dispatchEvent(new InputEvent('beforeinput', { bubbles: true }));
+    expectRecoveryDetachedNow();
 
     await vi.waitFor(() => expect(pendingStored()).toBe(false));
   });
@@ -520,10 +542,12 @@ describe('ChatGPT temporary handoff plugin', () => {
 
     seedPending({ mode: 'inline', text: 'Continue' });
     send.click();
+    expectRecoveryDetachedNow();
     await vi.waitFor(() => expect(pendingStored()).toBe(false));
 
     seedPending({ mode: 'inline', text: 'Continue' });
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    expectRecoveryDetachedNow();
     await vi.waitFor(() => expect(pendingStored()).toBe(false));
   });
 
@@ -540,6 +564,7 @@ describe('ChatGPT temporary handoff plugin', () => {
     seedPending({ mode: 'inline', text: 'Continue' });
 
     remove.click();
+    expectRecoveryDetachedNow();
 
     await vi.waitFor(() => expect(pendingStored()).toBe(false));
   });
@@ -559,6 +584,7 @@ describe('ChatGPT temporary handoff plugin', () => {
       document.body.appendChild(newChat);
       newChat.click();
       newChat.remove();
+      expectRecoveryDetachedNow();
 
       await vi.waitFor(() => expect(pendingStored()).toBe(false));
     }
