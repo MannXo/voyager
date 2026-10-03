@@ -1,8 +1,8 @@
 import { getGeminiTurnSelectors } from '@/core/gemini/turnSelectors';
 import { hashString } from '@/core/utils/hash';
+import type { TimelineMarker } from '@/features/timeline/types';
 
 import { makeStableTurnId, readServerTurnId } from '../fork/turnId';
-import type { TimelineMarker } from './types';
 /** Accessibility prefixes injected by Gemini's DOM that should be stripped from previews effectively globally. */
 // Anchored to the start, so it only strips leading invisible characters and can
 // never split an emoji sequence in the label body.

@@ -4,6 +4,7 @@ import {
   detectAccountContextFromDocument,
 } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
+import type { MarkerLevel, TimelineMarker } from '@/features/timeline/types';
 
 import {
   getTimelineHierarchyStorageKey,
@@ -16,7 +17,6 @@ import {
   getLegacyTimelineLevelsStorageKey,
 } from './hierarchyTypes';
 import { safeLocalStorageGet, safeLocalStorageSet } from './timelineLocalStorage';
-import type { MarkerLevel, TimelineMarker } from './types';
 
 interface TimelineHierarchyOptions {
   getMarkers: () => TimelineMarker[];

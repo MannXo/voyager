@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { TimelineMarker } from '@/features/timeline/types';
+
 import { eventBus } from '../EventBus';
 import { StarredMessagesService } from '../StarredMessagesService';
 import { TimelineState } from '../TimelineState';
 import type { StarredMessage, StarredMessagesData } from '../starredTypes';
-import type { TimelineMarker } from '../types';
 
 const CONVERSATION_ID = 'gemini:conv:abc';
 const FIRST_ID = 's-1111111111111111';

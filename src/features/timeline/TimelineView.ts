@@ -1,12 +1,15 @@
 import { type TimelineStyle } from '@/core/types/common';
 import { applyRTLClass } from '@/core/utils/rtl';
 
+import type { TimelineStateOwner } from './TimelineAdapter';
 import { TimelineDotLayer } from './TimelineDotLayer';
 import { TimelinePreviewPanel } from './TimelinePreviewPanel';
 import { TimelineRailPlacement } from './TimelineRailPlacement';
 import { TimelineSlider } from './TimelineSlider';
-import type { TimelineState } from './TimelineState';
 interface TimelineViewOptions {
+  mountAnchor?: HTMLElement;
+  storagePrefix?: string;
+  position?: 'left' | 'right';
   getViewport: () => HTMLElement | null;
   getActiveId: () => string | null;
   navigate: (turnId: string, index: number) => void;
@@ -43,7 +46,7 @@ export class TimelineView {
   private resizeObserver: ResizeObserver | null = null;
   private readonly lifetime = new AbortController();
   constructor(
-    private readonly state: TimelineState,
+    private readonly state: TimelineStateOwner,
     private readonly options: TimelineViewOptions,
   ) {
     this.dotLayer = new TimelineDotLayer(state, {
@@ -52,6 +55,7 @@ export class TimelineView {
       getActiveId: () => this.options.getActiveId(),
     });
     this.placement = new TimelineRailPlacement({
+      storagePrefix: options.storagePrefix,
       getStyle: () => this.timelineStyle,
       onWidthChange: () => this.applyContainerVisibility(),
       onPositionRestore: () => this.previewPanel?.reposition(),
@@ -117,11 +121,16 @@ export class TimelineView {
   }
   mount(): void {
     if (this.destroyed) return;
-    let bar = document.querySelector('.gemini-timeline-bar') as HTMLElement | null;
+    const anchor = this.options.mountAnchor ?? document.body;
+    let bar = anchor.querySelector('.gemini-timeline-bar') as HTMLElement | null;
     if (!bar) {
       bar = document.createElement('div');
       bar.className = 'gemini-timeline-bar';
-      document.body.appendChild(bar);
+      anchor.appendChild(bar);
+    }
+    if (this.options.position === 'left') {
+      bar.style.right = 'auto';
+      bar.style.left = '15px';
     }
     this.ui.timelineBar = bar;
     let track = bar.querySelector('.timeline-track') as HTMLElement | null;
@@ -140,19 +149,19 @@ export class TimelineView {
     this.ui.trackContent = content;
     this.dotLayer.mount(bar, track, content);
 
-    let slider = document.querySelector('.timeline-left-slider') as HTMLElement | null;
+    let slider = anchor.querySelector('.timeline-left-slider') as HTMLElement | null;
     if (!slider) {
       slider = document.createElement('div');
       slider.className = 'timeline-left-slider';
       const handle = document.createElement('div');
       handle.className = 'timeline-left-handle';
       slider.appendChild(handle);
-      document.body.appendChild(slider);
+      anchor.appendChild(slider);
     }
     this.ui.slider = slider;
     this.ui.sliderHandle = slider.querySelector('.timeline-left-handle') as HTMLElement | null;
 
-    this.previewPanel = new TimelinePreviewPanel(bar);
+    this.previewPanel = new TimelinePreviewPanel(bar, anchor);
     this.previewPanel.init(this.options.navigate, this.options.search, (id) =>
       this.state.toggleStar(id),
     );

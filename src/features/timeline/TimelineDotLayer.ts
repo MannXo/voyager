@@ -1,7 +1,7 @@
 import type { TimelineStyle } from '@/core/types/common';
 
+import type { TimelineStateOwner } from './TimelineAdapter';
 import { getTimelineSpringProfile } from './TimelineNavigation';
-import type { TimelineState } from './TimelineState';
 import type { DotElement } from './types';
 
 /** Owns measured marker positions, keyed dot rendering and the runner lifetime. */
@@ -29,7 +29,7 @@ export class TimelineDotLayer {
   private track: HTMLElement | null = null;
   private content: HTMLElement | null = null;
   constructor(
-    private readonly state: Pick<TimelineState, 'markers' | 'hierarchy'>,
+    private readonly state: Pick<TimelineStateOwner, 'markers' | 'hierarchy'>,
     private readonly options: {
       getStyle: () => TimelineStyle;
       getViewport: () => HTMLElement | null;

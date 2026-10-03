@@ -5,7 +5,7 @@ import {
   type ShortcutCallback,
 } from '@/core/services/KeyboardShortcutService';
 
-import { TimelineNavigation, type TimelineNavigationMarker } from './TimelineNavigation';
+import { TimelineNavigation, type TimelineNavigationMarker } from '../TimelineNavigation';
 
 const owners: TimelineNavigation[] = [];
 

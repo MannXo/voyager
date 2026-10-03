@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import { StarredMessagesService } from '@/pages/content/timeline/StarredMessagesService';
+import { TimelineState } from '@/pages/content/timeline/TimelineState';
+import type { StarredMessagesData } from '@/pages/content/timeline/starredTypes';
 
-import { StarredMessagesService } from '../StarredMessagesService';
-import { TimelineState } from '../TimelineState';
 import { TimelineView } from '../TimelineView';
-import type { StarredMessagesData } from '../starredTypes';
 import type { TimelineMarker } from '../types';
 
 const fixtures: Array<{ state: TimelineState; view: TimelineView }> = [];

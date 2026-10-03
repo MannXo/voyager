@@ -13,7 +13,7 @@ vi.mock('webextension-polyfill', () => ({
   },
 }));
 
-vi.mock('../../../../utils/i18n', () => ({
+vi.mock('@/utils/i18n', () => ({
   getTranslationSync: (key: string) => {
     const map: Record<string, string> = {
       timelinePreviewSearch: 'Search...',

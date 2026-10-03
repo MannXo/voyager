@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { TimelineState } from '@/pages/content/timeline/TimelineState';
+
 import { TimelineDotLayer } from '../TimelineDotLayer';
-import { TimelineState } from '../TimelineState';
 
 const fixtures: Array<{ layer: TimelineDotLayer; state: TimelineState }> = [];
 

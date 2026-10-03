@@ -3,7 +3,9 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 function readContentStyle(): string {
-  return readFileSync(resolve(process.cwd(), 'public/contentStyle.css'), 'utf8');
+  return ['public/contentStyle.css', 'src/features/timeline/timeline.css']
+    .map((path) => readFileSync(resolve(process.cwd(), path), 'utf8'))
+    .join('\n');
 }
 
 /** Every declaration of `name`, in source order. */

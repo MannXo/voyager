@@ -3,6 +3,7 @@ import type { TimelineStyle } from '@/core/types/common';
 import type { ExtGlobal, TimelinePositionData } from './types';
 
 interface TimelineRailPlacementOptions {
+  storagePrefix?: string;
   getStyle: () => TimelineStyle;
   onWidthChange: () => void;
   onPositionRestore: () => void;
@@ -69,7 +70,7 @@ export class TimelineRailPlacement {
         };
         this.savedPosition = migratedPosition;
         (g.chrome?.storage?.sync || g.browser?.storage?.sync)?.set?.({
-          geminiTimelinePosition: migratedPosition,
+          [`${this.options.storagePrefix ?? 'geminiTimeline'}Position`]: migratedPosition,
         });
       }
     }
@@ -169,9 +170,13 @@ export class TimelineRailPlacement {
     const g = globalThis as ExtGlobal;
     const value = Math.round(this.barWidth);
     if (g.chrome?.storage?.sync?.set) {
-      g.chrome.storage.sync.set({ geminiTimelineBarWidth: value });
+      g.chrome.storage.sync.set({
+        [`${this.options.storagePrefix ?? 'geminiTimeline'}BarWidth`]: value,
+      });
     } else if (g.browser?.storage?.sync?.set) {
-      g.browser.storage.sync.set({ geminiTimelineBarWidth: value });
+      g.browser.storage.sync.set({
+        [`${this.options.storagePrefix ?? 'geminiTimeline'}BarWidth`]: value,
+      });
     }
   }
 
@@ -218,9 +223,13 @@ export class TimelineRailPlacement {
     this.savedPosition = position;
     const g = globalThis as ExtGlobal;
     if (g.chrome?.storage?.sync?.set) {
-      g.chrome.storage.sync.set({ geminiTimelinePosition: position });
+      g.chrome.storage.sync.set({
+        [`${this.options.storagePrefix ?? 'geminiTimeline'}Position`]: position,
+      });
     } else if (g.browser?.storage?.sync?.set) {
-      g.browser.storage.sync.set({ geminiTimelinePosition: position });
+      g.browser.storage.sync.set({
+        [`${this.options.storagePrefix ?? 'geminiTimeline'}Position`]: position,
+      });
     }
   }
 

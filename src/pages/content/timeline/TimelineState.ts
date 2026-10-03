@@ -5,6 +5,7 @@ import {
   buildRouteConversationIdFromUrl,
   extractConversationIdFromUrl,
 } from '@/core/utils/conversationIdentity';
+import type { TimelineMarker } from '@/features/timeline/types';
 
 import { getLegacyTurnIndex } from '../fork/turnId';
 import {
@@ -18,7 +19,6 @@ import { findMatchingStarredMessages } from './starredLookup';
 import { resolveStarredDisplay } from './starredResolution';
 import type { StarredMessage, StarredMessagesData } from './starredTypes';
 import { safeLocalStorageGet, safeLocalStorageSet } from './timelineLocalStorage';
-import type { TimelineMarker } from './types';
 
 /** Conversation-scoped stars and hierarchy. Rendering never writes storage. */
 export class TimelineState {

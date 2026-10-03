@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import type { MarkerLevel } from '@/features/timeline/types';
 
 import { StarredMessagesService } from '../StarredMessagesService';
 import { TimelineState } from '../TimelineState';
@@ -8,7 +9,6 @@ import {
   getLegacyTimelineCollapsedStorageKey,
   getLegacyTimelineLevelsStorageKey,
 } from '../hierarchyTypes';
-import type { MarkerLevel } from '../types';
 
 const PARENT_ID = 's-6060606060606060';
 const CHILD_ID = 's-6161616161616161';

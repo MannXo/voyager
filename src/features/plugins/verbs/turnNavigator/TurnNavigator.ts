@@ -17,9 +17,9 @@ import { StorageKeys, type TimelineStyle } from '@/core/types/common';
 import { type Dispose, PluginScope } from '@/features/plugins/runtime/pluginScope';
 import { requestPluginSetting } from '@/features/plugins/storage/pluginSettingRequest';
 import type { PluginSettings } from '@/features/plugins/types';
-import { TimelinePreviewPanel } from '@/pages/content/timeline/TimelinePreviewPanel';
+import { TimelinePreviewPanel } from '@/features/timeline/TimelinePreviewPanel';
+import type { PreviewMarkerData } from '@/features/timeline/types';
 import { showTimelineStyleCoachmark } from '@/pages/content/timeline/timelineStyleCoachmark';
-import type { PreviewMarkerData } from '@/pages/content/timeline/types';
 import { watchRouteChanges } from '@/pages/content/utils/routeWatcher';
 import { initI18n } from '@/utils/i18n';
 

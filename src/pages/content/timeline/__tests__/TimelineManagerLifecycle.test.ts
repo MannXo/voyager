@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { TimelineNavigation } from '../TimelineNavigation';
+import type { TimelineNavigation } from '@/features/timeline/TimelineNavigation';
+import type { TimelineView } from '@/features/timeline/TimelineView';
+import type { SyncSettingsListener } from '@/features/timeline/types';
+
 import type { TimelineState } from '../TimelineState';
-import type { TimelineView } from '../TimelineView';
 import { TimelineManager } from '../manager';
-import type { SyncSettingsListener } from '../types';
 
 vi.mock('../../../../utils/i18n', () => ({
   initI18n: vi.fn().mockResolvedValue(undefined),

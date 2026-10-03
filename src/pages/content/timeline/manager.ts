@@ -4,18 +4,23 @@ import {
 } from '@/core/gemini/turnSelectors';
 import { StorageKeys, isTimelineStyle } from '@/core/types/common';
 import { applyRTLClass } from '@/core/utils/rtl';
+import { TimelineMarkerInteractions } from '@/features/timeline/TimelineMarkerInteractions';
+import { TimelineNavigation } from '@/features/timeline/TimelineNavigation';
+import { TimelineTooltip } from '@/features/timeline/TimelineTooltip';
+import { TimelineView } from '@/features/timeline/TimelineView';
+import type {
+  DotElement,
+  ExtGlobal,
+  SyncSettingsListener,
+  TimelinePositionData,
+} from '@/features/timeline/types';
 import { initI18n } from '@/utils/i18n';
 
 import { nativeHealthReporter } from '../nativeHealth';
 import { hasRenderedConversationContent } from '../nativeHealth/pageEvidence';
-import { TimelineMarkerInteractions } from './TimelineMarkerInteractions';
-import { TimelineNavigation } from './TimelineNavigation';
 import { TimelineState } from './TimelineState';
 import { TimelineTimestamps } from './TimelineTimestamps';
-import { TimelineTooltip } from './TimelineTooltip';
 import { TimelineTurns } from './TimelineTurns';
-import { TimelineView } from './TimelineView';
-import type { DotElement, ExtGlobal, SyncSettingsListener, TimelinePositionData } from './types';
 interface TimelineManagerOptions {
   previousUrl?: string | null;
 }

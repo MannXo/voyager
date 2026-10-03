@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { TimelineNavigation } from '../TimelineNavigation';
+import type { TimelineNavigation } from '@/features/timeline/TimelineNavigation';
+import type { TimelineView } from '@/features/timeline/TimelineView';
+
 import type { TimelineState } from '../TimelineState';
-import type { TimelineView } from '../TimelineView';
 import { TimelineManager } from '../manager';
 
 type TimelineOwners = {

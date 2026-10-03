@@ -2,8 +2,8 @@ import browser from 'webextension-polyfill';
 
 import { StorageKeys } from '@/core/types/common';
 import { GV_RTL_CLASS, detectRTL } from '@/core/utils/rtl';
+import { getTranslationSync } from '@/utils/i18n';
 
-import { getTranslationSync } from '../../../utils/i18n';
 import { TimelinePreviewPress } from './TimelinePreviewPress';
 import type { PreviewMarkerData } from './types';
 
@@ -57,7 +57,10 @@ export class TimelinePreviewPanel {
     | ((changes: Record<string, browser.Storage.StorageChange>, areaName: string) => void)
     | null = null;
 
-  constructor(private readonly anchorElement: HTMLElement) {}
+  constructor(
+    private readonly anchorElement: HTMLElement,
+    private readonly mountAnchor: HTMLElement = document.body,
+  ) {}
 
   get isOpen(): boolean {
     return this._isOpen;
@@ -280,7 +283,7 @@ export class TimelinePreviewPanel {
       e.stopPropagation();
       this.toggle();
     });
-    document.body.appendChild(this.toggleBtn);
+    this.mountAnchor.appendChild(this.toggleBtn);
     this.syncFloatingToggleVisibility();
 
     // Panel
@@ -309,8 +312,8 @@ export class TimelinePreviewPanel {
     this.setupScrollIsolation();
     this.panelEl.appendChild(this.listEl);
 
-    document.body.appendChild(this.panelEl);
-    document.body.appendChild(this.hoverBridgeEl);
+    this.mountAnchor.appendChild(this.panelEl);
+    this.mountAnchor.appendChild(this.hoverBridgeEl);
   }
 
   private syncFloatingToggleVisibility(): void {

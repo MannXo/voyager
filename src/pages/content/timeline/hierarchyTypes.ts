@@ -1,4 +1,4 @@
-import type { MarkerLevel } from './types';
+import type { MarkerLevel } from '@/features/timeline/types';
 
 export interface TimelineHierarchyConversationData {
   conversationUrl: string;
