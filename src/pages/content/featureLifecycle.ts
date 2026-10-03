@@ -27,6 +27,8 @@ export interface NativeFeatureToggle {
   /** Storage key (sync or local area) whose value decides whether the feature runs. */
   readonly key: string;
   readonly isEnabled: (value: unknown) => boolean;
+  /** Areas whose writes to `key` count; both when omitted. */
+  readonly areas?: readonly ('sync' | 'local')[];
 }
 
 export interface NativeFeature {
@@ -66,6 +68,11 @@ export interface NativeFeatureToggleController {
    */
   applyInitial(enabled: boolean): Promise<void>;
   isMounted(): boolean;
+  /**
+   * Stop following storage and stop the feature, including a start still in
+   * flight: page teardown cannot reach a stop that is registered after it ran.
+   */
+  destroy(): void;
 }
 
 /**
@@ -85,6 +92,8 @@ export function createNativeFeatureToggle(
   let desired: boolean | null = null;
   let queue: Promise<void> = Promise.resolve();
   let sawChange = false;
+  let destroyed = false;
+  const areas = toggle.areas ?? ['sync', 'local'];
 
   const settle = async (): Promise<void> => {
     if (desired === null) return;
@@ -112,25 +121,34 @@ export function createNativeFeatureToggle(
     return queue;
   };
 
+  // A start or stop that throws must not surface as an unhandled rejection
+  // from a storage listener; an invalidated context is expected on reload.
+  const requestFromEvent = (enabled: boolean): void => {
+    request(enabled).catch((error: unknown) => {
+      if (isExtensionContextInvalidatedError(error)) return;
+      console.error(`[Gemini Voyager] ${feature.id}: toggle failed`, error);
+    });
+  };
+
   return {
     handleChange(changes, areaName) {
-      if (areaName !== 'sync' && areaName !== 'local') return;
+      if (destroyed || !areas.some((area) => area === areaName)) return;
       const change = changes[toggle.key];
       if (!change) return;
       sawChange = true;
-      // A start or stop that throws must not surface as an unhandled rejection
-      // from a storage listener; an invalidated context is expected on reload.
-      request(toggle.isEnabled(change.newValue)).catch((error: unknown) => {
-        if (isExtensionContextInvalidatedError(error)) return;
-        console.error(`[Gemini Voyager] ${feature.id}: toggle failed`, error);
-      });
+      requestFromEvent(toggle.isEnabled(change.newValue));
     },
     applyInitial(enabled) {
-      if (sawChange) return queue;
+      if (destroyed || sawChange) return queue;
       return request(enabled);
     },
     isMounted() {
       return stop !== null;
+    },
+    destroy() {
+      if (destroyed) return;
+      destroyed = true;
+      requestFromEvent(false);
     },
   };
 }
