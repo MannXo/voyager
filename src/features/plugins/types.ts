@@ -46,6 +46,8 @@ export interface SiteThemeDescriptor {
  * URL and hands it to the engine so `semantic` selector refs can be resolved.
  */
 export interface SiteAdapter {
+  /** Catalog source revision, stamped by the shared bundle/publishing pipeline. */
+  readonly catalogRevision?: number;
   readonly id: SiteId;
   readonly label: string;
   readonly matches: readonly string[];

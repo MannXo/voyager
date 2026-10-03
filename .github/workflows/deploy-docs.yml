@@ -10,6 +10,7 @@ on:
       - '.github/workflows/deploy-docs.yml'
       - 'scripts/update-readme-badges.mjs'
       - 'scripts/build-plugin-catalog.ts'
+      - 'scripts/lib/catalogRevision.ts'
       - 'src/features/plugins/catalog/**'
       - 'src/features/plugins/sites/**'
       - 'package.json'

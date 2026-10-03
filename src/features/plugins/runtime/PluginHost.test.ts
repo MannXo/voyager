@@ -487,6 +487,7 @@ describe('PluginHost site override (plan §3)', () => {
 
   function overrideAdapter(userTurn: string, brandColor = '#101010') {
     return {
+      catalogRevision: Number.MAX_SAFE_INTEGER,
       id: 'claude',
       label: 'Claude (remote)',
       matches: ['https://claude.ai/*'],

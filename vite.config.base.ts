@@ -14,6 +14,7 @@ import {
 import devManifest from './manifest.dev.json';
 import manifest from './manifest.json';
 import pkg from './package.json';
+import { getCatalogRevision } from './scripts/lib/catalogRevision';
 
 const isDev = process.env.__DEV__ === 'true';
 const buildTarget = process.env.VOYAGER_BUILD_TARGET === 'edge' ? 'edge' : 'chrome';
@@ -49,6 +50,7 @@ export const baseBuildOptions: BuildOptions = {
 
 export default defineConfig({
   define: {
+    'import.meta.env.VOYAGER_CATALOG_REVISION': JSON.stringify(getCatalogRevision(__dirname)),
     'import.meta.env.VOYAGER_BUILD_TARGET': JSON.stringify(buildTarget),
     // Chrome dev builds override this; every other build drops the dev
     // auto-reload code (src/pages/background/devAutoReload.ts) at compile time.

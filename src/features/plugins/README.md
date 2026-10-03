@@ -446,9 +446,16 @@ same data is published per site at `<base>/hosts/<host>.json` (default base
 `https://voyager.nagi.fun/catalog/hosts/chat.deepseek.com.json`). A selector fix
 can therefore reach users without a store release, while the engine that reads
 the data still ships in the package. The host file's optional `site` section is
-adapter data validated by the same `validateSiteAdapterData`, and it overrides
-the bundled adapter for that host, so a `site.json` fix travels the same way a
-plugin fix does.
+adapter data validated by the same `validateSiteAdapterData`. It replaces the bundled
+adapter only when its `catalogRevision` is strictly newer; ties and unstamped remote data
+prefer the bundle. `scripts/build-plugin-catalog.ts` and every browser build use the same
+full-history first-parent Git source revision. Publishing the same commit ties its bundle,
+and rebuilding older source cannot make it newer. `generatedAt` remains a diagnostic
+publication timestamp. Build/test CI fetches full history; shallow checkouts fail clearly
+rather than stamping a truncated revision. This assumes the existing append-only main
+publication lineage; uncommitted local data carries HEAD’s revision. Cache reads do not rewrite or clear older entries, and plugin-list
+authority and kill-switch rules are unchanged. A newer `site.json` fix can still travel
+without an extension release.
 
 - **`remote/HostCatalogSource.ts`** — a read-only `PluginSource`
   (`kind: 'remote'`). `list({ host })` serves whatever the cache holds for that

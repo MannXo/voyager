@@ -44,6 +44,27 @@ describe('validateSiteAdapterData', () => {
     expect(validateSiteAdapterData(data)).toEqual(result);
   });
 
+  it('a freshness stamp survives publication and cache serialization without changing unstamped data', () => {
+    const stamped = { ...VALID, catalogRevision: 42 };
+    const result = validateSiteAdapterData(stamped);
+    if (!result.success) throw new Error('fixture must validate');
+    expect(result.data.catalogRevision).toBe(42);
+    expect(
+      validateSiteAdapterData(JSON.parse(JSON.stringify(siteAdapterToData(result.data)))),
+    ).toEqual(result);
+    for (const catalogRevision of [
+      -1,
+      0.5,
+      Number.POSITIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+      '42',
+      null,
+    ]) {
+      expect(issuesOf({ ...VALID, catalogRevision })).toEqual(['catalogRevision']);
+    }
+    expect(issuesOf(VALID)).toEqual([]);
+  });
+
   it('rejects selector keys outside the semantic vocabulary', () => {
     expect(issuesOf({ ...VALID, selectors: { ...VALID.selectors, messageBubble: '.x' } })).toEqual([
       'selectors.messageBubble',
