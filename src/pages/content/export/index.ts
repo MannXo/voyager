@@ -29,6 +29,7 @@ import {
 import { resolveExportLogoAnchor } from './exportLogoAnchor';
 import { createExportRunner } from './exportRun';
 import { ensureGeneratedUiScreenshotPermission } from './generatedUiScreenshots';
+import { mountLogoExportButton } from './logoExportButton';
 import { mountPersistentExportToolbar } from './persistentExportToolbar';
 import { startResponseCopyImageActions } from './responseCopyImageAction';
 import { openSidebarConversationForExport } from './sidebarConversationNavigation';
@@ -40,53 +41,6 @@ const collector = createConversationCollector(exportAdapter);
 const exportRunner = createExportRunner({ adapter: exportAdapter, collector });
 
 let activeExportDialog: ExportDialog | null = null;
-
-function ensureDropdownInjected(logoElement: Element): HTMLButtonElement | null {
-  // Check if already injected
-  const existingWrapper = document.querySelector('.gv-logo-dropdown-wrapper');
-  if (existingWrapper) {
-    return existingWrapper.querySelector('.gv-export-dropdown-btn') as HTMLButtonElement | null;
-  }
-
-  const logo = logoElement as HTMLElement;
-  const parent = logo.parentElement;
-  if (!parent) return null;
-
-  // Create wrapper that will contain both logo and dropdown
-  const wrapper = document.createElement('div');
-  wrapper.className = 'gv-logo-dropdown-wrapper';
-
-  // Move logo into wrapper
-  parent.insertBefore(wrapper, logo);
-  wrapper.appendChild(logo);
-
-  // Create dropdown container
-  const dropdown = document.createElement('div');
-  dropdown.className = 'gv-logo-dropdown';
-
-  // Create export button inside dropdown
-  const btn = document.createElement('button');
-  btn.className = 'gv-export-dropdown-btn';
-  btn.type = 'button';
-  btn.title = 'Export chat history';
-  btn.setAttribute('aria-label', 'Export chat history');
-
-  // Export icon
-  const iconSpan = document.createElement('span');
-  iconSpan.className = 'gv-export-dropdown-icon';
-  btn.appendChild(iconSpan);
-
-  // Export text label
-  const labelSpan = document.createElement('span');
-  labelSpan.className = 'gv-export-dropdown-label';
-  labelSpan.textContent = 'Export';
-  btn.appendChild(labelSpan);
-
-  dropdown.appendChild(btn);
-  wrapper.appendChild(dropdown);
-
-  return btn;
-}
 
 /**
  * Mount the export entry point for the current platform.
@@ -281,35 +235,11 @@ export async function startExportButton(
     } catch {}
     return () => {};
   }
-  const btn = ensureDropdownInjected(logo);
-  if (!btn) return () => {};
-  if ((btn as Element & { _gvBound?: boolean })._gvBound) return () => {};
-  (btn as Element & { _gvBound?: boolean })._gvBound = true;
-
-  // Swallow events on the button to avoid parent navigation (logo click -> /app)
-  const swallow = (e: Event) => {
-    try {
-      e.preventDefault();
-    } catch {}
-    try {
-      e.stopPropagation();
-    } catch {}
-  };
-  // Capture low-level press events to avoid parent logo navigation, but do NOT capture 'click'
-  ['pointerdown', 'mousedown', 'pointerup', 'mouseup'].forEach((type) => {
-    try {
-      btn.addEventListener(type, swallow, true);
-    } catch {}
+  const logoButton = mountLogoExportButton(logo, {
+    texts: () => ({ title: t('exportChatJson'), label: t('pm_export') }),
+    onClick: () => void showExportDialog(dict, lang),
   });
-
-  const title = t('exportChatJson');
-  const labelText = t('pm_export');
-  btn.title = title;
-  btn.setAttribute('aria-label', title);
-
-  // Update label text
-  const labelEl = btn.querySelector('.gv-export-dropdown-label');
-  if (labelEl) labelEl.textContent = labelText;
+  if (!logoButton) return () => {};
 
   // listen for runtime language changes
   const storageChangeHandler = (
@@ -320,15 +250,11 @@ export async function startExportButton(
     const next = languageFromStorageChanges(changes);
     if (next) {
       lang = next;
-      const ttl =
-        dict[next]?.['exportChatJson'] ?? dict.en?.['exportChatJson'] ?? 'Export chat history';
-      btn.title = ttl;
-      btn.setAttribute('aria-label', ttl);
-
-      // Update visible label text
-      const lbl = btn.querySelector('.gv-export-dropdown-label');
-      if (lbl) lbl.textContent = dict[next]?.['pm_export'] ?? dict.en?.['pm_export'] ?? 'Export';
-
+      logoButton.relabel({
+        title:
+          dict[next]?.['exportChatJson'] ?? dict.en?.['exportChatJson'] ?? 'Export chat history',
+        label: dict[next]?.['pm_export'] ?? dict.en?.['pm_export'] ?? 'Export',
+      });
       copyImageActions.relabel();
     }
   };
@@ -350,97 +276,8 @@ export async function startExportButton(
     );
   } catch {}
 
-  btn.addEventListener('click', (ev) => {
-    // Stop parent navigation, but allow this handler to run
-    swallow(ev);
-    try {
-      // Show export dialog instead of directly exporting
-      showExportDialog(dict, lang);
-    } catch (err) {
-      try {
-        console.error('Gemini Voyager export failed', err);
-      } catch {}
-    }
-  });
-
-  // ─── DOM recovery (resize / print) ─────────────────────────────────────
-  // Gemini may re-render the logo/header area (and thus destroy the wrapper
-  // + export button) during window resize or window.print().  We use a
-  // single debounced handler that fires on resize, afterprint, and our own
-  // gv-print-cleanup event.  It checks whether the button is still attached
-  // and re-injects if not.
-  let currentBtn: HTMLButtonElement = btn;
-  let reinjectTimer: ReturnType<typeof setTimeout> | null = null;
-
-  const reinjectExportButtonIfNeeded = () => {
-    // Debounce: Gemini fires many mutations during resize; wait until it
-    // settles before we attempt re-injection.
-    if (reinjectTimer !== null) clearTimeout(reinjectTimer);
-    reinjectTimer = setTimeout(() => {
-      reinjectTimer = null;
-      try {
-        // If the button is still in the document, nothing to do.
-        if (document.body.contains(currentBtn)) return;
-
-        // Remove stale wrapper if it somehow survived but lost the button.
-        const staleWrapper = document.querySelector('.gv-logo-dropdown-wrapper');
-        if (staleWrapper) staleWrapper.remove();
-
-        // Re-find the logo element (Gemini may have created a fresh one).
-        const newLogo =
-          document.querySelector('[data-test-id="logo"]') ?? document.querySelector('.logo');
-        if (!newLogo) return;
-
-        const newBtn = ensureDropdownInjected(newLogo);
-        if (!newBtn) return;
-        if ((newBtn as Element & { _gvBound?: boolean })._gvBound) return;
-        (newBtn as Element & { _gvBound?: boolean })._gvBound = true;
-
-        // Re-bind all event listeners on the fresh button.
-        ['pointerdown', 'mousedown', 'pointerup', 'mouseup'].forEach((type) => {
-          try {
-            newBtn.addEventListener(type, swallow, true);
-          } catch {}
-        });
-
-        const freshT = (key: TranslationKey) => dict[lang]?.[key] ?? dict.en?.[key] ?? key;
-        const ttl = freshT('exportChatJson');
-        const lbl = freshT('pm_export');
-        newBtn.title = ttl;
-        newBtn.setAttribute('aria-label', ttl);
-        const labelEl = newBtn.querySelector('.gv-export-dropdown-label');
-        if (labelEl) labelEl.textContent = lbl;
-
-        newBtn.addEventListener('click', (ev) => {
-          swallow(ev);
-          try {
-            showExportDialog(dict, lang);
-          } catch (err) {
-            try {
-              console.error('Gemini Voyager export failed', err);
-            } catch {}
-          }
-        });
-
-        // Update our tracking reference so the next check uses the new element.
-        currentBtn = newBtn;
-      } catch (e) {
-        try {
-          console.debug('[Gemini Voyager] Export button re-injection failed:', e);
-        } catch {}
-      }
-    }, 800);
-  };
-
-  window.addEventListener('resize', reinjectExportButtonIfNeeded);
-  window.addEventListener('gv-print-cleanup', reinjectExportButtonIfNeeded);
-  window.addEventListener('afterprint', reinjectExportButtonIfNeeded);
-
   return () => {
-    if (reinjectTimer !== null) clearTimeout(reinjectTimer);
-    window.removeEventListener('resize', reinjectExportButtonIfNeeded);
-    window.removeEventListener('gv-print-cleanup', reinjectExportButtonIfNeeded);
-    window.removeEventListener('afterprint', reinjectExportButtonIfNeeded);
+    logoButton.stop();
     try {
       chrome.storage?.onChanged?.removeListener(storageChangeHandler);
     } catch {}
