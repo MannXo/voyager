@@ -105,7 +105,6 @@ jobs:
           bun run format > /dev/null
           git --no-pager diff --color
           exit 1
-      - run: bun run regressions:check
       - run: bun run filesize:check
 
   # ── Lint (oxlint) ────────────────────────────────────────────────────

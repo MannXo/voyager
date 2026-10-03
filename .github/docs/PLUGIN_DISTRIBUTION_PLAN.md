@@ -228,7 +228,6 @@ Claude、ChatGPT 的现有 builtin 清单改写为使用原语的 JSON，随本�
 - 所有新 popup 文案 10 语种齐全；清单 `changelog` 字段采用与 `name`/`description` 相同的 i18n 映射形状。
 - 打包清单的 `format` 字段可缺省为 1；host 文件必须带。
 - 触及后台、存储、插件运行时属高复杂度模块：整文件阅读、全量测试。
-- 每个可复现的坑写进 `.github/docs/regressions/providers-plugins.md`，跑 `bun run regressions:check`。
 - 不新增 `public/` 资源；目录产物进文档站，不进扩展包。
 
 ### 12.4 测试清单

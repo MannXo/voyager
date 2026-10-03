@@ -18,7 +18,6 @@ Read matching rules before editing; do not assume the client auto-loaded `.claud
 | `src/pages/content/**`, `public/contentStyle.css`                        | [.claude/rules/content-scripts.md](.claude/rules/content-scripts.md)                                                                        |
 | `src/locales/**`                                                         | [.claude/rules/i18n.md](.claude/rules/i18n.md)                                                                                              |
 | Storage, backup, account isolation, Drive sync, folder or export modules | [.claude/rules/high-complexity.md](.claude/rules/high-complexity.md), full-file reads and full-suite verification for behavior/data changes |
-| Non-trivial feature, fix or refactor                                     | Search [.github/docs/REGRESSION_NOTES.md](.github/docs/REGRESSION_NOTES.md), then read matching topics                                      |
 | Contribution or release                                                  | [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md); matching workflows in [.agents/skills/](.agents/skills/)                                |
 | Content-script or injected-CSS behavior that tests cannot settle         | [.agents/skills/verify-in-browser/SKILL.md](.agents/skills/verify-in-browser/SKILL.md)                                                      |
 | `src/features/plugins/catalog/**`, `verbs/**` or `sites/**`              | [.agents/skills/create-voyager-plugin/SKILL.md](.agents/skills/create-voyager-plugin/SKILL.md)                                              |
@@ -60,7 +59,7 @@ Use `StorageService` where suitable; established direct `chrome.storage`/`browse
 - Keep listener, observer and timer cleanup beside setup. Sidebar remount, account change and full teardown have different lifetimes; preserve the appropriate state across each.
 - Reuse existing popover integration, such as `gv-pm-confirm`, including outside-click handling, teardown and theme overrides.
 - For visual changes, state the expected result and verify alignment, spacing and behavior in light/dark themes, including external resource dependencies.
-- Record repeatable, non-obvious bugs as Trap/Rule/Guard entries in the matching regression topic; run `bun run regressions:check` after editing notes.
+- After fixing a repeatable, non-obvious bug, put a one-line why-comment at the code that prevents it and name the guarding test after the symptom.
 - `bun run filesize:check` fails when a `src/**/*.ts(x)` file over 1000 lines is added or a baselined one grows: put new code in a new file. Run `bun run filesize:update` after shrinking one; raising an entry in `scripts/file-size-baseline.json` is a deliberate, explained change in the PR.
 
 ## Verification

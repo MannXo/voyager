@@ -60,9 +60,7 @@ Account changes, sidebar remounts and destruction have different lifetimes:
 - Native and folder drag gestures share one selection owner. Reset clears selection; unmount also
   removes mounted toolbar listeners. Floating recovery remains distinct from explicit floating mode.
 
-Read the [state/identity](../../../../.github/docs/regressions/state-identity-sync.md) and
-[folder UI](../../../../.github/docs/regressions/folders-timeline-ui.md) notes before changing those
-boundaries. Extract only a complete responsibility with its state, setup, cleanup and behavior tests;
+Extract only a complete responsibility with its state, setup, cleanup and behavior tests;
 file length alone is not a reason to add another layer.
 
 ### AI Studio

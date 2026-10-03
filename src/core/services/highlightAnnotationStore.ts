@@ -319,6 +319,7 @@ export class HighlightAnnotationStore {
       .sort((left, right) => right.updatedAt - left.updatedAt || compareStrings(left.id, right.id));
   }
 
+  // Keep bounded account clear markers so a later cloud pull cannot restore deleted highlights.
   async clearAllAccounts(): Promise<HighlightClearAllAccountsResult> {
     const all = await this.storage.get(null);
     const device = await this.getDeviceId();
