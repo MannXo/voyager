@@ -3,17 +3,20 @@
  * multi-select with batch delete, and the floating drop zone. The manager
  * attaches it on /library and detaches it on the way out.
  */
+import type { FolderCommands } from '@/features/folder/commands/folderCommands';
+
 import { mountLibraryDropZone, type LibraryDropZone } from './aistudioLibraryDropZone';
 import { LibrarySelection } from './aistudioLibrarySelection';
 import { bindLibraryRows, watchLibraryTable } from './aistudioLibraryTable';
 import type { AIStudioNotify } from './aistudioNotifications';
-import { addFolder, newFolderId } from './aistudioTree';
+import { newFolderId } from './aistudioTree';
 import type { Folder, FolderData } from './types';
 
 export type LibraryPageHost = {
   t: (key: string) => string;
   canEdit: () => boolean;
   data: () => FolderData;
+  commands: FolderCommands;
   /** Changes on every account rebind, including a return to the same account. */
   activation: () => number;
   save: () => Promise<boolean>;
@@ -84,7 +87,12 @@ export class LibraryPage {
     const data = this.host.data();
     if (data.folders.length > 0) return;
     const name = this.host.t('folder_default_name');
-    addFolder(data, { id: newFolderId(), name, parentId: null, at: Date.now() });
+    void this.host.commands.run({
+      kind: 'ensureDefaultAIStudioFolder',
+      folderId: newFolderId(),
+      name,
+      at: Date.now(),
+    });
     void this.host.save();
   }
 

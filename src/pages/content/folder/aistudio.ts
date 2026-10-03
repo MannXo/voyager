@@ -12,6 +12,7 @@ import browser from 'webextension-polyfill';
 import type { AccountScope } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 import type { PromptItem } from '@/core/types/sync';
+import { isSaved } from '@/features/folder/commands/folderCommands';
 import { createTranslator, initI18n } from '@/utils/i18n';
 
 import { watchRouteChanges } from '../utils/routeWatcher';
@@ -32,7 +33,6 @@ import {
   watchPanelMount,
 } from './aistudioPanel';
 import {
-  applyNativePromptTitles,
   bindPromptDragSources,
   hasStoredPrompts,
   watchBodyPromptPopovers,
@@ -41,14 +41,10 @@ import {
 import { currentPromptId, readPromptDragData } from './aistudioPromptLinks';
 import { SIDEBAR_WIDTH_KEY, SidebarWidth } from './aistudioSidebarWidth';
 import { AIStudioTransfer, createSyncMessageListener } from './aistudioTransfer';
-import {
-  type AIStudioTree,
-  aistudioTreeActions,
-  mountAIStudioTree,
-  placePrompt,
-} from './aistudioTree';
+import { type AIStudioTree, aistudioTreeActions, mountAIStudioTree } from './aistudioTree';
 import type { TreeActions } from './floatingTree/shared';
 import { createFolderDialogs } from './folderDialogs';
+import { createLegacyAIStudioCommands } from './legacyAIStudioCommands';
 import { AISTUDIO_FOLDER_CONFIG } from './platformFolderConfig';
 import { AIStudioFolderStorageAdapter } from './storage/AIStudioFolderStorageAdapter';
 import type { FolderData } from './types';
@@ -97,6 +93,12 @@ export class AIStudioFolderManager {
       onAccountBound: (context) => this.account.bound(context),
     },
   );
+  private readonly commands = createLegacyAIStudioCommands(this.repository, {
+    commit: () => this.save().then(() => this.render()),
+    onDraftSettled: () => {
+      if (this.container) this.applyHideArchived();
+    },
+  });
   private readonly account = new AIStudioAccountScope(this.repository);
   readonly transfer = new AIStudioTransfer({
     t: this.translate,
@@ -108,6 +110,7 @@ export class AIStudioFolderManager {
     notify: showAIStudioNotification,
   });
   private readonly library = new LibraryPage({
+    commands: this.commands,
     t: this.translate,
     canEdit: () => this.canEdit,
     data: () => this.data,
@@ -266,7 +269,7 @@ export class AIStudioFolderManager {
   }
 
   private async save(): Promise<boolean> {
-    return this.repository.saveData();
+    return isSaved(await this.commands.run({ kind: 'saveCurrentData' }));
   }
 
   /**
@@ -274,16 +277,7 @@ export class AIStudioFolderManager {
    * them. Prompts share the folder write, so a merge lands whole or not at all.
    */
   private async replaceData(data: FolderData, prompts?: PromptItem[]): Promise<boolean> {
-    const session = this.dataSession;
-    if (!session || !this.canEdit) return false;
-    try {
-      return await this.repository.replaceData(
-        data,
-        prompts ? { gvPromptItems: prompts } : undefined,
-      );
-    } finally {
-      if (this.dataSession === session && this.container) this.applyHideArchived();
-    }
+    return isSaved(await this.commands.runBulk({ kind: 'commitPreparedData', data, prompts }));
   }
 
   private injectUI(): void {
@@ -319,6 +313,7 @@ export class AIStudioFolderManager {
 
   private treeActions(): TreeActions {
     return aistudioTreeActions({
+      commands: this.commands,
       canEdit: () => this.canEdit,
       data: () => this.data,
       commit: () => void this.save().then(() => this.render()),
@@ -362,16 +357,20 @@ export class AIStudioFolderManager {
     if (!prompt || prompt.type !== 'conversation' || !prompt.conversationId) return false;
     const created = { untitledTitle: this.t('conversation_untitled'), at: Date.now() };
     const dropped = { ...prompt, conversationId: prompt.conversationId };
-    this.data = placePrompt(this.data, dropped, folderId, created);
+    void this.commands.run({
+      kind: 'placeAIStudioPrompt',
+      prompt: dropped,
+      target: folderId,
+      untitledTitle: created.untitledTitle,
+      at: created.at,
+    });
     return true;
   }
 
   /** Native titles reach folders that hold the prompt, unless the user renamed it. */
   private async syncConversationTitlesFromPromptList(): Promise<void> {
     if (!this.canEdit || !hasStoredPrompts(this.data)) return;
-    if (!applyNativePromptTitles(this.data, Date.now())) return;
-    await this.save();
-    this.render();
+    await this.commands.run({ kind: 'syncNativeSidebarTitles' });
   }
 
   /** Re-attaches a panel Angular tore down, and re-arms the watch on a rebuilt nav. */

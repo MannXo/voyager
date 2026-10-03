@@ -14,6 +14,7 @@ import { NativeConversationMenus } from '../NativeConversationMenus';
 import { NativeSidebarObserver } from '../NativeSidebarObserver';
 import { createFolderDialogs } from '../folderDialogs';
 import { createFolderHeaderMenus } from '../headerMenus';
+import { createLegacyFolderCommands } from '../legacyFolderCommands';
 import type { IFolderStorageAdapter } from '../storage/FolderStorageAdapter';
 import type { FolderData } from '../types';
 import { mountSidebar, setLayout } from './sidebarRuntimeHarness';
@@ -76,6 +77,7 @@ export async function createFolderViewHarness(data: FolderData) {
     },
     adapter,
   );
+  const commands = createLegacyFolderCommands(store);
   const dialogs = createFolderDialogs();
   const feedback = new FolderFeedback();
   const headerMenus = createFolderHeaderMenus();
@@ -139,6 +141,7 @@ export async function createFolderViewHarness(data: FolderData) {
   });
   selection = new FolderSelection({
     store,
+    commands,
     runtime,
     navigation,
     feedback,
@@ -163,6 +166,7 @@ export async function createFolderViewHarness(data: FolderData) {
   const onRenameNative = vi.fn(async () => true);
   treeView = new FolderSidebarView({
     store,
+    commands,
     runtime,
     selection,
     navigation,

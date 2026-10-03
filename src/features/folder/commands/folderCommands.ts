@@ -3,14 +3,48 @@
  * site is backed by a legacy façade over its store; from P4 a site's backend is
  * the background owner, and callers do not change.
  */
-import type { FolderData } from '@/core/types/folder';
-import type { FolderOpBody, FolderOpKind, OpOutcome } from '@/features/folder/owner/folderOps';
+import type { ConversationReference, FolderData } from '@/core/types/folder';
+import type { PromptItem } from '@/core/types/sync';
+import type { FolderOpBody, OpOutcome } from '@/features/folder/owner/folderOps';
 import type { TranslationKey } from '@/utils/translations';
 
 export type BulkOpKind = 'importFile' | 'restoreBackup' | 'cloudMerge';
-export type BulkOpBody = Extract<FolderOpBody, { kind: BulkOpKind }>;
+/** A captured page drop retains the records and single/batch distinction the legacy UI used. */
+export type ConversationDrop = {
+  conversationId?: string;
+  title: string;
+  url?: string;
+  isGem?: boolean;
+  gemId?: string;
+  conversations?: ConversationReference[];
+  sourceFolderId?: string;
+};
+
+/** Site operations whose legacy batching cannot be expressed by an ordinary owner edit. */
+type SiteOpBody =
+  | { kind: 'dropConversations'; target: string; payload: ConversationDrop; index?: number }
+  | { kind: 'bufferNativeTitle'; folderId: string; index: number; title: string }
+  | { kind: 'flushNativeTitles' }
+  | { kind: 'syncNativeSidebarTitles' }
+  /** AI Studio stages drops before each caller's existing save boundary. */
+  | {
+      kind: 'placeAIStudioPrompt';
+      prompt: { conversationId: string; title: string; url?: string; sourceFolderId?: string };
+      target: string | null;
+      untitledTitle: string;
+      at: number;
+    }
+  | { kind: 'saveCurrentData' }
+  /** The /library drop zone creates its first folder before saving, even while read-only. */
+  | { kind: 'ensureDefaultAIStudioFolder'; folderId: string; name: string; at: number };
+
+export type BulkOpBody =
+  | Extract<FolderOpBody, { kind: BulkOpKind }>
+  /** The transfer controller already validated, merged and backed up this draft. */
+  | { kind: 'commitPreparedData'; data: FolderData; prompts?: PromptItem[] };
 export type OrdinaryOpBody = Exclude<FolderOpBody, { kind: BulkOpKind }>;
-export type OpOf<K extends FolderOpKind> = Extract<FolderOpBody, { kind: K }>;
+export type FolderEditBody = OrdinaryOpBody | SiteOpBody;
+export type OpOf<K extends FolderEditBody['kind']> = Extract<FolderEditBody, { kind: K }>;
 
 export type FailReason = 'not_loaded' | 'read_only' | 'reload_required' | 'storage_error';
 
@@ -39,7 +73,7 @@ export interface FolderCommands {
   status(): FolderCommandsStatus;
   view(): FolderData;
   /** Updates the view synchronously; resolves once the outcome is known. Most callers do not await. */
-  run(body: OrdinaryOpBody): Promise<EditOutcome>;
+  run(body: FolderEditBody): Promise<EditOutcome>;
   /** Whole-data operations; dialogs await them and stay open unless saved. */
   runBulk(body: BulkOpBody): Promise<EditOutcome>;
   /** Resolves when every op run so far has an outcome. */

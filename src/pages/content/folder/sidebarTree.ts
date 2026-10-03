@@ -1,3 +1,4 @@
+import { isSaved, type FolderCommands } from '@/features/folder/commands/folderCommands';
 import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import type { ConversationSortMode } from '@/features/folder/model/folderData';
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
@@ -101,6 +102,7 @@ export type SidebarTreeView = {
 
 export type SidebarTreeOptions = {
   store: FolderStore;
+  commands: FolderCommands;
   navigation: FolderNavigation;
   selection: FolderSelection;
   dialogs: FolderDialogs;
@@ -155,7 +157,13 @@ function projectMenuItems(options: SidebarTreeOptions, folder: Folder): FolderMe
       run: () =>
         dialogs.openInstructions(folder.instructions, async (instructions) => {
           const activation = store.activation;
-          const saved = await store.setFolderInstructions(folder.id, instructions);
+          const saved = isSaved(
+            await options.commands.run({
+              kind: 'setFolderInstructions',
+              folderId: folder.id,
+              instructions: instructions ?? null,
+            }),
+          );
           if (!saved && activation === store.activation) {
             feedback.showNotification(t('folder_save_error'), 'error');
           }
@@ -170,7 +178,7 @@ function createActions(options: SidebarTreeOptions): TreeActions {
   // The row clicked last, for a record replaced in storage since the tree drew it.
   let clicked: { conversation: ConversationReference; bucketId: string } | null = null;
   return {
-    ...createFloatingTreeStoreActions(store, dialogs),
+    ...createFloatingTreeStoreActions(options.commands, dialogs),
     // Opens the folder's latest stored record, so the route uses current data.
     onNavigate: (conversation) => {
       const bucketId =

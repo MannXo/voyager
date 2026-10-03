@@ -10,7 +10,7 @@ import {
   type FolderCommands,
   NOOP,
   type OpOf,
-  type OrdinaryOpBody,
+  type FolderEditBody,
   failed,
   legacyOutcome,
 } from '@/features/folder/commands/folderCommands';
@@ -20,7 +20,7 @@ import { type ConversationSeed, rejected } from '@/features/folder/owner/folderO
 import type { FolderStore } from './FolderStore';
 import type { DragData } from './types';
 
-type Kind = OrdinaryOpBody['kind'];
+type Kind = FolderEditBody['kind'];
 type Handlers = { [K in Kind]: (body: OpOf<K>) => EditOutcome | Promise<EditOutcome> };
 
 const ROOT_PARENT = '__root__';
@@ -57,6 +57,36 @@ export function createLegacyFolderCommands(store: FolderStore): FolderCommands {
   };
 
   const handlers: Handlers = {
+    placeAIStudioPrompt: () => rejected('unsupported'),
+    saveCurrentData: () => rejected('unsupported'),
+    ensureDefaultAIStudioFolder: () => rejected('unsupported'),
+    dropConversations: ({ target, payload, index }) =>
+      edit(() => {
+        if (index !== undefined) {
+          if (!payload.sourceFolderId) store.ensureConversationsInFolder(target, payload);
+          const ids = payload.conversations?.length
+            ? payload.conversations.map((record) => record.conversationId)
+            : payload.conversationId
+              ? [payload.conversationId]
+              : [];
+          store.reorderOrMoveConversations(ids, payload.sourceFolderId ?? target, target, index);
+        } else if (payload.conversations?.length) {
+          store.addConversationsToFolder(target, payload.conversations, payload.sourceFolderId);
+        } else {
+          store.addConversationToFolder(target, payload);
+        }
+      }),
+    bufferNativeTitle: ({ folderId, index, title }) =>
+      edit(() => {
+        const record = ownBucket(store.data.folderContents, folderId)?.[index];
+        if (record) store.bufferTitleUpdate(record, title);
+      }),
+    flushNativeTitles: () => edit(() => store.flushTitleUpdates()),
+    syncNativeSidebarTitles: async () => {
+      const editable = store.canEdit;
+      await store.syncConversationTitlesFromNative();
+      return legacyOutcome(editable);
+    },
     createFolder: ({ name, parentId }) => {
       // The legacy store picks its own id; `folderId` is honoured from P4 on.
       if (store.createFolder(name, parentId)) return legacyOutcome(true);
@@ -163,11 +193,14 @@ export function createLegacyFolderCommands(store: FolderStore): FolderCommands {
     status: () => (store.canEdit ? 'ready' : 'read_only'),
     view: () => store.data,
     run: (body) => {
-      const handler = handlers[body.kind] as (b: OrdinaryOpBody) => ReturnType<Handlers[Kind]>;
+      const handler = handlers[body.kind] as (b: FolderEditBody) => ReturnType<Handlers[Kind]>;
       return Promise.resolve(handler(body));
     },
-    // Gemini's import and Drive merge still run through FolderTransferController (manager.ts).
-    runBulk: () => Promise.resolve(failed('not_loaded')),
+    // Parsing, backup and feedback stay with the transfer controller; only its prepared write moves.
+    runBulk: async (body) => {
+      if (body.kind !== 'commitPreparedData') return failed('not_loaded');
+      return (await store.replaceData(body.data)) ? { kind: 'saved' } : failed('storage_error');
+    },
     flush: () => {
       store.flushPendingSaveData();
       return Promise.resolve();

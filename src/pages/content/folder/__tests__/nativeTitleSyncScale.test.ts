@@ -3,6 +3,7 @@ import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from 'vite
 import { accountIsolationService } from '@/core/services/AccountIsolationService';
 
 import { FolderStore } from '../FolderStore';
+import { createLegacyFolderCommands } from '../legacyFolderCommands';
 import type { IFolderStorageAdapter } from '../storage/FolderStorageAdapter';
 import type { ConversationReference, FolderData } from '../types';
 
@@ -122,7 +123,7 @@ describe('FolderStore native title sync', () => {
       nativeRow(hex(99), 'Not stored'),
     );
 
-    await store.syncConversationTitlesFromNative();
+    await createLegacyFolderCommands(store).run({ kind: 'syncNativeSidebarTitles' });
 
     expect(store.data.folderContents.one.map((conv) => conv.title).sort()).toEqual([
       'Mine',
@@ -148,7 +149,7 @@ describe('FolderStore native title sync', () => {
     });
     sidebar.append(nativeRow(id, 'First'), nativeRow(id, 'Second'));
 
-    await store.syncConversationTitlesFromNative();
+    await createLegacyFolderCommands(store).run({ kind: 'syncNativeSidebarTitles' });
 
     expect(titleOf('one', 0)).toBe('Second');
   });
@@ -177,7 +178,7 @@ describe('FolderStore native title sync', () => {
       nativeRow(e, ''),
     );
 
-    await store.syncConversationTitlesFromNative();
+    await createLegacyFolderCommands(store).run({ kind: 'syncNativeSidebarTitles' });
 
     expect(store.data.folderContents.one.map((conv) => conv.title)).toEqual([
       'New A',
@@ -195,7 +196,7 @@ describe('FolderStore native title sync', () => {
     });
     sidebar.append(nativeRow(id, 'Same'));
 
-    await store.syncConversationTitlesFromNative();
+    await createLegacyFolderCommands(store).run({ kind: 'syncNativeSidebarTitles' });
 
     expect(saveData).not.toHaveBeenCalled();
     expect(onChange).not.toHaveBeenCalledWith('title');
@@ -232,7 +233,7 @@ describe('FolderStore native title sync', () => {
       },
     );
 
-    await store.syncConversationTitlesFromNative();
+    await createLegacyFolderCommands(store).run({ kind: 'syncNativeSidebarTitles' });
 
     // The per-row linear match parsed every stored URL for every row:
     // ROWS × stored = 750,000 parses for this fixture.

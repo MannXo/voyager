@@ -1,8 +1,8 @@
-import type { FolderStore } from './FolderStore';
+import type { FolderCommands } from '@/features/folder/commands/folderCommands';
+
 import { createCommandTreeActions } from './commandTreeActions';
 import type { TreeActions } from './floatingTree/shared';
 import type { FolderDialogs } from './folderDialogs';
-import { createLegacyFolderCommands } from './legacyFolderCommands';
 
 /**
  * The floating tree's data callbacks, as the same `FolderCommands` ops the
@@ -15,11 +15,11 @@ import { createLegacyFolderCommands } from './legacyFolderCommands';
  * files new conversations via the native ⋮ → "Move to folder" menu instead.
  */
 export function createFloatingTreeStoreActions(
-  store: FolderStore,
+  commands: FolderCommands,
   dialogs: Pick<FolderDialogs, 'confirmConversationRemoval'>,
 ): Omit<TreeActions, 'onNavigate'> {
   return {
-    ...createCommandTreeActions(createLegacyFolderCommands(store)),
+    ...createCommandTreeActions(commands),
     confirmConversationRemoval: (title, anchor, onConfirm) =>
       dialogs.confirmConversationRemoval(title, anchor, onConfirm),
   };

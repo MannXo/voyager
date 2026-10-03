@@ -9,7 +9,7 @@ import {
   type FolderCommands,
   NOOP,
   type OpOf,
-  type OrdinaryOpBody,
+  type FolderEditBody,
   failed,
   legacyOutcome,
 } from '@/features/folder/commands/folderCommands';
@@ -21,7 +21,7 @@ import { CHATGPT_CONVERSATION_ID_PREFIX } from './chatgptIdentity';
 import { CHATGPT_FOLDER_CONFIG } from './config';
 import { importChatGptFolders } from './transfer';
 
-type Kind = OrdinaryOpBody['kind'];
+type Kind = FolderEditBody['kind'];
 type Handler<K extends Kind> = (body: OpOf<K>) => EditOutcome | Promise<EditOutcome>;
 
 const ADD_OUTCOMES: Record<AddOutcome, EditOutcome> = {
@@ -102,6 +102,13 @@ export function createLegacyChatGptCommands(store: ChatGptFolderStore): FolderCo
       if (store.applyNativeTitles(titles)) return legacyOutcome(true);
       return editable ? NOOP : failed('read_only');
     },
+    placeAIStudioPrompt: () => rejected('unsupported'),
+    saveCurrentData: () => rejected('unsupported'),
+    ensureDefaultAIStudioFolder: () => rejected('unsupported'),
+    dropConversations: unsupported,
+    bufferNativeTitle: unsupported,
+    flushNativeTitles: unsupported,
+    syncNativeSidebarTitles: unsupported,
     moveFolder: unsupported,
     setFolderInstructions: unsupported,
     reorderConversations: unsupported,

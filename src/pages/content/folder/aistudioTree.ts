@@ -1,4 +1,5 @@
 import { normalizeText } from '@/core/utils/text';
+import type { FolderCommands } from '@/features/folder/commands/folderCommands';
 import { AISTUDIO_ROOT_BUCKET_ID } from '@/features/folder/constants';
 import { ownBucket, removeFolder, setBucket } from '@/features/folder/model/folderData';
 import { placeConversations } from '@/features/folder/model/placeConversations';
@@ -186,7 +187,7 @@ export function renameFolder(data: FolderData, folderId: string, name: string, a
 }
 
 /** Removes a folder, the folders the tree shows inside it, and what they hold. */
-function deleteFolder(data: FolderData, folderId: string): boolean {
+export function deleteFolder(data: FolderData, folderId: string): boolean {
   const next = removeFolder(data, folderId);
   if (next === data) return false;
   data.folders = next.folders;
@@ -283,7 +284,8 @@ export function placePrompt(
 export type AIStudioTreeHost = {
   canEdit: () => boolean;
   data: () => FolderData;
-  /** Saves the edited data, then re-renders. */
+  commands: FolderCommands;
+  /** Saves a staged drop, then re-renders. */
   commit: () => void;
   onNavigate: (conversation: ConversationReference) => void;
   /** Moves a dropped prompt into `folderId`; false when the drop carries none. */
@@ -294,24 +296,30 @@ export type AIStudioTreeHost = {
 
 /** What the tree's controls do to AI Studio's folder data; every edit checks `canEdit`. */
 export function aistudioTreeActions(host: AIStudioTreeHost): TreeActions {
-  const edit = (change: (data: FolderData) => boolean) => {
-    if (host.canEdit() && change(host.data())) host.commit();
-  };
+  const run = (body: Parameters<FolderCommands['run']>[0]) => void host.commands.run(body);
+  const folder = (id: string) => host.data().folders.find((item) => item.id === id);
   return {
     onNavigate: host.onNavigate,
-    onCreateFolder: (name, parentId) =>
-      edit((data) => addFolder(data, { id: newFolderId(), name, parentId, at: Date.now() })),
-    onRenameFolder: (folderId, name) =>
-      edit((data) => renameFolder(data, folderId, name, Date.now())),
-    onDeleteFolder: (folderId) => edit((data) => deleteFolder(data, folderId)),
+    onCreateFolder: (name, parentId) => {
+      if (host.canEdit()) run({ kind: 'createFolder', folderId: newFolderId(), name, parentId });
+    },
+    onRenameFolder: (folderId, name) => run({ kind: 'renameFolder', folderId, name }),
+    onDeleteFolder: (folderId) => run({ kind: 'removeFolder', folderId }),
     onRemoveConversation: (folderId, conversationId) =>
-      edit((data) => removeConversation(data, folderId, conversationId)),
+      run({ kind: 'removeConversations', folderId, ids: [conversationId] }),
     confirmFolderRemoval: host.confirmFolderRemoval,
     confirmConversationRemoval: host.confirmConversationRemoval,
     onToggleStar: (folderId, conversationId) =>
-      edit((data) => toggleConversationStar(data, folderId, conversationId)),
-    onToggleFolderPinned: (folderId) => edit((data) => toggleFolderPinned(data, folderId)),
-    onToggleFolderExpanded: (folderId) => edit((data) => toggleFolderExpanded(data, folderId)),
+      run({
+        kind: 'setConversationStarred',
+        conversationId,
+        starred: !findConversation(host.data(), folderId, conversationId)?.starred,
+        scope: { folderId },
+      }),
+    onToggleFolderPinned: (folderId) =>
+      run({ kind: 'setFolderPinned', folderId, pinned: !folder(folderId)?.pinned }),
+    onToggleFolderExpanded: (folderId) =>
+      run({ kind: 'setFolderExpanded', folderId, expanded: !folder(folderId)?.isExpanded }),
     onDrop: (event, folderId) => {
       if (!host.canEdit() || !host.placeDrop(event, folderId)) return false;
       host.commit();

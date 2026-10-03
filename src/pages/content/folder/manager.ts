@@ -1,4 +1,5 @@
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
+import { isSaved } from '@/features/folder/commands/folderCommands';
 import { initI18n } from '@/utils/i18n';
 
 import { FolderFeedback } from './FolderFeedback';
@@ -24,6 +25,7 @@ import {
 import { listenForFolderRuntimeMessages } from './folderRuntimeMessages';
 import { createFolderHeaderMenus } from './headerMenus';
 import { HideArchivedNudgeState } from './hideArchivedNudgeState';
+import { createLegacyFolderCommands } from './legacyFolderCommands';
 import { NativeArchivedRows } from './nativeArchivedRows';
 import { extractNativeConversationTitle } from './nativeConversationTitles';
 import { findNativeConversationElement, getNativeConversationElements } from './nativeSidebarDom';
@@ -48,13 +50,15 @@ export class FolderManager {
       else this.feedback.showDataLossNotification();
     },
   });
+  private readonly commands = createLegacyFolderCommands(this.store);
   private readonly transfer = new FolderTransferController({
     getContext: () => ({
       session: this.store.session,
       activation: this.store.activation,
       data: this.store.data,
     }),
-    applyData: (data) => this.store.replaceData(data),
+    applyData: async (data) =>
+      isSaved(await this.commands.runBulk({ kind: 'commitPreparedData', data })),
     refresh: () => this.refresh(),
     notify: (message, type) => this.feedback.showNotification(message, type),
   });
@@ -70,9 +74,22 @@ export class FolderManager {
     onRouteChange: () => {
       void this.store.reloadScopedDataOnAccountRouteChange();
     },
-    onOpened: (id) => this.store.markConversationAsRecentlyOpened(id),
-    onTitleChange: (id, title) => this.store.updateConversationTitle(id, title),
-    onGemDetected: (id, gemId) => this.store.updateConversationGem(id, gemId),
+    onOpened: (id) => {
+      void this.commands.run({
+        kind: 'markConversationOpened',
+        conversationId: id,
+        at: Date.now(),
+      });
+    },
+    onTitleChange: (id, title) => {
+      void this.commands.run({
+        kind: 'syncNativeTitles',
+        entries: [{ conversationId: id, title }],
+      });
+    },
+    onGemDetected: (id, gemId) => {
+      void this.commands.run({ kind: 'setConversationGem', hexId: id, gemId });
+    },
     onActiveChange: () => this.treeView.refreshSite(),
   });
   private folderEnabled: boolean = true;
@@ -85,6 +102,7 @@ export class FolderManager {
   private readonly lifetimeCleanup: Array<() => void> = [];
   private readonly floatingUI = new FloatingFolderUI({
     store: this.store,
+    commands: this.commands,
     dialogs: this.dialogs,
     transfer: this.transfer,
     navigation: this.navigation,
@@ -110,7 +128,9 @@ export class FolderManager {
       this.archivedRows.apply(row, pass);
     },
     hasStoredConversations: () => this.store.hasStoredConversations(),
-    onTitlesChanged: () => this.store.syncConversationTitlesFromNative(),
+    onTitlesChanged: async () => {
+      await this.commands.run({ kind: 'syncNativeSidebarTitles' });
+    },
   });
   private readonly nativeConversationMenus: NativeConversationMenus = new NativeConversationMenus({
     getContext: () => ({
@@ -125,7 +145,9 @@ export class FolderManager {
         this.addConversationToFolderFromNative(folderId, id, title, url);
       });
     },
-    onConfirmedDelete: (id) => this.store.removeConversationFromAllFolders(id),
+    onConfirmedDelete: (id) => {
+      void this.commands.run({ kind: 'removeConversationEverywhere', conversationId: id });
+    },
   });
 
   private readonly sidebarRuntime: FolderSidebarRuntime = new FolderSidebarRuntime({
@@ -165,6 +187,7 @@ export class FolderManager {
 
   private readonly selection: FolderSelection = new FolderSelection({
     store: this.store,
+    commands: this.commands,
     runtime: this.sidebarRuntime,
     navigation: this.navigation,
     feedback: this.feedback,
@@ -178,6 +201,7 @@ export class FolderManager {
   });
   private readonly treeView: FolderSidebarView = new FolderSidebarView({
     store: this.store,
+    commands: this.commands,
     runtime: this.sidebarRuntime,
     selection: this.selection,
     navigation: this.navigation,
@@ -320,7 +344,7 @@ export class FolderManager {
       if (!renamed) {
         folderDebugWarn('Could not find native rename button:', conversationId);
       } else {
-        await this.store.restoreNativeTitleSync(conversationId, nativeTitle);
+        await this.commands.run({ kind: 'restoreNativeTitle', conversationId, nativeTitle });
       }
       return renamed;
     } finally {
@@ -340,15 +364,12 @@ export class FolderManager {
     gemId?: string,
     lastTurnAt?: number,
   ): void {
-    this.store.addConversationToFolderFromNative(
-      folderId,
-      conversationId,
-      title,
-      url,
-      isGem,
-      gemId,
-      lastTurnAt,
-    );
+    void this.commands.run({
+      kind: 'addConversations',
+      target: folderId,
+      via: 'native-menu',
+      seeds: [{ conversationId, title, url, isGem, gemId, lastTurnAt }],
+    });
   }
 
   getFolders(): Folder[] {
@@ -394,7 +415,7 @@ export class FolderManager {
     if (!this.sidebarRuntime.panel) return;
     this.treeView.render();
     this.applyHideArchivedSetting();
-    this.store.flushTitleUpdates();
+    void this.commands.run({ kind: 'flushNativeTitles' });
   }
 
   private setupStorageListener(): void {

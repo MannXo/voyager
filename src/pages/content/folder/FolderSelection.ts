@@ -1,4 +1,5 @@
 import { extractRouteUserIdFromPath } from '@/core/services/AccountIsolationService';
+import type { FolderCommands } from '@/features/folder/commands/folderCommands';
 import type { ConversationSortMode } from '@/features/folder/model/folderData';
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
@@ -25,6 +26,7 @@ import type { ConversationReference } from './types';
 
 interface FolderSelectionOptions {
   store: FolderStore;
+  commands: FolderCommands;
   runtime: FolderSidebarRuntime;
   navigation: FolderNavigation;
   feedback: FolderFeedback;
@@ -175,7 +177,11 @@ export class FolderSelection {
     const folderId = this.multiSelectFolderId;
     if (!this.options.store.data.folderContents[folderId]) return;
 
-    this.options.store.removeConversationsFromFolder(folderId, this.selectedConversations);
+    void this.options.commands.run({
+      kind: 'removeConversations',
+      folderId,
+      ids: [...this.selectedConversations],
+    });
 
     // Exit multi-select mode and refresh
     this.exitMultiSelectMode();

@@ -1,6 +1,7 @@
 import type browser from 'webextension-polyfill';
 
 import { StorageKeys } from '@/core/types/common';
+import type { FolderCommands } from '@/features/folder/commands/folderCommands';
 import type { ConversationSortMode } from '@/features/folder/model/folderData';
 
 import type { FolderFeedback } from './FolderFeedback';
@@ -46,6 +47,7 @@ import type { ConversationReference } from './types';
 
 interface FolderSidebarViewOptions {
   store: FolderStore;
+  commands: FolderCommands;
   runtime: FolderSidebarRuntime;
   selection: FolderSelection;
   navigation: FolderNavigation;
@@ -79,12 +81,14 @@ export class FolderSidebarView {
   constructor(private readonly options: FolderSidebarViewOptions) {
     this.drops = {
       store: options.store,
+      commands: options.commands,
       feedback: options.feedback,
       sortMode: () => this.prefs.conversationSortMode,
       finish: () => options.selection.finishDrop(),
     };
     this.activity = new SidebarActivityList({
       store: options.store,
+      commands: options.commands,
       navigation: options.navigation,
       feedback: options.feedback,
       dialogs: options.dialogs,
@@ -274,6 +278,7 @@ export class FolderSidebarView {
     this.activity.clear();
     this.tree = mountSidebarTree({
       store: this.options.store,
+      commands: this.options.commands,
       navigation: this.options.navigation,
       selection: this.options.selection,
       dialogs: this.options.dialogs,
@@ -331,12 +336,17 @@ export class FolderSidebarView {
     if (this.options.getContext().hideArchivedConversations || this.searchCriteria()) return;
     const lookup = buildNativeConversationTitleMap();
     if (lookup.size === 0) return;
-    for (const list of Object.values(this.options.store.data.folderContents)) {
-      for (const conversation of list) {
+    for (const [folderId, list] of Object.entries(this.options.store.data.folderContents)) {
+      for (const [index, conversation] of list.entries()) {
         if (conversation.customTitle) continue;
         const synced = lookupNativeConversationTitle(lookup, conversation.conversationId);
         if (synced && synced !== conversation.title) {
-          this.options.store.bufferTitleUpdate(conversation, synced);
+          void this.options.commands.run({
+            kind: 'bufferNativeTitle',
+            folderId,
+            index,
+            title: synced,
+          });
         }
       }
     }
@@ -358,7 +368,12 @@ export class FolderSidebarView {
       this.options.runtime.panel?.querySelector<HTMLElement>('.gv-folder-list') ?? null,
       null,
       (name) => {
-        this.options.store.createFolder(name, null);
+        void this.options.commands.run({
+          kind: 'createFolder',
+          folderId: crypto.randomUUID(),
+          name,
+          parentId: null,
+        });
       },
     );
   }

@@ -1,3 +1,4 @@
+import type { FolderCommands } from '@/features/folder/commands/folderCommands';
 import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import {
   type ConversationSortMode,
@@ -15,6 +16,7 @@ import type { DragData } from './types';
 /** What a drop on Gemini's sidebar folders needs. */
 export type SidebarDropContext = {
   store: FolderStore;
+  commands: FolderCommands;
   feedback: Pick<FolderFeedback, 'showNotification'>;
   sortMode: () => ConversationSortMode;
   /** After any drop that read a payload: ends the multi-select a drag carried. */
@@ -24,13 +26,6 @@ export type SidebarDropContext = {
 /** Gemini's sidebar drags all carry Voyager JSON: folder rows, folder chats and native chats. */
 export function acceptsSidebarDrag(types: readonly string[]): boolean {
   return types.includes(VOYAGER_DRAG_MIME);
-}
-
-function conversationIdsOf(dragData: DragData): string[] {
-  if (dragData.conversations?.length) {
-    return dragData.conversations.map((conversation) => conversation.conversationId);
-  }
-  return dragData.conversationId ? [dragData.conversationId] : [];
 }
 
 /** The insert index of a drop beside `placement`'s folder among its unpinned siblings. */
@@ -77,16 +72,24 @@ export function applySidebarDrop(
   folderId: string,
   placement?: DropPlacement,
 ): void {
-  const { store } = context;
+  const { store, commands } = context;
   try {
     if (dragData.type === 'folder') {
       if (placement?.kind === 'folder' && dragData.folderId) {
         const at = folderInsertIndex(store, placement);
-        if (at) store.reorderFolder(dragData.folderId, at.parentId, at.index);
-      } else if (folderId === ROOT_CONVERSATIONS_ID) {
-        store.moveFolderToRoot(dragData);
-      } else {
-        store.addFolderToFolder(folderId, dragData);
+        if (at)
+          void commands.run({
+            kind: 'moveFolder',
+            folderId: dragData.folderId,
+            parentId: at.parentId === '__root__' ? null : at.parentId,
+            index: at.index,
+          });
+      } else if (dragData.folderId) {
+        void commands.run({
+          kind: 'moveFolder',
+          folderId: dragData.folderId,
+          parentId: folderId === ROOT_CONVERSATIONS_ID ? null : folderId,
+        });
       }
       return;
     }
@@ -95,20 +98,14 @@ export function applySidebarDrop(
       context.feedback.showNotification(t('folder_sort_recent_drag_hint'), 'info');
       return;
     }
-    if (placement?.kind === 'conversation' && sortMode === 'manual') {
-      const insertIndex = conversationInsertIndex(store, sortMode, placement);
-      if (!dragData.sourceFolderId) store.ensureConversationsInFolder(folderId, dragData);
-      store.reorderOrMoveConversations(
-        conversationIdsOf(dragData),
-        dragData.sourceFolderId ?? folderId,
-        folderId,
-        insertIndex,
-      );
-    } else if (dragData.conversations?.length) {
-      store.addConversationsToFolder(folderId, dragData.conversations, dragData.sourceFolderId);
-    } else {
-      store.addConversationToFolder(folderId, dragData);
-    }
+    void commands.run({
+      kind: 'dropConversations',
+      target: folderId,
+      payload: dragData,
+      ...(placement?.kind === 'conversation' && sortMode === 'manual'
+        ? { index: conversationInsertIndex(store, sortMode, placement) }
+        : {}),
+    });
   } catch (error) {
     console.error('[FolderManager] Drop error:', error);
   } finally {

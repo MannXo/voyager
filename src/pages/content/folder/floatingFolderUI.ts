@@ -3,6 +3,7 @@ import browser from 'webextension-polyfill';
 import { StorageKeys } from '@/core/types/common';
 import { isSafari } from '@/core/utils/browser';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
+import type { FolderCommands } from '@/features/folder/commands/folderCommands';
 import type { ConversationSortMode } from '@/features/folder/model/folderData';
 
 import type { FolderNavigation } from './FolderNavigation';
@@ -22,6 +23,7 @@ import { folderDebugWarn } from './folderManagerDebug';
 
 type FloatingFolderUIOptions = {
   store: FolderStore;
+  commands: FolderCommands;
   dialogs: FolderDialogs;
   transfer: FolderTransferController;
   navigation: FolderNavigation;
@@ -174,7 +176,7 @@ export class FloatingFolderUI {
       onNavigate: (conv) => {
         if (conv.url) navigation.navigate(conv);
       },
-      ...createFloatingTreeStoreActions(store, dialogs),
+      ...createFloatingTreeStoreActions(this.options.commands, dialogs),
       ...this.cloudActions(),
     });
   }

@@ -1,4 +1,5 @@
 import { createStarIcon } from '@/core/icons/folderIcons';
+import type { FolderCommands } from '@/features/folder/commands/folderCommands';
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
 import type { FolderFeedback } from './FolderFeedback';
@@ -24,6 +25,7 @@ const MAX_TIMEOUT_MS = 2_147_483_647;
 
 interface SidebarActivityListOptions {
   store: FolderStore;
+  commands: FolderCommands;
   navigation: FolderNavigation;
   feedback: FolderFeedback;
   dialogs: FolderDialogs;
@@ -193,10 +195,12 @@ export class SidebarActivityList {
     starButton.title = item.starred ? t('conversation_unstar') : t('conversation_star');
     starButton.addEventListener('click', (event) => {
       event.stopPropagation();
-      this.options.store.setConversationStarAcrossFolders(
-        conversation.conversationId,
-        !item.starred,
-      );
+      void this.options.commands.run({
+        kind: 'setConversationStarred',
+        conversationId: conversation.conversationId,
+        starred: !item.starred,
+        scope: 'everywhere',
+      });
     });
 
     link.addEventListener('click', (event) => {
