@@ -23,14 +23,6 @@ import { PDF_PRINT_CONTAINER_ID, createPDFPrintContainer } from './pdfPrintDocum
 import { PDF_PRINT_BODY_CLASS, PDF_PRINT_STYLES_ID, injectPDFPrintStyles } from './pdfPrintStyles';
 import { resolvePDFPrintTitle } from './pdfPrintTitles';
 
-export interface PrintableDocumentContent {
-  title: string;
-  url: string;
-  exportedAt: string;
-  markdown: string;
-  html: string;
-}
-
 /**
  * PDF print service using browser's native print dialog
  * Injects optimized styles for paper-friendly output
