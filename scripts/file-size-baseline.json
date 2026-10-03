@@ -8,7 +8,6 @@
     "src/pages/content/chatInput/__tests__/vimMode.test.ts": 1969,
     "src/pages/content/defaultModel/__tests__/modelLocker.test.ts": 2358,
     "src/pages/content/prompt/__tests__/slashPrompt.test.ts": 1868,
-    "src/pages/content/wavedrom/index.ts": 1075,
     "src/pages/popup/components/__tests__/PluginManager.test.tsx": 1002
   }
 }
