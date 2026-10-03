@@ -596,6 +596,85 @@ describe('PDFPrintService', () => {
     expect(link?.getAttribute('href')).toContain('" onclick="');
   });
 
+  it('restores page state through the fallback timer when afterprint never fires', async () => {
+    vi.useFakeTimers();
+    document.title = 'Original title';
+    document.body.innerHTML = '<main id="host-content">Page content</main>';
+    window.print = vi.fn();
+    const cleanupEvent = vi.fn();
+    window.addEventListener('gv-print-cleanup', cleanupEvent);
+    const exportPromise = PDFPrintService.export([{ user: 'u', assistant: 'a', starred: false }], {
+      url: 'https://gemini.google.com/app/x',
+      exportedAt: '',
+      count: 1,
+      title: 'Print title',
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    await exportPromise;
+    cleanupEvent.mockClear();
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(document.getElementById('gv-pdf-print-container')).toBeTruthy();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(document.getElementById('gv-pdf-print-container')).toBeNull();
+    expect(document.body.classList.contains('gv-pdf-printing')).toBe(false);
+    expect(document.title).toBe('Original title');
+    expect(document.getElementById('host-content')?.textContent).toBe('Page content');
+    expect(document.getElementById('gv-pdf-print-styles')).toBeTruthy();
+    expect(cleanupEvent).toHaveBeenCalledOnce();
+    window.removeEventListener('gv-print-cleanup', cleanupEvent);
+  });
+
+  it.each(['before', 'during'])(
+    'cleans up and skips printing when cancelled %s preparation',
+    async (when) => {
+      vi.useFakeTimers();
+      document.title = 'Original title';
+      window.print = vi.fn();
+      const controller = new AbortController();
+      if (when === 'before') controller.abort();
+      const exportPromise = PDFPrintService.export(
+        [{ user: 'u', assistant: 'a', starred: false }],
+        {
+          url: 'https://gemini.google.com/app/x',
+          exportedAt: '',
+          count: 1,
+          title: 'Cancelled title',
+        },
+        { signal: controller.signal },
+      );
+      const rejected = expect(exportPromise).rejects.toMatchObject({ name: 'AbortError' });
+      if (when === 'during') {
+        await vi.advanceTimersByTimeAsync(99);
+        expect(document.getElementById('gv-pdf-print-container')).toBeTruthy();
+        controller.abort();
+      }
+      await vi.advanceTimersByTimeAsync(100);
+      await rejected;
+      expect(window.print).not.toHaveBeenCalled();
+      expect(document.getElementById('gv-pdf-print-container')).toBeNull();
+      expect(document.body.classList.contains('gv-pdf-printing')).toBe(false);
+      expect(document.title).toBe('Original title');
+    },
+  );
+
+  it('replaces the previous print document and applies the next export font size', async () => {
+    window.print = vi.fn();
+    const metadata = { url: 'https://gemini.google.com/app/x', exportedAt: '', count: 1 };
+    await PDFPrintService.export([{ user: 'First', assistant: 'a', starred: false }], metadata);
+    const first = document.getElementById('gv-pdf-print-container')!;
+    await PDFPrintService.export([{ user: 'Next', assistant: 'a', starred: false }], metadata, {
+      fontSize: 17,
+    });
+    expect(first.isConnected).toBe(false);
+    expect(document.querySelectorAll('#gv-pdf-print-container')).toHaveLength(1);
+    expect(document.querySelector('.gv-print-turn-user')?.textContent).toContain('Next');
+    const styles = document.getElementById('gv-pdf-print-styles')?.textContent;
+    expect(styles).toContain('font-size: 17pt;');
+    expect(styles).toContain('font-size: 15pt;');
+    window.dispatchEvent(new Event('afterprint'));
+    expect(document.title).toBe('Gemini');
+  });
+
   it('handles special CSS characters in conversation id selectors', () => {
     const conversationId = 'ab"]\\cd';
     const nativeConversation = document.createElement('div');
