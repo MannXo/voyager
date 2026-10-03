@@ -9,7 +9,7 @@ from the page beforehand (`extractTurnContent` with an extractor from `createCon
 | Change                                                                               | Owner                                                                                |
 | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
 | Platform selectors, titles and content dialect; ChatGPT crawl, session, thread watch | `adapter/`                                                                           |
-| Per-host export: label, conversation pages, turn source, lazy history                | `exportSite.ts`, `sites/`                                                            |
+| Per-host export: label, entry points, turn source, lazy history; site registration   | `exportSite.ts`, `sites/` (+ `adapter/platformAdapters.ts`)                          |
 | Read turns and selectable messages from the page, Canvas snapshots, message ids      | `conversationCollector.ts` (+ `conversationDom.ts`, shared with fork)                |
 | One export run: preload, resume, preparation/release, final export, operation abort  | `exportRun.ts` (+ `preparedExport.ts`, `pendingExportState.ts`, `topNodePreload.ts`) |
 | Selection mode: checkboxes, bar, role filters, lazy-load refresh, Cancel/Escape      | `exportSelectionSession.ts`                                                          |

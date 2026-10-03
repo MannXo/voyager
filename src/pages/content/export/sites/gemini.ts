@@ -8,6 +8,11 @@ export function createGeminiExportSite(adapter: ExportPlatformAdapter): ExportSi
   return {
     id: adapter.site.id,
     label: adapter.site.label,
+    entryPoints: {
+      kind: 'gemini',
+      userSelectors: adapter.getUserSelectors,
+      assistantMessageIdFor: page.assistantMessageIdFor,
+    },
     title: adapter.extractConversationTitle,
     turns: {
       scrollsWhileBuilding: false,

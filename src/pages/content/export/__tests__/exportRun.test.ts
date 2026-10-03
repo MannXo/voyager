@@ -51,6 +51,7 @@ function fakeSite(page: ConversationCollector): ExportSite {
   return {
     id: 'test',
     label: 'Test Chat',
+    entryPoints: { kind: 'toolbar' },
     title: () => 'A conversation',
     page,
     turns: { scrollsWhileBuilding: false, ...pageReader(page) },

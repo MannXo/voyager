@@ -1,7 +1,6 @@
 // Static imports to avoid CSP issues with dynamic imports in content scripts
 import { StorageKeys } from '@/core/types/common';
 import type { AppLanguage } from '@/utils/language';
-import type { TranslationKey } from '@/utils/translations';
 
 import {
   getSavedImageExportWidth,
@@ -19,6 +18,7 @@ import { waitForElement } from './domWait';
 import { startExportEntryGate } from './exportEntryGate';
 import {
   type ExportDictionaries,
+  createExportTranslator,
   loadExportDictionaries,
   readExportLanguage,
   translateExportOr,
@@ -52,8 +52,7 @@ export async function startExportButton(
   const noCleanup = () => {};
   if (options.signal?.aborted) return noCleanup;
   // Check for pending export immediately
-  const history = exportSite.history;
-  if (history) {
+  if (exportSite.history) {
     void exportRunner.resumePending();
   }
 
@@ -61,15 +60,15 @@ export async function startExportButton(
   if (options.signal?.aborted) return noCleanup;
   let lang = await readExportLanguage();
   if (options.signal?.aborted) return noCleanup;
-  const t = (key: TranslationKey) => dict[lang]?.[key] ?? dict.en?.[key] ?? key;
+  const entryPoints = exportSite.entryPoints;
 
-  // Platforms without Gemini's logo/menu UI: mount the persistent toolbar directly.
-  if (!history) {
+  if (entryPoints.kind === 'toolbar') {
     let toolbarHandle: ReturnType<typeof mountPersistentExportToolbar> | null = null;
     const mountToolbar = () => {
+      const [label, tooltip] = entryPointTexts(dict, lang);
       toolbarHandle = mountPersistentExportToolbar({
-        label: t('pm_export'),
-        tooltip: t('exportChatJson'),
+        label,
+        tooltip,
         onClick: () => void showExportDialog(dict, lang, { signal: options.signal }),
       });
       toolbarHandle.root.setAttribute('data-gv-platform', exportSite.id);
@@ -84,7 +83,7 @@ export async function startExportButton(
     // A host whose chat UI shares the origin with unrelated pages only gets
     // the entry point where a conversation can exist, and loses it again when
     // the SPA navigates away from one.
-    const isConversationPage = exportSite.isConversationPage;
+    const isConversationPage = entryPoints.isConversationPage;
     let stopEntryGate: () => void;
     if (isConversationPage) {
       stopEntryGate = startExportEntryGate({
@@ -100,7 +99,7 @@ export async function startExportButton(
     }
     const stopLanguage = watchExportLanguage((next) => {
       lang = next;
-      toolbarHandle?.setText(...toolbarTexts(dict, next));
+      toolbarHandle?.setText(...entryPointTexts(dict, next));
     });
     return () => {
       stopEntryGate();
@@ -116,13 +115,15 @@ export async function startExportButton(
       if (context.menuType === 'sidebar' && context.trigger) {
         const trigger = context.trigger;
         void (async () => {
-          if (!(await openSidebarConversationForExport(trigger, history.userSelectors))) return;
+          if (!(await openSidebarConversationForExport(trigger, entryPoints.userSelectors))) {
+            return;
+          }
           await showExportDialog(dict, lang);
         })();
         return;
       }
       if (context.menuType === 'message') {
-        const initialSelectedMessageId = exportSite.page.assistantMessageIdFor(context.trigger);
+        const initialSelectedMessageId = entryPoints.assistantMessageIdFor(context.trigger);
         void showExportDialog(dict, lang, { initialSelectedMessageId });
         return;
       }
@@ -133,6 +134,7 @@ export async function startExportButton(
     dict,
     language: () => lang,
     site: exportSite,
+    assistantMessageIdFor: entryPoints.assistantMessageIdFor,
   });
 
   // The lr26 UI removed the logo entirely; resolveExportLogoAnchor short-circuits
@@ -166,9 +168,10 @@ export async function startExportButton(
 
     const ensureToolbarVisibility = (enabled: boolean) => {
       if (enabled && !toolbarHandle) {
+        const [label, tooltip] = entryPointTexts(dict, lang);
         toolbarHandle = mountPersistentExportToolbar({
-          label: t('pm_export'),
-          tooltip: t('exportChatJson'),
+          label,
+          tooltip,
           onClick: () => showExportDialog(dict, lang),
         });
       } else if (!enabled && toolbarHandle) {
@@ -181,7 +184,7 @@ export async function startExportButton(
 
     const stopLanguage = watchExportLanguage((next) => {
       lang = next;
-      toolbarHandle?.setText(...toolbarTexts(dict, next));
+      toolbarHandle?.setText(...entryPointTexts(dict, next));
       copyImageActions.relabel();
     });
     const onToolbarSettingChange = (
@@ -210,14 +213,17 @@ export async function startExportButton(
     return () => {};
   }
   const logoButton = mountLogoExportButton(logo, {
-    texts: () => ({ title: t('exportChatJson'), label: t('pm_export') }),
+    texts: () => {
+      const [label, title] = entryPointTexts(dict, lang);
+      return { title, label };
+    },
     onClick: () => void showExportDialog(dict, lang),
   });
   if (!logoButton) return () => {};
 
   const stopLanguage = watchExportLanguage((next) => {
     lang = next;
-    const [label, title] = toolbarTexts(dict, next);
+    const [label, title] = entryPointTexts(dict, next);
     logoButton.relabel({ title, label });
     copyImageActions.relabel();
   });
@@ -230,7 +236,7 @@ export async function startExportButton(
 }
 
 /** The export entry point's label and tooltip. */
-function toolbarTexts(dict: ExportDictionaries, lang: AppLanguage): [string, string] {
+function entryPointTexts(dict: ExportDictionaries, lang: AppLanguage): [string, string] {
   return [
     translateExportOr(dict, lang, 'pm_export', 'Export'),
     translateExportOr(dict, lang, 'exportChatJson', 'Export chat history'),
@@ -238,7 +244,7 @@ function toolbarTexts(dict: ExportDictionaries, lang: AppLanguage): [string, str
 }
 
 async function showExportDialog(
-  dict: Record<AppLanguage, Record<string, string>>,
+  dict: ExportDictionaries,
   lang: AppLanguage,
   options?: {
     initialSelectedMessageId?: string | null;
@@ -246,7 +252,7 @@ async function showExportDialog(
   },
 ): Promise<void> {
   if (options?.signal?.aborted) return;
-  const t = (key: TranslationKey) => dict[lang]?.[key] ?? dict.en?.[key] ?? key;
+  const t = createExportTranslator(dict, lang);
   const speakerDefaults: ExportSpeakerLabels = {
     user: t('export_speaker_user_default'),
     assistant: t('export_speaker_assistant_default'),

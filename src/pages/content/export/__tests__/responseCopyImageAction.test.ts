@@ -71,10 +71,13 @@ function renderResponse(): void {
 }
 
 async function copyFirstResponseAsImage(): Promise<void> {
+  const site = resolveExportSite();
+  if (site.entryPoints.kind !== 'gemini') throw new Error('expected the Gemini export site');
   startResponseCopyImageActions({
     dict: emptyDict,
     language: () => 'en',
-    site: resolveExportSite(),
+    site,
+    assistantMessageIdFor: site.entryPoints.assistantMessageIdFor,
   });
   const button = document.querySelector<HTMLElement>('[data-test-id="gv-copy-image-button"]');
   expect(button).not.toBeNull();

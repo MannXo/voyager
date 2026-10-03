@@ -30,7 +30,9 @@ export interface ResponseCopyImageOptions {
   dict: ExportDictionaries;
   /** Current UI language, read on every click and injection. */
   language: () => AppLanguage;
-  site: Pick<ExportSite, 'label' | 'title' | 'turns' | 'page'>;
+  site: Pick<ExportSite, 'label' | 'title' | 'turns'>;
+  /** The `site.turns` message id of the response a copy button belongs to. */
+  assistantMessageIdFor: (trigger: HTMLElement) => string | null;
 }
 
 type ResponseCopyImageTexts = {
@@ -140,7 +142,7 @@ async function copyResponseAsImage(
     user: t('export_speaker_user_default'),
     assistant: t('export_speaker_assistant_default'),
   };
-  const messageId = site.page.assistantMessageIdFor(trigger);
+  const messageId = options.assistantMessageIdFor(trigger);
   let blobForFallback: Blob | null = null;
   try {
     if (!messageId) {
