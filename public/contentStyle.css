@@ -10510,16 +10510,6 @@ body.gv-rtl .gv-pm-item-compact .gv-pm-bottom {
 
 /* The slot is a blank in a sentence, so it is drawn as a rule under the words
    rather than as another boxed field. */
-/* Off-screen ruler for slot auto-sizing: same font and padding as the slot, so
-   its measured width is the width the slot needs. */
-/* `fixed`, not `absolute`: the sizer's parent is the fill surface, which is
-   `overflow: auto`. An absolutely positioned child is measured into that box's
-   scrollable overflow, and `left: -9999px` only escapes it while the surface is
-   LTR - an RTL host page turns that into end-side overflow, giving every fill
-   surface a horizontal scrollbar that pans the sentence off-screen. A fixed box
-   contributes to no ancestor's scrollable overflow at all. Its containing block
-   is the viewport, exactly like the surface itself, so this adds no dependency
-   the surface does not already have. */
 .gv-pm-slot {
   /* An editable span, so a long value wraps with the sentence instead of
      growing the slot past the card that holds it. Nothing here sets a width:
