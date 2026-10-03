@@ -102,6 +102,15 @@ globalThis.localStorage = localStorageMock as unknown as Storage;
 // Expose document globally
 globalThis.document = window.document;
 
+// jsdom does not implement the browser's ResizeObserver API.
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  };
+}
+
 // Mock DOM API
 Object.defineProperty(window, 'matchMedia', {
   writable: true,

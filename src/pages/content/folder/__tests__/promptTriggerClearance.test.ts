@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   type Box,
@@ -96,17 +96,6 @@ function panelBox(panel: HTMLElement): Box {
   };
 }
 
-beforeEach(() => {
-  vi.stubGlobal(
-    'ResizeObserver',
-    class {
-      observe(): void {}
-      unobserve(): void {}
-      disconnect(): void {}
-    },
-  );
-});
-
 afterEach(() => {
   unmountFloatingFab();
   destroyMountedPanels();
@@ -114,7 +103,6 @@ afterEach(() => {
   document.body.className = '';
   setWindowSize(originalWidth, originalHeight);
   vi.restoreAllMocks();
-  vi.unstubAllGlobals();
 });
 
 describe('floating folder surfaces stay off the Prompt Manager ball', () => {
