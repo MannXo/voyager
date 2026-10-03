@@ -17,6 +17,7 @@ import {
   folder,
   folderData,
   pendingKeys,
+  storedData,
   storedMeta,
 } from './ownerHarness';
 
@@ -170,5 +171,49 @@ describe('FolderClient pending allowance (addendum P3P4 R3.2)', () => {
     const outcomes = await Promise.all(runs);
     expect(outcomes.map((outcome) => outcome.kind)).toEqual(['saved', 'saved', 'saved']);
     await until(() => expect(client.status()).toBe('ready'));
+  });
+
+  it.each([false, true])(
+    'rejects an oversized ordinary envelope without a seq gap (opened: %s)',
+    async (opened) => {
+      const { storage, client, log } = allowanceWorld();
+      if (opened) await client.open();
+      let outcome: EditOutcome | null = null;
+      void client
+        .run({ kind: 'setFolderInstructions', folderId: 'F', instructions: '中'.repeat(6000) })
+        .then((result) => (outcome = result));
+      await until(() =>
+        expect(outcome).toMatchObject({ kind: 'rejected', reason: 'payload_too_large' }),
+      );
+      expect(log.filter((call) => call === 'set')).toEqual([]);
+
+      const next = client.run({ kind: 'renameFolder', folderId: 'F', name: 'B' });
+      if (!opened) await client.open();
+      await expect(next).resolves.toEqual({ kind: 'saved' });
+      await client.flush();
+      expect(storedMeta(storage).clients['client-1'].applied).toBe(1);
+      expect(storedData(storage).folders.find((entry) => entry.id === 'F')?.name).toBe('B');
+      expect(
+        storedData(storage).folders.find((entry) => entry.id === 'F')?.instructions,
+      ).toBeUndefined();
+      expect(pendingKeys(storage)).toEqual([]);
+      expect(client.status()).toBe('ready');
+    },
+  );
+
+  it('counts envelope overhead even when the ordinary body alone fits the allowance', async () => {
+    const { client } = allowanceWorld();
+    await client.open();
+    const body = {
+      kind: 'setFolderInstructions',
+      folderId: 'F',
+      instructions: 'a'.repeat(ALLOWANCE_BYTES - 100),
+    } as const;
+    expect(new TextEncoder().encode(JSON.stringify(body)).byteLength).toBeLessThan(ALLOWANCE_BYTES);
+
+    await expect(client.run(body)).resolves.toMatchObject({
+      kind: 'rejected',
+      reason: 'payload_too_large',
+    });
   });
 });

@@ -20,10 +20,13 @@ import {
   failed,
 } from '@/features/folder/commands/folderCommands';
 
-import { canonicalJson } from '../canonicalHash';
 import { type StoredOutcome, isTerminal } from '../folderOps';
-import { MAX_BATCH_BYTES, MAX_BATCH_OPS } from '../folderOwnerCore';
-import type { FolderOwnerRequest, FolderOwnerResponse } from '../folderOwnerMessages';
+import { MAX_BATCH_OPS } from '../folderOwnerCore';
+import type {
+  FolderOwnerRequest,
+  FolderOwnerResponse,
+  PendingOpEntry,
+} from '../folderOwnerMessages';
 import type { FolderSitePolicy } from '../folderOwnerPolicy';
 import { type FolderOwnerStorageArea, pendingOpKey } from '../folderOwnerState';
 import {
@@ -64,6 +67,7 @@ const TOO_LARGE: EditOutcome = {
   reason: 'payload_too_large',
   messageKey: 'folder_save_error',
 };
+const UNOPENED_EPOCH = '00000000-0000-0000-0000-000000000000';
 
 const defaultTimer = (run: () => void, ms: number) => {
   const id = setTimeout(run, ms);
@@ -121,10 +125,15 @@ export class FolderClient implements FolderCommands {
     if (this.state === 'reload_required' || this.disposed) {
       return Promise.resolve(failed('reload_required'));
     }
-    // Checked before acceptance: a stored pending key is always drained, so it is never rejected here.
-    if (canonicalJson(body).length > MAX_BATCH_BYTES) return Promise.resolve(TOO_LARGE);
+    const at = this.now();
+    const bytes = pendingKeyBytes(
+      pendingOpKey(this.clientId, this.nextSeq),
+      this.pendingEntry(body, this.nextSeq, at),
+    );
+    // A single envelope must fit even with no held ops; reject before reserving its sequence.
+    if (bytes > ALLOWANCE_BYTES) return Promise.resolve(TOO_LARGE);
     return new Promise((resolve) => {
-      this.ops.push({ seq: this.nextSeq++, body, state: 'pending', waiters: [resolve] });
+      this.ops.push({ seq: this.nextSeq++, body, at, state: 'pending', waiters: [resolve] });
       queueMicrotask(() => void this.publish());
     });
   }
@@ -190,21 +199,26 @@ export class FolderClient implements FolderCommands {
     this.subscribed = false;
   }
 
+  private pendingEntry(body: OrdinaryOpBody, seq: number, at: number): PendingOpEntry {
+    return {
+      v: 1,
+      key: this.options.key,
+      // Before open, reserve the length of the UUID epoch the native owner creates.
+      epoch: this.base?.epoch ?? UNOPENED_EPOCH,
+      clientId: this.clientId,
+      seq,
+      at,
+      op: body,
+    };
+  }
+
   /** Writes pending keys one at a time in seq order, then sends. */
   private async publish(): Promise<void> {
     if (this.publishing || !this.base || this.state === 'read_only' || this.stopped()) return;
     this.publishing = true;
     try {
       for (let op = this.nextPending(); op; op = this.nextPending()) {
-        const entry = {
-          v: 1,
-          key: this.options.key,
-          epoch: this.base.epoch,
-          clientId: this.clientId,
-          seq: op.seq,
-          at: this.now(),
-          op: op.body,
-        };
+        const entry = this.pendingEntry(op.body, op.seq, op.at);
         const pendingKey = pendingOpKey(this.clientId, op.seq);
         const bytes = pendingKeyBytes(pendingKey, entry);
         // Over the allowance the op stays pending ("Not saved") until applied ops free room.

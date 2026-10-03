@@ -3,6 +3,7 @@ import type { EditOutcome, OrdinaryOpBody } from '@/features/folder/commands/fol
 export interface ClientOp {
   seq: number;
   body: OrdinaryOpBody;
+  at: number;
   /** pending: in memory only; accepted: its pending key is stored; then settled by an outcome. */
   state: 'pending' | 'accepted' | 'committed' | 'rejected';
   outcome?: EditOutcome;
