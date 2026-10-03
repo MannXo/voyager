@@ -12,13 +12,12 @@
 import browser from 'webextension-polyfill';
 
 import { StorageKeys } from '@/core/types/common';
+import type { PromptTriggerSpot } from '@/features/prompt/PromptSiteAdapter';
 
 import { hasUnreadChangelog, showChangelogModalDirect } from '../changelog/index';
 import { readPromptPref, writePromptPref } from './promptPrefs';
 import { PROMPT_TRIGGER_ELEMENT_ID } from './triggerClearance';
 import { applyTriggerLogoFromStorageChange, createTriggerLogoImage } from './triggerLogo';
-
-type TriggerPosition = { bottom: number; right: number };
 
 const ATTENTION_CLASS = 'gv-pm-trigger-new';
 /** Pointer travel, in px, past which a press on the ball is a drag rather than a click. */
@@ -57,6 +56,8 @@ export interface PromptTriggerOptions {
   attention: boolean;
   /** Mirrors the announcement onto other surfaces (the panel's version badge). */
   onAttentionChange: (active: boolean) => void;
+  /** Where the ball sits until the user drags it; null keeps the stylesheet's corner. */
+  defaultSpot: (ballHeight: number) => PromptTriggerSpot | null;
 }
 
 /** Adds the ball to the page and restores its position; resolves once it is placed. */
@@ -65,6 +66,7 @@ export async function mountPromptTrigger({
   hiddenByUser: initiallyHidden,
   attention: initialAttention,
   onAttentionChange,
+  defaultSpot,
 }: PromptTriggerOptions): Promise<PromptTrigger> {
   let hiddenByUser = initiallyHidden;
   let attention = initialAttention;
@@ -92,30 +94,11 @@ export async function mountPromptTrigger({
     onAttentionChange(active);
   }
 
-  // Place the ball near a target element (e.g. Gemini FAB touch target)
-  function placeNextToHost(): void {
-    try {
-      const candidates = Array.from(
-        document.querySelectorAll('span.mat-mdc-button-touch-target'),
-      ) as HTMLElement[];
-      if (!candidates.length) return;
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      const pick = candidates
-        .map((el) => ({ el, r: el.getBoundingClientRect() }))
-        .filter((x) => x.r.width > 0 && x.r.height > 0)
-        // choose the element closest to bottom-right corner
-        .sort((a, b) => a.r.bottom + a.r.right - (b.r.bottom + b.r.right))
-        .reduce((_, x) => x, undefined as { el: HTMLElement; r: DOMRect } | undefined);
-      if (!pick) return;
-      const r = pick.r;
-      const th = trigger.getBoundingClientRect().height || 36;
-      const gap = 10;
-      const right = Math.max(6, Math.round(vw - r.left + gap));
-      const bottom = Math.max(6, Math.round(vh - (r.top + r.height / 2 + th / 2)));
-      trigger.style.right = `${right}px`;
-      trigger.style.bottom = `${bottom}px`;
-    } catch {}
+  function placeAtDefaultSpot(): void {
+    const spot = defaultSpot(trigger.getBoundingClientRect().height || 36);
+    if (!spot) return;
+    trigger.style.right = `${spot.right}px`;
+    trigger.style.bottom = `${spot.bottom}px`;
   }
 
   // Constrain the ball to the viewport bounds
@@ -145,7 +128,7 @@ export async function mountPromptTrigger({
 
   // Restore the saved position; otherwise place next to the host button
   try {
-    const pos = await readPromptPref<TriggerPosition | null>(
+    const pos = await readPromptPref<PromptTriggerSpot | null>(
       StorageKeys.PROMPT_TRIGGER_POSITION,
       null,
     );
@@ -156,12 +139,12 @@ export async function mountPromptTrigger({
       requestAnimationFrame(constrain);
     } else {
       // defer a bit to wait for host DOM
-      placeNextToHost();
-      requestAnimationFrame(placeNextToHost);
-      window.setTimeout(placeNextToHost, 350);
+      placeAtDefaultSpot();
+      requestAnimationFrame(placeAtDefaultSpot);
+      window.setTimeout(placeAtDefaultSpot, 350);
     }
   } catch {
-    placeNextToHost();
+    placeAtDefaultSpot();
   }
 
   async function consumeAttention(): Promise<boolean> {

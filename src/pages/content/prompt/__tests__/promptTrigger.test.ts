@@ -5,6 +5,7 @@ import { StorageKeys } from '@/core/types/common';
 import { hasUnreadChangelog, showChangelogModalDirect } from '../../changelog/index';
 import { readPromptPref, writePromptPref } from '../promptPrefs';
 import { type PromptTrigger, mountPromptTrigger } from '../promptTrigger';
+import { resolvePromptSiteAdapter } from '../resolvePromptSiteAdapter';
 
 vi.mock('webextension-polyfill', () => ({ default: globalThis.chrome }));
 vi.mock('../../changelog/index', () => ({
@@ -18,13 +19,15 @@ vi.mock('../promptPrefs', () => ({
 
 let trigger: PromptTrigger | undefined;
 
-async function mount(options: { hiddenByUser?: boolean; attention?: boolean } = {}) {
+async function mount(options: { hiddenByUser?: boolean; attention?: boolean; url?: string } = {}) {
   const onAttentionChange = vi.fn();
+  const site = resolvePromptSiteAdapter(options.url ?? 'https://gemini.google.com/app');
   trigger = await mountPromptTrigger({
     mascotLogo: false,
     hiddenByUser: options.hiddenByUser ?? false,
     attention: options.attention ?? false,
     onAttentionChange,
+    defaultSpot: (ballHeight) => site.defaultTriggerSpot(ballHeight),
   });
   return { ball: trigger.element, onAttentionChange };
 }
@@ -150,15 +153,18 @@ describe('prompt trigger default spot', () => {
     document.body.appendChild(target);
   }
 
-  it('sits beside the Material FAB when the user never dragged it', async () => {
-    mountMaterialFab(new DOMRect(900, 700, 40, 40));
+  it.each(['https://gemini.google.com/app', 'https://aistudio.google.com/prompts/new_chat'])(
+    'sits beside the Material FAB on %s when the user never dragged it',
+    async (url) => {
+      mountMaterialFab(new DOMRect(900, 700, 40, 40));
 
-    const { ball } = await mount();
+      const { ball } = await mount({ url });
 
-    // jsdom's viewport is 1024x768 and the ball reports no height, so 36 is assumed.
-    expect(ball.style.right).toBe(`${1024 - 900 + 10}px`);
-    expect(ball.style.bottom).toBe(`${768 - (700 + 20 + 18)}px`);
-  });
+      // jsdom's viewport is 1024x768 and the ball reports no height, so 36 is assumed.
+      expect(ball.style.right).toBe(`${1024 - 900 + 10}px`);
+      expect(ball.style.bottom).toBe(`${768 - (700 + 20 + 18)}px`);
+    },
+  );
 
   it('keeps the stylesheet corner on a page without a Material FAB', async () => {
     const { ball } = await mount();

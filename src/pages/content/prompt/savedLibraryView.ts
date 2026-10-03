@@ -23,6 +23,7 @@ import { logger } from '@/core/services/LoggerService';
 import { StorageKeys } from '@/core/types/common';
 import {
   type HighlightAccountScope,
+  type HighlightPlatform,
   type HighlightRecordV1,
   getHighlightColorHex,
 } from '@/core/types/highlight';
@@ -76,6 +77,8 @@ export interface SavedLibraryViewOptions {
   rememberView: () => Promise<void>;
   /** Called after following a saved item. */
   onNavigated: () => void;
+  /** Whose highlights this page lists, exports and removes. */
+  highlightPlatform: HighlightPlatform;
 }
 
 export function createSavedLibraryView({
@@ -88,6 +91,7 @@ export function createSavedLibraryView({
   onBack,
   rememberView,
   onNavigated,
+  highlightPlatform,
 }: SavedLibraryViewOptions): SavedLibraryView {
   let starredMessages: StarredMessage[] = [];
   let highlightRecords: HighlightRecordV1[] = [];
@@ -185,7 +189,7 @@ export function createSavedLibraryView({
     try {
       [starredMessages, highlightRecords] = await Promise.all([
         StarredMessagesService.getAllStarredMessagesSorted(),
-        loadCurrentAccountHighlightRecords(),
+        loadCurrentAccountHighlightRecords(highlightPlatform),
       ]);
     } catch (error) {
       console.warn('[PromptManager] Failed to load saved library:', error);
@@ -203,7 +207,7 @@ export function createSavedLibraryView({
     try {
       const response = (await browser.runtime.sendMessage({
         type: 'gv.highlight.export',
-        payload: { format, scope: await resolveCurrentHighlightScope() },
+        payload: { format, scope: await resolveCurrentHighlightScope(highlightPlatform) },
       })) as { ok?: boolean; data?: string; filename?: string; error?: string } | undefined;
       if (!response?.ok || typeof response.data !== 'string') {
         throw new Error(response?.error || 'Highlight export failed');
@@ -317,7 +321,7 @@ export function createSavedLibraryView({
               item.conversationId,
               item.turnId,
             ).then(() => true)
-          : await removeStoredHighlight(item);
+          : await removeStoredHighlight(item, highlightPlatform);
       if (!removed) {
         setNotice(t('highlightDeleteFailed'), 'err');
         return;
@@ -398,7 +402,9 @@ export function createSavedLibraryView({
   };
 }
 
-async function resolveCurrentHighlightScope(): Promise<HighlightAccountScope> {
+async function resolveCurrentHighlightScope(
+  platform: HighlightPlatform,
+): Promise<HighlightAccountScope> {
   const context = detectAccountContextFromDocument(window.location.href, document);
   const resolved = await accountIsolationService.resolveAccountScope({
     pageUrl: window.location.href,
@@ -406,16 +412,18 @@ async function resolveCurrentHighlightScope(): Promise<HighlightAccountScope> {
     email: context.email,
   });
   return {
-    platform: window.location.hostname.startsWith('aistudio.') ? 'aistudio' : 'gemini',
+    platform,
     accountKey: resolved.accountKey,
     accountId: resolved.accountId,
     routeUserId: resolved.routeUserId,
   };
 }
 
-async function loadCurrentAccountHighlightRecords(): Promise<HighlightRecordV1[]> {
+async function loadCurrentAccountHighlightRecords(
+  platform: HighlightPlatform,
+): Promise<HighlightRecordV1[]> {
   try {
-    const scope = await resolveCurrentHighlightScope();
+    const scope = await resolveCurrentHighlightScope(platform);
     const response = (await browser.runtime.sendMessage({
       type: 'gv.highlight.list',
       payload: { scope, includeDeleted: false },
@@ -428,10 +436,13 @@ async function loadCurrentAccountHighlightRecords(): Promise<HighlightRecordV1[]
   }
 }
 
-async function removeStoredHighlight(item: SavedLibraryItem): Promise<boolean> {
+async function removeStoredHighlight(
+  item: SavedLibraryItem,
+  platform: HighlightPlatform,
+): Promise<boolean> {
   if (item.kind !== 'highlight' || !item.accountHash || !item.platform) return false;
   try {
-    const scope = await resolveCurrentHighlightScope();
+    const scope = await resolveCurrentHighlightScope(platform);
     const response = (await browser.runtime.sendMessage({
       type: 'gv.highlight.delete',
       payload: {

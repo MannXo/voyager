@@ -239,6 +239,7 @@ export async function startPromptManager(
       hiddenByUser: pmHiddenByUser,
       attention: changelogBadgeActive,
       onAttentionChange: (active) => versionBadge.setAttention(active),
+      defaultSpot: (ballHeight) => site.defaultTriggerSpot(ballHeight),
     });
 
     // Panel root
@@ -326,6 +327,7 @@ export async function startPromptManager(
       isActive: () => panelView === 'starred',
       setNotice,
       beforeRender: () => preview.hide(),
+      highlightPlatform: site.highlightPlatform,
       onBack: () => switchPanelView('prompts'),
       rememberView: () => persistPanelView('starred'),
       onNavigated: closePanel,
