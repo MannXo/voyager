@@ -13,6 +13,7 @@ import {
   container,
   root,
   widthPlugin,
+  compactTimelinePlugin,
   PLUGIN_ID,
   pluginState,
   mockMessages,
@@ -190,5 +191,39 @@ describe('PluginManager plugin status', () => {
 
     expect(pluginToggle().disabled).toBe(false);
     expect(container.textContent).not.toContain('Needs a newer Voyager to run');
+  });
+});
+
+describe('PluginManager passes its props to each plugin card', () => {
+  it('shows provenance, the held-back update and the catalog switch, and collapses the card', async () => {
+    mockMessages.current = {
+      pluginUpdateNeedsNewerVoyager: enMessages.pluginUpdateNeedsNewerVoyager.message,
+    };
+    await renderManager({
+      sourceIds: { [PLUGIN_ID]: 'host-catalog' },
+      blockedUpdates: { [PLUGIN_ID]: { version: '2.4.0', engine: '>=9.0.0' } },
+      catalogHost: 'claude.ai',
+    });
+
+    expect(container.textContent).toContain(`v${widthPlugin.version} · pluginSourceOnline`);
+    expect(container.textContent).toContain('2.4.0');
+    expect(container.querySelector('input[aria-label="pluginsOnlineUpdates"]')).toBeTruthy();
+
+    const header = container.querySelector<HTMLButtonElement>('button[aria-expanded]');
+    expect(header?.getAttribute('aria-expanded')).toBe('true');
+    act(() => header?.click());
+    expect(header?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('persists a boolean setting immediately', async () => {
+    await renderManager({ manifests: [compactTimelinePlugin] });
+
+    const input = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Use compact timeline"]',
+    );
+    act(() => input?.click());
+
+    expect(setPluginSetting).toHaveBeenCalledOnce();
+    expect(setPluginSetting).toHaveBeenCalledWith(PLUGIN_ID, 'compactView', true);
   });
 });
