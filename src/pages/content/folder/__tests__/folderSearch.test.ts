@@ -157,12 +157,11 @@ describe('folder sidebar search', () => {
 
   it('shows the full subtree when a parent folder matches folder:', async () => {
     const panel = await search('folder:research');
-    // The shared tree lists a folder's subfolders before its own conversations.
     expect(sidebarTree(panel).outline()).toEqual([
       'Research',
+      '  · Research overview',
       '  Papers',
       '    · Alpha signals',
-      '  · Research overview',
     ]);
   });
 

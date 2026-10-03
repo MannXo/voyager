@@ -146,17 +146,17 @@ describe('ChatGPT folder section: what it writes', () => {
     const view = await activate();
     expect(view.outline()).toEqual([
       'Work',
-      '  Notes',
       '  · Shared',
       '  · Plan',
+      '  Notes',
       'Personal',
       '  · Shared',
       'Loop X',
+      '  · In X',
       '  Loop Y',
+      '    · In Y',
       '    Loop Z',
       '      · In Z',
-      '    · In Y',
-      '  · In X',
     ]);
   });
 
@@ -236,9 +236,9 @@ describe('ChatGPT folder section: what it writes', () => {
     expect(stored().folders.find((f) => f.id === 'x')!.parentId).toBe('y');
     expect(view.outline()).toEqual([
       'Work',
-      '  Notes',
       '  · Shared',
       '  · Plan',
+      '  Notes',
       'Personal',
       '  · Shared',
       'Loop X',

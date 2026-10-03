@@ -224,14 +224,14 @@ describe('AI Studio folder tree against stored data', () => {
     const view = await mount();
     expect(view.outline()).toEqual([
       'Work',
-      '  Notes',
       '  · Plan',
+      '  Notes',
       'Loop X',
+      '  · In X',
       '  Loop Y',
+      '    · In Y',
       '    Loop Z',
       '      · In Z',
-      '    · In Y',
-      '  · In X',
       '· Loose',
     ]);
 
@@ -246,8 +246,8 @@ describe('AI Studio folder tree against stored data', () => {
     );
     expect(view.outline()).toEqual([
       'Work',
-      '  Notes',
       '  · Plan',
+      '  Notes',
       'Loop X',
       '  · In X',
       '· Loose',

@@ -216,7 +216,7 @@ describe('keyboard', () => {
 
     parent.focus();
     keydown(parent, 'ArrowDown');
-    expect(deepActiveElement()).toBe(treeitem(view.folderRow('Kid')));
+    expect(deepActiveElement()).toBe(treeitem(view.conversationRow('p', 'In parent')));
   });
 
   it('forgets a held key when the window loses focus', () => {
@@ -229,7 +229,7 @@ describe('keyboard', () => {
     window.dispatchEvent(new FocusEvent('blur'));
 
     keydown(parent, 'ArrowDown');
-    expect(deepActiveElement()).toBe(treeitem(view.folderRow('Kid')));
+    expect(deepActiveElement()).toBe(treeitem(view.conversationRow('p', 'In parent')));
   });
 });
 

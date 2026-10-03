@@ -97,3 +97,34 @@ describe('tree item keys', () => {
     expect(JSON.stringify(data)).toBe(before);
   });
 });
+
+describe('tree order', () => {
+  /** Every row in display order, every folder open, as `title` or `name`. */
+  const outline = (data: FolderData): string[] => {
+    const projection = buildTreeProjection({
+      data,
+      rootBucketId: '__root__',
+      conversationSortMode: 'manual',
+    });
+    const walk = (key: string): string[] =>
+      (projection.children.get(key) ?? []).flatMap((child) => {
+        const node = projection.nodes.get(child)!;
+        return node.kind === 'folder'
+          ? [node.folder.name, ...walk(child)]
+          : [node.conversation.title];
+      });
+    return walk(ROOT_ITEM_KEY);
+  };
+
+  it("keeps a parent's own chat above an open subfolder's chats", () => {
+    const data: FolderData = {
+      folders: [folder('p', 'Parent'), folder('k', 'Kid', { parentId: 'p' })],
+      folderContents: {
+        p: [conv('pc', 'Parent chat')],
+        k: [conv('kc', 'Kid chat')],
+        __root__: [conv('rc', 'Root chat')],
+      },
+    };
+    expect(outline(data)).toEqual(['Root chat', 'Parent', 'Parent chat', 'Kid', 'Kid chat']);
+  });
+});

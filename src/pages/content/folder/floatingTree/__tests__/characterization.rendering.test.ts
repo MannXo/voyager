@@ -30,8 +30,8 @@ afterEach(() => {
 
 /**
  * Default order (floating panel, ChatGPT): root chats first; folders pinned
- * first, then by sortIndex; a folder's subfolders before its chats; chats
- * starred first, then most recent. Folders on a parent cycle follow the real
+ * first, then by sortIndex; a folder's chats before its subfolders, as Gemini
+ * released them; chats starred first, then most recent. Folders on a parent cycle follow the real
  * roots, the first of the cycle in stored order standing in as its root.
  */
 const DEFAULT_OUTLINE = [
@@ -39,12 +39,12 @@ const DEFAULT_OUTLINE = [
   'Mu',
   'Zeta',
   'Alpha',
-  '  Child',
-  '    Grandchild',
-  '      · Deep chat',
   '  · Starred',
   '  · Newest',
   '  · Oldest',
+  '  Child',
+  '    Grandchild',
+  '      · Deep chat',
   'Orphan',
   'Loop X',
   '  Loop Y',
@@ -57,12 +57,12 @@ const DEFAULT_OUTLINE = [
 const AISTUDIO_OUTLINE = [
   'Mu',
   'Alpha',
-  '  Child',
-  '    Grandchild',
-  '      · Deep chat',
   '  · Oldest',
   '  · Starred',
   '  · Newest',
+  '  Child',
+  '    Grandchild',
+  '      · Deep chat',
   'Zeta',
   'Orphan',
   'Loop X',

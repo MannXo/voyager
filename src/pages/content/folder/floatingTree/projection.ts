@@ -72,7 +72,8 @@ export type ProjectionInput = {
 /**
  * Lays out folders (`layoutFolders`: cycles cut, repeats dropped) and each
  * bucket's conversations: stored order, or starred first then the sort mode.
- * Root conversations come first, or after the folders under `rootSection`.
+ * A folder lists its own conversations before its subfolders, as the root
+ * does, unless `rootSection` puts the root's after its folders.
  * A site filter reads the same cycle-cut layout, so it cannot lose a cycle.
  */
 export function buildTreeProjection({
@@ -118,7 +119,7 @@ export function buildTreeProjection({
     );
     const conversationKeys = conversationsOf(key, folder.id, depth);
     node.count = subfolderKeys.length + conversationKeys.length;
-    children.set(key, [...subfolderKeys, ...conversationKeys]);
+    children.set(key, [...conversationKeys, ...subfolderKeys]);
     return key;
   };
 
