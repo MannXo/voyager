@@ -242,6 +242,7 @@ async function readLocalSyncData(
   let accountScope = context.payload.accountScope;
   let folderStorageKey = context.folderStorageKey;
   let folders: FolderData = { folders: [], folderContents: {} };
+  let hasLiveFolderSnapshot = false;
   let prompts: PromptItem[] = [];
   let timelineHierarchy: TimelineHierarchyData = { conversations: {} };
   try {
@@ -252,6 +253,7 @@ async function readLocalSyncData(
     } | null>(getTargetTab, 'gv.sync.requestData', purpose === 'upload' ? 500 : 2000, platform);
     if (response?.ok && response.data) {
       folders = response.data;
+      hasLiveFolderSnapshot = !definition.syncsSharedData;
       if (supportsAccountIsolation(platform) && response.accountScope) {
         accountScope = response.accountScope;
         folderStorageKey = buildScopedStorageKey(
@@ -273,7 +275,12 @@ async function readLocalSyncData(
         : []),
     ]);
     const storedFolders = parseStoredFolderData(storageResult[folderStorageKey]);
-    if ((!folders.folders || folders.folders.length === 0) && storedFolders)
+    // A successful empty live snapshot may be an unsaved deletion, rather than missing data.
+    if (
+      !hasLiveFolderSnapshot &&
+      (!folders.folders || folders.folders.length === 0) &&
+      storedFolders
+    )
       folders = storedFolders;
     const storedPrompts = storageResult[StorageKeys.PROMPT_ITEMS];
     if (platform === 'gemini' && isPromptItemArray(storedPrompts)) prompts = storedPrompts;

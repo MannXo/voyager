@@ -32,6 +32,16 @@ function bareId(conversationId: string): string {
 export class ChatGptFolderStore {
   private readonly repository: FolderRepository;
   private readonly listeners = new Set<() => void>();
+  private readonly syncMessageListener = (
+    message: unknown,
+    _sender: chrome.runtime.MessageSender,
+    sendResponse: (response: unknown) => void,
+  ): true | undefined => {
+    if ((message as { type?: unknown } | null)?.type !== 'gv.sync.requestData') return undefined;
+    // Failed saves leave memory newer than disk; cloud merges must include those edits.
+    sendResponse(this.ready ? { ok: true, data: this.data } : { ok: false });
+    return true;
+  };
 
   constructor(storage: IFolderStorageAdapter = new AIStudioFolderStorageAdapter()) {
     this.repository = new FolderRepository(CHATGPT_FOLDER_CONFIG, storage, {
@@ -50,10 +60,13 @@ export class ChatGptFolderStore {
     return this.repository.canEdit;
   }
 
-  init(): Promise<void> {
-    return this.repository.init();
+  async init(): Promise<void> {
+    await this.repository.init();
+    if (!this.repository.isDestroyed)
+      chrome.runtime.onMessage.addListener(this.syncMessageListener);
   }
   destroy(): void {
+    chrome.runtime.onMessage.removeListener(this.syncMessageListener);
     this.listeners.clear();
     this.repository.destroy();
   }

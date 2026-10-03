@@ -1,3 +1,6 @@
+import { act, createElement } from 'react';
+import { createRoot } from 'react-dom/client';
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DataBackupService } from '@/core/services/DataBackupService';
@@ -5,9 +8,11 @@ import { StorageKeys } from '@/core/types/common';
 import type { FolderData } from '@/core/types/folder';
 import { validateFolderData } from '@/features/folder/model/folderData';
 import { applyCloudRestore } from '@/pages/popup/components/cloudRestore';
+import { useCloudSyncTransfer } from '@/pages/popup/components/useCloudSyncTransfer';
 
 import { ChatGptFolderStore } from '../ChatGptFolderStore';
 import { createLegacyChatGptCommands } from '../legacyChatGptCommands';
+import { exportChatGptFolders } from '../transfer';
 import { type MemoryStorage, createMemoryStorage, settle } from './memoryStorage';
 
 vi.mock('webextension-polyfill', () => ({
@@ -175,6 +180,84 @@ describe('ChatGPT popup restore and the open folder store', () => {
     expect((stored() as FolderData).folders[0].name).toBe('Newer local edit');
     expectOtherPlatformsIntact();
   });
+
+  it.each([
+    {
+      symptom: 'rename',
+      edit: { kind: 'renameFolder', folderId: 'folder', name: 'Unsaved name' },
+      localNames: ['Unsaved name'],
+    },
+    {
+      symptom: 'last-folder removal',
+      edit: { kind: 'removeFolder', folderId: 'folder' },
+      localNames: [],
+    },
+  ] as const)(
+    'a cloud merge preserves an unsaved $symptom after its local save fails',
+    async ({ edit, localNames }) => {
+      type Receiver = Parameters<typeof chrome.runtime.onMessage.addListener>[0];
+      const receivers = new Set<Receiver>();
+      vi.spyOn(chrome.runtime.onMessage, 'addListener').mockImplementation((listener) => {
+        receivers.add(listener);
+      });
+      vi.spyOn(chrome.runtime.onMessage, 'removeListener').mockImplementation((listener) => {
+        receivers.delete(listener);
+      });
+      vi.spyOn(chrome.tabs, 'sendMessage').mockImplementation((async (
+        _id: number,
+        message: unknown,
+      ) => {
+        let response: unknown;
+        for (const receiver of receivers) {
+          receiver(message, { id: chrome.runtime.id }, (value: unknown) => {
+            response = structuredClone(value);
+          });
+        }
+        return response;
+      }) as typeof chrome.tabs.sendMessage);
+      const commands = await ready();
+      vi.spyOn(memory.api.local, 'set').mockRejectedValueOnce(new Error('Transient write failure'));
+      await commands.run(edit);
+      await settle(30);
+      expect(commands.view().folders.map((folder) => folder.name)).toEqual(localNames);
+      expect((stored() as FolderData).folders[0].name).toBe('Initial');
+
+      let transfer!: ReturnType<typeof useCloudSyncTransfer>;
+      function TransferHarness() {
+        transfer = useCloudSyncTransfer(
+          'chatgpt',
+          false,
+          async () =>
+            ({
+              id: 3,
+              url: 'https://chatgpt.com/',
+            }) as chrome.tabs.Tab,
+        );
+        return null;
+      }
+      (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+      const container = document.createElement('div');
+      const root = createRoot(container);
+      try {
+        await act(async () => root.render(createElement(TransferHarness)));
+        const cloud = data('Cloud folder');
+        cloud.folders[0].id = 'cloud';
+        cloud.folderContents = { cloud: [] };
+        const download = await transfer.prepareDownload();
+        await download.restore({ folders: exportChatGptFolders(cloud) }, 'merge', false);
+        await settle(30);
+
+        expect(commands.view().folders.map((folder) => folder.name)).toEqual([
+          ...localNames,
+          'Cloud folder',
+        ]);
+        expect(stored()).toEqual(commands.view());
+        expectOtherPlatformsIntact();
+      } finally {
+        await act(async () => root.unmount());
+      }
+    },
+  );
 
   it('recovers a corrupted ChatGPT bucket from its own backup without changing other sites', async () => {
     const chatgpt = new DataBackupService<FolderData>('chatgpt-folders', validateFolderData);

@@ -258,6 +258,32 @@ describe('ChatGPT folders plugin', () => {
     expect(document.querySelector(PANEL)).not.toBeNull();
   });
 
+  it('stops answering popup folder requests when turned off', async () => {
+    type Receiver = Parameters<typeof chrome.runtime.onMessage.addListener>[0];
+    const receivers = new Set<Receiver>();
+    vi.spyOn(chrome.runtime.onMessage, 'addListener').mockImplementation((listener) => {
+      receivers.add(listener);
+    });
+    vi.spyOn(chrome.runtime.onMessage, 'removeListener').mockImplementation((listener) => {
+      receivers.delete(listener);
+    });
+    const request = () => {
+      let response: unknown;
+      for (const receiver of receivers) {
+        receiver({ type: 'gv.sync.requestData' }, { id: chrome.runtime.id }, (value: unknown) => {
+          response = structuredClone(value);
+        });
+      }
+      return response;
+    };
+    await activate();
+    expect(request()).toMatchObject({ ok: true, data: { folders: [], folderContents: {} } });
+
+    await scope.dispose();
+
+    expect(request()).toBeUndefined();
+  });
+
   it('leaves nothing behind when turned off', async () => {
     memory.values.local.set(StorageKeys.CHATGPT_FOLDER_PANEL, { open: true });
     const listeners = trackPageListeners();
