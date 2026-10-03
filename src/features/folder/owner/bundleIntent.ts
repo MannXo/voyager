@@ -239,6 +239,12 @@ async function finish(
   at: number,
 ): Promise<'saved' | 'abandoned'> {
   const states = await classify(intent, current);
+  const metaKey = metaKeyOf(intent);
+  // A durable saved flip proves completion; later companion edits must survive.
+  if (metaKey && states[metaKey] === 'flipped') {
+    await area.set(settledStatus(intent.txId, 'closed', at));
+    return 'saved';
+  }
   if (Object.values(states).includes('neither')) {
     await abandon(area, intent, current, at);
     return 'abandoned';
@@ -256,8 +262,7 @@ async function finish(
   for (const key of [...remaining].sort((a, b) => growth(a) - growth(b))) {
     await area.set({ [key]: intent.values[key] });
   }
-  const metaKey = metaKeyOf(intent);
-  if (metaKey && states[metaKey] !== 'flipped') {
+  if (metaKey) {
     const nextMeta = remaining.includes(metaKey) ? intent.values[metaKey] : current[metaKey];
     const saved = settleBundleOutcome(nextMeta, intent, SAVED);
     if (saved) await area.set({ [metaKey]: saved });

@@ -88,6 +88,35 @@ describe('bundle writes (addendum P3P4 R3, R4)', () => {
     }
   });
 
+  it.each([{ laterPrompts: ['prompt'] }, { laterPrompts: ['later user edit'] }])(
+    'closes after a durable saved flip without replaying a later companion write: %j',
+    async ({ laterPrompts }) => {
+      const prev = { [PROMPTS]: ['prompt'], [META]: metaWith({ kind: 'saved' }, 4) };
+      const next = { [PROMPTS]: ['merged prompt'], [META]: metaWith(pending('tx')) };
+      const storage = createFaultyStorage(prev);
+      // The saved flip lands, then the worker dies before closing the intent.
+      storage.inject({ call: 5, land: 'all', crash: true });
+      expect(await writeBundle(storage.area, request(next))).toEqual({ kind: 'pending' });
+      expect(storage.read(PROMPTS)).toEqual(next[PROMPTS]);
+      expect(outcomeOf(storage.read(META))).toEqual({ kind: 'saved' });
+      expect(storage.read(BUNDLE_INTENT_KEY)).toMatchObject({ status: 'open' });
+      storage.restart();
+      storage.write(PROMPTS, laterPrompts);
+      const writes: string[][] = [];
+      storage.onCall((_call, op, keys) => {
+        if (op === 'set') writes.push(keys);
+      });
+
+      expect(await resolveBundleIntent(storage.area, ALL_OWNER)).toBe('ok');
+
+      expect(storage.read(PROMPTS)).toEqual(laterPrompts);
+      expect(storage.read(BUNDLE_INTENT_KEY)).toMatchObject({ txId: 'tx', status: 'closed' });
+      expect(outcomeOf(storage.read(META))).toEqual({ kind: 'saved' });
+      expect((storage.read(META) as FolderOwnerMeta).rev).toBe(6);
+      expect(writes).toEqual([[BUNDLE_INTENT_KEY]]);
+    },
+  );
+
   it('aborts with nothing landed when the all-or-nothing value set fails on quota (R3.4)', async () => {
     const prev = { k1: 'a'.repeat(10 * KIB), [META]: metaWith({ kind: 'saved' }, 4) };
     const next = { k1: 'b'.repeat(40 * KIB), [META]: metaWith(pending('tx')) };
