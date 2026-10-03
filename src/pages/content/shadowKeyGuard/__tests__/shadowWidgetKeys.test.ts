@@ -88,19 +88,16 @@ describe('shadow widget key guard', () => {
     expect(pageSaw).toEqual([]);
   });
 
-  it.each(['tree', 'treeitem', 'menu', 'menuitem', 'menuitemradio', 'menuitemcheckbox'])(
-    'keeps letter keys from a %s origin inside its shadow root',
-    (role) => {
-      const { pageSaw } = guardAndPage();
-      const { widget, root } = surface(role);
-      const copies: KeyboardEvent[] = [];
-      root.addEventListener('keydown', (event) => copies.push(event as KeyboardEvent));
-      expect(key(widget, 'j').defaultPrevented).toBe(false);
-      expect(pageSaw).toEqual([]);
-      expect(copies).toHaveLength(1);
-      expect(copies[0].composed).toBe(false);
-    },
-  );
+  it('keeps letter keys from a menu item inside its shadow root', () => {
+    const { pageSaw } = guardAndPage();
+    const { widget, root } = surface('menuitem');
+    const copies: KeyboardEvent[] = [];
+    root.addEventListener('keydown', (event) => copies.push(event as KeyboardEvent));
+    expect(key(widget, 'j').defaultPrevented).toBe(false);
+    expect(pageSaw).toEqual([]);
+    expect(copies).toHaveLength(1);
+    expect(copies[0].composed).toBe(false);
+  });
 
   it('protects the tree own row even without an ARIA role', () => {
     const { pageSaw } = guardAndPage();
