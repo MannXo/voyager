@@ -79,6 +79,24 @@ function releaseWorld() {
 }
 
 describe('open-bundle space release (R3.6)', () => {
+  it.each([2.5, '2'])(
+    'keeps pending ops when the stored watermark is not a usable integer (%s)',
+    async (applied) => {
+      const { storage, release } = releaseWorld();
+      storage.write(ownerMetaKey(KEY), {
+        ...meta,
+        clients: { ...meta.clients, c: { ...meta.clients.c, applied } },
+      });
+      const before = storage.read(ownerMetaKey(KEY));
+
+      await release();
+
+      expect(storage.read(pendingOpKey('c', 1))).toEqual(pending(1));
+      expect(storage.read(pendingOpKey('c', 2))).toEqual(pending(2));
+      expect(storage.read(ownerMetaKey(KEY))).toEqual(before);
+    },
+  );
+
   it('removes only proven applied pending entries, then last, then prior, without changing meta', async () => {
     const { storage, initial, removals, release } = releaseWorld();
     // Add matching durable clients for the epoch and legacy exclusions to be meaningful.

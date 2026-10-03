@@ -54,7 +54,7 @@ export function createBundleSpaceRelease(
           if (!meta || value.epoch !== meta.epoch) continue;
           const applied =
             meta.clients[value.clientId]?.applied ?? meta.retired[value.clientId]?.applied;
-          if (applied !== undefined && applied >= value.seq) keys.push(storageKey);
+          if (Number.isInteger(applied) && applied >= value.seq) keys.push(storageKey);
         }
       } else {
         const name = stage === 1 ? 'last' : 'prior';
