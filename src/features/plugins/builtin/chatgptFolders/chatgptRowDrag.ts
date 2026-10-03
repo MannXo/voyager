@@ -87,7 +87,7 @@ export function bindChatGptRowDrag(scope: PluginScope, options: RowDragOptions):
 
   // By point, not `event.target`: dnd-kit's dragged row and pointer capture can retarget events.
   const move = (event: PointerEvent): void => {
-    if (event.pointerId !== gesture?.pointerId) return;
+    if (!gesture || event.pointerId !== gesture.pointerId) return;
     const { startX, startY } = gesture;
     if (!gesture.dragging) {
       if (Math.hypot(event.clientX - startX, event.clientY - startY) < DRAG_THRESHOLD_PX) return;
@@ -97,7 +97,7 @@ export function bindChatGptRowDrag(scope: PluginScope, options: RowDragOptions):
   };
 
   const release = (event: PointerEvent): void => {
-    if (event.pointerId !== gesture?.pointerId) return;
+    if (!gesture || event.pointerId !== gesture.pointerId) return;
     const { dragging, conversation } = gesture;
     abort();
     const target = dragging ? options.dropTargetAt(event.clientX, event.clientY) : null;

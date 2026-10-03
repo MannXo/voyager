@@ -39,10 +39,10 @@
 /* ─── Tokens ───────────────────────────────────────────────────────────────
  * ChatGPT's sidebar rows use `--color-text`, `--color-text-tertiary` (the
  * "Recents" heading) and `--color-background-primary-ghost-hover`; the page
- * switches them with its theme. Its unprefixed `--text-primary` family belongs
- * to another theme layer and must not be used here. Pressed and outline
- * colours are mixed from the row text, so they follow the theme as well. The
- * fallbacks are ChatGPT's own values, for a page that stops defining them. */
+ * switches them with its theme; pressed rows use `--color-background-primary-ghost-active`.
+ * Its unprefixed `--text-primary` family belongs to another theme layer and must
+ * not be used here. Outlines are mixed from the row text, so they follow the
+ * theme as well. The fallbacks are ChatGPT's own values. */
 :host(.gv-chatgpt-folder-section[data-gv-scheme]) {
   --gv-chatgpt-folder-section__heading: var(--color-text-tertiary, #8f8f8f);
   --gv-floating-folder-panel__text: var(--color-text, #0d0d0d);
@@ -53,10 +53,9 @@
     --color-background-primary-ghost-hover,
     rgba(0, 0, 0, 0.05)
   );
-  --gv-floating-folder-panel__surface-active: color-mix(
-    in srgb,
-    var(--gv-floating-folder-panel__text) 9%,
-    transparent
+  --gv-floating-folder-panel__surface-active: var(
+    --color-background-primary-ghost-active,
+    color-mix(in oklab, var(--gv-floating-folder-panel__text) 12%, transparent)
   );
   --gv-floating-folder-panel__outline: color-mix(
     in srgb,
