@@ -72,52 +72,6 @@ body.gv-rtl .gv-fork-btn {
   left: calc(100% + 8px);
 }
 
-.gv-fork-manual-upload-hint {
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  z-index: 9999;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  max-width: 340px;
-  padding: 12px 14px;
-  border: 1px solid var(--gv-fork-confirm-border, rgba(0, 0, 0, 0.12));
-  border-radius: 8px;
-  background: var(--gv-fork-confirm-bg, #fff);
-  color: var(--gv-fork-confirm-color, #202124);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
-  font-size: 13px;
-  line-height: 1.4;
-  font-family: 'Google Sans', Roboto, Arial, sans-serif;
-}
-.gv-fork-manual-upload-hint span {
-  flex: 1;
-  min-width: 0;
-}
-.gv-fork-manual-upload-timer {
-  display: block;
-  margin-top: 6px;
-  color: var(--gv-fork-secondary-color, #1a73e8);
-  font-size: 14px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
-}
-.gv-fork-manual-upload-hint button {
-  flex: 0 0 auto;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font-size: 16px;
-  line-height: 20px;
-}
-
 /* Fork branch indicator group */
 .gv-fork-indicator-group {
   display: inline-flex;
@@ -205,12 +159,6 @@ html[dark] .gv-fork-btn,
 body.dark-theme .gv-fork-btn {
   --gv-fork-btn-color: #9aa0a6;
   --gv-fork-btn-hover-bg: rgba(255, 255, 255, 0.08);
-}
-html[dark] .gv-fork-manual-upload-hint,
-body.dark-theme .gv-fork-manual-upload-hint {
-  --gv-fork-confirm-bg: #292a2d;
-  --gv-fork-confirm-color: #e8eaed;
-  --gv-fork-confirm-border: rgba(255, 255, 255, 0.12);
 }
 html[dark] .gv-fork-indicator,
 body.dark-theme .gv-fork-indicator {

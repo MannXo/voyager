@@ -1,5 +1,6 @@
 import browser from 'webextension-polyfill';
 
+import { createToaster } from '@/core/ui/toast/toaster';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
 
 import { getTranslationSync } from '../../../utils/i18n';
@@ -8,8 +9,7 @@ import { ForkNodesService } from './ForkNodesService';
 import { PENDING_FORK_KEY, type PendingForkData, type PendingForkMode } from './forkLaunch';
 import type { ForkNode } from './forkTypes';
 
-const FORK_MANUAL_UPLOAD_HINT_CLASS = 'gv-fork-manual-upload-hint';
-const FORK_MANUAL_UPLOAD_TIMER_CLASS = 'gv-fork-manual-upload-timer';
+const UPLOAD_HINT_CHANNEL = 'fork-upload';
 
 function formatTranslation(template: string, values: Record<string, string>): string {
   return Object.entries(values).reduce((result, [key, value]) => {
@@ -17,8 +17,9 @@ function formatTranslation(template: string, values: Record<string, string>): st
   }, template);
 }
 
-// Pending reads can finish after restart, so upload feedback keeps its shared cleanup owner.
-let manualUploadHintTimer: ReturnType<typeof setTimeout> | null = null;
+// Pending reads can finish after a restart, so the upload hint has one owner for
+// the page: whichever instance is running can clear a hint an older one showed.
+const uploadHints = createToaster();
 let manualUploadCountdownTimer: ReturnType<typeof setInterval> | null = null;
 
 export function startPendingFork({
@@ -30,16 +31,16 @@ export function startPendingFork({
   getConversationTitle: () => string;
   onLinked: () => Promise<void>;
 }): () => void {
-  function clearManualUploadHint(): void {
-    if (manualUploadHintTimer) {
-      clearTimeout(manualUploadHintTimer);
-      manualUploadHintTimer = null;
-    }
+  function stopCountdown(): void {
     if (manualUploadCountdownTimer) {
       clearInterval(manualUploadCountdownTimer);
       manualUploadCountdownTimer = null;
     }
-    document.querySelectorAll(`.${FORK_MANUAL_UPLOAD_HINT_CLASS}`).forEach((el) => el.remove());
+  }
+
+  function clearManualUploadHint(): void {
+    stopCountdown();
+    uploadHints.dismiss(UPLOAD_HINT_CHANNEL);
   }
 
   const PENDING_FORK_PASTE_STALE_MS = 60000;
@@ -180,42 +181,26 @@ export function startPendingFork({
 
   function showManualUploadHint(pendingFork: PendingForkData, remainingMs: number): void {
     clearManualUploadHint();
-
-    const notice = document.createElement('div');
-    notice.className = FORK_MANUAL_UPLOAD_HINT_CLASS;
-    notice.setAttribute('role', 'status');
-
-    const message = document.createElement('span');
-    message.textContent = formatTranslation(getTranslationSync('forkManualUploadHint'), {
-      filename: pendingFork.filename || 'MD',
+    const hint = uploadHints.show({
+      channel: UPLOAD_HINT_CHANNEL,
+      message: formatTranslation(getTranslationSync('forkManualUploadHint'), {
+        filename: pendingFork.filename || 'MD',
+      }),
+      detail: formatCountdown(remainingMs),
+      durationMs: remainingMs,
+      dismissLabel: getTranslationSync('forkCancel'),
+      onDismiss: stopCountdown,
     });
-
-    const timer = document.createElement('strong');
-    timer.className = FORK_MANUAL_UPLOAD_TIMER_CLASS;
-    timer.setAttribute('aria-live', 'polite');
-    timer.textContent = formatCountdown(remainingMs);
-    message.appendChild(timer);
-
-    const closeButton = document.createElement('button');
-    closeButton.type = 'button';
-    closeButton.textContent = '\u00d7';
-    closeButton.title = getTranslationSync('forkCancel');
-    closeButton.setAttribute('aria-label', getTranslationSync('forkCancel'));
-    closeButton.addEventListener('click', () => clearManualUploadHint());
-
-    notice.appendChild(message);
-    notice.appendChild(closeButton);
-    document.body.appendChild(notice);
 
     const expiresAt = Date.now() + remainingMs;
     manualUploadCountdownTimer = setInterval(() => {
       const nextRemainingMs = Math.max(0, expiresAt - Date.now());
-      timer.textContent = formatCountdown(nextRemainingMs);
-      if (nextRemainingMs <= 0) {
+      if (nextRemainingMs <= 0 || !hint.isOpen) {
         clearManualUploadHint();
+        return;
       }
+      hint.update({ detail: formatCountdown(nextRemainingMs) });
     }, 1000);
-    manualUploadHintTimer = setTimeout(clearManualUploadHint, remainingMs);
   }
 
   function waitForElement(selector: string, timeoutMs: number): Promise<HTMLElement | null> {

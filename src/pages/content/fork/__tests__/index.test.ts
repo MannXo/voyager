@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import browser from 'webextension-polyfill';
 
 import { confirmDriver } from '@/tests/confirmDriver';
+import { toastDriver } from '@/tests/toastDriver';
 
 import type { ForkNode } from '../forkTypes';
 import { startFork } from '../index';
@@ -417,8 +418,7 @@ describe('startFork style injection', () => {
     await flushMicrotasks();
 
     const input = document.querySelector<HTMLElement>('#chat-input');
-    const hint = document.querySelector<HTMLElement>('.gv-fork-manual-upload-hint');
-    const timer = document.querySelector<HTMLElement>('.gv-fork-manual-upload-timer');
+    const hint = () => toastDriver.all()[0];
     expect(input?.textContent).toContain('gemini-voyager-fork-source.md');
     expect(input?.textContent).toContain('context from the previous conversation');
     expect(input?.textContent).toContain('New request:');
@@ -426,12 +426,12 @@ describe('startFork style injection', () => {
     expect(input?.textContent).not.toContain('best practices');
     expect(input?.textContent).not.toContain('Anthropic');
     expect(input?.textContent).not.toContain('OpenAI');
-    expect(hint?.textContent).toContain('gemini-voyager-fork-source.md');
-    expect(timer?.textContent).toBe('01:30');
+    expect(hint().message).toContain('gemini-voyager-fork-source.md');
+    expect(hint().detail).toBe('01:30');
     expect(vi.mocked(browser.storage.local.remove)).toHaveBeenCalledWith('gvPendingFork');
 
     vi.advanceTimersByTime(1000);
-    expect(timer?.textContent).toBe('01:29');
+    expect(hint().detail).toBe('01:29');
 
     window.history.pushState({}, '', '/app/conv-new');
     vi.advanceTimersByTime(500);
@@ -449,7 +449,7 @@ describe('startFork style injection', () => {
     expect(addPayloads[0]?.turnId).toBe('u-2');
     expect(addPayloads[1]?.conversationId).toBe('conv-new');
     expect(addPayloads[1]?.turnId).toBe('u-0');
-    expect(document.querySelector('.gv-fork-manual-upload-hint')).toBeNull();
+    expect(toastDriver.all()).toEqual([]);
   });
 
   it('avoids duplicate branch indicator groups when concurrent refreshes happen', async () => {

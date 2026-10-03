@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import browser from 'webextension-polyfill';
 
+import { toastDriver } from '@/tests/toastDriver';
+
 import { startPendingFork } from '../pendingFork';
 
 vi.mock('webextension-polyfill', () => ({
@@ -66,10 +68,13 @@ describe('pending fork handoff', () => {
     await flush();
 
     expect(document.querySelector('[contenteditable]')?.textContent).toBe('An existing draft');
-    expect(document.querySelector('.gv-fork-manual-upload-timer')?.textContent).toBe('00:30');
-    expect(document.querySelector('.gv-fork-manual-upload-hint')?.textContent).toContain('fork.md');
-    await vi.advanceTimersByTimeAsync(30000);
-    expect(document.querySelector('.gv-fork-manual-upload-hint')).toBeNull();
+    const [hint] = toastDriver.all();
+    expect(hint.message).toContain('fork.md');
+    expect(hint.detail).toBe('00:30');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(toastDriver.all()[0].detail).toBe('00:29');
+    await vi.advanceTimersByTimeAsync(29000);
+    expect(toastDriver.all()).toEqual([]);
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -84,7 +89,20 @@ describe('pending fork handoff', () => {
     expect(browser.storage.local.remove).toHaveBeenCalledWith('gvPendingFork');
     expect(sessionStorage.getItem('gvPendingFork')).toBeNull();
     expect(document.querySelector('[contenteditable]')?.textContent).toBe('An existing draft');
-    expect(document.querySelector('.gv-fork-manual-upload-hint')).toBeNull();
+    expect(toastDriver.all()).toEqual([]);
+  });
+
+  it('stops the countdown when the user closes the hint', async () => {
+    vi.mocked(browser.storage.local.get).mockResolvedValue({
+      gvPendingFork: { ...pending, createdAt: Date.now() },
+    });
+    stop = start();
+    await flush();
+
+    toastDriver.press(toastDriver.all()[0], 'Cancel');
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(toastDriver.all()).toEqual([]);
   });
 
   it('lets a restarted feature clear upload feedback created by an older pending read', async () => {
@@ -100,12 +118,10 @@ describe('pending fork handoff', () => {
     resolveRead({ gvPendingFork: { ...pending, createdAt: Date.now() } });
     await flush();
 
-    const timer = document.querySelector('.gv-fork-manual-upload-timer')!;
-    expect(timer.textContent).toBe('02:00');
+    expect(toastDriver.all()[0].detail).toBe('02:00');
     stop();
     await vi.advanceTimersByTimeAsync(1000);
 
-    expect(document.querySelector('.gv-fork-manual-upload-hint')).toBeNull();
-    expect(timer.textContent).toBe('02:00');
+    expect(toastDriver.all()).toEqual([]);
   });
 });
