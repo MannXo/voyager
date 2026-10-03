@@ -3,6 +3,9 @@
  * another context writes its active bucket, ignores its own write echoes, and
  * retries a failed account-scope resolution before the next account poll.
  */
+import { act, createElement, useEffect } from 'react';
+import { createRoot } from 'react-dom/client';
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -11,6 +14,7 @@ import {
 } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 import type { PromptItem } from '@/core/types/sync';
+import { useCloudSyncTransfer } from '@/pages/popup/components/useCloudSyncTransfer';
 
 import { AIStudioFolderManager } from '../aistudio';
 import type { FolderData } from '../types';
@@ -330,6 +334,75 @@ describe('AI Studio folder sync across contexts', () => {
 
     expect(bucketReads(GLOBAL_KEY)).toBe(readsAfterMount);
   });
+
+  it.each(['suspended', 'rebound while disabled'])(
+    'popup Merge preserves stored folders when an empty AI Studio manager is %s',
+    async (lifecycle) => {
+      local[GLOBAL_KEY] = { folders: [], folderContents: {} };
+      const manager = await mount();
+      sync.geminiFolderEnabled = false;
+      emitStorageChange({ geminiFolderEnabled: false }, 'sync');
+      if (lifecycle === 'rebound while disabled') {
+        await scopedKey('a');
+        sync[StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED] = true;
+        emitStorageChange({ [StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED]: true }, 'sync');
+        await vi.advanceTimersByTimeAsync(0);
+        sync[StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED] = false;
+        emitStorageChange({ [StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED]: false }, 'sync');
+        await vi.advanceTimersByTimeAsync(0);
+      }
+      writeFromElsewhere({ [GLOBAL_KEY]: folderData('Local only') });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(manager.data).toEqual({ folders: [], folderContents: {} });
+
+      type Receiver = Parameters<typeof chrome.runtime.onMessage.addListener>[0];
+      const responses: unknown[] = [];
+      vi.spyOn(chrome.tabs, 'sendMessage').mockImplementation((async (
+        _id: number,
+        message: unknown,
+      ) => {
+        let response: unknown;
+        for (const [receiver] of mockBrowser.runtime.onMessage.addListener.mock.calls) {
+          (receiver as Receiver)(message, {}, (value: unknown) => {
+            response = structuredClone(value);
+          });
+        }
+        if ((message as { type: string }).type === 'gv.sync.requestData') responses.push(response);
+        return response;
+      }) as typeof chrome.tabs.sendMessage);
+      let transfer!: ReturnType<typeof useCloudSyncTransfer>;
+      function Harness() {
+        const current = useCloudSyncTransfer(
+          'aistudio',
+          false,
+          async () => ({ id: 3, url: 'https://aistudio.google.com/' }) as chrome.tabs.Tab,
+        );
+        useEffect(() => {
+          transfer = current;
+        }, [current]);
+        return null;
+      }
+      (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+      const root = createRoot(document.createElement('div'));
+      try {
+        await act(async () => root.render(createElement(Harness)));
+        const download = await transfer.prepareDownload();
+        await download.restore({ folders: { data: folderData('Cloud') } }, 'merge', false);
+        expect((local[GLOBAL_KEY] as FolderData).folders.map((folder) => folder.name)).toEqual([
+          'Local only',
+          'Cloud',
+        ]);
+        expect(responses).toEqual([{ ok: false }]);
+      } finally {
+        await act(async () => root.unmount());
+      }
+      sync.geminiFolderEnabled = true;
+      emitStorageChange({ geminiFolderEnabled: true }, 'sync');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(panelText()).toContain('Local only');
+      expect(panelText()).toContain('Cloud');
+    },
+  );
 
   it('ignores other buckets, other areas and a disabled folder feature', async () => {
     local[GLOBAL_KEY] = folderData('Mine');

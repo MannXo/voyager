@@ -182,7 +182,8 @@ export class AIStudioFolderManager {
     this.startAccountPolling();
     browser.runtime.onMessage.addListener(
       createSyncMessageListener({
-        canEdit: () => this.canEdit,
+        // Disabled managers stop reloading, so their retained snapshot may be older than storage.
+        canEdit: () => this.folderEnabled && this.canEdit,
         data: () => this.data,
         accountScope: () => this.accountScope,
         reload: () => this.load().then(() => this.render()),
