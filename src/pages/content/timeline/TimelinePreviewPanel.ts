@@ -4,14 +4,12 @@ import { StorageKeys } from '@/core/types/common';
 import { GV_RTL_CLASS, detectRTL } from '@/core/utils/rtl';
 
 import { getTranslationSync } from '../../../utils/i18n';
+import { TimelinePreviewPress } from './TimelinePreviewPress';
 import type { PreviewMarkerData } from './types';
 
 const SEARCH_DEBOUNCE_MS = 200;
 const RESIZE_DEBOUNCE_MS = 120;
 const COMPACT_CLOSE_DELAY_MS = 160;
-const LONG_PRESS_DURATION_MS = 550;
-const LONG_PRESS_MOVE_TOLERANCE_PX = 6;
-const LONG_PRESS_CLICK_SUPPRESSION_MS = 350;
 const PREVIEW_PANEL_WIDTH_PX = 320;
 const PREVIEW_PANEL_GAP_PX = 12;
 const PREVIEW_HOVER_BRIDGE_PADDING_PX = 8;
@@ -39,18 +37,7 @@ export class TimelinePreviewPanel {
   private compactCloseTimer: number | null = null;
   private onNavigate: ((turnId: string, index: number) => void) | null = null;
   private onSearchChange: ((query: string) => void) | null = null;
-  private onToggleStar: ((turnId: string) => void | Promise<void>) | null = null;
-  private pressTargetItem: HTMLElement | null = null;
-  private pressStartPosition: { x: number; y: number } | null = null;
-  private longPressTimer: number | null = null;
-  private longPressTriggeredTurnId: string | null = null;
-  private suppressClickUntil = 0;
-  private suppressClickTurnId: string | null = null;
-  private onListPointerDown: ((event: PointerEvent) => void) | null = null;
-  private onListPointerLeave: (() => void) | null = null;
-  private onWindowPointerMove: ((event: PointerEvent) => void) | null = null;
-  private onWindowPointerUp: (() => void) | null = null;
-  private onWindowPointerCancel: (() => void) | null = null;
+  private press: TimelinePreviewPress | null = null;
   private onDocumentPointerDown: ((e: PointerEvent) => void) | null = null;
   private onKeyDown: ((e: KeyboardEvent) => void) | null = null;
   private onWindowResize: (() => void) | null = null;
@@ -87,11 +74,10 @@ export class TimelinePreviewPanel {
   ): void {
     this.onNavigate = onNavigate;
     this.onSearchChange = onSearchChange ?? null;
-    this.onToggleStar = onToggleStar ?? null;
     this.createDOM();
     this.applyDirection();
     this.positionToggle();
-    this.setupEventListeners();
+    this.setupEventListeners(onToggleStar ?? null);
   }
 
   updateMarkers(markers: ReadonlyArray<PreviewMarkerData>): void {
@@ -176,10 +162,7 @@ export class TimelinePreviewPanel {
 
   close(): void {
     if (!this._isOpen || !this.panelEl) return;
-    this.cancelLongPress();
-    this.longPressTriggeredTurnId = null;
-    this.suppressClickTurnId = null;
-    this.suppressClickUntil = 0;
+    this.press?.reset();
     this._isOpen = false;
     this.panelEl.classList.remove('visible');
     this.hoverBridgeEl?.classList.remove(PREVIEW_HOVER_BRIDGE_VISIBLE_CLASS);
@@ -195,10 +178,8 @@ export class TimelinePreviewPanel {
   }
 
   destroy(): void {
-    this.cancelLongPress();
-    this.longPressTriggeredTurnId = null;
-    this.suppressClickTurnId = null;
-    this.suppressClickUntil = 0;
+    this.press?.destroy();
+    this.press = null;
     if (this.searchDebounceTimer) {
       clearTimeout(this.searchDebounceTimer);
       this.searchDebounceTimer = null;
@@ -219,26 +200,6 @@ export class TimelinePreviewPanel {
     if (this.onWindowResize) {
       window.removeEventListener('resize', this.onWindowResize);
       this.onWindowResize = null;
-    }
-    if (this.onListPointerDown) {
-      this.listEl?.removeEventListener('pointerdown', this.onListPointerDown);
-      this.onListPointerDown = null;
-    }
-    if (this.onListPointerLeave) {
-      this.listEl?.removeEventListener('pointerleave', this.onListPointerLeave);
-      this.onListPointerLeave = null;
-    }
-    if (this.onWindowPointerMove) {
-      window.removeEventListener('pointermove', this.onWindowPointerMove);
-      this.onWindowPointerMove = null;
-    }
-    if (this.onWindowPointerUp) {
-      window.removeEventListener('pointerup', this.onWindowPointerUp);
-      this.onWindowPointerUp = null;
-    }
-    if (this.onWindowPointerCancel) {
-      window.removeEventListener('pointercancel', this.onWindowPointerCancel);
-      this.onWindowPointerCancel = null;
     }
     if (this.onAnchorMouseEnter) {
       this.anchorElement.removeEventListener('mouseenter', this.onAnchorMouseEnter);
@@ -300,7 +261,6 @@ export class TimelinePreviewPanel {
     this.onSearchChange?.('');
     this.onNavigate = null;
     this.onSearchChange = null;
-    this.onToggleStar = null;
     this.markers = [];
     this.filteredMarkers = [];
     this.anchorElement.removeAttribute('tabindex');
@@ -358,7 +318,9 @@ export class TimelinePreviewPanel {
     this.toggleBtn.hidden = this._isCompactMode || this.floatingToggleSuppressed;
   }
 
-  private setupEventListeners(): void {
+  private setupEventListeners(
+    onToggleStar: ((turnId: string) => void | Promise<void>) | null,
+  ): void {
     // Click outside to close
     this.onDocumentPointerDown = (e: PointerEvent) => {
       if (!this._isOpen) return;
@@ -386,64 +348,7 @@ export class TimelinePreviewPanel {
     };
     document.addEventListener('keydown', this.onKeyDown);
 
-    this.onListPointerDown = (event: PointerEvent) => {
-      if (!this.onToggleStar || event.isPrimary === false) return;
-      if (typeof event.button === 'number' && event.button !== 0) return;
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      const item = target.closest<HTMLElement>('.timeline-preview-item');
-      if (!item || !this.listEl?.contains(item)) return;
-
-      this.cancelLongPress();
-      this.longPressTriggeredTurnId = null;
-      this.pressTargetItem = item;
-      this.pressStartPosition = { x: event.clientX, y: event.clientY };
-      item.classList.add('holding');
-      this.longPressTimer = window.setTimeout(() => {
-        const pressedItem = this.pressTargetItem;
-        const turnId = pressedItem?.dataset.turnId;
-        this.longPressTimer = null;
-        this.pressTargetItem = null;
-        this.pressStartPosition = null;
-        pressedItem?.classList.remove('holding');
-        if (!turnId || !this.onToggleStar) return;
-
-        this.longPressTriggeredTurnId = turnId;
-        try {
-          void Promise.resolve(this.onToggleStar(turnId)).catch((error) => {
-            console.error('[TimelinePreviewPanel] Failed to toggle star:', error);
-          });
-        } catch (error) {
-          console.error('[TimelinePreviewPanel] Failed to toggle star:', error);
-        }
-      }, LONG_PRESS_DURATION_MS);
-    };
-    this.onListPointerLeave = () => this.cancelLongPress();
-    this.onWindowPointerMove = (event: PointerEvent) => {
-      if (!this.pressTargetItem || !this.pressStartPosition) return;
-      const dx = event.clientX - this.pressStartPosition.x;
-      const dy = event.clientY - this.pressStartPosition.y;
-      if (dx * dx + dy * dy > LONG_PRESS_MOVE_TOLERANCE_PX * LONG_PRESS_MOVE_TOLERANCE_PX) {
-        this.cancelLongPress();
-      }
-    };
-    this.onWindowPointerUp = () => {
-      if (this.longPressTriggeredTurnId) {
-        this.suppressClickTurnId = this.longPressTriggeredTurnId;
-        this.suppressClickUntil = Date.now() + LONG_PRESS_CLICK_SUPPRESSION_MS;
-        this.longPressTriggeredTurnId = null;
-      }
-      this.cancelLongPress();
-    };
-    this.onWindowPointerCancel = () => {
-      this.longPressTriggeredTurnId = null;
-      this.cancelLongPress();
-    };
-    this.listEl?.addEventListener('pointerdown', this.onListPointerDown);
-    this.listEl?.addEventListener('pointerleave', this.onListPointerLeave);
-    window.addEventListener('pointermove', this.onWindowPointerMove, { passive: true });
-    window.addEventListener('pointerup', this.onWindowPointerUp, { passive: true });
-    window.addEventListener('pointercancel', this.onWindowPointerCancel, { passive: true });
+    this.press = new TimelinePreviewPress(this.listEl!, onToggleStar);
 
     // Reposition on resize (debounced: positionPanel reads offsetHeight after
     // writing styles, which forces layout — avoid doing that per resize event)
@@ -695,7 +600,7 @@ export class TimelinePreviewPanel {
 
   private renderList(): void {
     if (!this.listEl) return;
-    this.cancelLongPress();
+    this.press?.cancelPending();
     this.listEl.textContent = '';
 
     if (this.filteredMarkers.length === 0) {
@@ -744,27 +649,11 @@ export class TimelinePreviewPanel {
     item.appendChild(text);
 
     item.addEventListener('click', (event) => {
-      if (this.suppressClickTurnId === marker.id && Date.now() < this.suppressClickUntil) {
-        event.preventDefault();
-        event.stopPropagation();
-        this.suppressClickTurnId = null;
-        this.suppressClickUntil = 0;
-        return;
-      }
+      if (this.press?.consumeClick(marker.id, event)) return;
       this.onNavigate?.(marker.id, marker.index);
     });
 
     return item;
-  }
-
-  private cancelLongPress(): void {
-    if (this.longPressTimer !== null) {
-      clearTimeout(this.longPressTimer);
-      this.longPressTimer = null;
-    }
-    this.pressTargetItem?.classList.remove('holding');
-    this.pressTargetItem = null;
-    this.pressStartPosition = null;
   }
 
   /** Split text around case-insensitive query matches and wrap each match in <mark>. */
