@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { hashString } from '@/core/utils/hash';
 
@@ -619,6 +619,10 @@ describe('Claude timeline', () => {
   });
 
   it('files a remounted window of repeats past a turn measured before the page above shrank', async () => {
+    // All fixture turns are visible; thousands of jsdom cascade reads obscure the merge behavior.
+    const visibleStyle = getComputedStyle(document.body);
+    const computedStyle = vi.spyOn(globalThis, 'getComputedStyle').mockReturnValue(visibleStyle);
+    onTestFinished(() => computedStyle.mockRestore());
     const placeAt = (turn: HTMLElement, top: number): void => {
       turn.getBoundingClientRect = () => ({ top, bottom: top + 40, height: 40 }) as DOMRect;
     };
