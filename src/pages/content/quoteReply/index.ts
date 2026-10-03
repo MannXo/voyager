@@ -4,7 +4,7 @@ import { StorageKeys } from '@/core/types/common';
 import { type HighlightColor } from '@/core/types/highlight';
 import { getAssistantTurnSelectors, getUserTurnSelectors } from '@/core/utils/selectors';
 
-import { HighlightManager } from '../highlight';
+import { HighlightManager } from '../highlight/manager';
 import { createHighlightColorPicker } from './highlightColorPicker';
 import { insertQuotedSelection } from './quoteInsertion';
 import { startRenderedQuoteStyling } from './renderedQuotes';

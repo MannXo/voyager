@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StorageKeys } from '@/core/types/common';
 import { getBrowserName } from '@/core/utils/browser';
 
-import { HighlightManager } from '../../highlight';
+import { HighlightManager } from '../../highlight/manager';
 import { expandInputCollapseIfNeeded } from '../../inputCollapse/index';
 import { startQuoteReply } from '../index';
 
