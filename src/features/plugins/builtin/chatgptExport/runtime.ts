@@ -15,6 +15,7 @@ export function startChatGptExportPlugin(): void {
 
   active = true;
   const currentGeneration = ++generation;
+  // Bind startup and preference-loaded dialogs to this mount so disabling cannot open stale UI.
   const controller = new AbortController();
   lifecycleController = controller;
   // Synchronous, so it never depends on the async mount settling: the popup's

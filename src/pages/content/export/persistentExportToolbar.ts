@@ -276,6 +276,7 @@ export type PersistentExportToolbarHandle = {
   remove(): void;
 };
 
+// Remounts replace the handler and owner so late cleanup cannot remove the replacement.
 export function mountPersistentExportToolbar(
   options: PersistentExportToolbarOptions,
 ): PersistentExportToolbarHandle {

@@ -89,7 +89,7 @@ describe('persistentExportToolbar', () => {
     expect(onClick).not.toHaveBeenCalled();
   });
 
-  it('does not duplicate-mount; second call updates text on existing instance', () => {
+  it("remounts with the latest handler and ignores the previous owner's cleanup", () => {
     const firstClick = vi.fn();
     const secondClick = vi.fn();
     const first = mountPersistentExportToolbar({
