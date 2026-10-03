@@ -109,6 +109,45 @@ export function languageFromStorageChanges(
   return typeof nextRaw === 'string' ? normalizeLanguage(nextRaw) : null;
 }
 
+type StorageChangeListener = (
+  changes: Record<string, chrome.storage.StorageChange>,
+  area: string,
+) => void;
+
+interface StorageChangeEvents {
+  addListener(listener: StorageChangeListener): void;
+  removeListener(listener: StorageChangeListener): void;
+}
+
+function storageChangeEvents(): StorageChangeEvents | undefined {
+  const win = window as Window & {
+    chrome?: { storage?: { onChanged?: StorageChangeEvents } };
+    browser?: { storage?: { onChanged?: StorageChangeEvents } };
+  };
+  return (win.chrome?.storage ?? win.browser?.storage)?.onChanged;
+}
+
+/**
+ * Call `onChange` with the language the user switches to in sync storage.
+ * Returns the stop.
+ */
+export function watchExportLanguage(onChange: (lang: AppLanguage) => void): () => void {
+  const listener: StorageChangeListener = (changes, area) => {
+    if (area !== 'sync') return;
+    const next = languageFromStorageChanges(changes);
+    if (next) onChange(next);
+  };
+  const events = storageChangeEvents();
+  try {
+    events?.addListener(listener);
+  } catch {}
+  return () => {
+    try {
+      events?.removeListener(listener);
+    } catch {}
+  };
+}
+
 /** Translator falling back to English, then to the key itself. */
 export function createExportTranslator(
   dict: ExportDictionaries,

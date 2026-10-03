@@ -18,10 +18,11 @@ import { watchConversationMenusForExport } from './conversationMenuExportObserve
 import { waitForElement } from './domWait';
 import { startExportEntryGate } from './exportEntryGate';
 import {
-  languageFromStorageChanges,
+  type ExportDictionaries,
   loadExportDictionaries,
   readExportLanguage,
   translateExportOr,
+  watchExportLanguage,
 } from './exportLocale';
 import { resolveExportLogoAnchor } from './exportLogoAnchor';
 import { createExportRunner } from './exportRun';
@@ -97,28 +98,13 @@ export async function startExportButton(
       mountToolbar();
       stopEntryGate = unmountToolbar;
     }
-    const onStorageChange = (
-      changes: Record<string, chrome.storage.StorageChange>,
-      area: string,
-    ) => {
-      if (area !== 'sync') return;
-      const next = languageFromStorageChanges(changes);
-      if (next) {
-        lang = next;
-        toolbarHandle?.setText(
-          dict[next]?.['pm_export'] ?? dict.en?.['pm_export'] ?? 'Export',
-          dict[next]?.['exportChatJson'] ?? dict.en?.['exportChatJson'] ?? 'Export chat history',
-        );
-      }
-    };
-    try {
-      chrome.storage?.onChanged?.addListener(onStorageChange);
-    } catch {}
+    const stopLanguage = watchExportLanguage((next) => {
+      lang = next;
+      toolbarHandle?.setText(...toolbarTexts(dict, next));
+    });
     return () => {
       stopEntryGate();
-      try {
-        chrome.storage?.onChanged?.removeListener(onStorageChange);
-      } catch {}
+      stopLanguage();
     };
   }
 
@@ -193,37 +179,34 @@ export async function startExportButton(
 
     ensureToolbarVisibility(await readToolbarEnabled());
 
-    const onStorageChange = (
+    const stopLanguage = watchExportLanguage((next) => {
+      lang = next;
+      toolbarHandle?.setText(...toolbarTexts(dict, next));
+      copyImageActions.relabel();
+    });
+    const onToolbarSettingChange = (
       changes: Record<string, chrome.storage.StorageChange>,
       area: string,
     ) => {
       if (area !== 'sync') return;
-      const next = languageFromStorageChanges(changes);
-      if (next) {
-        lang = next;
-        const lbl = dict[next]?.['pm_export'] ?? dict.en?.['pm_export'] ?? 'Export';
-        const ttl =
-          dict[next]?.['exportChatJson'] ?? dict.en?.['exportChatJson'] ?? 'Export chat history';
-        toolbarHandle?.setText(lbl, ttl);
-        copyImageActions.relabel();
-      }
       const toolbarChange = changes[StorageKeys.PERSISTENT_EXPORT_TOOLBAR_ENABLED];
       if (toolbarChange && 'newValue' in toolbarChange) {
         ensureToolbarVisibility(toolbarChange.newValue !== false);
       }
     };
     try {
-      chrome.storage?.onChanged?.addListener(onStorageChange);
-      window.addEventListener(
-        'beforeunload',
-        () => {
-          try {
-            chrome.storage?.onChanged?.removeListener(onStorageChange);
-          } catch {}
-        },
-        { once: true },
-      );
+      chrome.storage?.onChanged?.addListener(onToolbarSettingChange);
     } catch {}
+    window.addEventListener(
+      'beforeunload',
+      () => {
+        stopLanguage();
+        try {
+          chrome.storage?.onChanged?.removeListener(onToolbarSettingChange);
+        } catch {}
+      },
+      { once: true },
+    );
     return () => {};
   }
   const logoButton = mountLogoExportButton(logo, {
@@ -232,47 +215,26 @@ export async function startExportButton(
   });
   if (!logoButton) return () => {};
 
-  // listen for runtime language changes
-  const storageChangeHandler = (
-    changes: Record<string, chrome.storage.StorageChange>,
-    area: string,
-  ) => {
-    if (area !== 'sync') return;
-    const next = languageFromStorageChanges(changes);
-    if (next) {
-      lang = next;
-      logoButton.relabel({
-        title:
-          dict[next]?.['exportChatJson'] ?? dict.en?.['exportChatJson'] ?? 'Export chat history',
-        label: dict[next]?.['pm_export'] ?? dict.en?.['pm_export'] ?? 'Export',
-      });
-      copyImageActions.relabel();
-    }
-  };
-
-  try {
-    chrome.storage?.onChanged?.addListener(storageChangeHandler);
-
-    // Cleanup listener on page unload to prevent memory leaks
-    window.addEventListener(
-      'beforeunload',
-      () => {
-        try {
-          chrome.storage?.onChanged?.removeListener(storageChangeHandler);
-        } catch (e) {
-          console.error('[Gemini Voyager] Failed to remove storage listener on unload:', e);
-        }
-      },
-      { once: true },
-    );
-  } catch {}
+  const stopLanguage = watchExportLanguage((next) => {
+    lang = next;
+    const [label, title] = toolbarTexts(dict, next);
+    logoButton.relabel({ title, label });
+    copyImageActions.relabel();
+  });
+  window.addEventListener('beforeunload', stopLanguage, { once: true });
 
   return () => {
     logoButton.stop();
-    try {
-      chrome.storage?.onChanged?.removeListener(storageChangeHandler);
-    } catch {}
+    stopLanguage();
   };
+}
+
+/** The export entry point's label and tooltip. */
+function toolbarTexts(dict: ExportDictionaries, lang: AppLanguage): [string, string] {
+  return [
+    translateExportOr(dict, lang, 'pm_export', 'Export'),
+    translateExportOr(dict, lang, 'exportChatJson', 'Export chat history'),
+  ];
 }
 
 async function showExportDialog(
