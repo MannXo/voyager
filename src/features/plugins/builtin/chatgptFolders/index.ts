@@ -87,11 +87,11 @@ class ChatGptFoldersView {
     private readonly store: ChatGptFolderStore,
     private readonly commands: FolderCommands,
     private readonly prefs: ChatGptFolderPanelPrefs,
-    private sectionPrefs: ChatGptFolderSectionPrefs,
     private readonly renameNative: (conversation: ConversationReference) => void,
   ) {}
 
-  start(): void {
+  /** Mounts the sidebar section, which owns `sectionPrefs` from here on. */
+  start(sectionPrefs: ChatGptFolderSectionPrefs): void {
     this.scope.effect(() => () => this.showFloatingEntry(false), 'chatgpt-folders:fab');
     this.scope.effect(
       () => this.store.subscribe((change) => this.refresh(change)),
@@ -105,7 +105,7 @@ class ChatGptFoldersView {
         commands: this.commands,
         rootBucketId,
         feedback: { showNotification: (message) => this.flashTree(message) },
-        sortMode: () => this.section?.sortMode ?? this.sectionPrefs.sortMode,
+        sortMode: () => section.sortMode,
       };
       const section = new ChatGptFolderSection({
         data: this.store.data,
@@ -117,11 +117,8 @@ class ChatGptFoldersView {
           // The section sits in the sidebar, next to the row ChatGPT renames in.
           onRenameConversation: this.renameNative,
         },
-        prefs: this.sectionPrefs,
-        onPrefsChange: (prefs) => {
-          this.sectionPrefs = prefs;
-          void saveSectionPrefs(prefs);
-        },
+        prefs: sectionPrefs,
+        onPrefsChange: (prefs) => void saveSectionPrefs(prefs),
         headerActions: [
           {
             modifier: 'add-current',
@@ -444,10 +441,10 @@ export async function activateChatGptFolders(
       nativeTitle,
     });
   };
-  const view = new ChatGptFoldersView(scope, store, commands, prefs, sectionPrefs, (c) => {
+  const view = new ChatGptFoldersView(scope, store, commands, prefs, (c) => {
     void renameNative(c);
   });
-  view.start();
+  view.start(sectionPrefs);
   const sidebar = new ChatGptSidebarWatcher(scope);
   const moveMenu = new ChatGptMoveMenu({
     label: () => t('conversation_move_to_folder'),

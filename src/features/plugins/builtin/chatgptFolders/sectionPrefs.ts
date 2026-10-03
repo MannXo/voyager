@@ -15,6 +15,10 @@ function parseSectionPrefs(value: unknown): ChatGptFolderSectionPrefs {
   return { collapsed: raw.collapsed === true, sortMode: toSortMode(raw.sortMode) };
 }
 
+/** Before the user changes anything; the parser's own fallbacks. */
+export const DEFAULT_SECTION_PREFS: Readonly<ChatGptFolderSectionPrefs> =
+  parseSectionPrefs(undefined);
+
 export async function loadSectionPrefs(): Promise<ChatGptFolderSectionPrefs> {
   try {
     const stored = await browser.storage.local.get(StorageKeys.CHATGPT_FOLDER_SECTION);

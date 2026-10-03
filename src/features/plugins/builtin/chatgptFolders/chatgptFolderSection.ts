@@ -80,9 +80,9 @@ export type ChatGptFolderSectionOptions = {
   rootBucketId: string;
   actions: TreeActions;
   headerActions?: readonly SectionHeaderAction[];
-  prefs?: ChatGptFolderSectionPrefs;
+  prefs: ChatGptFolderSectionPrefs;
   /** The section was collapsed or its conversation order changed. */
-  onPrefsChange?: (prefs: ChatGptFolderSectionPrefs) => void;
+  onPrefsChange: (prefs: ChatGptFolderSectionPrefs) => void;
 };
 
 function headerButton(modifier: string, labelKey: string, icon: SVGElement): HTMLButtonElement {
@@ -126,8 +126,8 @@ export class ChatGptFolderSection {
     rootBucketId,
     actions,
     headerActions = [],
-    prefs = { collapsed: false, sortMode: 'manual' },
-    onPrefsChange = () => {},
+    prefs,
+    onPrefsChange,
   }: ChatGptFolderSectionOptions) {
     this.data = data;
     this.prefs = { ...prefs };
