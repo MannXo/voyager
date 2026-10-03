@@ -382,7 +382,7 @@ describe('catalog star primary storage', () => {
   it('preserves primary stars and refuses edits when the initial library read fails', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     localStorage.setItem(key(route), JSON.stringify(['c-same']));
-    getStarredMessagesForConversation.mockRejectedValueOnce(new Error('Message port closed'));
+    getStarredMessagesForConversation.mockRejectedValue(new Error('Message port closed'));
     create(() => route, undefined, key);
     const element = insert();
     observe([seen(element)]);

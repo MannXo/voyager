@@ -60,8 +60,7 @@ export class TimelineState {
     if (this.policy.stars.source === 'local') this.refreshStars();
     // Outline readiness is independent of an unrelated Saved Library request.
     const hierarchyRead = this.hierarchy.init();
-    this.starRead = this.syncStarredFromService();
-    await Promise.all([hierarchyRead, this.starRead]);
+    await Promise.all([hierarchyRead, this.readStars()]);
   }
   replaceMarkers(markers: TimelineMarker[]): void {
     this.markers = markers;
@@ -284,6 +283,12 @@ export class TimelineState {
           sourceConversationIds: [this.conversationId],
         };
   }
+  private readStars(): Promise<void> {
+    // Deduplicate pending reads, but release failed attempts so the next press can recover.
+    return (this.starRead ??= this.syncStarredFromService().finally(() => {
+      this.starRead = null;
+    }));
+  }
   private async syncStarredFromService(): Promise<void> {
     if (!this.conversationId || !this.policy.stars.libraryMirror) {
       this.starHydrated = true;
@@ -354,7 +359,7 @@ export class TimelineState {
     // A press captures its message before an initial read can yield to a route or DOM change.
     const summary = marker?.summary;
     const conversationTitle = this.policy.getConversationTitle(this.markers);
-    if (this.starRead) await this.starRead;
+    if (!this.starHydrated) await this.readStars();
     if (!this.isCurrent || !this.policy.canEdit(marker, id) || !this.starHydrated) return;
     const wasStarred = this.isMarkerStarred(id);
     // A stable marker may represent both its current server-id record and an

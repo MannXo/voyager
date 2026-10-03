@@ -42,7 +42,11 @@ cannot remove a newly enabled rail.
 
 The first per-site star mirror seeds from its legacy key and a successful Saved Library read before
 applying an edit. Failed reads reject at the background/service boundary and leave persisted stars
-intact. Authoritative storage snapshots take precedence over older pending reads.
+intact. The next star press retries an unhydrated Library read, sharing one in-flight attempt;
+writes remain refused until hydration succeeds. Authoritative storage snapshots take precedence over
+older pending reads. Hierarchy loads independently of Library stars, and level/collapse edits require
+a completed hierarchy load. Stored aliases and mounted identity use separate policy resolvers: an
+unverified Gemini DOM-window `u-N` cannot receive a stored full-history turn’s star or deep link.
 
 Rail and preview styles are injected from `timeline.css` and `timelinePreview.css` by the view and removed on teardown. Shared theme tokens and
 coachmark replicas remain in `public/contentStyle.css` because other features use them. Existing
