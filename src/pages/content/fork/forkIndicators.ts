@@ -245,7 +245,6 @@ export function createForkIndicators({
         message: getTranslationSync('forkDeleteDataConfirm'),
         anchor: deleteBtn,
         tone: 'danger',
-        cancelLabel: getTranslationSync('forkCancel'),
         choices: [{ id: 'confirm', label: getTranslationSync('pm_delete') }],
         signal: lifetime.signal,
       });

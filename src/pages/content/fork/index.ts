@@ -86,6 +86,7 @@ export function startFork(): () => void {
   const controls = createForkControls({
     ensureTurnId,
     resolveUserMessageHost,
+    getConversationId: extractConversationIdFromUrl,
     onFork: executeFork,
   });
 

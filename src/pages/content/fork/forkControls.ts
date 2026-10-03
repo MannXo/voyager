@@ -194,9 +194,11 @@ function findUserCopyButtonAnchor(userEl: HTMLElement): HTMLElement | null {
 export function createForkControls({
   ensureTurnId,
   resolveUserMessageHost,
+  getConversationId,
   onFork,
 }: {
   ensureTurnId: (element: HTMLElement, index: number) => string;
+  getConversationId: () => string | null;
   resolveUserMessageHost: (element: HTMLElement) => HTMLElement;
   onFork: (element: HTMLElement, index: number, mode: 'paste' | 'fileUpload') => Promise<void>;
 }) {
@@ -246,19 +248,21 @@ export function createForkControls({
     userEl: HTMLElement,
     turnIndex: number,
   ): Promise<void> {
+    const conversationAtAsk = getConversationId();
     const mode = await askConfirm<'paste' | 'fileUpload'>({
       message: getTranslationSync('forkConfirm'),
       anchor: btn,
       side: 'above',
       tone: 'neutral',
-      cancelLabel: getTranslationSync('forkCancel'),
       choices: [
         { id: 'fileUpload', label: getTranslationSync('forkMarkdownBtn'), emphasis: 'secondary' },
         { id: 'paste', label: getTranslationSync('forkConfirmBtn') },
       ],
       signal: lifetime.signal,
     });
-    if (mode) await onFork(userEl, turnIndex, mode);
+    // The page may have moved to another conversation while the confirm was open.
+    if (!mode || !userEl.isConnected || getConversationId() !== conversationAtAsk) return;
+    await onFork(userEl, turnIndex, mode);
   }
 
   function updateForkButtonTexts(): void {

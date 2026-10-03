@@ -2317,10 +2317,6 @@
     "message": "下载 MD",
     "description": "Fork confirmation button for downloading a Markdown file"
   },
-  "forkCancel": {
-    "message": "取消",
-    "description": "分叉取消按钮"
-  },
   "forkBranch": {
     "message": "分支",
     "description": "分叉分支标签"

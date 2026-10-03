@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import browser from 'webextension-polyfill';
 
+import { createToaster } from '@/core/ui/toast/toaster';
 import { toastDriver } from '@/tests/toastDriver';
 
 import { startPendingFork } from '../pendingFork';
@@ -90,6 +91,21 @@ describe('pending fork handoff', () => {
     expect(sessionStorage.getItem('gvPendingFork')).toBeNull();
     expect(document.querySelector('[contenteditable]')?.textContent).toBe('An existing draft');
     expect(toastDriver.all()).toEqual([]);
+  });
+
+  it('keeps the upload hint when other features show several timed toasts', async () => {
+    vi.mocked(browser.storage.local.get).mockResolvedValue({
+      gvPendingFork: { ...pending, createdAt: Date.now() },
+    });
+    stop = start();
+    await flush();
+    const others = createToaster();
+
+    for (const n of [1, 2, 3, 4, 5]) others.show({ message: `copied ${n}`, durationMs: 3000 });
+    await vi.advanceTimersByTimeAsync(4000);
+
+    expect(toastDriver.all().map((toast) => toast.detail)).toEqual(['01:56']);
+    others.destroy();
   });
 
   it('stops the countdown when the user closes the hint', async () => {

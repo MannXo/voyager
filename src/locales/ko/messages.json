@@ -2317,10 +2317,6 @@
     "message": "MD 다운로드",
     "description": "Fork confirmation button for downloading a Markdown file"
   },
-  "forkCancel": {
-    "message": "Cancel",
-    "description": "Fork cancel button"
-  },
   "forkBranch": {
     "message": "Branch",
     "description": "Fork branch label"

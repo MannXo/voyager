@@ -238,6 +238,43 @@ describe('startFork style injection', () => {
     },
   );
 
+  it('does not fork when the conversation changes while the fork confirm is open', async () => {
+    window.history.replaceState({}, '', '/app/conv-source');
+    document.body.innerHTML = `
+      <main>
+        <div class="conversation-container" id="1111111111111111">
+          <div class="user-query-container">
+            <div class="user-query-bubble-with-background">user-1</div>
+          </div>
+          <div class="response-container">
+            <div class="markdown-main-panel">assistant-1</div>
+          </div>
+        </div>
+      </main>
+    `;
+    const userContainer = document.querySelector<HTMLElement>('.user-query-container')!;
+    const responseContainer = document.querySelector<HTMLElement>('.response-container')!;
+    Object.defineProperty(userContainer, 'offsetTop', { value: 0, configurable: true });
+    Object.defineProperty(responseContainer, 'offsetTop', { value: 100, configurable: true });
+    sendMessageMock.mockImplementation(
+      (_message: unknown, callback: (response: { ok: boolean; nodes?: [] }) => void) =>
+        callback({ ok: true, nodes: [] }),
+    );
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue({} as Window);
+    cleanup = startFork();
+    vi.advanceTimersByTime(1000);
+    await flushMicrotasks();
+
+    document.querySelector<HTMLElement>('.gv-fork-btn')!.click();
+    // A keyboard back navigation swaps the route without a press or a scroll.
+    window.history.replaceState({}, '', '/app/conv-other');
+    confirmDriver.answer('Fork');
+    await flushMicrotasks();
+
+    expect(openSpy).not.toHaveBeenCalled();
+    openSpy.mockRestore();
+  });
+
   it('downloads a Markdown fork and stores a manual upload pending fork', async () => {
     window.history.replaceState({}, '', '/u/1/app/conv-source');
     document.title = 'Source / Long:Title';

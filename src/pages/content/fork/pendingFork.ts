@@ -187,8 +187,9 @@ export function startPendingFork({
         filename: pendingFork.filename || 'MD',
       }),
       detail: formatCountdown(remainingMs),
-      durationMs: remainingMs,
-      dismissLabel: getTranslationSync('forkCancel'),
+      // Sticky, so other toasts never evict it; the countdown closes it at the TTL.
+      durationMs: null,
+      dismissLabel: getTranslationSync('pm_cancel'),
       onDismiss: stopCountdown,
     });
 
