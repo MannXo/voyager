@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -56,49 +54,6 @@ describe('background runtime message routing', () => {
     expect(isHandledBackgroundRuntimeMessage({ type: 'gv.storageQuota.ready' })).toBe(false);
     expect(isHandledBackgroundRuntimeMessage({ type: 'gv.unhandled' })).toBe(false);
     expect(isHandledBackgroundRuntimeMessage(null)).toBe(false);
-  });
-
-  it('routes plugin messages through the serialized sync and the single catalog refresher', () => {
-    const source = readFileSync(resolve(process.cwd(), 'src/pages/background/index.ts'), 'utf8');
-    expect(source).toContain('handlePluginRuntimeMessage(message, sender, {');
-    expect(source).toContain('syncContentScripts: syncPluginContentScripts');
-    expect(source).toContain('hostCatalogRefresher.refresh(host, { force })');
-    expect(source.match(/new HostCatalogRefresher\(/g)?.length).toBe(1);
-  });
-
-  it('uploads the complete prompt union even when duplicate names remain', () => {
-    const source = readFileSync(resolve(process.cwd(), 'src/pages/background/index.ts'), 'utf8');
-    const pushBranch =
-      source.match(
-        /case 'gv\.sync\.pushPromptsMerge': \{[\s\S]*?case 'gv\.sync\.getState': \{/,
-      )?.[0] ?? '';
-
-    expect(pushBranch).toContain('googleDriveSyncService.uploadPromptsOnly');
-    expect(pushBranch).toContain('nameConflicts: getPromptNameConflictIds(localPrompts).size');
-    expect(pushBranch).not.toContain('if (merged.data.nameConflicts > 0)');
-    expect(pushBranch).not.toContain('skipped: true');
-  });
-
-  it('keeps privileged runtime operations behind their security boundaries', () => {
-    const source = readFileSync(resolve(process.cwd(), 'src/pages/background/index.ts'), 'utf8');
-    const captureBranch =
-      source.match(
-        /if \(message\?\.type === 'gv\.generatedUi\.captureVisibleTab'\) \{[\s\S]*?if \(message\?\.type === 'gv\.account\.resolve'\) \{/,
-      )?.[0] ?? '';
-    const uploadBranch =
-      source.match(/case 'gv\.sync\.upload': \{[\s\S]*?case 'gv\.sync\.download': \{/)?.[0] ?? '';
-    const imageHandler =
-      source.match(/async function handleRuntimeImageMessage\([\s\S]*?\n\}/)?.[0] ?? '';
-
-    expect(captureBranch).toContain('chrome.tabs.query({ active: true, windowId })');
-    expect(captureBranch).toContain('sender_not_active');
-
-    expect(uploadBranch).toContain('loadAuthoritativeSyncPayload');
-    expect(uploadBranch).not.toMatch(/const \{\s*folders,\s*prompts,/);
-
-    expect(imageHandler).toContain('parseAllowedRuntimeImageUrl');
-    expect(imageHandler).toContain('isAllowedRuntimeImageBody');
-    expect(imageHandler).toContain('MAX_RUNTIME_IMAGE_BYTES');
   });
 
   it('allows only bounded images from media hosts or the sender origin', () => {

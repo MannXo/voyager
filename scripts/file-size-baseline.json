@@ -4,7 +4,6 @@
     "src/core/services/__tests__/GoogleDriveSyncService.test.ts": 1142,
     "src/core/services/GoogleDriveSyncService.ts": 1680,
     "src/core/services/HighlightAnnotationService.ts": 1352,
-    "src/pages/background/index.ts": 2802,
     "src/pages/content/chatInput/__tests__/vimMode.test.ts": 1969,
     "src/pages/content/defaultModel/__tests__/modelLocker.test.ts": 2358,
     "src/pages/content/prompt/__tests__/slashPrompt.test.ts": 1868,
