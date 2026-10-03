@@ -308,6 +308,9 @@ function findUserCopyButtonAnchor(userEl: HTMLElement): HTMLElement | null {
   return copyButton.parentElement || copyButton;
 }
 
+// A stopped run can inject buttons late; the next run must still dismiss their dialog.
+let activeConfirm: HTMLElement | null = null;
+
 export function createForkControls({
   ensureTurnId,
   resolveUserMessageHost,
@@ -321,7 +324,6 @@ export function createForkControls({
     return findUserCopyButtonAnchor(userEl) || resolveUserMessageHost(userEl);
   }
 
-  let activeConfirm: HTMLElement | null = null;
   injectStyles();
   document.addEventListener('click', onDocumentClick);
 

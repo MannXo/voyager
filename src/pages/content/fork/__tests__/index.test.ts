@@ -63,32 +63,37 @@ describe('startFork style injection', () => {
     sessionStorage.clear();
   });
 
-  it('uses non-layout-shifting visibility transitions for fork button reveal', () => {
+  it('keeps fork controls out of flow with a visibility-only focus reveal', () => {
+    window.history.replaceState({}, '', '/app/conv-source');
+    document.body.innerHTML = '<div class="user-query-container">A user message</div>';
     cleanup = startFork();
+    vi.advanceTimersByTime(1000);
 
-    const style = document.getElementById('gemini-voyager-fork-style');
-    expect(style).not.toBeNull();
+    const button = document.querySelector<HTMLButtonElement>('.gv-fork-btn')!;
+    const hidden = getComputedStyle(button);
+    expect(hidden.display).toBe('inline-flex');
+    expect(hidden.position).toBe('absolute');
+    expect(hidden.opacity).toBe('0');
+    expect(hidden.visibility).toBe('hidden');
+    expect(hidden.pointerEvents).toBe('none');
+    expect(hidden.right).toBe('calc(100% + 8px)');
 
-    const css = style?.textContent ?? '';
-
-    expect(css).toMatch(/\.gv-fork-btn\s*\{[\s\S]*display:\s*inline-flex;/);
-    expect(css).toMatch(/\.gv-fork-btn\s*\{[\s\S]*position:\s*absolute;/);
-    expect(css).toMatch(/\.gv-fork-btn\s*\{[\s\S]*opacity:\s*0;/);
-    expect(css).toMatch(/\.gv-fork-btn\s*\{[\s\S]*visibility:\s*hidden;/);
-    expect(css).toMatch(/\.gv-fork-btn\s*\{[\s\S]*pointer-events:\s*none;/);
-    expect(css).toMatch(/\.gv-fork-btn\s*\{[\s\S]*right:\s*calc\(100%\s*\+\s*8px\);/);
-    expect(css).not.toMatch(/\.gv-fork-btn\s*\{[\s\S]*display:\s*none;/);
-
-    const revealRule = css.match(
-      /\.user-query-bubble-with-background:hover \.gv-fork-btn,[\s\S]*?\.gv-fork-btn:focus-visible\s*\{([\s\S]*?)\}/,
+    // jsdom does not recompute pseudo-class styles on focus; inspect parsed rules.
+    const sheet = (document.getElementById('gemini-voyager-fork-style') as HTMLStyleElement).sheet!;
+    const reveal = Array.from(sheet.cssRules).find(
+      (rule): rule is CSSStyleRule =>
+        rule instanceof CSSStyleRule && rule.selectorText.includes('.gv-fork-btn:focus-visible'),
+    )!;
+    expect(reveal.selectorText.split(',').map((selector) => selector.trim())).toContain(
+      '.user-query-bubble-with-background:hover .gv-fork-btn',
     );
-    expect(revealRule).not.toBeNull();
-    const revealDeclarations = revealRule?.[1] ?? '';
-    expect(revealDeclarations).toContain('opacity: 1;');
-    expect(revealDeclarations).toContain('pointer-events: auto;');
-    expect(revealDeclarations).not.toContain('display:');
+    expect(reveal.style.getPropertyValue('display')).toBe('');
+    expect(reveal.style.getPropertyValue('opacity')).toBe('1');
+    expect(reveal.style.getPropertyValue('visibility')).toBe('visible');
+    expect(reveal.style.getPropertyValue('pointer-events')).toBe('auto');
 
-    expect(css).toMatch(/body\.gv-rtl \.gv-fork-btn[\s\S]*left:\s*calc\(100%\s*\+\s*8px\);/);
+    document.body.classList.add('gv-rtl');
+    expect(getComputedStyle(button).left).toBe('calc(100% + 8px)');
   });
 
   it('anchors fork button beside the native copy button when available', () => {
@@ -124,6 +129,33 @@ describe('startFork style injection', () => {
     const forkButton = document.querySelector<HTMLElement>('.gv-fork-btn');
     expect(forkButton).not.toBeNull();
     expect(forkButton?.parentElement?.id).toBe('copy-anchor');
+  });
+
+  it('dismisses controls from delayed setup after the feature restarts', async () => {
+    window.history.replaceState({}, '', '/app/conv-source');
+    document.body.innerHTML = '<div class="user-query-container">A user message</div>';
+    sendMessageMock.mockImplementation(
+      (_message: unknown, callback: (response: unknown) => void) => {
+        callback({ ok: true, nodes: [] });
+      },
+    );
+
+    cleanup = startFork();
+    cleanup();
+    cleanup = startFork();
+    vi.advanceTimersByTime(1000);
+    await flushMicrotasks();
+
+    document.querySelector<HTMLElement>('.gv-fork-btn')!.click();
+    expect(document.querySelector('.gv-fork-confirm')).not.toBeNull();
+    document.body.click();
+    expect(document.querySelector('.gv-fork-confirm')).toBeNull();
+
+    document.querySelector<HTMLElement>('.gv-fork-btn')!.click();
+    cleanup();
+    cleanup = null;
+    expect(document.querySelector('.gv-fork-confirm')).toBeNull();
+    expect(document.querySelector('.gv-fork-btn')).toBeNull();
   });
 
   it.each([
