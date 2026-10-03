@@ -168,7 +168,7 @@ describe('Vim command behavior', () => {
     expect(commands.mode).toBe('normal');
   });
 
-  it('deletes the character before the caret', async () => {
+  it('deletes the character before the caret with X', async () => {
     const input = createTextareaInput('hello');
     input.selectionStart = 2;
     input.selectionEnd = 2;
@@ -183,7 +183,7 @@ describe('Vim command behavior', () => {
     expect(input.selectionStart).toBe(1);
   });
 
-  it('pastes a yanked line above the current line', async () => {
+  it('pastes a yy line above the current line with P', async () => {
     const input = createTextareaInput('one\ntwo\nthree');
     input.selectionStart = 5;
     input.selectionEnd = 5;
@@ -200,7 +200,7 @@ describe('Vim command behavior', () => {
     expect(input.selectionStart).toBe(4);
   });
 
-  it('pastes a yanked line below the current line', async () => {
+  it('pastes a yy line below the current line with p', async () => {
     const input = createTextareaInput('one\ntwo\nthree');
     input.selectionStart = 5;
     input.selectionEnd = 5;

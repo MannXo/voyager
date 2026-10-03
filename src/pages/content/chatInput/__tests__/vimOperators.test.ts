@@ -15,7 +15,7 @@ import {
 setupVimTestEnvironment();
 
 describe('Vim operators', () => {
-  it('deletes the character at the caret', async () => {
+  it('deletes the character at the caret with x', async () => {
     const input = createTextareaInput('hello');
     input.selectionStart = 1;
     input.selectionEnd = 1;
@@ -28,7 +28,7 @@ describe('Vim operators', () => {
     expect(input.selectionStart).toBe(1);
   });
 
-  it('deletes exactly two lines', async () => {
+  it('deletes exactly two lines with 2dd', async () => {
     const input = createTextareaInput('one\ntwo\nthree\nfour');
     input.selectionStart = 4;
     input.selectionEnd = 4;
@@ -41,7 +41,7 @@ describe('Vim operators', () => {
     expect(input.selectionStart).toBe(4);
   });
 
-  it('deletes a full Quill paragraph instead of only text to the right', async () => {
+  it('deletes a full Quill paragraph with dd instead of only text to the right', async () => {
     mockParagraphRangeRects();
     const input = createQuillParagraphInput(['one', 'two', 'three']);
     setParagraphRects(input, [10, 30, 50]);
@@ -55,7 +55,7 @@ describe('Vim operators', () => {
     expect(window.getSelection()?.anchorNode).toBe(input.children[1].firstChild);
   });
 
-  it('deletes an empty Quill paragraph ', async () => {
+  it('deletes an empty Quill paragraph with dd', async () => {
     mockParagraphRangeRects();
     const input = createQuillParagraphInput(['one', '', 'three']);
     setParagraphRects(input, [10, 30, 50]);

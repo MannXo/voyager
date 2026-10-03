@@ -18,7 +18,7 @@ import {
 setupVimTestEnvironment();
 
 describe('Vim rendered layout', () => {
-  it('moves between rendered lines without an extra horizontal character step', async () => {
+  it('moves j/k between rendered lines without an extra horizontal character step', async () => {
     mockCharacterRects({
       0: { left: 80, top: 10, width: 10 },
       1: { left: 90, top: 10, width: 10 },
@@ -48,7 +48,7 @@ describe('Vim rendered layout', () => {
     expect(modify).not.toHaveBeenCalled();
   });
 
-  it('moves through consecutive empty rendered lines', async () => {
+  it('moves j/k through consecutive empty rendered lines', async () => {
     mockCharacterRects({
       0: { left: 80, top: 10, width: 10 },
       2: { left: 80, top: 30, width: 0 },
@@ -83,7 +83,7 @@ describe('Vim rendered layout', () => {
     view.dispose();
   });
 
-  it('moves through literal empty lines inside one Quill paragraph', async () => {
+  it('moves j/k through literal empty lines inside one Quill paragraph', async () => {
     mockCharacterRects({
       0: { left: 80, top: 10, width: 10 },
       2: { left: 0, top: 0, width: 0, missing: true },
@@ -118,7 +118,7 @@ describe('Vim rendered layout', () => {
     view.dispose();
   });
 
-  it('moves through Quill empty paragraphs', async () => {
+  it('moves j/k through Quill empty paragraphs', async () => {
     mockParagraphRangeRects();
     const input = createQuillParagraphInput(['a', '', '', 'b']);
     setParagraphRects(input, [10, 30, 50, 70]);
