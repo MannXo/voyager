@@ -1,4 +1,3 @@
-import { createToaster } from '@/core/ui/toast/toaster';
 /**
  * Receiving end of "Continue in ChatGPT / Claude", on the new chat tab the
  * background opened (see `features/researchPack/services/handoff.ts`).
@@ -13,6 +12,7 @@ import { createToaster } from '@/core/ui/toast/toaster';
  *
  * The text goes in through the shared `insertTextIntoChatInput`.
  */
+import { createToaster } from '@/core/ui/toast/toaster';
 import {
   HANDOFF_MESSAGES,
   type HandoffMessage,

@@ -1,5 +1,3 @@
-import { askConfirm } from '@/core/ui/confirm';
-import { createToaster } from '@/core/ui/toast/toaster';
 /**
  * Research Pack panel: a floating launcher plus a side panel that lists the
  * pack, edits the instruction, previews the Markdown and offers the actions.
@@ -8,6 +6,8 @@ import { createToaster } from '@/core/ui/toast/toaster';
  * `textContent` / `value`, never `innerHTML`. Styles live in
  * `public/contentStyle.css` under `gv-rp-`.
  */
+import { askConfirm } from '@/core/ui/confirm';
+import { createToaster } from '@/core/ui/toast/toaster';
 import { safeHttpUrl } from '@/features/researchPack/services/citations';
 import { HANDOFF_TARGET_IDS, type HandoffTarget } from '@/features/researchPack/services/handoff';
 import { platformLabel } from '@/features/researchPack/services/markdown';

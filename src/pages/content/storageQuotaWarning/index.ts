@@ -8,7 +8,6 @@ const WARNING_DISMISS_MS = 10_000;
 const CRITICAL_DISMISS_MS = 15_000;
 
 let messageListener: ((message: unknown) => void) | null = null;
-let toaster: Toaster | null = null;
 let renderSequence = 0;
 
 function isWarningPayload(value: unknown): value is StorageQuotaWarningPayload {
@@ -59,7 +58,6 @@ export function startStorageQuotaWarningToast(): () => void {
   if (messageListener) return () => {};
 
   const owner = createToaster();
-  toaster = owner;
   messageListener = (message: unknown) => {
     if (typeof message !== 'object' || message === null) return;
     const data = message as { type?: unknown; payload?: unknown };
@@ -81,7 +79,6 @@ export function startStorageQuotaWarningToast(): () => void {
     }
     document.removeEventListener('visibilitychange', notifyReady);
     renderSequence += 1;
-    toaster?.destroy();
-    toaster = null;
+    owner.destroy();
   };
 }
