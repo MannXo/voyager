@@ -15,6 +15,7 @@
  * - Returns processed image to complete the download
  */
 import { logger } from '@/core/services/LoggerService';
+import { createToaster } from '@/core/ui/toast/toaster';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
 import { fetchImageViaExtensionRuntime } from '@/core/utils/runtimeImageFetch';
 import { WATERMARK_STORAGE_KEYS, resolveWatermarkSettings } from '@/core/utils/watermarkSettings';
@@ -23,7 +24,6 @@ import { recordWatermarkPresence } from '../watermarkNativeNotice/cleanStreak';
 import { createDownloadFeedback } from './downloadFeedback';
 import { createImageHealthMonitor } from './imageHealth';
 import { createWatermarkPreviews } from './previewRuntime';
-import { createStatusToastManager } from './statusToast';
 import { WatermarkEngine } from './watermarkEngine';
 
 let engine: WatermarkEngine | null = null;
@@ -56,7 +56,7 @@ const health = createImageHealthMonitor(fetchImageViaBackground);
 const feedback = createDownloadFeedback({
   getBridge: getBridgeElement,
   capturePreview: health.capturePreview,
-  createToastManager: () => createStatusToastManager({ maxToasts: 4, anchorTtlMs: 30000 }),
+  toaster: createToaster(),
   isRemovalEnabled: () => downloadRemovalEnabled,
 });
 const previews = createWatermarkPreviews({

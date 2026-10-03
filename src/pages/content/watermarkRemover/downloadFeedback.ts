@@ -1,33 +1,37 @@
 import { logger } from '@/core/services/LoggerService';
+import type { ToastHandle, Toaster } from '@/core/ui/toast/types';
 import { getTranslationSync } from '@/utils/i18n';
 import type { TranslationKey } from '@/utils/translations';
 
 import { findNativeDownloadButton } from './downloadButton';
 import type { ImageHealthFingerprint } from './imageHealthDetector';
-import type { StatusToastManager } from './statusToast';
+
+/** Download toasts sit beside the clicked button for this long, then join the stack. */
+const ANCHOR_TTL_MS = 30000;
+const DOWNLOADING_MS = 3000;
+const LARGE_WARNING_MS = 8000;
+const PROCESSING_FALLBACK_MS = 35000;
+const FINAL_MS = { success: 2500, warning: 10000, error: 4000 } as const;
 
 /** Correlate intents and status tokens so an older download cannot finish newer feedback. */
 export function createDownloadFeedback({
   getBridge,
   capturePreview,
-  createToastManager,
+  toaster,
   isRemovalEnabled,
 }: {
   getBridge: () => HTMLElement;
   capturePreview: (button: HTMLButtonElement) => Promise<ImageHealthFingerprint | null>;
-  createToastManager: () => StatusToastManager;
+  toaster: Toaster;
   isRemovalEnabled: () => boolean;
 }) {
   let statusObserver: MutationObserver | null = null;
   const previewFingerprintsByIntent = new Map<string, Promise<ImageHealthFingerprint | null>>();
-  let statusToastManager: StatusToastManager | null = null;
   let downloadTrackingReady = false;
   let downloadCaptureHandler: ((event: Event) => void) | null = null;
   let lastImmediateToastAt = 0;
   let sequenceCounter = 0;
 
-  const LARGE_WARNING_AUTO_DISMISS_MS = 8000;
-  const PROCESSING_FALLBACK_AUTO_DISMISS_MS = 35000;
   // Gemini can spend more than 10s walking the download chain on slow networks
   // before the final rd-gg/rd-gg-dl image request appears.
   const DOWNLOAD_INTENT_TTL_MS = 60000;
@@ -35,42 +39,25 @@ export function createDownloadFeedback({
   type DownloadToastSequence = {
     id: number;
     token: string;
-    downloadToastId: string | null;
-    warningToastId: string | null;
-    processingToastId: string | null;
+    download: ToastHandle | null;
+    warning: ToastHandle | null;
+    processing: ToastHandle | null;
     processingTimer: ReturnType<typeof setTimeout> | null;
   };
 
   let activeSequence: DownloadToastSequence | null = null;
 
+  const open = (handle: ToastHandle | null): ToastHandle | null => (handle?.isOpen ? handle : null);
+
+  const showPending = (message: string, durationMs: number): ToastHandle =>
+    toaster.show({ message, tone: 'info', pending: true, durationMs });
+
   function clearActiveDownloadSequence(): void {
     if (!activeSequence) return;
-
     previewFingerprintsByIntent.delete(activeSequence.token);
-
-    if (activeSequence.processingTimer) {
-      clearTimeout(activeSequence.processingTimer);
-    }
-
-    if (statusToastManager) {
-      for (const toastId of [
-        activeSequence.downloadToastId,
-        activeSequence.warningToastId,
-        activeSequence.processingToastId,
-      ]) {
-        if (toastId) statusToastManager.removeToast(toastId);
-      }
-    }
-
+    if (activeSequence.processingTimer) clearTimeout(activeSequence.processingTimer);
     activeSequence = null;
   }
-
-  const getStatusToastManager = (): StatusToastManager => {
-    if (!statusToastManager) {
-      statusToastManager = createToastManager();
-    }
-    return statusToastManager;
-  };
 
   const t = (key: TranslationKey, fallback: string): string => {
     const value = getTranslationSync(key);
@@ -100,40 +87,31 @@ export function createDownloadFeedback({
     const token = `gv_download_${now}_${sequenceId}`;
     previewFingerprintsByIntent.set(token, capturePreview(button));
     markDownloadIntent(token);
-    const manager = getStatusToastManager();
-    manager.setAnchorElement(button);
-    let downloadToastId: string | null = null;
+    toaster.setAnchor(button, ANCHOR_TTL_MS);
+    let download: ToastHandle | null = null;
     let processingTimer: ReturnType<typeof setTimeout> | null = null;
 
     if (isRemovalEnabled()) {
       const downloadMessage = t('downloadingOriginal', '正在下载原始图片');
       const processingMessage = t('downloadProcessing', '正在处理水印中');
-      downloadToastId = manager.addToast(downloadMessage, 'info', {
-        pending: true,
-        autoDismissMs: 3000,
-      });
+      download = showPending(downloadMessage, DOWNLOADING_MS);
 
       processingTimer = setTimeout(() => {
         if (!activeSequence || activeSequence.id !== sequenceId) return;
-        if (activeSequence.downloadToastId) {
-          manager.removeToast(activeSequence.downloadToastId);
-          activeSequence.downloadToastId = null;
+        activeSequence.download?.dismiss();
+        activeSequence.download = null;
+        if (!activeSequence.processing) {
+          activeSequence.processing = showPending(processingMessage, PROCESSING_FALLBACK_MS);
         }
-        if (!activeSequence.processingToastId) {
-          activeSequence.processingToastId = manager.addToast(processingMessage, 'info', {
-            pending: true,
-            autoDismissMs: PROCESSING_FALLBACK_AUTO_DISMISS_MS,
-          });
-        }
-      }, 3000);
+      }, DOWNLOADING_MS);
     }
 
     activeSequence = {
       id: sequenceId,
       token,
-      downloadToastId,
-      warningToastId: null,
-      processingToastId: null,
+      download,
+      warning: null,
+      processing: null,
       processingTimer,
     };
   }
@@ -154,99 +132,56 @@ export function createDownloadFeedback({
   }
 
   const finalizeSequence = (
-    manager: StatusToastManager,
-    level: 'success' | 'warning' | 'error',
+    sequence: DownloadToastSequence,
+    tone: 'success' | 'warning' | 'error',
     message: string,
   ): void => {
-    const autoDismissMs = level === 'success' ? 2500 : level === 'warning' ? 10000 : 4000;
-    if (activeSequence?.processingTimer) {
-      clearTimeout(activeSequence.processingTimer);
-      activeSequence.processingTimer = null;
+    if (sequence.processingTimer) {
+      clearTimeout(sequence.processingTimer);
+      sequence.processingTimer = null;
     }
-    if (activeSequence?.warningToastId) {
-      manager.removeToast(activeSequence.warningToastId);
-      activeSequence.warningToastId = null;
-    }
-    if (activeSequence?.downloadToastId) {
-      manager.removeToast(activeSequence.downloadToastId);
-      activeSequence.downloadToastId = null;
-    }
+    sequence.warning?.dismiss();
+    sequence.warning = null;
+    sequence.download?.dismiss();
+    sequence.download = null;
 
-    if (
-      activeSequence?.processingToastId &&
-      manager.updateToast(activeSequence.processingToastId, message, level, {
-        autoDismissMs,
-        markFinal: true,
-      })
-    ) {
-      return;
-    }
-
-    if (
-      !manager.updateLatestPending(message, level, {
-        autoDismissMs,
-        markFinal: true,
-      })
-    ) {
-      manager.addToast(message, level, {
-        autoDismissMs,
-      });
-    }
+    const final = { message, tone, pending: false, durationMs: FINAL_MS[tone] } as const;
+    const processing = open(sequence.processing);
+    if (processing) processing.update(final);
+    else sequence.processing = toaster.show(final);
   };
 
-  function showDownloading(
-    sequence: DownloadToastSequence,
-    manager: StatusToastManager,
-    message: string,
-  ): void {
-    if (sequence.warningToastId) {
-      manager.removeToast(sequence.warningToastId);
-      sequence.warningToastId = null;
-    }
-    if (!sequence.downloadToastId) {
-      sequence.downloadToastId = manager.addToast(message, 'info', {
-        pending: true,
-        autoDismissMs: 3000,
-      });
-    }
+  function showDownloading(sequence: DownloadToastSequence, message: string): void {
+    sequence.warning?.dismiss();
+    sequence.warning = null;
+    if (!open(sequence.download)) sequence.download = showPending(message, DOWNLOADING_MS);
   }
 
   function showLargeDownload(
     sequence: DownloadToastSequence,
-    manager: StatusToastManager,
     message: string,
     warning: string,
   ): void {
-    if (!sequence.downloadToastId) {
-      sequence.downloadToastId = manager.addToast(message, 'info', {
-        pending: true,
-        autoDismissMs: 3000,
-      });
-    } else {
-      manager.updateToast(sequence.downloadToastId, message, 'info');
-    }
-    if (!sequence.warningToastId) {
-      sequence.warningToastId = manager.addToast(warning, 'warning', {
-        autoDismissMs: LARGE_WARNING_AUTO_DISMISS_MS,
+    const download = open(sequence.download);
+    if (download) download.update({ message, tone: 'info' });
+    else sequence.download = showPending(message, DOWNLOADING_MS);
+    if (!open(sequence.warning)) {
+      sequence.warning = toaster.show({
+        message: warning,
+        tone: 'warning',
+        durationMs: LARGE_WARNING_MS,
       });
     }
   }
 
-  function showProcessing(
-    sequence: DownloadToastSequence,
-    manager: StatusToastManager,
-    message: string,
-  ): void {
-    if (sequence.processingToastId) {
-      manager.updateToast(sequence.processingToastId, message, 'info');
+  function showProcessing(sequence: DownloadToastSequence, message: string): void {
+    const processing = open(sequence.processing);
+    if (processing) {
+      processing.update({ message, tone: 'info' });
       return;
     }
     if (!sequence.processingTimer) {
-      const processingToastId = manager.addToast(message, 'info', {
-        pending: true,
-        autoDismissMs: PROCESSING_FALLBACK_AUTO_DISMISS_MS,
-      });
-      sequence.processingToastId = processingToastId;
+      sequence.processing = showPending(message, PROCESSING_FALLBACK_MS);
     }
   }
 
@@ -256,7 +191,6 @@ export function createDownloadFeedback({
   function setupStatusListener(): void {
     if (statusObserver) return;
     const bridge = getBridge();
-    const manager = getStatusToastManager();
     const downloadMessage = t('downloadingOriginal', '正在下载原始图片');
     const downloadLargeMessage = t('downloadingOriginalLarge', '正在下载原始图片（大文件）');
     const warningMessage = t('downloadLargeWarning', '大文件警告');
@@ -279,23 +213,23 @@ export function createDownloadFeedback({
 
         switch (type) {
           case 'DOWNLOADING':
-            showDownloading(activeSequence, manager, downloadMessage);
+            showDownloading(activeSequence, downloadMessage);
             break;
           case 'DOWNLOADING_LARGE':
-            showLargeDownload(activeSequence, manager, downloadLargeMessage, warningMessage);
+            showLargeDownload(activeSequence, downloadLargeMessage, warningMessage);
             break;
           case 'PROCESSING':
-            showProcessing(activeSequence, manager, processingMessage);
+            showProcessing(activeSequence, processingMessage);
             break;
           case 'SUCCESS':
             // Step 3: Done, auto-dismiss after 2s
-            finalizeSequence(manager, 'success', successMessage);
+            finalizeSequence(activeSequence, 'success', successMessage);
             break;
           case 'ERROR':
-            finalizeSequence(manager, 'error', `${errorPrefix}: ${message}`);
+            finalizeSequence(activeSequence, 'error', `${errorPrefix}: ${message}`);
             break;
           case 'GOOGLE_IMAGE_CORRUPTED':
-            finalizeSequence(manager, 'warning', corruptedMessage);
+            finalizeSequence(activeSequence, 'warning', corruptedMessage);
             break;
         }
       } catch (e) {
@@ -324,6 +258,7 @@ export function createDownloadFeedback({
     statusObserver?.disconnect();
     statusObserver = null;
     clearActiveDownloadSequence();
+    toaster.clear();
     if (downloadCaptureHandler) {
       document.removeEventListener('pointerdown', downloadCaptureHandler, true);
       document.removeEventListener('click', downloadCaptureHandler, true);
