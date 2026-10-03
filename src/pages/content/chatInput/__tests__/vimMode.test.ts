@@ -1920,7 +1920,7 @@ describe('resolveConfiguredComposer', () => {
   };
 
   it('narrows a wrapper match to its rendered editable control and skips hidden duplicates', async () => {
-    const { resolveConfiguredComposer } = await import('../vimMode');
+    const { resolveConfiguredComposer } = await import('../vimInputTargets');
     document.body.innerHTML = `
       <div class="composer"><textarea id="ghost"></textarea></div>
       <div class="composer"><div><div id="live" contenteditable="true"></div></div></div>
@@ -1930,7 +1930,7 @@ describe('resolveConfiguredComposer', () => {
   });
 
   it('skips a duplicate that keeps its layout box but is not visible', async () => {
-    const { resolveConfiguredComposer } = await import('../vimMode');
+    const { resolveConfiguredComposer } = await import('../vimInputTargets');
     document.body.innerHTML = `
       <div class="composer"><textarea id="ghost" style="visibility: hidden"></textarea></div>
       <div class="composer"><textarea id="live"></textarea></div>
@@ -1941,7 +1941,7 @@ describe('resolveConfiguredComposer', () => {
   });
 
   it('scans every editable control inside one wrapper before giving up on it', async () => {
-    const { resolveConfiguredComposer } = await import('../vimMode');
+    const { resolveConfiguredComposer } = await import('../vimInputTargets');
     document.body.innerHTML = `
       <div class="composer">
         <textarea id="ghost" style="display: none"></textarea>
@@ -1953,7 +1953,7 @@ describe('resolveConfiguredComposer', () => {
   });
 
   it('returns nothing for matches without an editable control or for an invalid selector', async () => {
-    const { resolveConfiguredComposer } = await import('../vimMode');
+    const { resolveConfiguredComposer } = await import('../vimInputTargets');
     document.body.innerHTML = '<div class="composer"><span>label</span></div>';
     tall(document.querySelector<HTMLElement>('.composer')!);
     expect(resolveConfiguredComposer('.composer')).toBeNull();
@@ -1961,7 +1961,7 @@ describe('resolveConfiguredComposer', () => {
   });
 
   it('falls back to the first editable match only when visibility is not required', async () => {
-    const { resolveConfiguredComposer } = await import('../vimMode');
+    const { resolveConfiguredComposer } = await import('../vimInputTargets');
     document.body.innerHTML = '<div class="composer"><textarea id="hidden"></textarea></div>';
     expect(resolveConfiguredComposer('.composer')).toBeNull();
     expect(resolveConfiguredComposer('.composer', { requireVisible: false })?.id).toBe('hidden');
