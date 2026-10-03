@@ -31,8 +31,8 @@ function contentKey(copy: PromptCopy): string {
 
 /**
  * Whether `incoming` replaces `current`. The later edit wins. On a tie the copy
- * with the greater content wins, so every device keeps the same copy whichever
- * side it merges from; a copy with the same content never replaces.
+ * with the greater content wins; equal content never replaces. Missing, null
+ * and zero pins share a key, so same-time legacy copies may not converge.
  */
 export function isNewerPromptCopy(incoming: PromptCopy, current: PromptCopy): boolean {
   const incomingTime = promptEditTime(incoming);

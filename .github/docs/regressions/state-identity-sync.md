@@ -117,41 +117,6 @@ tabs save at the same moment`), `src/pages/background/__tests__/promptDriveMerge
   `src/pages/popup/hooks/__tests__/usePromptDataTransfer.test.tsx` (`keeps a template saved on a
 Gemini tab while the popup import is writing`).
 
-## A prompt merge must not stamp the time it ran
-
-- **Trap:** The prompts import set `updatedAt = now` on every matched prompt and `createdAt = now`
-  on every added one. A copy that was only synced then looked freshly edited, so a real but
-  earlier edit from another device lost to it: after a no-op merge at 100, an edit made at 20
-  elsewhere was rejected, and when two devices edited one prompt, whichever pushed last won rather
-  than the later edit. The import also copied only text and name from a newer same-id copy, so
-  pins and unpins never travelled through the popup import or the prompts-only Drive merges.
-  The file parser also filled a missing `createdAt` with the time of the import, so a timeless
-  copy from an old backup beat a newer local edit.
-- **Rule:** A prompt's edit time is its own `updatedAt`, else `createdAt`; no merge reads the
-  clock, and `applyPromptLibraryOp` takes no time argument. `isNewerPromptCopy`
-  (`src/core/utils/promptRevision.ts`) decides the winner for the import and for the full restore
-  (`mergePromptsWithStats`): the later edit wins, and a tie goes to the greater
-  `[text, name, pinnedAt]` so devices normally keep the same copy, with a missing name sorting low.
-  The winning copy brings its text, name (when it has one), `pinnedAt` (when it has the key) and
-  edit time; tags still union. Every unpin writes `pinnedAt: null`, and a winner's `null` unpins.
-  An absent `pinnedAt` means "no pin information" and keeps the local pin: 1.9.0 and earlier drop
-  the field on every unpinned prompt and stamp their merge time as `updatedAt`, so treating
-  absence as an unpin let one pull from an older device unpin everything. Those versions show
-  `null` as unpinned and keep the prompt (`isPinned` checks for a number; their library
-  validators do not read the field), but their file parser drops `null` and their merge still
-  stamps its run time as `updatedAt`. So until an old device updates, its pushed copy can revive
-  a pin removed elsewhere or overwrite a newer edit. Do not strip `null` in a parser or
-  serializer. Pinning must keep bumping `updatedAt`, or a pin loses
-  to the older copy. An added prompt keeps the times it came with. A copy without `createdAt`
-  gets 0 from the file parser, the oldest edit time, so it never beats a timestamped copy; the
-  field stays a number because every prompt validator, old and new, requires one. Known limit:
-  copies edited in the same millisecond may not settle alike on every device, and a missing,
-  `null` or `0` pin share one tie key; both are left as too unlikely to handle.
-- **Guard:** `src/pages/background/__tests__/promptDriveMergeEdits.test.ts` (`keeps an edit made
-elsewhere after this device merged an unchanged copy`, `changes nothing when the same Drive file
-is merged again`, the pin and unpin round trips), `src/utils/mergePrompts.test.ts` and
-  `src/features/prompt/library/__tests__/promptImportBoundaries.test.ts`.
-
 ## Backup quota failures must retain a recoverable copy
 
 - **Trap:** A large Gemini library fits alongside its primary backup but an emergency or unload
