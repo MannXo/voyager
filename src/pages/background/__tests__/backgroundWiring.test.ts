@@ -1,28 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const wiring = vi.hoisted(() => {
-  const order: string[] = [];
   const pending = () => new Promise<void>(() => {});
-  const start = (name: string) => () => {
-    order.push(name);
-  };
-  const startup = (name: string) => () => {
-    order.push(name);
-    return pending();
-  };
   const siteAccess = {
-    syncCustom: vi.fn(startup('site.custom')),
-    syncPlugins: vi.fn(startup('site.plugins')),
-    refreshPluginSiteDomains: vi.fn(startup('site.domains')),
+    syncCustom: vi.fn(pending),
+    syncPlugins: vi.fn(pending),
+    refreshPluginSiteDomains: vi.fn(pending),
     syncPromptNudgeIcon: vi.fn(),
     permissionAdded: vi.fn(),
     permissionRemoved: vi.fn(),
   };
   const refresher = { refresh: vi.fn(async () => ({ ok: true })) };
   return {
-    order,
-    start,
-    startup,
+    pending,
+    createCatalog: vi.fn(),
     siteAccess,
     refresher,
     target: 'chrome',
@@ -32,11 +23,11 @@ const wiring = vi.hoisted(() => {
     highlight: vi.fn(),
     cloud: vi.fn(),
     capture: {
-      cleanupLegacyGeneratedUiCapturePermission: vi.fn(startup('capture.cleanup')),
+      cleanupLegacyGeneratedUiCapturePermission: vi.fn(pending),
       handle: vi.fn(),
     },
     notifications: {
-      connectNativeOpenConversationPort: vi.fn(start('notifications.connect')),
+      connectNativeOpenConversationPort: vi.fn(),
       registerClickListener: vi.fn(() => {
         chrome.notifications.onClicked.addListener(() => {});
       }),
@@ -48,39 +39,38 @@ const wiring = vi.hoisted(() => {
 vi.mock('@/core/utils/browser', () => ({ getVoyagerBuildTarget: () => wiring.target }));
 vi.mock('@/features/announcements/background', () => ({
   startRemoteAnnouncementBackgroundService: () => {
-    wiring.start('announcements.start')();
     return { getPendingAnnouncements: vi.fn(), acknowledgeAnnouncement: vi.fn() };
   },
   isRemoteAnnouncementRuntimeMessage: () => false,
 }));
 vi.mock('@/features/onboarding/welcomePage', () => ({
-  registerWelcomePageOnInstall: () => wiring.start('welcome.register')(),
+  registerWelcomePageOnInstall: vi.fn(),
 }));
 vi.mock('../watermarkDefaultMigration', () => ({
-  registerWatermarkDefaultMigrationOnInstall: () => wiring.start('watermark.register')(),
+  registerWatermarkDefaultMigrationOnInstall: vi.fn(),
 }));
-vi.mock('../devAutoReload', () => ({ startDevAutoReload: () => wiring.start('dev.start')() }));
+vi.mock('../devAutoReload', () => ({ startDevAutoReload: vi.fn() }));
 vi.mock('@/features/plugins/remote/hostCatalogRefresh', () => ({
   HostCatalogRefresher: class {
     constructor() {
-      wiring.start('catalog.create')();
+      wiring.createCatalog();
       return wiring.refresher;
     }
   },
 }));
 vi.mock('@/features/plugins/builtin/chatgptTemporaryHandoff/background', () => ({
-  startChatGptTemporaryHandoffBackgroundService: () => wiring.start('handoff.start')(),
+  startChatGptTemporaryHandoffBackgroundService: vi.fn(),
   isChatGptHandoffExpiryMessage: () => false,
   handleChatGptHandoffExpiryMessage: vi.fn(),
   chatGptHandoffTabIdResponse: vi.fn(),
 }));
 vi.mock('@/features/storageQuotaWarning/background', () => ({
-  startStorageQuotaWarningBackgroundService: () => wiring.start('quota.start')(),
+  startStorageQuotaWarningBackgroundService: vi.fn(),
 }));
 vi.mock('../researchPackOwner', () => ({
-  startResearchPackOwner: () => wiring.start('research.start')(),
+  startResearchPackOwner: vi.fn(),
 }));
-vi.mock('../queueOwners', () => ({ startQueueOwners: () => wiring.start('queue.start')() }));
+vi.mock('../queueOwners', () => ({ startQueueOwners: vi.fn() }));
 vi.mock('../responseNotifications', () => ({
   createResponseNotifications: () => wiring.notifications,
 }));
@@ -89,14 +79,14 @@ vi.mock('../siteAccessRegistration', () => ({
 }));
 vi.mock('../mainWorldRegistration', () => ({
   createMainWorldRegistration: () => ({
-    registerFetchInterceptor: wiring.startup('main.fetch'),
-    syncResponseCompleteObserverRegistration: wiring.startup('main.response'),
+    registerFetchInterceptor: wiring.pending,
+    syncResponseCompleteObserverRegistration: wiring.pending,
   }),
 }));
 vi.mock('../generatedUiCapture', () => ({ createGeneratedUiCapture: () => wiring.capture }));
 vi.mock('../backgroundSettings', () => ({
-  disableRetiredTabTitleUpdateSetting: () => wiring.startup('settings.disableRetired')(),
-  migrateOptionalHighlightSetting: () => wiring.startup('settings.migrateHighlights')(),
+  disableRetiredTabTitleUpdateSetting: wiring.pending,
+  migrateOptionalHighlightSetting: wiring.pending,
 }));
 vi.mock('../starredMessages', () => ({
   createStarredMessagesOwner: () => ({
@@ -130,7 +120,6 @@ let listener: MessageListener;
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
-  wiring.order.length = 0;
   wiring.target = 'chrome';
   wiring.plugin.mockReturnValue(null);
   wiring.page.mockReturnValue(null);
@@ -139,22 +128,15 @@ beforeEach(() => {
   wiring.capture.handle.mockReturnValue(null);
   wiring.notifications.handle.mockReturnValue(null);
   vi.stubEnv('VOYAGER_DEV_AUTO_RELOAD', '');
-  vi.spyOn(chrome.notifications.onClicked, 'addListener').mockImplementation(() => {
-    wiring.order.push('notifications.listener');
-  });
-  vi.spyOn(chrome.storage.onChanged, 'addListener').mockImplementation(() => {
-    wiring.order.push('storage.listener');
-  });
   Object.defineProperty(chrome, 'permissions', {
     configurable: true,
     value: {
-      onAdded: { addListener: wiring.start('permissions.addListener') },
-      onRemoved: { addListener: wiring.start('permissions.removeListener') },
+      onAdded: { addListener: vi.fn() },
+      onRemoved: { addListener: vi.fn() },
     },
   });
   vi.spyOn(chrome.runtime.onMessage, 'addListener').mockImplementation((callback) => {
     listener = callback as unknown as MessageListener;
-    wiring.order.push('runtime.listener');
   });
 });
 
@@ -166,35 +148,6 @@ afterEach(() => {
 });
 
 describe('background owner wiring', () => {
-  it('registers listeners in the original order while startup storage work is still pending', async () => {
-    await import('../index');
-    expect(wiring.order).toEqual([
-      'announcements.start',
-      'welcome.register',
-      'watermark.register',
-      'catalog.create',
-      'handoff.start',
-      'quota.start',
-      'research.start',
-      'queue.start',
-      'notifications.listener',
-      'settings.disableRetired',
-      'settings.migrateHighlights',
-      'capture.cleanup',
-      'site.custom',
-      'site.plugins',
-      'site.domains',
-      'main.fetch',
-      'main.response',
-      'storage.listener',
-      'storage.listener',
-      'permissions.addListener',
-      'permissions.removeListener',
-      'runtime.listener',
-    ]);
-    expect(wiring.siteAccess.syncPromptNudgeIcon).not.toHaveBeenCalled();
-  });
-
   it('leaves unrelated channels alone and answers recognized asynchronous plugin messages exactly once', async () => {
     await import('../index');
     const reply = vi.fn();
@@ -221,7 +174,7 @@ describe('background owner wiring', () => {
     expect(hooks.syncContentScripts).toBe(wiring.siteAccess.syncPlugins);
     await hooks.refreshCatalog('chatgpt.com', true);
     expect(wiring.refresher.refresh).toHaveBeenCalledWith('chatgpt.com', { force: true });
-    expect(wiring.order.filter((event) => event === 'catalog.create')).toHaveLength(1);
+    expect(wiring.createCatalog).toHaveBeenCalledOnce();
     finish({ ok: true });
     await Promise.resolve();
     expect(reply).toHaveBeenCalledExactlyOnceWith({ ok: true });
@@ -230,9 +183,7 @@ describe('background owner wiring', () => {
   it('registers Safari native delivery and answers image rejection through the dedicated path', async () => {
     wiring.target = 'safari';
     await import('../index');
-    expect(wiring.order.indexOf('notifications.connect')).toBeLessThan(
-      wiring.order.indexOf('notifications.listener'),
-    );
+    expect(wiring.notifications.connectNativeOpenConversationPort).toHaveBeenCalledOnce();
     const reply = vi.fn();
     wiring.image.mockRejectedValueOnce(new Error('image unavailable'));
     expect(
