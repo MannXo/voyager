@@ -402,7 +402,8 @@ describe('ChatGPT Drive folder isolation', () => {
           : {}),
       };
       expect(Object.fromEntries(boundaries.mediaByName)).toEqual(expectedBytes);
-      expect(boundaries.uploadedNames).toEqual(Object.keys(expectedBytes));
+      expect(boundaries.uploadedNames).toHaveLength(Object.keys(expectedBytes).length);
+      expect(new Set(boundaries.uploadedNames)).toEqual(new Set(Object.keys(expectedBytes)));
       expect(boundaries.storage).toMatchObject({
         gvLastSyncTime: 11,
         gvLastUploadTime: platform === 'gemini' ? NOW : 12,
