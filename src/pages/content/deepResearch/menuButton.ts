@@ -1,7 +1,6 @@
 /**
  * Menu button injection module for Deep Research export
  */
-import { StorageKeys } from '@/core/types/common';
 import { ConversationExportService } from '@/features/export/services/ConversationExportService';
 import {
   createContentExtractor,
@@ -19,11 +18,18 @@ import type {
 import { ExportDialog } from '@/features/export/ui/ExportDialog';
 import { resolveExportErrorMessage } from '@/features/export/ui/ExportErrorMessage';
 import { reportFinishedExport } from '@/features/export/ui/exportResultNotice';
-import { type AppLanguage, normalizeLanguage } from '@/utils/language';
-import { extractMessageDictionary } from '@/utils/localeMessages';
+import type { AppLanguage } from '@/utils/language';
 import type { TranslationKey } from '@/utils/translations';
 
 import { resolveExportAdapter } from '../export/adapter/platformAdapters';
+import { waitForElement } from '../export/domWait';
+import {
+  type ExportDictionaries,
+  createExportTranslator,
+  loadExportDictionaries,
+  readExportLanguage,
+  watchExportLanguage,
+} from '../export/exportLocale';
 import {
   createMenuItemFromNativeTemplate,
   updateMenuItemTemplateLabel,
@@ -33,96 +39,17 @@ import { extractThinkingPanels } from './extractor';
 import { formatToMarkdown } from './formatter';
 import { extractDeepResearchReportTitle, findDeepResearchReportRoot } from './reportExtractor';
 
-type Dictionaries = Record<AppLanguage, Record<string, string>>;
 const DOWNLOAD_BUTTON_CLASS = 'gv-deep-research-download';
 const SAVE_REPORT_BUTTON_CLASS = 'gv-deep-research-save-report';
 const INJECTED_BUTTON_CLASSES = [DOWNLOAD_BUTTON_CLASS, SAVE_REPORT_BUTTON_CLASS];
 const TEMPLATE_EXCLUDED_CLASS_NAMES = [...INJECTED_BUTTON_CLASSES, 'share-button'];
 
-/**
- * Wait for an element to appear in the DOM
- */
-function waitForElement(selector: string, timeout: number = 5000): Promise<Element | null> {
-  return new Promise((resolve) => {
-    const element = document.querySelector(selector);
-    if (element) {
-      return resolve(element);
-    }
-
-    const observer = new MutationObserver(() => {
-      const found = document.querySelector(selector);
-      if (found) {
-        observer.disconnect();
-        resolve(found);
-      }
-    });
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
-
-    setTimeout(() => {
-      observer.disconnect();
-      resolve(null);
-    }, timeout);
-  });
-}
-
-/**
- * Load i18n dictionaries
- */
-async function loadDictionaries(): Promise<Dictionaries> {
-  try {
-    const [enRaw, zhRaw, zhTWRaw, jaRaw, frRaw, esRaw, ptRaw, arRaw, ruRaw, koRaw] =
-      await Promise.all([
-        import(/* @vite-ignore */ '../../../locales/en/messages.json'),
-        import(/* @vite-ignore */ '../../../locales/zh/messages.json'),
-        import(/* @vite-ignore */ '../../../locales/zh_TW/messages.json'),
-        import(/* @vite-ignore */ '../../../locales/ja/messages.json'),
-        import(/* @vite-ignore */ '../../../locales/fr/messages.json'),
-        import(/* @vite-ignore */ '../../../locales/es/messages.json'),
-        import(/* @vite-ignore */ '../../../locales/pt/messages.json'),
-        import(/* @vite-ignore */ '../../../locales/ar/messages.json'),
-        import(/* @vite-ignore */ '../../../locales/ru/messages.json'),
-        import(/* @vite-ignore */ '../../../locales/ko/messages.json'),
-      ]);
-
-    return {
-      en: extractMessageDictionary(enRaw),
-      zh: extractMessageDictionary(zhRaw),
-      zh_TW: extractMessageDictionary(zhTWRaw),
-      ja: extractMessageDictionary(jaRaw),
-      fr: extractMessageDictionary(frRaw),
-      es: extractMessageDictionary(esRaw),
-      pt: extractMessageDictionary(ptRaw),
-      ar: extractMessageDictionary(arRaw),
-      ru: extractMessageDictionary(ruRaw),
-      ko: extractMessageDictionary(koRaw),
-    };
-  } catch (error) {
-    console.error('[Gemini Voyager] Error loading dictionaries:', error);
-    return {
-      en: {},
-      zh: {},
-      zh_TW: {},
-      ja: {},
-      fr: {},
-      es: {},
-      pt: {},
-      ar: {},
-      ru: {},
-      ko: {},
-    };
-  }
-}
-
 export function applyDeepResearchDownloadButtonI18n(
   button: HTMLElement,
-  dict: Dictionaries,
+  dict: ExportDictionaries,
   lang: AppLanguage,
 ): void {
-  const t = (key: TranslationKey) => dict[lang]?.[key] ?? dict.en?.[key] ?? key;
+  const t = createExportTranslator(dict, lang);
   const text = t('deepResearchDownload');
   const tooltip = t('deepResearchDownloadTooltip');
 
@@ -131,54 +58,14 @@ export function applyDeepResearchDownloadButtonI18n(
 
 export function applyDeepResearchSaveReportButtonI18n(
   button: HTMLElement,
-  dict: Dictionaries,
+  dict: ExportDictionaries,
   lang: AppLanguage,
 ): void {
-  const t = (key: TranslationKey) => dict[lang]?.[key] ?? dict.en?.[key] ?? key;
+  const t = createExportTranslator(dict, lang);
   const text = t('deepResearchSaveReport');
   const tooltip = t('deepResearchSaveReportTooltip');
 
   updateMenuItemTemplateLabel(button, text, tooltip);
-}
-
-/**
- * Get user language preference
- */
-async function getLanguage(): Promise<AppLanguage> {
-  try {
-    const stored = await new Promise<unknown>((resolve) => {
-      try {
-        const w = window as Window & {
-          chrome?: typeof chrome;
-          browser?: { storage?: { sync?: { get: (key: string) => Promise<unknown> } } };
-        };
-        // Chrome uses callback-based API
-        if (w.chrome?.storage?.sync?.get) {
-          w.chrome.storage.sync.get(StorageKeys.LANGUAGE, resolve);
-        }
-        // Firefox uses Promise-based API
-        else if (w.browser?.storage?.sync?.get) {
-          w.browser.storage.sync
-            .get(StorageKeys.LANGUAGE)
-            .then(resolve)
-            .catch(() => resolve({}));
-        } else {
-          resolve({});
-        }
-      } catch {
-        resolve({});
-      }
-    });
-
-    const rec = stored && typeof stored === 'object' ? (stored as Record<string, unknown>) : {};
-    const lang =
-      typeof rec[StorageKeys.LANGUAGE] === 'string'
-        ? (rec[StorageKeys.LANGUAGE] as string)
-        : undefined;
-    return normalizeLanguage(lang || navigator.language || 'en');
-  } catch {
-    return 'en';
-  }
 }
 
 /**
@@ -366,7 +253,7 @@ export function showDeepResearchExportProgressOverlay(
   };
 }
 
-function handleSaveReport(dict: Dictionaries, lang: AppLanguage): void {
+function handleSaveReport(dict: ExportDictionaries, lang: AppLanguage): void {
   void (async () => {
     const reportRoot = findDeepResearchReportRoot();
     if (!reportRoot) {
@@ -391,7 +278,7 @@ function handleSaveReport(dict: Dictionaries, lang: AppLanguage): void {
     };
 
     const initialImageWidth = await getSavedImageExportWidth();
-    const t = (key: TranslationKey) => dict[lang]?.[key] ?? dict.en?.[key] ?? key;
+    const t = createExportTranslator(dict, lang);
     const dialog = new ExportDialog();
     dialog.show({
       onExport: async (format, fontSize, imageWidth) => {
@@ -461,7 +348,7 @@ function handleSaveReport(dict: Dictionaries, lang: AppLanguage): void {
 function createSaveReportButton(
   text: string,
   tooltip: string,
-  dict: Dictionaries,
+  dict: ExportDictionaries,
   menuContent: HTMLElement,
 ): HTMLElement {
   return createMenuButton({
@@ -470,32 +357,12 @@ function createSaveReportButton(
     className: SAVE_REPORT_BUTTON_CLASS,
     iconName: 'description',
     onClick: () => {
-      void getLanguage().then((currentLanguage) => {
+      void readExportLanguage().then((currentLanguage) => {
         handleSaveReport(dict, currentLanguage);
       });
     },
     menuContent,
   });
-}
-
-type StorageChange = { newValue?: unknown };
-type StorageChanges = Record<string, StorageChange>;
-
-type StorageOnChanged = {
-  addListener: (fn: (changes: StorageChanges, area: string) => void) => void;
-  removeListener: (fn: (changes: StorageChanges, area: string) => void) => void;
-};
-
-type ExtensionStorage = {
-  onChanged?: StorageOnChanged;
-};
-
-function getExtensionStorage(): ExtensionStorage | null {
-  const w = window as unknown as {
-    chrome?: { storage?: ExtensionStorage };
-    browser?: { storage?: ExtensionStorage };
-  };
-  return w.chrome?.storage ?? w.browser?.storage ?? null;
 }
 
 export function isDeepResearchReportMenuPanel(menuPanel: HTMLElement): boolean {
@@ -522,11 +389,12 @@ export function isDeepResearchReportMenuPanel(menuPanel: HTMLElement): boolean {
 export async function injectDownloadButton(targetMenuPanel?: HTMLElement): Promise<void> {
   try {
     // Load i18n
-    const dict = await loadDictionaries();
-    const lang = await getLanguage();
-    const t = (key: TranslationKey) => dict[lang]?.[key] ?? dict.en?.[key] ?? key;
+    const dict = await loadExportDictionaries();
+    const lang = await readExportLanguage();
+    const t = createExportTranslator(dict, lang);
 
-    const menuPanel = targetMenuPanel ?? (await waitForElement('.mat-mdc-menu-panel[role="menu"]'));
+    const menuPanel =
+      targetMenuPanel ?? (await waitForElement('.mat-mdc-menu-panel[role="menu"]', 5000));
     if (!menuPanel) {
       console.log('[Gemini Voyager] Menu panel not found');
       return;
@@ -569,54 +437,31 @@ export async function injectDownloadButton(targetMenuPanel?: HTMLElement): Promi
     applyDeepResearchSaveReportButtonI18n(saveReportButton, dict, lang);
 
     // Keep button text/tooltip in sync with runtime language changes
-    const storage = getExtensionStorage();
-    const onChanged = storage?.onChanged;
-    if (onChanged?.addListener && onChanged?.removeListener) {
-      let currentLang: AppLanguage = lang;
-      const handler = (changes: StorageChanges, area: string) => {
-        if (area !== 'sync') return;
-        const nextRaw = changes?.[StorageKeys.LANGUAGE]?.newValue;
-        if (typeof nextRaw !== 'string') return;
-        currentLang = normalizeLanguage(nextRaw);
-        applyDeepResearchDownloadButtonI18n(downloadButton, dict, currentLang);
-        applyDeepResearchSaveReportButtonI18n(saveReportButton, dict, currentLang);
-      };
-
-      onChanged.addListener(handler);
-
-      const cleanup = () => {
-        try {
-          onChanged.removeListener(handler);
-        } catch {}
-      };
-
-      const observer = new MutationObserver(() => {
-        if (typeof document === 'undefined') {
-          cleanup();
-          observer.disconnect();
-          return;
-        }
-        const downloadDetached = !document.contains(downloadButton);
-        const saveReportDetached = !document.contains(saveReportButton);
-        if (downloadDetached && saveReportDetached) {
-          cleanup();
-          observer.disconnect();
-        }
-      });
-
-      observer.observe(document.body, { childList: true, subtree: true });
-
-      window.addEventListener(
-        'beforeunload',
-        () => {
-          cleanup();
-          try {
-            observer.disconnect();
-          } catch {}
-        },
-        { once: true },
-      );
-    }
+    const stopLanguage = watchExportLanguage((next) => {
+      applyDeepResearchDownloadButtonI18n(downloadButton, dict, next);
+      applyDeepResearchSaveReportButtonI18n(saveReportButton, dict, next);
+    });
+    const observer = new MutationObserver(() => {
+      // The page's document is gone once the content script's environment is torn down.
+      if (typeof document === 'undefined') {
+        stopLanguage();
+        observer.disconnect();
+        return;
+      }
+      if (!document.contains(downloadButton) && !document.contains(saveReportButton)) {
+        stopLanguage();
+        observer.disconnect();
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener(
+      'beforeunload',
+      () => {
+        stopLanguage();
+        observer.disconnect();
+      },
+      { once: true },
+    );
 
     console.log('[Gemini Voyager] Deep Research menu buttons injected successfully');
   } catch (error) {
