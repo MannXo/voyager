@@ -5,6 +5,7 @@ export interface StorageEcho {
   readonly key: string;
   readonly serialized: string;
   settledAt: number | null;
+  provisionalEvents: { value: unknown; observedAt: number }[];
 }
 
 /**
@@ -35,32 +36,44 @@ export class StorageEchoTracker {
   arm(key: string, serialized: string | undefined): StorageEcho | null {
     this.echoes = this.live();
     if (serialized === undefined) return null;
-    const echo: StorageEcho = { key, serialized, settledAt: null };
+    const echo: StorageEcho = { key, serialized, settledAt: null, provisionalEvents: [] };
     this.echoes.push(echo);
     return echo;
   }
 
-  /** Call when the write failed or threw: it changed nothing, so nothing echoes. */
-  disarm(echo: StorageEcho | null): void {
-    if (echo) this.echoes = this.echoes.filter((entry) => entry !== echo);
+  /** Failed attempts return held matching events: those writes came from another context. */
+  disarm(echo: StorageEcho | null): StorageEcho['provisionalEvents'] {
+    if (!echo) return [];
+    this.echoes = this.echoes.filter((entry) => entry !== echo);
+    const provisional = echo.provisionalEvents;
+    echo.provisionalEvents = [];
+    return provisional;
   }
 
-  /** Pending writes may finish after a suspension or a slow storage call. */
+  /** Successful settlement confirms provisional events as this write's own echoes. */
   settle(echo: StorageEcho | null): void {
-    if (echo) echo.settledAt = Date.now();
+    if (!echo) return;
+    echo.settledAt = Date.now();
+    if (echo.provisionalEvents.length > 0) {
+      this.echoes = this.echoes.filter((entry) => entry !== echo);
+      echo.provisionalEvents = [];
+    }
   }
 
-  /** True when a storage change for `key` is the echo of an armed write. */
-  consume(key: string, newValue: unknown): boolean {
+  /** Holds a pending match or consumes a confirmed echo; false means external now. */
+  consume(key: string, newValue: unknown, observedAt: number): boolean {
     const serialized = serializeStoredValue(newValue);
     const live = this.live();
     const index = live.findIndex((echo) => echo.key === key && echo.serialized === serialized);
+    if (index !== -1 && live[index].settledAt === null) {
+      // Equal bytes prove ownership only after the pending write commits.
+      live[index].provisionalEvents.push({ value: newValue, observedAt });
+    }
     // Events arrive in write order, so earlier echoes for this key will never come.
     // On a mismatch, drop completed writes; pending writes can still produce their own echo.
     const cutoff = index === -1 ? Infinity : index;
     this.echoes = live.filter(
-      (echo, position) =>
-        echo.key !== key || position > cutoff || (index === -1 && echo.settledAt === null),
+      (echo, position) => echo.key !== key || position > cutoff || echo.settledAt === null,
     );
     return index !== -1;
   }

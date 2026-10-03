@@ -360,6 +360,96 @@ describe.each([
     expect(repository.data).toEqual(restored);
   });
 
+  it.each([
+    { symptom: 'missing folder structure', value: { corrupted: true } },
+    { symptom: 'removed bucket', value: undefined },
+    { symptom: 'null bucket', value: null },
+    { symptom: 'false bucket', value: false },
+    { symptom: 'empty string bucket', value: '' },
+    { symptom: 'array contents', value: { folders: [], folderContents: [] } },
+    { symptom: 'malformed bucket', value: { folders: [], folderContents: { folder: 'broken' } } },
+    { symptom: 'malformed folder', value: { folders: [null], folderContents: {} } },
+    { symptom: 'malformed entry', value: { folders: [], folderContents: { folder: [null] } } },
+  ])('keeps an unsaved rename after a corrupt external event: $symptom', async ({ value }) => {
+    await ready(config);
+    const set = memory.api.local.set.bind(memory.api.local);
+    const writes = vi.spyOn(memory.api.local, 'set').mockImplementation(async (items) => {
+      if (config.storageKey in items) throw new Error('Rename failed');
+      await set(items);
+    });
+    repository.data = data('Mine');
+    await expect(repository.saveData()).resolves.toBe(false);
+    writes.mockRestore();
+    localStorage.removeItem(config.storageKey);
+    memory.external('local', config.storageKey, value);
+    await settle(60);
+    expect(repository.canEdit).toBe(true);
+    expect(repository.data).toEqual(data('Mine'));
+    await expect(repository.saveData()).resolves.toBe(true);
+    expect(memory.values.local.get(config.storageKey)).toEqual(data('Mine'));
+  });
+
+  it.each([
+    { order: 'restore after tail', restoreBeforeTail: false, newerExternal: false },
+    { order: 'restore before tail', restoreBeforeTail: true, newerExternal: false },
+    { order: 'newer restore during proof delay', restoreBeforeTail: true, newerExternal: true },
+  ])(
+    'an external restore matching a failed pending write respects newer edits: $order',
+    async ({ restoreBeforeTail, newerExternal }) => {
+      await ready(config);
+      const restored = data('Restored elsewhere');
+      const newerEdit = data('Newer local edit');
+      const latestExternal = data('Latest external restore');
+      const set = memory.api.local.set.bind(memory.api.local);
+      const failedWrite = Promise.withResolvers<void>();
+      const startedWrite = Promise.withResolvers<void>();
+      const writes = vi.spyOn(memory.api.local, 'set').mockImplementation(async (items) => {
+        if (config.storageKey in items) {
+          startedWrite.resolve();
+          await failedWrite.promise;
+          throw new Error('Own write never committed');
+        }
+        await set(items);
+      });
+      repository.data = restored;
+      const active = repository.saveData();
+      await startedWrite.promise;
+      if (restoreBeforeTail) {
+        await vi.advanceTimersByTimeAsync(5_000);
+        memory.external('local', config.storageKey, restored);
+        await settle(30);
+      }
+      repository.data = restoreBeforeTail ? newerEdit : { folders: [], folderContents: {} };
+      const trailing = repository.saveData();
+      enabled = false;
+      repository.suspend();
+      await resume();
+      if (!restoreBeforeTail) {
+        await vi.advanceTimersByTimeAsync(5_000);
+        memory.external('local', config.storageKey, restored);
+        await settle(30);
+      }
+      if (newerExternal) {
+        memory.external('local', config.storageKey, latestExternal);
+        await settle(30);
+      } else if (restoreBeforeTail) {
+        memory.external('local', config.storageKey, { corrupted: true });
+        await settle(30);
+      }
+      expect(repository.canEdit).toBe(false);
+      failedWrite.resolve();
+      await expect(active).resolves.toBe(false);
+      await expect(trailing).resolves.toBe(false);
+      await settle(60);
+      writes.mockRestore();
+      expect(repository.canEdit).toBe(true);
+      await expect(repository.saveData()).resolves.toBe(true);
+      const expected = newerExternal ? latestExternal : restoreBeforeTail ? newerEdit : restored;
+      expect(memory.values.local.get(config.storageKey)).toEqual(expected);
+      expect(repository.data).toEqual(expected);
+    },
+  );
+
   it('backs off superseded resume reads until writes stop, then enables editing', async () => {
     await ready(config);
     enabled = false;
@@ -423,7 +513,7 @@ describe.each([
 
       await resume();
       expect(repository.canEdit).toBe(true);
-      const recovered = externalChange ? data('Initial') : edited;
+      const recovered = edited;
       expect(repository.data).toEqual(recovered);
       expect(memory.values.local.get(config.storageKey)).toEqual(recovered);
     },

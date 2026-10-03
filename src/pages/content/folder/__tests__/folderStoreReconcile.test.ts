@@ -396,7 +396,7 @@ describe('FolderStore reconciles external writes after local work settles', () =
       return names(backup.data);
     }
 
-    it('discards a failed rename when another external change is observed', async () => {
+    it('keeps a rename whose save fails while storage is corrupt', async () => {
       slowReads();
       vi.mocked(adapter.saveData).mockResolvedValue(false);
       writeFromElsewhere(corrupt);
@@ -410,11 +410,11 @@ describe('FolderStore reconciles external writes after local work settles', () =
       expect(names(store.data)).toEqual(['Mine']);
       expect(emergencyNames()).toEqual(['Mine']);
 
-      // An observed external write discards the failed edit, including a corrupt restore.
+      // Another corrupt event carries no authoritative replacement for the failed edit.
       writeFromElsewhere(structuredClone(corrupt));
       await vi.advanceTimersByTimeAsync(1000);
-      expect(names(store.data)).toEqual(['Alpha']);
-      expect(emergencyNames()).toEqual(['Alpha']);
+      expect(names(store.data)).toEqual(['Mine']);
+      expect(emergencyNames()).toEqual(['Mine']);
 
       vi.mocked(adapter.saveData).mockImplementation(async (_key, data) => {
         stored = structuredClone(data);
@@ -429,7 +429,7 @@ describe('FolderStore reconciles external writes after local work settles', () =
       ['succeeds', true],
       ['fails', false],
     ])(
-      'discards a failed queued edit after an external write when the older recovery write %s',
+      'keeps an edit whose queued save fails while an older recovery write %s',
       async (_outcome, recoverySaves) => {
         const recoveryWrite = deferred<boolean>();
         let writes = 0;
@@ -457,9 +457,9 @@ describe('FolderStore reconciles external writes after local work settles', () =
         writeFromElsewhere(structuredClone(corrupt));
         await vi.advanceTimersByTimeAsync(1000);
 
-        expect(names(store.data)).toEqual(['Alpha']);
-        expect(emergencyNames()).toEqual(['Alpha']);
-        expect(names(stored)).toEqual(['Alpha']);
+        expect(names(store.data)).toEqual(['Mine']);
+        expect(emergencyNames()).toEqual(['Mine']);
+        expect(names(stored)).toEqual(['Mine']);
       },
     );
 

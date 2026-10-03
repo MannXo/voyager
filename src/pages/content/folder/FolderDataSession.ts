@@ -20,8 +20,10 @@ export class FolderDataSession {
   pendingSave: FolderData | null = null;
   /** Another context wrote this bucket; reload once this session is active and idle. */
   reconcilePending = false;
-  /** Counts observed external writes, so a load knows whether one arrived during its read. */
+  /** Counts every observed bucket event, including provisional matches, for read freshness. */
   externalWrites = 0;
+  /** Observation sequence of the newest genuine, valid external write. */
+  validExternalWriteAt = 0;
   /** Numbers each write attempt in start order; writes of one session run one at a time. */
   writeGen = 0;
   /**
@@ -29,8 +31,8 @@ export class FolderDataSession {
    * edit: it is newer than every backup. Null once a later write or applied load supersedes it.
    */
   failedEditGen: number | null = null;
-  /** External-write counter when the in-memory edit was accepted for saving. */
-  failedEditExternalWrites = 0;
+  /** Observation sequence when the in-memory edit was accepted for saving. */
+  failedEditAcceptedAt = 0;
   /** `externalWrites` when a reload was last requested for this session. */
   reconcileAttemptedAt = 0;
   /** What this context last read from or wrote to storage: the base for merging debounced edits. */
@@ -62,8 +64,8 @@ export class FolderDataSession {
   }
 
   get hasRetainedFailedEdit(): boolean {
-    // A restore elsewhere outranks failed edits even when it restores identical bytes.
-    return this.failedEditGen !== null && this.failedEditExternalWrites === this.externalWrites;
+    // A newer valid restore outranks failed edits even when it restores identical bytes.
+    return this.failedEditGen !== null && this.validExternalWriteAt <= this.failedEditAcceptedAt;
   }
 
   markReady(): void {
