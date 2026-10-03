@@ -7,6 +7,7 @@ import {
   makeTurns,
   mountThreadFixture,
 } from '@/pages/content/export/adapter/__tests__/chatgptThreadFixture';
+import { toastDriver } from '@/tests/toastDriver';
 
 import { markHandoffPageActive } from './handoff';
 import type { HandoffDelivery } from './handoffPlan';
@@ -142,9 +143,7 @@ async function confirmHandoff(): Promise<void> {
 }
 
 function toastTexts(): string[] {
-  return Array.from(document.querySelectorAll('.gv-chatgpt-handoff-toast'), (toast) =>
-    String(toast.textContent),
-  );
+  return toastDriver.messages();
 }
 
 async function settle(): Promise<void> {
@@ -366,14 +365,25 @@ describe('ChatGPT temporary handoff plugin', () => {
 
     await confirmHandoff();
 
-    await vi.waitFor(() =>
-      expect(document.querySelector('.gv-chatgpt-handoff-toast')?.textContent).toContain(
-        'attached file or image',
-      ),
-    );
+    await vi.waitFor(() => expect(toastTexts().join('\n')).toContain('attached file or image'));
     expect(location.search).toBe('?temporary-chat=true');
     expect(downloads).toEqual([]);
     expect(extensionStorage.size).toBe(0);
+  });
+
+  it('takes its open toast away when the plugin is disabled', async () => {
+    mountTemporaryChat();
+    const attachment = document.createElement('div');
+    attachment.dataset.fileId = 'file-1';
+    document.querySelector('form')?.appendChild(attachment);
+    const scope = createScope();
+    await activateChatGptTemporaryHandoff(scope);
+    await confirmHandoff();
+    await vi.waitFor(() => expect(toastTexts()).toHaveLength(1));
+
+    await scope.dispose();
+
+    expect(toastTexts()).toEqual([]);
   });
 
   it('refuses handoff when the latest user turn has no mounted assistant yet', async () => {
