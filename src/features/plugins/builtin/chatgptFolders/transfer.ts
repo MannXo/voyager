@@ -1,6 +1,10 @@
 import type { FolderData } from '@/core/types/folder';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
-import type { FolderExportPayload, ImportResult } from '@/features/folder/types/import-export';
+import type {
+  FolderExportPayload,
+  ImportResult,
+  ImportStrategy,
+} from '@/features/folder/types/import-export';
 
 import { readChatGptConversation } from './chatgptIdentity';
 
@@ -48,6 +52,7 @@ function holdsOnlyChatGptConversations(data: FolderData): boolean {
 /** Validates a ChatGPT folder file before an import or cloud restore can write it. */
 export function readChatGptFolderExport(
   raw: unknown,
+  strategy: ImportStrategy = 'merge',
 ):
   | { ok: true; payload: FolderExportPayload }
   | { ok: false; reason: 'invalid' | 'wrong-site'; message?: string } {
@@ -58,6 +63,15 @@ export function readChatGptFolderExport(
   const validated = FolderImportExportService.validatePayload(raw);
   if (!validated.success) {
     return { ok: false, reason: 'invalid', message: validated.error.message };
+  }
+  // Dropping corrupt data is safe for a merge, but an overwrite would silently delete local entries.
+  if (
+    strategy === 'overwrite' &&
+    FolderImportExportService.sanitizeFolderContents(
+      (raw as FolderExportPayload).data.folderContents,
+    ).skipped > 0
+  ) {
+    return { ok: false, reason: 'invalid' };
   }
   if (!holdsOnlyChatGptConversations(validated.data.data)) {
     return { ok: false, reason: 'wrong-site' };

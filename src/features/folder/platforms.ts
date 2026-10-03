@@ -1,5 +1,5 @@
 import { StorageKeys } from '@/core/types/common';
-import type { FolderExportPayload } from '@/features/folder/types/import-export';
+import type { FolderExportPayload, ImportStrategy } from '@/features/folder/types/import-export';
 import { readChatGptFolderExport } from '@/features/plugins/builtin/chatgptFolders/transfer';
 
 /**
@@ -24,6 +24,7 @@ export interface FolderPlatformDefinition {
     platform: 'chatgpt';
     read: (
       value: unknown,
+      strategy?: ImportStrategy,
     ) =>
       | { ok: true; payload: FolderExportPayload }
       | { ok: false; reason: 'invalid' | 'wrong-site'; message?: string };

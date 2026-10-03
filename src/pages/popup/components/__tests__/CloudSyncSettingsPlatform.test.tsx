@@ -62,7 +62,7 @@ function folders(id: string, name: string): FolderData {
 const localFolders = folders(localId, 'Local folder');
 const cloudFolders = folders(cloudId, 'Cloud folder');
 
-function downloadedData(data = cloudFolders) {
+function downloadedData(data: unknown = cloudFolders) {
   return {
     folders: {
       format: 'gemini-voyager.folders.v1',
@@ -283,6 +283,32 @@ describe('CloudSyncSettings platform routing', () => {
       expect(restored.folderContents[localId]).toEqual(localFolders.folderContents[localId]);
       expect(restored.folderContents['gemini-folder']).toBeUndefined();
       expect(container.textContent).toContain(t.syncSuccess);
+    },
+  );
+
+  it.each([
+    { symptom: 'a malformed bucket', bucket: null },
+    {
+      symptom: 'a malformed entry',
+      bucket: [...cloudFolders.folderContents[cloudId], { title: 'Broken' }],
+    },
+  ])(
+    'Overwrite refuses a cloud file containing $symptom without losing local folders',
+    async ({ bucket }) => {
+      const malformed = { ...cloudFolders, folderContents: { [cloudId]: bucket } };
+      const { local, localSet, syncSet } = installChrome(
+        `https://chatgpt.com/c/${localId}`,
+        downloadedData(malformed),
+      );
+      const before = structuredClone(local);
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      await mount();
+      await click(t.syncOverwrite);
+      expect(local).toEqual(before);
+      expect(localSet).not.toHaveBeenCalled();
+      expect(syncSet).not.toHaveBeenCalled();
+      expect(container.textContent).toContain(t.folder_import_invalid_format);
+      expect(container.textContent).not.toContain(t.syncSuccess);
     },
   );
 

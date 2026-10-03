@@ -310,7 +310,7 @@ async function restoreCloudDownload(
   const local = await readLocalSyncData(context, getTargetTab, 'restore');
   let rawFolders = data.folders?.data;
   if (definition.folderExport && data.folders) {
-    const validated = definition.folderExport.read(data.folders);
+    const validated = definition.folderExport.read(data.folders, mode);
     if (!validated.ok) {
       throw new CloudRestoreError(
         [],

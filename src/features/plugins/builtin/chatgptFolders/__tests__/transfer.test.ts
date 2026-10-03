@@ -48,6 +48,18 @@ describe('ChatGPT folder transfer', () => {
     expect(outcome.ok && outcome.data.folders.map((f) => f.id)).toEqual(['f0', 'f1']);
   });
 
+  it('merge imports keep local conversations when malformed buckets and entries are discarded', async () => {
+    const payload = {
+      ...exportChatGptFolders(CHATGPT_DATA),
+      data: {
+        ...CHATGPT_DATA,
+        folderContents: { f1: null, [ROOT_CONVERSATIONS_ID]: [ref(B), { title: 'Broken' }] },
+      },
+    };
+    const outcome = await importChatGptFolders(payload, CHATGPT_DATA);
+    expect(outcome.ok && outcome.data).toEqual(CHATGPT_DATA);
+  });
+
   it('names its file for ChatGPT', () => {
     expect(chatgptFolderExportFilename(new Date(2026, 9, 1, 8, 5, 9))).toBe(
       'voyager-chatgpt-folders-20261001-080509.json',
