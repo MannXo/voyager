@@ -15,7 +15,11 @@ import type {
   SyncPlatform,
 } from '@/core/types/sync';
 import { getPromptNameConflictIds } from '@/core/utils/promptName';
-import { FOLDER_PLATFORMS, supportsAccountIsolation } from '@/features/folder/platforms';
+import {
+  FOLDER_PLATFORMS,
+  getFolderPlatformForHost,
+  supportsAccountIsolation,
+} from '@/features/folder/platforms';
 import {
   getTimelineHierarchyStorageKey,
   getTimelineHierarchyStorageKeysToRead,
@@ -113,17 +117,31 @@ async function requestTabData<T>(
   getTargetTab: TargetTab,
   type: string,
   timeout: number,
+  platform?: SyncPlatform,
 ): Promise<T | undefined> {
   const tab = await getTargetTab();
   if (!tab?.id) return undefined;
+  if (platform && (!tab.url || getFolderPlatformForHost(new URL(tab.url).hostname) !== platform))
+    return undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    return (await Promise.race([
+    const response = (await Promise.race([
       chrome.tabs.sendMessage(tab.id, { type }),
       new Promise((_, reject) => {
         timer = setTimeout(() => reject(new Error('timeout')), timeout);
       }),
     ])) as T;
+    if (platform) {
+      const current = await getTargetTab();
+      // Options can outlive their source document; another platform cannot supply this bucket's base.
+      if (
+        current?.id !== tab.id ||
+        !current.url ||
+        getFolderPlatformForHost(new URL(current.url).hostname) !== platform
+      )
+        return undefined;
+    }
+    return response;
   } finally {
     clearTimeout(timer);
   }
@@ -231,7 +249,7 @@ async function readLocalSyncData(
       ok?: boolean;
       data?: FolderData;
       accountScope?: SyncAccountScope;
-    } | null>(getTargetTab, 'gv.sync.requestData', purpose === 'upload' ? 500 : 2000);
+    } | null>(getTargetTab, 'gv.sync.requestData', purpose === 'upload' ? 500 : 2000, platform);
     if (response?.ok && response.data) {
       folders = response.data;
       if (supportsAccountIsolation(platform) && response.accountScope) {

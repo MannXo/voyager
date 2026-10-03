@@ -124,11 +124,12 @@ function installChrome(tabUrl: string, download = downloadedData()) {
     }
     return undefined;
   });
+  const tabQuery = vi.fn().mockResolvedValue([{ id: 3, url: tabUrl }]);
   vi.stubGlobal('chrome', {
     runtime: { id: 'test-extension-id', sendMessage, lastError: null },
     tabs: {
       get: vi.fn(),
-      query: vi.fn().mockResolvedValue([{ id: 3, url: tabUrl }]),
+      query: tabQuery,
       sendMessage: tabSendMessage,
     },
     storage: {
@@ -137,7 +138,7 @@ function installChrome(tabUrl: string, download = downloadedData()) {
       onChanged: { addListener: vi.fn(), removeListener: vi.fn() },
     },
   });
-  return { local, sync, sendMessage, tabSendMessage, localSet, syncSet };
+  return { local, sync, sendMessage, tabSendMessage, tabQuery, localSet, syncSet };
 }
 
 describe('CloudSyncSettings platform routing', () => {
@@ -240,6 +241,47 @@ describe('CloudSyncSettings platform routing', () => {
       expect(Object.keys(localSet.mock.calls[0][0])).toEqual([StorageKeys.FOLDER_DATA_CHATGPT]);
       expect(syncSet).not.toHaveBeenCalled();
       expect(tabSendMessage).toHaveBeenCalledWith(3, { type: 'gv.folders.reload' });
+      expect(container.textContent).toContain(t.syncSuccess);
+    },
+  );
+
+  it.each(['before request', 'during request'] as const)(
+    'Merge never uses Gemini folders after the source tab navigates %s',
+    async (navigation) => {
+      const { local, sendMessage, tabSendMessage, tabQuery } = installChrome(
+        `https://chatgpt.com/c/${localId}`,
+      );
+      const foreign = folders('gemini-folder', 'Gemini folder');
+      foreign.folderContents['gemini-folder'][0].url = 'https://gemini.google.com/app/abc';
+      const navigate = () => {
+        tabQuery.mockResolvedValue([
+          { id: 3, url: 'https://gemini.google.com/app/abc' } as chrome.tabs.Tab,
+        ]);
+      };
+      sendMessage.mockImplementation(async (message) => {
+        if (message.type === 'gv.sync.download') {
+          if (navigation === 'before request') navigate();
+          return { ok: true, state, data: downloadedData() };
+        }
+        return { ok: true, state };
+      });
+      tabSendMessage.mockImplementation(async (_id, message) => {
+        if (message.type === 'gv.sync.requestData') {
+          if (navigation === 'during request') navigate();
+          return {
+            ok: true,
+            data: foreign,
+            accountScope: { accountKey: 'other-account', accountId: 4, routeUserId: '4' },
+          };
+        }
+        return undefined;
+      });
+      await mount();
+      await click(t.syncMerge);
+      const restored = local[StorageKeys.FOLDER_DATA_CHATGPT] as FolderData;
+      expect(restored.folders.map((folder) => folder.id)).toEqual([localId, cloudId]);
+      expect(restored.folderContents[localId]).toEqual(localFolders.folderContents[localId]);
+      expect(restored.folderContents['gemini-folder']).toBeUndefined();
       expect(container.textContent).toContain(t.syncSuccess);
     },
   );
