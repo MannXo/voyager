@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import browser from 'webextension-polyfill';
 
+import { confirmDriver } from '@/tests/confirmDriver';
+
 import type { ForkNode } from '../forkTypes';
 import { startFork } from '../index';
 
@@ -154,14 +156,14 @@ describe('startFork style injection', () => {
     await flushMicrotasks();
 
     document.querySelector<HTMLElement>('.gv-fork-btn')!.click();
-    expect(document.querySelector('.gv-fork-confirm')).not.toBeNull();
-    document.body.click();
-    expect(document.querySelector('.gv-fork-confirm')).toBeNull();
+    expect(confirmDriver.isOpen()).toBe(true);
+    confirmDriver.pressOutside();
+    expect(confirmDriver.isOpen()).toBe(false);
 
     document.querySelector<HTMLElement>('.gv-fork-btn')!.click();
     cleanup();
     cleanup = null;
-    expect(document.querySelector('.gv-fork-confirm')).toBeNull();
+    expect(confirmDriver.isOpen()).toBe(false);
     expect(document.querySelector('.gv-fork-btn')).toBeNull();
   });
 
@@ -227,9 +229,8 @@ describe('startFork style injection', () => {
       expect(forkButton).not.toBeNull();
       forkButton?.click();
 
-      const confirmButton = document.querySelector<HTMLElement>('.gv-fork-primary');
-      expect(confirmButton).not.toBeNull();
-      confirmButton?.click();
+      confirmDriver.answer('Fork');
+      await flushMicrotasks();
 
       expect(openSpy).toHaveBeenCalledWith(`${window.location.origin}${expectedPath}`, '_blank');
       openSpy.mockRestore();
@@ -296,7 +297,7 @@ describe('startFork style injection', () => {
     await flushMicrotasks();
 
     document.querySelector<HTMLElement>('.gv-fork-btn')?.click();
-    document.querySelector<HTMLElement>('.gv-fork-secondary')?.click();
+    confirmDriver.answer('Download MD');
     for (let i = 0; i < 4; i++) {
       await flushMicrotasks();
     }
@@ -350,7 +351,8 @@ describe('startFork style injection', () => {
     await flushMicrotasks();
 
     document.querySelector<HTMLElement>('.gv-fork-btn')?.click();
-    document.querySelector<HTMLElement>('.gv-fork-primary')?.click();
+    confirmDriver.answer('Fork');
+    await flushMicrotasks();
 
     expect(openSpy).not.toHaveBeenCalled();
     expect(vi.mocked(browser.storage.local.set)).not.toHaveBeenCalledWith(

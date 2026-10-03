@@ -1,9 +1,10 @@
+import { askConfirm } from '@/core/ui/confirm';
+
 import { getTranslationSync } from '../../../utils/i18n';
 import { collectForkChatPairs } from './chatPairs';
 
 const STYLE_ID = 'gemini-voyager-fork-style';
 const FORK_BTN_CLASS = 'gv-fork-btn';
-const FORK_CONFIRM_CLASS = 'gv-fork-confirm';
 const FORK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>`;
 
 function injectStyles(): void {
@@ -69,54 +70,6 @@ body[dir='rtl'] .gv-fork-btn,
 body.gv-rtl .gv-fork-btn {
   right: auto;
   left: calc(100% + 8px);
-}
-
-/* Confirmation dialog */
-.gv-fork-confirm {
-  z-index: 9999;
-  background: var(--gv-fork-confirm-bg, #fff);
-  color: var(--gv-fork-confirm-color, #202124);
-  border: 1px solid var(--gv-fork-confirm-border, rgba(0, 0, 0, 0.12));
-  border-radius: 8px;
-  padding: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  white-space: nowrap;
-  font-size: 13px;
-  font-family: 'Google Sans', Roboto, Arial, sans-serif;
-}
-.gv-fork-confirm p {
-  margin: 0 0 8px 0;
-}
-.gv-fork-confirm .gv-fork-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-.gv-fork-confirm button {
-  padding: 4px 12px;
-  border-radius: 4px;
-  border: 1px solid var(--gv-fork-confirm-border, rgba(0, 0, 0, 0.12));
-  cursor: pointer;
-  font-size: 12px;
-  font-family: 'Google Sans', Roboto, Arial, sans-serif;
-  background: transparent;
-  color: inherit;
-}
-.gv-fork-confirm button.gv-fork-primary {
-  background: var(--gv-fork-primary-bg, #1a73e8);
-  color: #fff;
-  border-color: transparent;
-}
-.gv-fork-confirm button.gv-fork-primary:hover {
-  background: var(--gv-fork-primary-hover-bg, #1765cc);
-}
-.gv-fork-confirm button.gv-fork-secondary {
-  background: var(--gv-fork-secondary-bg, rgba(26, 115, 232, 0.08));
-  color: var(--gv-fork-secondary-color, #1a73e8);
-  border-color: var(--gv-fork-secondary-border, rgba(26, 115, 232, 0.22));
-}
-.gv-fork-confirm button.gv-fork-secondary:hover {
-  background: var(--gv-fork-secondary-hover-bg, rgba(26, 115, 232, 0.14));
 }
 
 .gv-fork-manual-upload-hint {
@@ -253,29 +206,11 @@ body.dark-theme .gv-fork-btn {
   --gv-fork-btn-color: #9aa0a6;
   --gv-fork-btn-hover-bg: rgba(255, 255, 255, 0.08);
 }
-html[dark] .gv-fork-confirm,
-body.dark-theme .gv-fork-confirm,
 html[dark] .gv-fork-manual-upload-hint,
 body.dark-theme .gv-fork-manual-upload-hint {
   --gv-fork-confirm-bg: #292a2d;
   --gv-fork-confirm-color: #e8eaed;
   --gv-fork-confirm-border: rgba(255, 255, 255, 0.12);
-}
-html[dark] .gv-fork-confirm button.gv-fork-primary,
-body.dark-theme .gv-fork-confirm button.gv-fork-primary {
-  --gv-fork-primary-bg: #8ab4f8;
-  color: #202124;
-}
-html[dark] .gv-fork-confirm button.gv-fork-primary:hover,
-body.dark-theme .gv-fork-confirm button.gv-fork-primary:hover {
-  --gv-fork-primary-hover-bg: #aecbfa;
-}
-html[dark] .gv-fork-confirm button.gv-fork-secondary,
-body.dark-theme .gv-fork-confirm button.gv-fork-secondary {
-  --gv-fork-secondary-bg: rgba(138, 180, 248, 0.12);
-  --gv-fork-secondary-color: #8ab4f8;
-  --gv-fork-secondary-border: rgba(138, 180, 248, 0.28);
-  --gv-fork-secondary-hover-bg: rgba(138, 180, 248, 0.2);
 }
 html[dark] .gv-fork-indicator,
 body.dark-theme .gv-fork-indicator {
@@ -308,9 +243,6 @@ function findUserCopyButtonAnchor(userEl: HTMLElement): HTMLElement | null {
   return copyButton.parentElement || copyButton;
 }
 
-// A stopped run can inject buttons late; the next run must still dismiss their dialog.
-let activeConfirm: HTMLElement | null = null;
-
 export function createForkControls({
   ensureTurnId,
   resolveUserMessageHost,
@@ -325,20 +257,7 @@ export function createForkControls({
   }
 
   injectStyles();
-  document.addEventListener('click', onDocumentClick);
-
-  function dismissConfirm(): void {
-    if (activeConfirm) {
-      activeConfirm.remove();
-      activeConfirm = null;
-    }
-  }
-
-  function onDocumentClick(e: MouseEvent): void {
-    if (activeConfirm && !activeConfirm.contains(e.target as Node)) {
-      dismissConfirm();
-    }
-  }
+  const lifetime = new AbortController();
 
   function injectForkButtons(): void {
     const pairs = collectForkChatPairs();
@@ -365,7 +284,7 @@ export function createForkControls({
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
-        showForkConfirmation(btn, userEl, index);
+        void showForkConfirmation(btn, userEl, index);
       });
 
       // Add at the end of the user message container
@@ -374,54 +293,24 @@ export function createForkControls({
     });
   }
 
-  function showForkConfirmation(btn: HTMLElement, userEl: HTMLElement, turnIndex: number): void {
-    dismissConfirm();
-
-    const confirm = document.createElement('div');
-    confirm.className = FORK_CONFIRM_CLASS;
-    confirm.innerHTML = `
-    <p>${getTranslationSync('forkConfirm')}</p>
-    <div class="gv-fork-actions">
-      <button class="gv-fork-cancel">${getTranslationSync('forkCancel')}</button>
-      <button class="gv-fork-secondary">${getTranslationSync('forkMarkdownBtn')}</button>
-      <button class="gv-fork-primary">${getTranslationSync('forkConfirmBtn')}</button>
-    </div>
-  `;
-
-    const cancelBtn = confirm.querySelector('.gv-fork-cancel')!;
-    const markdownBtn = confirm.querySelector('.gv-fork-secondary')!;
-    const confirmBtn = confirm.querySelector('.gv-fork-primary')!;
-
-    cancelBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      dismissConfirm();
+  async function showForkConfirmation(
+    btn: HTMLElement,
+    userEl: HTMLElement,
+    turnIndex: number,
+  ): Promise<void> {
+    const mode = await askConfirm<'paste' | 'fileUpload'>({
+      message: getTranslationSync('forkConfirm'),
+      anchor: btn,
+      side: 'above',
+      tone: 'neutral',
+      cancelLabel: getTranslationSync('forkCancel'),
+      choices: [
+        { id: 'fileUpload', label: getTranslationSync('forkMarkdownBtn'), emphasis: 'secondary' },
+        { id: 'paste', label: getTranslationSync('forkConfirmBtn') },
+      ],
+      signal: lifetime.signal,
     });
-    confirmBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      dismissConfirm();
-      void onFork(userEl, turnIndex, 'paste');
-    });
-    markdownBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      dismissConfirm();
-      void onFork(userEl, turnIndex, 'fileUpload');
-    });
-
-    // Prevent clicks inside the dialog from bubbling to parent handlers
-    confirm.addEventListener('click', (e) => e.stopPropagation());
-
-    // Position near the fork button using fixed positioning
-    const btnRect = btn.getBoundingClientRect();
-    confirm.style.position = 'fixed';
-    confirm.style.top = `${btnRect.top - 4}px`;
-    confirm.style.left = `${btnRect.right}px`;
-    confirm.style.transform = 'translateY(-100%)';
-
-    document.body.appendChild(confirm);
-    activeConfirm = confirm;
+    if (mode) await onFork(userEl, turnIndex, mode);
   }
 
   function updateForkButtonTexts(): void {
@@ -436,8 +325,7 @@ export function createForkControls({
     inject: injectForkButtons,
     updateLanguage: updateForkButtonTexts,
     stop() {
-      dismissConfirm();
-      document.removeEventListener('click', onDocumentClick);
+      lifetime.abort();
       document.querySelectorAll(`.${FORK_BTN_CLASS}`).forEach((element) => element.remove());
       document.getElementById(STYLE_ID)?.remove();
     },

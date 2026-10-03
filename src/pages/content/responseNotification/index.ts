@@ -21,7 +21,7 @@ const TURN_LABEL_PREFIXES =
   // oxlint-disable-next-line no-misleading-character-class
   /^[\u200B\u200C\u200D\u200E\u200F\uFEFF]*(?:you said|you wrote|user message|your prompt|you asked)[:\s]*/i;
 const VISUALLY_HIDDEN_CLASS_FRAGMENT = 'visually-hidden';
-const INJECTED_UI_SELECTOR = '.gv-fork-btn, .gv-fork-confirm, .gv-fork-indicator-group';
+const INJECTED_UI_SELECTOR = '.gv-fork-btn, .gv-fork-indicator-group';
 const COMPLETION_ACTION_MAX_PARENT_DEPTH = 4;
 
 const GENERATING_SELECTORS = [

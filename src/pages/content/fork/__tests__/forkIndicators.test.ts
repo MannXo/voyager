@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { confirmDriver } from '@/tests/confirmDriver';
+
 import { ForkNodesService } from '../ForkNodesService';
 import { collectForkChatPairs } from '../chatPairs';
 import { createForkIndicators } from '../forkIndicators';
@@ -127,25 +129,47 @@ describe('fork indicators', () => {
   it('removes a branch link only after the user confirms', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
     await indicators.inject();
-    const confirm = vi
-      .spyOn(window, 'confirm')
-      .mockReturnValueOnce(false)
-      .mockReturnValueOnce(true);
     const deleteBranch = () =>
       document.querySelectorAll<HTMLButtonElement>('.gv-fork-indicator-delete')[1].click();
 
     deleteBranch();
+    expect(confirmDriver.message()).toContain('Delete this branch link?');
+    confirmDriver.answer('Cancel');
     await vi.advanceTimersByTimeAsync(0);
-    expect(confirm).toHaveBeenCalledOnce();
     expect(ForkNodesService.removeForkNode).not.toHaveBeenCalled();
 
     deleteBranch();
+    confirmDriver.answer('Delete');
     await vi.advanceTimersByTimeAsync(0);
     expect(ForkNodesService.removeForkNode).toHaveBeenCalledWith(
       branch.conversationId,
       branch.turnId,
       branch.forkGroupId,
     );
+  });
+
+  it('keeps a branch link when the conversation changes while its delete confirm is open', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+    await indicators.inject();
+
+    document.querySelectorAll<HTMLButtonElement>('.gv-fork-indicator-delete')[1].click();
+    source.conversationId = 'another-conversation';
+    confirmDriver.answer('Delete');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(ForkNodesService.removeForkNode).not.toHaveBeenCalled();
+  });
+
+  it('closes an open delete confirm when stopped', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+    await indicators.inject();
+
+    document.querySelectorAll<HTMLButtonElement>('.gv-fork-indicator-delete')[1].click();
+    indicators.stop();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(confirmDriver.isOpen()).toBe(false);
+    expect(ForkNodesService.removeForkNode).not.toHaveBeenCalled();
   });
 
   it('cancels a queued storage refresh when stopped', async () => {

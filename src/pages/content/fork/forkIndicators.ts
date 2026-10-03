@@ -1,3 +1,4 @@
+import { askConfirm } from '@/core/ui/confirm';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
 
 import { getTranslationSync } from '../../../utils/i18n';
@@ -28,6 +29,7 @@ export function createForkIndicators({
   resolveUserMessageHost: (element: HTMLElement) => HTMLElement;
 }) {
   let storageRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  const lifetime = new AbortController();
 
   function extractConversationIdFromHref(href: string): string | null {
     try {
@@ -238,8 +240,17 @@ export function createForkIndicators({
     deleteBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       e.preventDefault();
-      const confirmed = window.confirm(getTranslationSync('forkDeleteDataConfirm'));
-      if (!confirmed) return;
+      const conversationAtAsk = getConversationId();
+      const confirmed = await askConfirm({
+        message: getTranslationSync('forkDeleteDataConfirm'),
+        anchor: deleteBtn,
+        tone: 'danger',
+        cancelLabel: getTranslationSync('forkCancel'),
+        choices: [{ id: 'confirm', label: getTranslationSync('pm_delete') }],
+        signal: lifetime.signal,
+      });
+      // The page may have moved to another conversation while the confirm was open.
+      if (!confirmed || getConversationId() !== conversationAtAsk) return;
 
       deleteBtn.disabled = true;
       try {
@@ -343,6 +354,7 @@ export function createForkIndicators({
     refresh: scheduleForkIndicatorRefresh,
     updateLanguage: updateForkIndicatorTexts,
     stop() {
+      lifetime.abort();
       if (storageRefreshTimer) {
         clearTimeout(storageRefreshTimer);
         storageRefreshTimer = null;
