@@ -57,7 +57,7 @@ Use `StorageService` where suitable; established direct `chrome.storage`/`browse
 - Before deletion, trace production entry points, callers and regression guards. Distinguish retired implementations from compatibility cleanup. Remove tests that exist solely for deleted, unreachable code.
 - Extract cohesive data operations or complete lifecycle responsibilities from large managers. Give helpers explicit inputs and one state owner; avoid passing the whole manager into extracted modules. Each step must work independently and preserve existing callers and data.
 - Keep listener, observer and timer cleanup beside setup. Sidebar remount, account change and full teardown have different lifetimes; preserve the appropriate state across each.
-- Reuse existing popover integration, such as `gv-pm-confirm`, including outside-click handling, teardown and theme overrides.
+- Ask confirmations through `askConfirm` (`src/core/ui/confirm.ts`) and show toasts through `createToaster` (`src/core/ui/toast/toaster.ts`); they own stacking, dismissal, theming and teardown. Outside-press handlers skip `isVoyagerLayerEvent`.
 - For visual changes, state the expected result and verify alignment, spacing and behavior in light/dark themes, including external resource dependencies.
 - After fixing a repeatable, non-obvious bug, put a one-line why-comment at the code that prevents it and name the guarding test after the symptom.
 - `bun run filesize:check` fails when a `src/**/*.ts(x)` file over 1000 lines is added or a baselined one grows: put new code in a new file. Run `bun run filesize:update` after shrinking one; raising an entry in `scripts/file-size-baseline.json` is a deliberate, explained change in the PR.
