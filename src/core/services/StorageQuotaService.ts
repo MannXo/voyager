@@ -1,12 +1,8 @@
 import { StorageKeys } from '@/core/types/common';
-import {
-  getSafariMajorVersion,
-  getVoyagerBuildTarget,
-  hasLegacySafariStorageLimit,
-} from '@/core/utils/browser';
+
+import { StorageQuotaPolicy } from './StorageQuotaPolicy';
 
 const MEBIBYTE = 1024 * 1024;
-const KIBIBYTE = 1024;
 
 export const STORAGE_QUOTA_SOFT_CAP_KEY = 'gvStorageSoftCapMb';
 export const STORAGE_SOFT_CAP_OPTIONS_MB = [25, 50, 100] as const;
@@ -107,9 +103,6 @@ export interface EffectiveLocalQuota {
   quotaBytes: number | null;
   estimated: boolean;
 }
-
-const lowerQuota = (a: number | null, b: number | null): number | null =>
-  a === null ? b : b === null ? a : Math.min(a, b);
 
 export function getStorageQuotaEffectiveUsageRatio(snapshot: StorageQuotaSnapshot): number | null {
   const localRatio =
@@ -291,10 +284,6 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   );
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function clampRatio(value: number): number {
   if (!Number.isFinite(value) || value < 0) return 0;
   return value;
@@ -330,9 +319,22 @@ function normalizeSoftCap(value: unknown): StorageSoftCapMb {
 
 export class StorageQuotaService {
   private readonly dependencies: StorageQuotaServiceDependencies;
+  private readonly policy: StorageQuotaPolicy;
 
   constructor(dependencies: StorageQuotaServiceDependencies = {}) {
     this.dependencies = dependencies;
+    this.policy = new StorageQuotaPolicy({
+      chromeApi: () => this.chromeApi,
+      callApi: <T>(
+        owner: object,
+        method: ((...args: unknown[]) => unknown) | undefined,
+        args: unknown[],
+      ) => this.callApi<T>(owner, method, args),
+      buildTarget: dependencies.buildTarget,
+      userAgent: dependencies.userAgent,
+      safariMajorVersion: dependencies.safariMajorVersion,
+      legacySafariStorageLimit: dependencies.legacySafariStorageLimit,
+    });
   }
 
   private get chromeApi(): ChromeLike {
@@ -421,7 +423,7 @@ export class StorageQuotaService {
     const { quotaBytes, quotaEstimated } =
       areaId === 'local'
         ? this.localAreaQuota(unlimitedGranted)
-        : this.resolveAreaQuota(areaId, area.QUOTA_BYTES, unlimitedGranted);
+        : this.policy.syncQuota(area.QUOTA_BYTES);
 
     return {
       usage: {
@@ -452,45 +454,10 @@ export class StorageQuotaService {
     };
   }
 
-  private resolveAreaQuota(
-    area: StorageAreaId,
-    declaredQuota: number | undefined,
-    unlimitedGranted: boolean,
-  ): Pick<StorageAreaUsage, 'quotaBytes' | 'quotaEstimated'> {
-    if (area === 'sync') {
-      return typeof declaredQuota === 'number' && declaredQuota > 0
-        ? { quotaBytes: declaredQuota, quotaEstimated: false }
-        : { quotaBytes: 100 * KIBIBYTE, quotaEstimated: true };
-    }
-
-    if (this.detectBrowser() === 'safari') {
-      if (!unlimitedGranted) return { quotaBytes: 5 * MEBIBYTE, quotaEstimated: false };
-
-      const majorVersion = this.dependencies.safariMajorVersion?.() ?? getSafariMajorVersion();
-      const hasLegacyLimit =
-        this.dependencies.legacySafariStorageLimit?.() ?? hasLegacySafariStorageLimit();
-      if (hasLegacyLimit || (majorVersion !== null && majorVersion < 16)) {
-        return { quotaBytes: 10 * MEBIBYTE, quotaEstimated: false };
-      }
-      if (majorVersion !== null && majorVersion >= 16) {
-        return { quotaBytes: null, quotaEstimated: false };
-      }
-
-      return typeof declaredQuota === 'number' && declaredQuota > 0
-        ? { quotaBytes: declaredQuota, quotaEstimated: true }
-        : { quotaBytes: null, quotaEstimated: true };
-    }
-
-    if (unlimitedGranted) return { quotaBytes: null, quotaEstimated: false };
-    return typeof declaredQuota === 'number' && declaredQuota > 0
-      ? { quotaBytes: declaredQuota, quotaEstimated: false }
-      : { quotaBytes: 10 * MEBIBYTE, quotaEstimated: true };
-  }
-
   private localAreaQuota(
     unlimitedGranted: boolean,
   ): Pick<StorageAreaUsage, 'quotaBytes' | 'quotaEstimated'> {
-    const { quotaBytes, estimated } = this.effectiveLocalQuota(unlimitedGranted);
+    const { quotaBytes, estimated } = this.policy.localQuota(unlimitedGranted);
     return { quotaBytes, quotaEstimated: estimated };
   }
 
@@ -501,26 +468,7 @@ export class StorageQuotaService {
    */
   async resolveEffectiveLocalQuota(): Promise<EffectiveLocalQuota> {
     const permission = await this.getUnlimitedStoragePermissionStatus();
-    return this.effectiveLocalQuota(permission.granted);
-  }
-
-  private effectiveLocalQuota(unlimitedGranted: boolean): EffectiveLocalQuota {
-    const declared = this.chromeApi.storage?.local?.QUOTA_BYTES;
-    const area = this.resolveAreaQuota('local', declared, unlimitedGranted);
-    if (!area.quotaEstimated) return { quotaBytes: area.quotaBytes, estimated: false };
-    const flat = this.flatLocalQuota(declared, unlimitedGranted);
-    return { quotaBytes: lowerQuota(area.quotaBytes, flat), estimated: true };
-  }
-
-  private flatLocalQuota(declared: number | undefined, unlimitedGranted: boolean): number | null {
-    const browser = this.detectBrowser();
-    if (unlimitedGranted) {
-      if (browser !== 'safari') return null;
-      const major = this.dependencies.safariMajorVersion?.() ?? getSafariMajorVersion();
-      return major !== null && major >= 16 ? null : 10 * MEBIBYTE;
-    }
-    if (typeof declared === 'number' && declared > 0) return declared;
-    return browser === 'firefox' || browser === 'safari' ? 5 * MEBIBYTE : 10 * MEBIBYTE;
+    return this.policy.localQuota(permission.granted);
   }
 
   private async bytesForKeys(
@@ -580,147 +528,12 @@ export class StorageQuotaService {
     return categories;
   }
 
-  private detectBrowser(): UnlimitedStoragePermissionStatus['browser'] {
-    const target = this.dependencies.buildTarget?.() ?? getVoyagerBuildTarget();
-    const ua = this.dependencies.userAgent?.() ?? globalThis.navigator?.userAgent ?? '';
-    if (target === 'firefox' || /firefox/i.test(ua)) return 'firefox';
-    if (target === 'safari') return 'safari';
-    if (target === 'chrome' || target === 'edge' || /(?:chrome|chromium|edg)/i.test(ua)) {
-      return 'chromium';
-    }
-    return 'unknown';
-  }
-
   async getUnlimitedStoragePermissionStatus(): Promise<UnlimitedStoragePermissionStatus> {
-    const browser = this.detectBrowser();
-    const permissionsApi = this.chromeApi.permissions;
-    const manifest = this.runtime?.getManifest?.() ?? {};
-    const required = (manifest.permissions ?? []).includes('unlimitedStorage');
-    const declared = [
-      ...(manifest.permissions ?? []),
-      ...(manifest.optional_permissions ?? []),
-    ].includes('unlimitedStorage');
-
-    if (required) {
-      return {
-        supported: true,
-        declared: true,
-        granted: true,
-        requestable: false,
-        browser,
-        reason: 'already-granted',
-      };
-    }
-    if (browser === 'firefox') {
-      return {
-        supported: true,
-        declared,
-        granted: false,
-        requestable: false,
-        browser,
-        reason: 'not-declared',
-      };
-    }
-    if (!permissionsApi?.contains || !permissionsApi.request) {
-      return {
-        supported: false,
-        declared,
-        granted: false,
-        requestable: false,
-        browser,
-        reason: 'unsupported-api',
-      };
-    }
-
-    let granted = false;
-    try {
-      granted =
-        (await this.callApi<boolean>(permissionsApi, permissionsApi.contains, [
-          { permissions: ['unlimitedStorage'] },
-        ])) === true;
-    } catch {
-      // A missing/older permissions implementation behaves as unsupported.
-      return {
-        supported: false,
-        declared,
-        granted: false,
-        requestable: false,
-        browser,
-        reason: 'unsupported-api',
-      };
-    }
-
-    return {
-      supported: true,
-      declared,
-      granted,
-      requestable: declared && !granted,
-      browser,
-      reason: granted ? 'already-granted' : declared ? 'available' : 'not-declared',
-    };
+    return this.policy.getStatus();
   }
 
   async requestUnlimitedStoragePermission(): Promise<UnlimitedStoragePermissionRequestResult> {
-    // Keep all gating synchronous. Browser permission prompts require a live
-    // user gesture, which would be lost by awaiting contains() first.
-    const browser = this.detectBrowser();
-    const permissionsApi = this.chromeApi.permissions;
-    const manifest = this.runtime?.getManifest?.() ?? {};
-    const required = (manifest.permissions ?? []).includes('unlimitedStorage');
-    const declared = [
-      ...(manifest.permissions ?? []),
-      ...(manifest.optional_permissions ?? []),
-    ].includes('unlimitedStorage');
-    if (required || browser === 'firefox') {
-      const status = await this.getUnlimitedStoragePermissionStatus();
-      return {
-        requested: false,
-        granted: status.granted,
-        reason: status.granted ? 'already-granted' : 'not-declared',
-        status,
-      };
-    }
-
-    const unsupportedReason: UnlimitedStoragePermissionReason = !declared
-      ? 'not-declared'
-      : 'unsupported-api';
-    if (!declared || !permissionsApi?.request) {
-      const status: UnlimitedStoragePermissionStatus = {
-        supported: !!permissionsApi?.contains && !!permissionsApi?.request,
-        declared,
-        granted: false,
-        requestable: false,
-        browser,
-        reason: unsupportedReason,
-      };
-      const reason: UnlimitedStoragePermissionRequestReason =
-        unsupportedReason === 'not-declared' ? 'not-declared' : 'unsupported-api';
-      return { requested: false, granted: false, reason, status };
-    }
-
-    try {
-      // This must remain the first await in the supported path.
-      const granted =
-        (await this.callApi<boolean>(permissionsApi, permissionsApi.request, [
-          { permissions: ['unlimitedStorage'] },
-        ])) === true;
-      const status = await this.getUnlimitedStoragePermissionStatus();
-      return {
-        requested: true,
-        granted,
-        reason: granted ? 'granted' : 'denied',
-        status,
-      };
-    } catch (error) {
-      const status = await this.getUnlimitedStoragePermissionStatus();
-      return {
-        requested: true,
-        granted: false,
-        reason: 'error',
-        status,
-        error: errorMessage(error),
-      };
-    }
+    return this.policy.request();
   }
 
   async getSnapshot(): Promise<StorageQuotaSnapshot> {
@@ -780,7 +593,7 @@ export class StorageQuotaService {
       keyBytes = present.length > 0 ? estimateBytes(pickItems(items, present)) : 0;
     }
     const softCapBytes = normalizeSoftCap(settings[STORAGE_QUOTA_SOFT_CAP_KEY]) * MEBIBYTE;
-    const { quotaBytes } = this.effectiveLocalQuota(permission.granted);
+    const { quotaBytes } = this.policy.localQuota(permission.granted);
     return {
       bytesInUse,
       keyBytes,
@@ -826,16 +639,3 @@ export class StorageQuotaService {
 }
 
 export const storageQuotaService = new StorageQuotaService();
-
-export const getStorageQuotaSnapshot = (): Promise<StorageQuotaSnapshot> =>
-  storageQuotaService.getSnapshot();
-export const saveStorageSoftCapMb = (value: StorageSoftCapMb): Promise<void> =>
-  storageQuotaService.saveSoftCapMb(value);
-export const getUnlimitedStoragePermissionStatus = (): Promise<UnlimitedStoragePermissionStatus> =>
-  storageQuotaService.getUnlimitedStoragePermissionStatus();
-export const requestUnlimitedStoragePermission =
-  (): Promise<UnlimitedStoragePermissionRequestResult> =>
-    storageQuotaService.requestUnlimitedStoragePermission();
-export const clearStorageCategory = (
-  category: ClearableStorageCategoryId,
-): Promise<StorageCleanupResult> => storageQuotaService.clearCategory(category);
