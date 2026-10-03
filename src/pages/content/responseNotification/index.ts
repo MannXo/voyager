@@ -76,7 +76,6 @@ let storageListener:
 
 const detector = new ResponseCompletionDetector();
 const foregroundToast = createForegroundCompletionToast({
-  promptSelector: PROMPT_SELECTORS,
   getScrollTarget: () => latestCompletedResponse ?? getLatestAssistantResponse(),
 });
 
