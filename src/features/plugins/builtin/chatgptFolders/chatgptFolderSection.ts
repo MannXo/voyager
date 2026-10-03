@@ -117,6 +117,9 @@ export class ChatGptFolderSection {
   private searchQuery = '';
   private searchHintSeen = false;
   private filter: TreeSiteOptions['filter'];
+  private pointerInside = false;
+  /** `data` holds open times the tree has not laid out yet. */
+  private layoutHeld = false;
 
   constructor({
     data,
@@ -133,6 +136,11 @@ export class ChatGptFolderSection {
     this.element.className = FOLDER_SECTION_CLASS;
     this.element.setAttribute('role', 'region');
     this.element.setAttribute('aria-label', t('floatingPanelTitle'));
+    this.element.addEventListener('pointerenter', () => (this.pointerInside = true));
+    this.element.addEventListener('pointerleave', () => {
+      this.pointerInside = false;
+      if (this.layoutHeld) this.update(this.data);
+    });
 
     const header = document.createElement('div');
     this.header = header;
@@ -264,7 +272,23 @@ export class ChatGptFolderSection {
 
   update(data: FolderData): void {
     this.data = data;
+    this.layoutHeld = false;
     this.tree.update(data);
+  }
+
+  /**
+   * New data in which only open times changed. While the pointer is over the
+   * section the rows stay put: opening a chat on a double-click's first click
+   * would otherwise move another chat under its second. The recent order
+   * catches up once the pointer leaves, as Gemini's does on its next render.
+   */
+  updateOpened(data: FolderData): void {
+    if (!this.pointerInside) {
+      this.update(data);
+      return;
+    }
+    this.data = data;
+    this.layoutHeld = true;
   }
 
   /** Marks the rows of the conversation the page has open (its stored id), or none. */
@@ -333,6 +357,7 @@ export class ChatGptFolderSection {
     this.prefs = { ...this.prefs, ...change };
     this.showPrefs();
     if (sortChanged) {
+      this.layoutHeld = false;
       this.tree.setSite(this.site());
       this.tree.update(this.data, this.prefs.sortMode);
     }

@@ -35,7 +35,7 @@ import {
 import { getTranslationSyncUnsafe as t, initI18n } from '@/utils/i18n';
 
 import { isTemporaryChat } from '../chatgptTemporaryHandoff/handoff';
-import { ChatGptFolderStore } from './ChatGptFolderStore';
+import { type ChatGptFolderChange, ChatGptFolderStore } from './ChatGptFolderStore';
 import { ChatGptFolderGuide } from './chatgptFolderGuide';
 import { type FolderPickerHandle, openFolderPicker } from './chatgptFolderPicker';
 import { ChatGptFolderSection, SECTION_ICON_SIZE } from './chatgptFolderSection';
@@ -93,7 +93,10 @@ class ChatGptFoldersView {
 
   start(): void {
     this.scope.effect(() => () => this.showFloatingEntry(false), 'chatgpt-folders:fab');
-    this.scope.effect(() => this.store.subscribe(() => this.refresh()), 'chatgpt-folders:sync');
+    this.scope.effect(
+      () => this.store.subscribe((change) => this.refresh(change)),
+      'chatgpt-folders:sync',
+    );
     this.scope.effect(() => () => this.unmountPanel(), 'chatgpt-folders:panel');
     this.scope.effect(() => {
       const rootBucketId = CHATGPT_FOLDER_CONFIG.rootBucketId;
@@ -161,11 +164,14 @@ class ChatGptFoldersView {
     );
   }
 
-  refresh(): void {
-    this.panel?.update(this.store.data);
-    this.panel?.setDataReady(this.store.ready);
-    this.section?.update(this.store.data);
-    this.section?.setDataReady(this.store.ready);
+  refresh(change: ChatGptFolderChange = 'data'): void {
+    const { data, ready } = this.store;
+    // The panel keeps the manual order, which an open does not change.
+    this.panel?.update(data);
+    this.panel?.setDataReady(ready);
+    if (change === 'opened') this.section?.updateOpened(data);
+    else this.section?.update(data);
+    this.section?.setDataReady(ready);
   }
 
   /**

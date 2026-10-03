@@ -26,13 +26,19 @@ export type AddOutcome = 'added' | 'present' | 'missing' | 'closed';
 export type MoveOutcome = 'moved' | 'unchanged' | 'missing' | 'closed';
 
 /**
+ * What a change to the folders was. `opened`: only the time a conversation was
+ * opened, which the recent order reads; nothing else in the data moved.
+ */
+export type ChatGptFolderChange = 'data' | 'opened';
+
+/**
  * ChatGPT folder commands over the shared FolderRepository, which owns load,
  * recovery, serialized saves and cross-tab reloads. The adapter writes only
  * `chrome.storage.local` (despite its name), never chatgpt.com's localStorage.
  */
 export class ChatGptFolderStore {
   private readonly repository: FolderRepository;
-  private readonly listeners = new Set<() => void>();
+  private readonly listeners = new Set<(change: ChatGptFolderChange) => void>();
   private readonly syncMessageListener = (
     message: unknown,
     _sender: chrome.runtime.MessageSender,
@@ -46,8 +52,12 @@ export class ChatGptFolderStore {
 
   constructor(storage: IFolderStorageAdapter = new AIStudioFolderStorageAdapter()) {
     this.repository = new FolderRepository(CHATGPT_FOLDER_CONFIG, storage, {
-      onChange: () => this.emit(),
-      onRecovery: () => this.emit(),
+      // Each edit here emits as it commits. Its save's echo would announce an
+      // open's stamp as a data change, which lays the tree out again.
+      onChange: (reason) => {
+        if (reason !== 'saved') this.emit('data');
+      },
+      onRecovery: () => this.emit('data'),
       onExternalChange: () => void this.repository.loadData(),
       onAccountReleased: () => {},
       isEnabled: () => true,
@@ -71,7 +81,7 @@ export class ChatGptFolderStore {
     this.listeners.clear();
     this.repository.destroy();
   }
-  subscribe(listener: () => void): () => void {
+  subscribe(listener: (change: ChatGptFolderChange) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
@@ -226,12 +236,12 @@ export class ChatGptFolderStore {
   }
 
   /**
-   * Commits `next`, a snapshot computed from `data` (a shared owner op's
-   * result). Returns whether it changed.
+   * Commits `next`, a snapshot computed from `data` (a shared owner op's result).
+   * `opened`: it only stamps when a conversation was opened. Returns whether it changed.
    */
-  apply(next: FolderData): boolean {
+  apply(next: FolderData, change: ChatGptFolderChange = 'data'): boolean {
     if (!this.ready || next === this.data) return false;
-    this.commit(() => (this.repository.data = next));
+    this.commit(() => (this.repository.data = next), change);
     return true;
   }
 
@@ -266,13 +276,13 @@ export class ChatGptFolderStore {
   private replaceIfChanged(next: FolderData): MoveOutcome {
     return this.apply(next) ? 'moved' : 'unchanged';
   }
-  private commit(mutate: () => void): void {
+  private commit(mutate: () => void, change: ChatGptFolderChange = 'data'): void {
     if (!this.ready) return;
     mutate();
     void this.repository.saveData();
-    this.emit();
+    this.emit(change);
   }
-  private emit(): void {
-    for (const listener of this.listeners) listener();
+  private emit(change: ChatGptFolderChange): void {
+    for (const listener of this.listeners) listener(change);
   }
 }

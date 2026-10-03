@@ -134,6 +134,22 @@ async function reactivate(): Promise<TreeDriver> {
   return activate();
 }
 
+/** ChatGPT's router: a sidebar link opens its chat in place. */
+function routeSidebarLinks(): void {
+  sidebar.sidebar.addEventListener('click', (event) => {
+    const link = (event.target as Element).closest<HTMLAnchorElement>('a[href^="/c/"]');
+    if (!link) return;
+    event.preventDefault();
+    const path = link.getAttribute('href')!;
+    history.pushState(null, '', path);
+    sidebar.setActive(path.slice('/c/'.length));
+  });
+}
+
+function pointer(type: 'pointerenter' | 'pointerleave'): void {
+  shadow().host.dispatchEvent(new PointerEvent(type));
+}
+
 function stored(): FolderData {
   return memory.values.local.get(KEY) as FolderData;
 }
@@ -319,6 +335,41 @@ describe('ChatGPT folder section: opening a filed chat', () => {
     const alpha = stored().folderContents.work.find((c) => c.title === 'Alpha')!;
     expect(alpha.lastOpenedAt).toBeGreaterThanOrEqual(before);
     expect(view.outline().slice(0, 4)).toEqual(['Work', '  · Alpha', '  · Gamma', '  · Beta plan']);
+  });
+
+  it('in recent order, renames the chat a double-click started on, not the one moved under it', async () => {
+    memory.values.local.set(PREFS_KEY, { collapsed: false, sortMode: 'recent' });
+    memory.values.local.set(KEY, {
+      ...structuredClone(DATA),
+      folders: DATA.folders.map((f) => ({ ...f, isExpanded: true })),
+    });
+    const view = await activate();
+    routeSidebarLinks();
+    const order = ['Work', '  · Gamma', '  · Beta plan', '  · Alpha'];
+    expect(view.outline().slice(0, 4)).toEqual(order);
+    const before = Date.now();
+
+    pointer('pointerenter');
+    // The first click opens Beta, which records the open.
+    view.openConversation('work', 'Beta plan');
+    await nextPass();
+    expect(location.pathname).toBe(`/c/${ROWS[1].id}`);
+    const beta = stored().folderContents.work.find((c) => c.title === 'Beta plan')!;
+    expect(beta.lastOpenedAt).toBeGreaterThanOrEqual(before);
+    // Beta is still under the pointer for the second click.
+    expect(view.outline().slice(0, 4)).toEqual(order);
+    view
+      .titleButton('work', 'Beta plan')
+      .dispatchEvent(
+        new MouseEvent('dblclick', { bubbles: true, cancelable: true, composed: true }),
+      );
+    for (let i = 0; i < 4; i += 1) await nextPass();
+
+    expect(sidebar.row(ROWS[1].id).contains(sidebar.nameField())).toBe(true);
+    expect(location.pathname).toBe(`/c/${ROWS[1].id}`);
+
+    pointer('pointerleave');
+    expect(view.outline().slice(0, 4)).toEqual(['Work', '  · Beta plan', '  · Gamma', '  · Alpha']);
   });
 
   it('writes nothing when the open chat is not filed', async () => {

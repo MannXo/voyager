@@ -19,7 +19,12 @@ import { applyFolderOp } from '@/features/folder/owner/applyFolderOp';
 import { type ConversationSeed, rejected } from '@/features/folder/owner/folderOps';
 import { FOLDER_SITE_POLICIES } from '@/features/folder/owner/folderOwnerPolicy';
 
-import type { AddOutcome, ChatGptFolderStore, MoveOutcome } from './ChatGptFolderStore';
+import type {
+  AddOutcome,
+  ChatGptFolderChange,
+  ChatGptFolderStore,
+  MoveOutcome,
+} from './ChatGptFolderStore';
 import { bareConversationId } from './chatgptIdentity';
 import { CHATGPT_FOLDER_CONFIG } from './config';
 import { importChatGptFolders } from './transfer';
@@ -65,12 +70,12 @@ export function createLegacyChatGptCommands(store: ChatGptFolderStore): FolderCo
   };
 
   /** Runs a shared owner op on the current data and commits what it computed. */
-  const applyOp = (body: OrdinaryOpBody): EditOutcome => {
+  const applyOp = (body: OrdinaryOpBody, change?: ChatGptFolderChange): EditOutcome => {
     if (!store.ready) return failed('read_only');
     const policy = FOLDER_SITE_POLICIES.chatgpt;
     const { data, outcome } = applyFolderOp(store.data, body, policy, Date.now());
     if (outcome.kind !== 'saved') return outcome;
-    store.apply(data);
+    store.apply(data, change);
     return legacyOutcome(true);
   };
 
@@ -149,7 +154,7 @@ export function createLegacyChatGptCommands(store: ChatGptFolderStore): FolderCo
     renameConversation: unsupported,
     restoreNativeTitle: (body) => applyOp(body),
     setConversationGem: unsupported,
-    markConversationOpened: (body) => applyOp(body),
+    markConversationOpened: (body) => applyOp(body, 'opened'),
     setConversationActivity: unsupported,
   };
 
