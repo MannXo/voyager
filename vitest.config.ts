@@ -5,7 +5,9 @@ import { getCatalogRevision } from './scripts/lib/catalogRevision';
 
 export default defineConfig({
   define: {
-    'import.meta.env.VOYAGER_CATALOG_REVISION': JSON.stringify(getCatalogRevision(__dirname)),
+    'import.meta.env.VOYAGER_CATALOG_REVISION': JSON.stringify(
+      getCatalogRevision(__dirname, 'unstamped'),
+    ),
   },
   test: {
     globals: true,

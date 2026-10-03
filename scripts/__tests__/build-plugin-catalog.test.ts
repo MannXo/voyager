@@ -17,10 +17,9 @@ import { resolveSiteAdapterForUrl } from '@/features/plugins/remote/siteOverride
 import { SiteRegistry } from '@/features/plugins/sites/registry';
 
 import { DEFAULT_CATALOG_DIR, parseArgs, writeHostCatalogs } from '../build-plugin-catalog';
-import { getCatalogRevision } from '../lib/catalogRevision';
 
 const GENERATED_AT = '2026-01-02T03:04:05.000Z';
-const SOURCE_REVISION = getCatalogRevision(resolve(__dirname, '../..'));
+const SOURCE_REVISION = 42;
 
 /** host -> adapter id the published `site` section must carry. */
 const EXPECTED_SITES: Readonly<Record<string, string>> = {
@@ -155,15 +154,14 @@ describe('build-plugin-catalog', () => {
   it('publishing the same commit cannot outrank its bundled selectors because of build timing', async () => {
     const outDir = makeTempDir();
     await build(outDir);
+    const registry = new SiteRegistry();
     for (const [host, siteId] of Object.entries(EXPECTED_SITES)) {
       const payload = readHostFile(outDir, host);
       const remote = validateHostCatalogFile(payload, host)?.site;
-      const bundled = requireBundledSiteAdapter(siteId);
+      const bundled = { ...requireBundledSiteAdapter(siteId), catalogRevision: SOURCE_REVISION };
+      registry.register(bundled);
       expect(remote?.catalogRevision).toBe(SOURCE_REVISION);
-      expect(bundled.catalogRevision).toBe(SOURCE_REVISION);
-      expect(
-        resolveSiteAdapterForUrl(`https://${host}/`, SiteRegistry.createDefault(), remote ?? null),
-      ).toBe(bundled);
+      expect(resolveSiteAdapterForUrl(`https://${host}/`, registry, remote ?? null)).toBe(bundled);
     }
     // Publication time is diagnostic: a later deploy of the same source still ties.
     await writeHostCatalogs({
@@ -176,13 +174,9 @@ describe('build-plugin-catalog', () => {
       readHostFile(outDir, 'chatgpt.com'),
       'chatgpt.com',
     )?.site;
-    expect(
-      resolveSiteAdapterForUrl(
-        'https://chatgpt.com/',
-        SiteRegistry.createDefault(),
-        remote ?? null,
-      ),
-    ).toBe(requireBundledSiteAdapter('chatgpt'));
+    expect(resolveSiteAdapterForUrl('https://chatgpt.com/', registry, remote ?? null)).toBe(
+      registry.resolveByUrl('https://chatgpt.com/'),
+    );
   });
 
   it('inlines every style file as css', async () => {

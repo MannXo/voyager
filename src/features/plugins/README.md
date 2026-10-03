@@ -448,12 +448,14 @@ can therefore reach users without a store release, while the engine that reads
 the data still ships in the package. The host file's optional `site` section is
 adapter data validated by the same `validateSiteAdapterData`. It replaces the bundled
 adapter only when its `catalogRevision` is strictly newer; ties and unstamped remote data
-prefer the bundle. `scripts/build-plugin-catalog.ts` and every browser build use the same
+prefer the bundle. `scripts/build-plugin-catalog.ts` and production browser builds use the same
 full-history first-parent Git source revision. Publishing the same commit ties its bundle,
 and rebuilding older source cannot make it newer. `generatedAt` remains a diagnostic
-publication timestamp. Build/test CI fetches full history; shallow checkouts fail clearly
-rather than stamping a truncated revision. This assumes the existing append-only main
-publication lineage; uncommitted local data carries HEAD’s revision. Cache reads do not rewrite or clear older entries, and plugin-list
+publication timestamp. Production browser builds and catalog publication require full history;
+shallow checkouts fail clearly rather than stamping a truncated revision. Dev builds and Vitest
+stamp the bundle as 0, so any stamped remote adapter wins. Docs deployments publish catalogs
+only from main; manual branch deployments still build the docs. Source ordering assumes the
+append-only main publication lineage; uncommitted production data carries HEAD’s revision. Cache reads do not rewrite or clear older entries, and plugin-list
 authority and kill-switch rules are unchanged. A newer `site.json` fix can still travel
 without an extension release.
 

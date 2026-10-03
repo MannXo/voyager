@@ -187,6 +187,16 @@ describe('catalog freshness preserves current site knowledge', () => {
     expect(host.getStatuses().find((status) => status.id === MISSING)?.kind).toBe('no-effect');
   });
 
+  it('an unstamped dev bundle still accepts a stamped remote selector fix', async () => {
+    storage(entry(site('.published-turn', 1)));
+    const registered = SiteRegistry.createDefault();
+    document.body.innerHTML = '<div class="bundled-turn"></div><div class="published-turn"></div>';
+    const host = startHost(registered, source());
+    await host.start();
+    expect(document.querySelector('.published-turn')?.classList.contains('gv-selected')).toBe(true);
+    expect(document.querySelector('.bundled-turn')?.classList.contains('gv-selected')).toBe(false);
+  });
+
   it('a stamp-only cache update activates the newly fresher selectors without reloading the page', async () => {
     const original = entry(site('.published-turn', 10));
     const boundary = storage(original);

@@ -310,7 +310,7 @@ async function main(): Promise<void> {
     catalogDir: DEFAULT_CATALOG_DIR,
     outDir: options.outDir,
     generatedAt: options.now,
-    catalogRevision: getCatalogRevision(repoRoot),
+    catalogRevision: getCatalogRevision(repoRoot, 'production'),
   });
 
   for (const result of results) {
