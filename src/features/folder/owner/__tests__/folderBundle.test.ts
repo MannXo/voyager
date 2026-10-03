@@ -11,7 +11,8 @@ import {
 } from '../bundleIntent';
 import { hashValue } from '../canonicalHash';
 import { INTERRUPTED, type StoredOutcome } from '../folderOps';
-import { type FolderOwnerMeta, ownerMetaKey } from '../folderOwnerState';
+import { type FolderOwnerMeta, OWNER_INDEX_KEY, ownerMetaKey } from '../folderOwnerState';
+import { createAllowanceLedger } from '../ownerAllowances';
 import { type Fault, createFaultyStorage } from './faultyStorage';
 import {
   ALL_OWNER,
@@ -157,6 +158,55 @@ describe('bundle writes (addendum P3P4 R3, R4)', () => {
       kind: 'saved',
     });
     expect(store.used()).toBeLessThanOrEqual(5 * MIB);
+  });
+
+  it('T26c: after a restart, 100 registered clients make a Safari bundle refuse instead of stall', async () => {
+    const storage = createFaultyStorage({ [KEY]: folderData([folder('F', 'A')]) });
+    const world = createWorld(storage);
+    await new TestClient(world, 'tab').open(world.process());
+    const meta = storedMeta(storage);
+    const crowd = Object.fromEntries(
+      Array.from({ length: 100 }, (_, n) => [`tab-${n}`, meta.clients.tab]),
+    );
+    /** Storage as a restarted background finds it: 2 MiB used, meta naming `clients`. */
+    const restarted = (clients: FolderOwnerMeta['clients']) => {
+      const store = createByteStore(
+        {
+          data: 'x'.repeat(2 * MIB),
+          [OWNER_INDEX_KEY]: [KEY],
+          [META]: { ...meta, clients },
+        },
+        { quota: 5 * MIB },
+      );
+      const ledger = createAllowanceLedger(store.area, ALL_OWNER);
+      const budget = createStorageBudget({
+        measure: async (keys) => ({
+          bytesInUse: await store.area.getBytesInUse(null),
+          keyBytes: await store.area.getBytesInUse(keys),
+          limitBytes: 5 * MIB,
+          quotaBytes: 5 * MIB,
+        }),
+        quota: async () => 5 * MIB,
+        barrier: async () => undefined,
+        reserved: () => ledger.reservedBytes(),
+      });
+      return { store, budget };
+    };
+    // Intent plus values: about 2 MiB, so 2 + 2 + M fits 5 MiB only with nothing reserved.
+    const values = { k1: 'v'.repeat(1 * MIB) };
+
+    const quiet = restarted({});
+    expect(await writeBundle(quiet.store.area, request(values), quiet.budget)).toEqual({
+      kind: 'saved',
+    });
+
+    const crowded = restarted(crowd);
+    expect(await writeBundle(crowded.store.area, request(values), crowded.budget)).toEqual({
+      kind: 'refused',
+      reason: 'quota',
+    });
+    expect(crowded.store.has(BUNDLE_INTENT_KEY)).toBe(false);
+    expect(crowded.store.has('k1')).toBe(false);
   });
 
   it('a stale bundle_pending settles as interrupted when its intent was overwritten (R4.3)', async () => {

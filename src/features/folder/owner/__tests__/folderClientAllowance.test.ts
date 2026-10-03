@@ -94,7 +94,7 @@ describe('FolderClient pending allowance (addendum P3P4 R3.2)', () => {
     expect(after(log, mark)[0]).toBe('set');
   });
 
-  it('T26c: dates the allowance from the send, so a reply held past the TTL grants nothing', async () => {
+  it('dates the allowance from the send, so an apply reply held past the TTL grants nothing', async () => {
     const { storage, client, log, advance, holdReplies } = allowanceWorld();
     await client.open();
     const release = holdReplies('gv.folderOwner.apply');
