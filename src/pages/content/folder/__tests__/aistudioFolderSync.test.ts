@@ -335,14 +335,19 @@ describe('AI Studio folder sync across contexts', () => {
     expect(bucketReads(GLOBAL_KEY)).toBe(readsAfterMount);
   });
 
-  it.each(['suspended', 'rebound while disabled'])(
+  it.each([
+    'suspended',
+    'rebound while disabled',
+    'waiting for its re-enable reload',
+    'waiting for its re-enable reload after a disabled rebind',
+  ])(
     'popup Merge preserves stored folders when an empty AI Studio manager is %s',
     async (lifecycle) => {
       local[GLOBAL_KEY] = { folders: [], folderContents: {} };
       const manager = await mount();
       sync.geminiFolderEnabled = false;
       emitStorageChange({ geminiFolderEnabled: false }, 'sync');
-      if (lifecycle === 'rebound while disabled') {
+      if (lifecycle.includes('rebound') || lifecycle.includes('rebind')) {
         await scopedKey('a');
         sync[StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED] = true;
         emitStorageChange({ [StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED]: true }, 'sync');
@@ -354,6 +359,23 @@ describe('AI Studio folder sync across contexts', () => {
       writeFromElsewhere({ [GLOBAL_KEY]: folderData('Local only') });
       await vi.advanceTimersByTimeAsync(0);
       expect(manager.data).toEqual({ folders: [], folderContents: {} });
+      const heldRead = Promise.withResolvers<void>();
+      const startedRead = Promise.withResolvers<void>();
+      const waitingForReload = lifecycle.startsWith('waiting');
+      if (waitingForReload) {
+        const read = mockBrowser.storage.local.get.getMockImplementation()!;
+        mockBrowser.storage.local.get.mockImplementation(async (keys: unknown) => {
+          if (keys === GLOBAL_KEY) {
+            startedRead.resolve();
+            await heldRead.promise;
+          }
+          return read(keys);
+        });
+        sync.geminiFolderEnabled = true;
+        emitStorageChange({ geminiFolderEnabled: true }, 'sync');
+        await vi.advanceTimersByTimeAsync(0);
+        await startedRead.promise;
+      }
 
       type Receiver = Parameters<typeof chrome.runtime.onMessage.addListener>[0];
       const responses: unknown[] = [];
@@ -394,13 +416,25 @@ describe('AI Studio folder sync across contexts', () => {
         ]);
         expect(responses).toEqual([{ ok: false }]);
       } finally {
+        heldRead.resolve();
         await act(async () => root.unmount());
       }
-      sync.geminiFolderEnabled = true;
-      emitStorageChange({ geminiFolderEnabled: true }, 'sync');
+      if (!waitingForReload) {
+        sync.geminiFolderEnabled = true;
+        emitStorageChange({ geminiFolderEnabled: true }, 'sync');
+      }
       await vi.advanceTimersByTimeAsync(0);
       expect(panelText()).toContain('Local only');
       expect(panelText()).toContain('Cloud');
+      tree.startRootFolder();
+      const input = nameInput()!;
+      expect(input).not.toBeNull();
+      input.value = 'After resume';
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await vi.advanceTimersByTimeAsync(0);
+      expect((local[GLOBAL_KEY] as FolderData).folders.map((folder) => folder.name)).toContain(
+        'After resume',
+      );
     },
   );
 

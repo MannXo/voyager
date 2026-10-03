@@ -195,6 +195,12 @@ export class FolderRepository {
    * in-flight scope work goes stale, and a later `refreshAccountScope` resumes.
    */
   suspend(): void {
+    this.flushPendingSaveData();
+    // Cached memory is not an authoritative snapshot until the resumed session loads again.
+    if (this.dataSession) {
+      this.dataSession.ready = false;
+      this.dataSession.reconcilePending = true;
+    }
     this.clearAccountScopeRetry();
     this.clearReadRetry();
     this.dataSession?.deactivate();
@@ -247,14 +253,19 @@ export class FolderRepository {
     if (!session) return;
     // A returning account may still own a queued edit that is newer than disk.
     // External writes meanwhile are not lost: their events defer a reconcile.
-    if ((session.saveInProgress || session.replacingData) && session.ready) return;
+    if (session.saveInProgress || session.replacingData) {
+      // Accepted writes must drain before a resumed read; their settlement triggers the reload.
+      if (!session.ready) session.reconcilePending = true;
+      return;
+    }
     const version = ++session.loadVersion;
     const isCurrent = () =>
       this.dataSession === session && session.loadVersion === version && !this.destroyed;
     session.loadsInFlight += 1;
     const externalWrites = session.externalWrites;
     const writesBefore = session.writeGen;
-    let applied = false; // memory now holds what storage holds
+    let applied = false; // a valid read or recovery applied
+    let retainedFailedEdits = false;
     let recovering = false; // recovery's own write supersedes this read; it is not discarded
     try {
       let loadedData: FolderData | null;
@@ -283,10 +294,17 @@ export class FolderRepository {
         // Validate and repair data integrity
         const fresh = this.config.normalize(loadedData);
         const base = session.baseline;
+        // A resumed read of unchanged storage must not roll back failed local edits.
+        retainedFailedEdits =
+          !session.ready &&
+          session.failedEditGen !== null &&
+          base !== null &&
+          serializeStoredValue(cloneFolderData(fresh)) === serializeStoredValue(base) &&
+          validateFolderData(this.data);
         session.baseline = cloneFolderData(fresh);
         // Edits still waiting on the debounce were made after `base`; keep them.
         if (this.saveDebounceTimer !== null && base) mergeDebouncedEdits(fresh, this.data, base);
-        this.data = fresh;
+        this.data = retainedFailedEdits ? this.config.normalize(this.data) : fresh;
 
         // Clean up orphaned folderContents (folders that no longer exist)
         if (this.config.pruneOrphanBuckets) {
@@ -345,7 +363,7 @@ export class FolderRepository {
       if (applied && session.externalWrites === externalWrites) session.reconcilePending = false;
       // Authoritative data replaced a failed edit made before this read; merged debounced
       // edits are pending, not failed, and a write that failed during recovery is newer.
-      if (applied) session.settleFailedEdit(writesBefore);
+      if (applied && !retainedFailedEdits) session.settleFailedEdit(writesBefore);
       if (isCurrent() && session.ready) {
         this.hooks.onChange('loaded');
       }
@@ -409,8 +427,9 @@ export class FolderRepository {
 
     // Memory holding an edit whose save failed is newer than every backup (the
     // primary predates it); repair storage from it instead of rolling it back.
-    if (session.ready && session.failedEditGen !== null && validateFolderData(this.data)) {
+    if (session.failedEditGen !== null && validateFolderData(this.data)) {
       this.data = this.config.normalize(this.data);
+      session.markReady();
       this.hooks.onRecovery('kept');
       return this.saveData();
     }
@@ -511,11 +530,12 @@ export class FolderRepository {
 
   /**
    * After a local write settles. A failed write proves nothing about storage, so
-   * it reconciles only for an external write observed since the last attempt:
-   * rereading unchanged corrupt storage would only run recovery again.
+   * an unready resumed session still needs its first read. Ready sessions reload only for
+   * an external write since the last attempt, avoiding repeated recovery of unchanged storage.
    */
   private reconcileAfterWrite(session: FolderDataSession, saved: boolean): void {
-    if (saved || session.externalWrites !== session.reconcileAttemptedAt) this.tryReconcile();
+    if (!session.ready || saved || session.externalWrites !== session.reconcileAttemptedAt)
+      this.tryReconcile();
   }
 
   flushPendingSaveData(): void {
@@ -574,7 +594,6 @@ export class FolderRepository {
     try {
       this.data = this.config.normalize(this.data);
       const snapshot = cloneFolderData(session.data);
-      session.baseline = snapshot;
       // A mutation supersedes any storage read already in flight for this session.
       session.loadVersion += 1;
       session.markReady();
@@ -636,10 +655,11 @@ export class FolderRepository {
         Object.keys(snapshot.folderContents).length === 0
       ) {
         // Check if we're about to overwrite non-empty data
-        // Diagnostic only: an unreadable bucket must not fail the save.
+        // Diagnostic only: unreadable or malformed buckets must not block a recovery save.
         const existingData = await this.storage.loadData(session.storageKey).catch(() => null);
         if (
           existingData &&
+          validateFolderData(existingData) &&
           (existingData.folders.length > 0 || Object.keys(existingData.folderContents).length > 0)
         ) {
           console.warn(
@@ -667,6 +687,7 @@ export class FolderRepository {
       }
 
       if (success) {
+        session.baseline = cloneFolderData(snapshot);
         // Create primary backup AFTER successful save, without holding the save chain.
         void session.backup.createPrimaryBackup(snapshot);
         this.debug('Data saved successfully');
@@ -781,6 +802,8 @@ export class FolderRepository {
       this.resolvedAccountScope = resolvedScope;
       this.activeStorageKey = storageKey;
       this.hooks.onAccountBound?.(context);
+      // A disabled rebind may have loaded before another context wrote this cached session.
+      if (session.reconcilePending) session.ready = false;
       session.activate();
       this.accountScopeRetryAttempt = 0;
       if (session.ready) {
