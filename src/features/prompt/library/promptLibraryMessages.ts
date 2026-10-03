@@ -191,7 +191,7 @@ function isResult(value: unknown): value is PromptLibraryResult {
   );
 }
 
-/** Writer side: send an op to the background owner and read its result. */
+/** A lost reply may follow a committed write; check storage before retrying an op. */
 export function createPromptLibraryClient(
   send: (request: PromptLibraryApplyRequest) => Promise<unknown>,
 ): { apply: (op: PromptLibraryOp) => Promise<PromptLibraryResult> } {
