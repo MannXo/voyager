@@ -1,36 +1,58 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { ConversationMenuExportOptions } from '../conversationMenuExportObserver';
+import { StorageKeys } from '@/core/types/common';
 
-const mocks = vi.hoisted(() => ({
-  watchConversationMenusForExport: vi.fn<(options: ConversationMenuExportOptions) => () => void>(
-    () => () => {},
-  ),
-}));
+import { startExportButton } from '../index';
 
-vi.mock('../conversationMenuExportObserver', () => ({
-  watchConversationMenusForExport: mocks.watchConversationMenusForExport,
-}));
-vi.mock('../exportLocale', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../exportLocale')>()),
-  readExportLanguage: async () => 'zh',
-}));
-vi.mock('../responseCopyImageAction', () => ({
-  startResponseCopyImageActions: () => ({ relabel: () => {} }),
-}));
-// Keep the Gemini path parked before the logo/toolbar entry points.
-vi.mock('../exportLogoAnchor', () => ({
-  resolveExportLogoAnchor: () => new Promise<never>(() => {}),
-}));
+function openConversationMenu(): HTMLElement {
+  const trigger = document.createElement('button');
+  trigger.setAttribute('data-test-id', 'actions-menu-button');
+  trigger.setAttribute('aria-haspopup', 'menu');
+  trigger.setAttribute('aria-expanded', 'true');
+  trigger.setAttribute('aria-controls', 'conversation-menu');
 
-const { startExportButton } = await import('../index');
+  const pin = document.createElement('button');
+  pin.className = 'mat-mdc-menu-item';
+  pin.setAttribute('role', 'menuitem');
+  pin.setAttribute('data-test-id', 'pin-button');
+  pin.textContent = '固定';
+  const content = document.createElement('div');
+  content.className = 'mat-mdc-menu-content';
+  content.appendChild(pin);
+  const panel = document.createElement('div');
+  panel.id = 'conversation-menu';
+  panel.className = 'mat-mdc-menu-panel';
+  panel.setAttribute('role', 'menu');
+  panel.appendChild(content);
+
+  document.body.append(trigger, panel);
+  return panel;
+}
+
+afterEach(() => {
+  window.dispatchEvent(new Event('beforeunload'));
+  document.body.innerHTML = '';
+  vi.mocked(chrome.storage.sync.get).mockReset();
+});
 
 describe('startExportButton on Gemini', () => {
-  it('labels the conversation menu export item with the localized exportChatJson text', async () => {
-    void startExportButton();
+  it('labels the conversation menu export item in the saved interface language', async () => {
+    vi.mocked(chrome.storage.sync.get).mockImplementation(((
+      _keys: unknown,
+      callback?: (items: Record<string, unknown>) => void,
+    ) => {
+      const items = { [StorageKeys.LANGUAGE]: 'zh' };
+      callback?.(items);
+      return Promise.resolve(items);
+    }) as unknown as typeof chrome.storage.sync.get);
 
-    await vi.waitFor(() => expect(mocks.watchConversationMenusForExport).toHaveBeenCalled());
-    const [options] = mocks.watchConversationMenusForExport.mock.calls[0];
-    expect(options.label()).toBe('导出对话记录');
+    void startExportButton();
+    const menu = openConversationMenu();
+
+    await vi.waitFor(() =>
+      expect(menu.querySelector('.gv-export-conversation-menu-btn')?.textContent).toContain(
+        '导出对话记录',
+      ),
+    );
   });
 });
