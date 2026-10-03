@@ -46,7 +46,7 @@ function mountTurn(lines: string[]): HTMLElement {
 }
 
 function start(prompts = [fable]): SentPromptChipsController {
-  controller = startSentPromptChips({ prompts });
+  controller = startSentPromptChips({ prompts, scheme: () => 'light' });
   return controller;
 }
 

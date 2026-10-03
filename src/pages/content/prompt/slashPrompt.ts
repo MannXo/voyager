@@ -18,6 +18,7 @@ import { getTranslationSync } from '@/utils/i18n';
 import { CHAT_INPUT_SELECTOR, findChatInput } from '../chatInput/index';
 import { findClosestSendActionButton, isSendKeyboardEvent } from '../sendBehavior/sendButton';
 import { type TemplateFillHandle, openTemplateFill } from './PromptTemplateFill';
+import { detectPageScheme } from './pageScheme';
 import {
   type PromptQuery,
   TOKEN_CLASS,
@@ -32,7 +33,6 @@ import { syncMarkerTypography } from './slashMarkers';
 import { ghostSuffix, isPromptItem, matchSlashPrompts } from './slashMatch';
 import { createPromptPlacements, syncEditedPromptText } from './slashPlacements';
 import { SLASH_PREVIEW_ID, createSlashPreview } from './slashPreview';
-import { detectTheme } from './slashTheme';
 
 const ROOT_ID = 'gv-pm-slash-root';
 const LIST_ID = 'gv-pm-slash-list';
@@ -81,7 +81,7 @@ function showGhost(query: PromptQuery, name: string): void {
   }
   const ghost = ghostElement();
   ghost.textContent = suffix;
-  ghost.dataset.gvTheme = detectTheme();
+  ghost.dataset.gvTheme = detectPageScheme();
   syncMarkerTypography(ghost, query.input, null);
   ghost.style.left = `${Math.round(rect.right)}px`;
   ghost.style.top = `${Math.round(rect.top)}px`;
@@ -171,7 +171,7 @@ export function startPromptSlashCommand(options: SlashPromptOptions = {}): Slash
   }
 
   function position(): void {
-    const theme = detectTheme();
+    const theme = detectPageScheme();
     root.dataset.gvTheme = theme;
     if (activeInput && activeQuery && !root.hidden) {
       const rect = activeInput.getBoundingClientRect();
@@ -212,7 +212,7 @@ export function startPromptSlashCommand(options: SlashPromptOptions = {}): Slash
       // Anchored to the composer, not to the result list: the list has just
       // been closed and a hidden element has no rect to position against.
       anchor: query.input,
-      theme: detectTheme(),
+      theme: detectPageScheme(),
       labels: {
         insert: getTranslationSync('pm_fill_insert'),
         keepRaw: getTranslationSync('pm_fill_keep_raw'),

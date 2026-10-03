@@ -9,26 +9,28 @@ import browser from 'webextension-polyfill';
 
 import { createMoonIcon, createSunIcon } from '@/core/icons/promptManagerIcons';
 import { StorageKeys } from '@/core/types/common';
+import type { PromptScheme } from '@/features/prompt/PromptSiteAdapter';
 import type { TranslationKey } from '@/utils/translations';
 
 import { writeSyncedChoice } from './promptPrefs';
-
-type PMTheme = 'light' | 'dark';
 
 /** Returns the toggle button; it applies the theme to `panel` from the start. */
 export function createThemeToggle({
   panel,
   t,
+  pageScheme,
 }: {
   panel: HTMLElement;
   t: (key: TranslationKey) => string;
+  /** The host page's scheme, used until the saved choice is read, and when there is none. */
+  pageScheme: PromptScheme;
 }): HTMLButtonElement {
   const themeToggle = document.createElement('button');
   themeToggle.className = 'gv-pm-theme-toggle';
   themeToggle.setAttribute('type', 'button');
-  let currentTheme: PMTheme = detectPageTheme();
+  let currentTheme = pageScheme;
 
-  function applyTheme(theme: PMTheme) {
+  function applyTheme(theme: PromptScheme) {
     currentTheme = theme;
     panel.setAttribute('data-gv-theme', theme);
     themeToggle.classList.toggle('gv-pm-theme-dark', theme === 'dark');
@@ -53,7 +55,7 @@ export function createThemeToggle({
   })();
 
   themeToggle.addEventListener('click', async () => {
-    const newTheme: PMTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    const newTheme: PromptScheme = currentTheme === 'dark' ? 'light' : 'dark';
     // Enable smooth color transition on all panel children
     panel.classList.add('gv-pm-transitioning');
     applyTheme(newTheme);
@@ -62,24 +64,4 @@ export function createThemeToggle({
   });
 
   return themeToggle;
-}
-
-function detectPageTheme(): PMTheme {
-  if (
-    document.querySelector('.theme-host.dark-theme') ||
-    document.body.classList.contains('dark-theme') ||
-    document.documentElement.classList.contains('dark') ||
-    document.body.getAttribute('data-theme') === 'dark'
-  ) {
-    return 'dark';
-  }
-  if (
-    document.querySelector('.theme-host.light-theme') ||
-    document.body.classList.contains('light-theme') ||
-    document.documentElement.classList.contains('light') ||
-    document.body.getAttribute('data-theme') === 'light'
-  ) {
-    return 'light';
-  }
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }

@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
 import type { PromptItem } from '@/core/types/sync';
+import { SiteRegistry } from '@/features/plugins/sites/registry';
 
+import { ensureScheme, stopScheme } from '../../platformTheme/scheme';
 import { startPromptManager } from '../index';
 import { resolvePromptSiteAdapter } from '../resolvePromptSiteAdapter';
 
@@ -298,6 +300,24 @@ describe('prompt manager starting theme', () => {
     const panel = await openManager([prompt('a', 'Alpha')]);
 
     await vi.waitFor(() => expect(panel.getAttribute('data-gv-theme')).toBe('dark'));
+  });
+
+  it("starts in DeepSeek's dark theme even when the OS is light", async () => {
+    stubOsDark(false);
+    const url = 'https://chat.deepseek.com/';
+    vi.stubGlobal('location', new URL(url));
+    document.body.classList.add('dark');
+    ensureScheme(SiteRegistry.createDefault().resolveByUrl(url)?.theme ?? null);
+
+    try {
+      const panel = await openManager([prompt('a', 'Alpha')]);
+
+      expect(panel.getAttribute('data-gv-theme')).toBe('dark');
+    } finally {
+      stopScheme();
+      document.body.classList.remove('dark');
+      document.documentElement.removeAttribute('data-gv-scheme');
+    }
   });
 });
 

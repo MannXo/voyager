@@ -261,7 +261,7 @@ export async function startPromptManager(
     // Version badge always opens changelog modal
     const versionBadge = createVersionBadge({ t: i18n.t, trigger, beforeOpen: closePanel });
 
-    const themeToggle = createThemeToggle({ panel, t: i18n.t });
+    const themeToggle = createThemeToggle({ panel, t: i18n.t, pageScheme: site.scheme() });
 
     titleRow.appendChild(title);
     titleRow.appendChild(themeToggle);

@@ -7,9 +7,13 @@
  * custom-website list covers the host) is the content entry's decision, not a
  * fact about the site.
  */
+export type PromptScheme = 'light' | 'dark';
+
 export interface PromptSiteAdapter {
   /** Slash completion and sent-prompt chips run here. */
   readonly slash: boolean;
   /** Puts `text` into the site's composer; false when there is none, and the caller copies instead. */
   insert(text: string): boolean;
+  /** The page's light/dark right now; prompt surfaces start in it. */
+  scheme(): PromptScheme;
 }

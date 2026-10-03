@@ -15,6 +15,7 @@
 import { createPackageIcon } from '@/core/icons/promptManagerIcons';
 
 import { CHAT_INPUT_SELECTOR, insertTextIntoChatInput } from '../chatInput/index';
+import { detectPageScheme } from './pageScheme';
 import {
   type PromptQuery,
   TOKEN_CLASS,
@@ -38,7 +39,7 @@ import {
   createMarkerLayer,
   stripAllMarkers,
 } from './slashMarkers';
-import { applyPromptTokenColor, detectTheme } from './slashTheme';
+import { applyPromptTokenColor } from './slashTheme';
 
 type BindPreview = (target: HTMLElement, text: string) => void;
 
@@ -275,7 +276,7 @@ function createPromptToken(prompt: TokenPrompt, bindPreview: BindPreview): HTMLS
   token.dataset.gvPromptName = prompt.name!.trim();
   token.dataset.gvPromptText = prompt.text;
   if (prompt.gvSourceText) token.dataset.gvPromptSource = prompt.gvSourceText;
-  token.dataset.gvTheme = detectTheme();
+  token.dataset.gvTheme = detectPageScheme();
   token.setAttribute('role', 'button');
   token.setAttribute('aria-label', prompt.name!.trim());
   // The icon carries no text, so everything that reads this token by its text -

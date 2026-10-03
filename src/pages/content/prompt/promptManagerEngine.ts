@@ -166,7 +166,10 @@ export function createPromptManagerEngine(
       // Chips restore what a sent slash token looked like. They follow the
       // site, never the slash setting: turning slash off must not re-expand
       // turns that were already sent.
-      chips = startSentPromptChips({ prompts: await readPromptIdentities() });
+      chips = startSentPromptChips({
+        prompts: await readPromptIdentities(),
+        scheme: () => adapter.scheme(),
+      });
       cleanup.registerCleanupFunction(chips.destroy, CleanupPositions.DestroySentPromptChips);
     },
 

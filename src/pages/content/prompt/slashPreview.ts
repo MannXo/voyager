@@ -9,7 +9,7 @@
 import { parsePromptTemplate } from '@/features/prompt/model/promptTemplate';
 import { matchSentPrompt } from '@/features/prompt/model/promptTextMatch';
 
-import { detectTheme } from './slashTheme';
+import { detectPageScheme } from './pageScheme';
 
 export const SLASH_PREVIEW_ID = 'gv-pm-slash-tooltip';
 const TOOLTIP_VALUE_CLASS = 'gv-pm-slash-tooltip-value';
@@ -70,7 +70,7 @@ export function createSlashPreview({
     const tooltip = ensureCard();
     tooltip.scrollTop = 0;
     paintTooltipBody(tooltip, text, target, onValuesEdited);
-    tooltip.dataset.gvTheme = detectTheme();
+    tooltip.dataset.gvTheme = detectPageScheme();
     tooltip.style.left = '0px';
     tooltip.style.top = '0px';
     tooltip.classList.add('gv-pm-slash-tooltip-visible');
