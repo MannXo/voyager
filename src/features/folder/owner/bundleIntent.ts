@@ -15,7 +15,6 @@ import type { StorageBudget } from '@/features/storage/storageBudget';
 import { storedItemBytes, storedItemsBytes } from '@/features/storage/storageBudget';
 
 import type { FolderAuthority } from './authority';
-import { createBundleSpaceRelease } from './bundleRelease';
 import { hashValue } from './canonicalHash';
 import { INTERRUPTED, type OpOutcome, type StoredOutcome } from './folderOps';
 import { type FolderSite, siteOfFolderKey } from './folderOwnerPolicy';
@@ -368,9 +367,9 @@ async function afterValueFailure(
 /**
  * Settles an open bundle before a participant reads its keys. Unsupported
  * authority or version is abandoned with a status-only write (R5.2): a legacy
- * site's K and meta stay frozen. A quota failure releases space (R3.6) and
- * tries again. `readKeys` disjoint from a still-open bundle's keys get `ok`;
- * `onBlocked` is told whenever the bundle stays open.
+ * site's K and meta stay frozen. A quota failure releases space through
+ * `releaseFor` (R3.6) and tries again. `readKeys` disjoint from a still-open
+ * bundle's keys get `ok`; `onBlocked` is told whenever the bundle stays open.
  */
 export async function resolveBundleIntent(
   area: FolderOwnerStorageArea,
@@ -380,6 +379,8 @@ export async function resolveBundleIntent(
     readKeys?: readonly string[];
     /** Awaited once an intent is found open, before resolution writes anything (§3.3). */
     fence?: () => Promise<void>;
+    /** The space release for a bundle stuck on quota (R3.6); without it, quota just blocks. */
+    releaseFor?: (txId: string, participants: string[]) => () => Promise<boolean>;
     onBlocked?: () => void;
   } = {},
 ): Promise<'ok' | 'read_failed' | 'write_failed'> {
@@ -411,7 +412,7 @@ export async function resolveBundleIntent(
     }
     return 'ok';
   }
-  const release = createBundleSpaceRelease(area, authority, Object.keys(intent.keys));
+  const release = options.releaseFor?.(intent.txId, Object.keys(intent.keys));
   for (;;) {
     let current: Record<string, unknown>;
     try {
@@ -425,7 +426,7 @@ export async function resolveBundleIntent(
     } catch (error) {
       if (!isQuotaError(error)) return blocked('write_failed');
       try {
-        if (!(await release())) return blocked('write_failed');
+        if (!release || !(await release())) return blocked('write_failed');
       } catch {
         return blocked('write_failed');
       }

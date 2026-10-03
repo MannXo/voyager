@@ -68,12 +68,12 @@ export function createBundleSpaceRelease(
           if (all[physical] !== undefined) keys.push(physical);
         }
       }
-      stage += 1;
       const removable = [...new Set(keys)].filter((key) => !participants.includes(key));
-      if (removable.length === 0) continue;
       // Do not rewrite meta pointers: changing a participating meta breaks the bundle's hashes.
-      await area.remove(removable);
-      return true;
+      if (removable.length > 0) await area.remove(removable);
+      // Only a stage that completed is passed: a failed removal is tried again by the next call.
+      stage += 1;
+      if (removable.length > 0) return true;
     }
     return false;
   };

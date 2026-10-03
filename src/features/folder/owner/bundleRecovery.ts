@@ -4,6 +4,7 @@ import type { Serialize } from '@/features/storage/writeQueue';
 
 import type { FolderAuthority } from './authority';
 import { BUNDLE_INTENT_KEY, isOpenStatus, resolveBundleIntent } from './bundleIntent';
+import { createBundleSpaceRelease } from './bundleRelease';
 import type { FolderSite } from './folderOwnerPolicy';
 import type { FolderOwnerStorageArea } from './folderOwnerState';
 import { hasOwnerSite } from './ownerStartup';
@@ -38,6 +39,18 @@ export function createBundleRecovery(options: BundleRecoveryOptions) {
   let retryAgain = false;
   let cancelTimer: (() => void) | null = null;
   let unsubscribe: (() => void) | null = null;
+  // One release per stuck bundle: the turns that wait on it would otherwise rescan storage each time.
+  let release: { txId: string; run: () => Promise<boolean> } | null = null;
+
+  function releaseFor(txId: string, participants: string[]) {
+    if (release?.txId !== txId) {
+      release = {
+        txId,
+        run: createBundleSpaceRelease(options.area, options.authority, participants),
+      };
+    }
+    return release.run;
+  }
 
   function clearTimer() {
     cancelTimer?.();
@@ -57,6 +70,7 @@ export function createBundleRecovery(options: BundleRecoveryOptions) {
     const result = await resolveBundleIntent(options.area, options.authority, Date.now, {
       readKeys,
       fence: options.fence,
+      releaseFor,
       onBlocked: () => (open = true),
     });
     blocked = open || result !== 'ok';

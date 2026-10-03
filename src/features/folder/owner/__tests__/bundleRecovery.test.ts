@@ -142,7 +142,7 @@ describe('open-bundle space release (R3.6)', () => {
     expect(await release()).toBe(false);
   });
 
-  it('does no deletion on read failure, and a fresh attempt retries partially failed removal', async () => {
+  it('does no deletion on read failure, and the next call retries a partially failed removal', async () => {
     const { storage, removals, release } = releaseWorld();
     storage.failWhen((op) => op === 'get');
     await expect(release()).rejects.toThrow();
@@ -151,8 +151,7 @@ describe('open-bundle space release (R3.6)', () => {
     await expect(release()).rejects.toThrow();
     expect(storage.read(ownerBackupKey(KEY, 'b'))).toEqual({ value: 'last' });
     storage.failWhen(null);
-    const retried = createBundleSpaceRelease(storage.area, GEMINI_OWNER, []);
-    expect(await retried()).toBe(true);
+    expect(await release()).toBe(true);
     expect(storage.read(pendingOpKey('c', 2))).toBeUndefined();
     expect(storage.read(pendingOpKey('c', 3))).toEqual(pending(3));
   });
@@ -321,6 +320,22 @@ describe('bundle recovery scheduling (R3.6)', () => {
     expect(calls).toBeLessThan(40);
     expect(w.timers.filter((timer) => !timer.cancelled)).toHaveLength(1);
     expect(w.timers.find((timer) => !timer.cancelled)?.ms).toBe(BUNDLE_RETRY_MS);
+    w.recovery.stop();
+  });
+
+  it('releases space once for a stuck bundle, not again for each turn that waits on it', async () => {
+    const w = await recoveryWorld();
+    w.recovery.start();
+    await w.idle();
+    expect(w.store.read(BUNDLE_INTENT_KEY)).toMatchObject({ status: 'open' });
+    const gets = vi.spyOn(w.store.area, 'get');
+
+    for (let turn = 0; turn < 3; turn += 1) {
+      await w.queue(async () => undefined, ['other']);
+      await expect(w.queue(async () => undefined, [KEY])).rejects.toThrow('write_failed');
+    }
+
+    expect(gets.mock.calls.filter(([keys]) => keys === null)).toEqual([]);
     w.recovery.stop();
   });
 
