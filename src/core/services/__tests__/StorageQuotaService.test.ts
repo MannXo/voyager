@@ -302,23 +302,112 @@ describe('StorageQuotaService', () => {
     expect(chromium.contains).not.toHaveBeenCalled();
   });
 
-  it('requests unlimitedStorage before the first asynchronous permission status check', async () => {
-    const local = createArea({});
-    const sync = createArea({});
-    const permissions = createChromeMock(local, sync, { requestResult: true });
+  it('requests unlimitedStorage while the user gesture is still active', async () => {
+    let userGestureActive = true;
+    let granted = false;
     const service = new StorageQuotaService({
-      chromeApi: permissions.chromeApi,
+      chromeApi: {
+        runtime: { getManifest: () => ({ optional_permissions: ['unlimitedStorage'] }) },
+        permissions: {
+          contains: async () => granted,
+          request: async () => {
+            if (!userGestureActive) throw new Error('User gesture required');
+            granted = true;
+            return true;
+          },
+        },
+      },
       buildTarget: () => 'chrome',
     });
 
-    const result = await service.requestUnlimitedStoragePermission();
+    const pending = service.requestUnlimitedStoragePermission();
+    userGestureActive = false;
 
-    expect(permissions.request).toHaveBeenCalledTimes(1);
-    expect(result).toMatchObject({ requested: true, granted: true, reason: 'granted' });
-    expect(permissions.contains).toHaveBeenCalledTimes(1);
-    expect(permissions.request.mock.invocationCallOrder[0]).toBeLessThan(
-      permissions.contains.mock.invocationCallOrder[0],
-    );
+    await expect(pending).resolves.toMatchObject({
+      requested: true,
+      granted: true,
+      reason: 'granted',
+      status: { granted: true, requestable: false },
+    });
+  });
+
+  it.each(['callback', 'callback-and-promise'])(
+    'reads permissions and persists soft caps with %s browser APIs',
+    async (mode) => {
+      const data: Record<string, unknown> = { [STORAGE_QUOTA_SOFT_CAP_KEY]: 25 };
+      let granted = false;
+      const finish = (args: unknown[], value: unknown) => {
+        const callback = args.at(-1) as (value: unknown) => void;
+        callback(value);
+        return mode === 'callback-and-promise' ? Promise.resolve(value) : undefined;
+      };
+      const service = new StorageQuotaService({
+        chromeApi: {
+          runtime: { getManifest: () => ({ optional_permissions: ['unlimitedStorage'] }) },
+          storage: {
+            local: {
+              get: (...args) => finish(args, { ...data }),
+              set: (...args) => {
+                Object.assign(data, args[0]);
+                return finish(args, undefined);
+              },
+              getBytesInUse: (...args) => finish(args, 7),
+            },
+          },
+          permissions: {
+            contains: (...args) => finish(args, granted),
+            request: (...args) => {
+              granted = true;
+              return finish(args, true);
+            },
+          },
+        },
+        buildTarget: () => 'chrome',
+      });
+
+      await service.saveSoftCapMb(50);
+      await expect(service.requestUnlimitedStoragePermission()).resolves.toMatchObject({
+        requested: true,
+        granted: true,
+        status: { granted: true },
+      });
+      const snapshot = await service.getSnapshot();
+      expect(data).toEqual({ [STORAGE_QUOTA_SOFT_CAP_KEY]: 50 });
+      expect(snapshot).toMatchObject({
+        softCapMb: 50,
+        local: { bytesInUse: 7, estimated: false, quotaBytes: null },
+      });
+    },
+  );
+
+  it('reports callback permission errors without treating the grant as successful', async () => {
+    const runtime = {
+      lastError: null as { message: string } | null,
+      getManifest: () => ({ optional_permissions: ['unlimitedStorage'] }),
+    };
+    const service = new StorageQuotaService({
+      chromeApi: {
+        runtime,
+        permissions: {
+          contains: async () => false,
+          request: (...args) => {
+            runtime.lastError = { message: 'Permission prompt unavailable' };
+            const callback = args.at(-1) as (granted: boolean) => void;
+            callback(false);
+            runtime.lastError = null;
+          },
+        },
+      },
+      buildTarget: () => 'chrome',
+    });
+
+    await expect(service.requestUnlimitedStoragePermission()).resolves.toMatchObject({
+      requested: true,
+      granted: false,
+      reason: 'error',
+      error: 'Permission prompt unavailable',
+      status: { granted: false, requestable: true },
+    });
   });
 
   it.each([

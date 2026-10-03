@@ -10,6 +10,7 @@
  * The runner owns the active operation: starting a run aborts the previous one
  * and dismisses its selection UI, and `cancel` does the same without starting.
  */
+import { logger } from '@/core/services/LoggerService';
 import type { AppLanguage } from '@/utils/language';
 
 import type {
@@ -128,18 +129,6 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
     activeExportSelectionCleanup = null;
   }
 
-  function getUserSelectors(): string[] {
-    return exportAdapter.getUserSelectors();
-  }
-
-  function getAssistantSelectors(): string[] {
-    return exportAdapter.getAssistantSelectors();
-  }
-
-  function getConversationTitleForExport(): string {
-    return exportAdapter.extractConversationTitle();
-  }
-
   /**
    * Scroll the conversation to the very top so virtual-scroll containers
    * render their topmost nodes, then wait for the DOM to settle.
@@ -156,9 +145,7 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
       const done = () => {
         if (settled) return;
         settled = true;
-        try {
-          obs?.disconnect();
-        } catch {}
+        obs.disconnect();
         if (idleTimer != null) clearTimeout(idleTimer);
         resolve();
       };
@@ -166,12 +153,7 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
         if (idleTimer != null) clearTimeout(idleTimer);
         idleTimer = setTimeout(done, 400);
       });
-      try {
-        obs.observe(document.body, { childList: true, subtree: true });
-      } catch {
-        done();
-        return;
-      }
+      obs.observe(document.body, { childList: true, subtree: true });
       // Also set a hard cap so we don't hang forever.
       setTimeout(done, 3000);
       // Kick the idle timer in case no mutations fire at all.
@@ -187,31 +169,11 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
    * 4. If no refresh -> we are stable, proceed to export.
    */
   async function executeExportSequence(
-    format: ExportFormat,
-    dict: ExportDictionaries,
-    lang: AppLanguage,
-    paramState?: PendingExportState,
-    fontSize?: number,
-    initialSelectedMessageId?: string,
-    imageWidth?: number,
-    usePromptAsTurnHeading?: boolean,
-    speakerLabels?: ExportSpeakerLabels,
+    state: PendingExportState,
+    { dict, lang }: ExportRunLocale,
   ): Promise<void> {
     const signal = activeExportController?.signal;
     throwIfExportCancelled(signal);
-    // Cache Canvas documents at the very start of the export sequence,
-    // before we click the top node or cause any DOM updates/scrolling.
-    if (!paramState) collector.snapshotOpenCanvasDocs();
-
-    const state =
-      paramState ||
-      createPendingExportState(format, location.href, Date.now(), {
-        fontSize,
-        imageWidth,
-        usePromptAsTurnHeading,
-        speakerLabels,
-        initialSelectedMessageId,
-      });
 
     // No preload loop: the adapter reads the thread itself, or we scroll to the top.
     if (!exportAdapter.shouldPreloadHistory()) {
@@ -234,8 +196,8 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
 
     // 1. Find Top Node
     if (state.attempt > 0) {
-      console.log('[Gemini Voyager] Resuming export... waiting for content load.');
-      const userSelectors = getUserSelectors();
+      logger.debug('[Gemini Voyager] Resuming export... waiting for content load.');
+      const userSelectors = exportAdapter.getUserSelectors();
       await waitForAnyElement(userSelectors, 15000);
     }
 
@@ -250,20 +212,23 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
     }
 
     if (!topNode) {
-      console.log('[Gemini Voyager] No top node found, proceeding to export directly.');
+      logger.debug('[Gemini Voyager] No top node found, proceeding to export directly.');
       clearPendingExportState(sessionStorage);
       await performFinalExport(state, dict, lang);
       return;
     }
 
-    const fingerprintSelectors = [...getUserSelectors(), ...getAssistantSelectors()];
+    const fingerprintSelectors = [
+      ...exportAdapter.getUserSelectors(),
+      ...exportAdapter.getAssistantSelectors(),
+    ];
     const beforeFingerprint = computeConversationFingerprint(
       document.body,
       fingerprintSelectors,
       10,
     );
 
-    console.log(`[Gemini Voyager] Simulating click on top node (Attempt ${state.attempt + 1})...`);
+    logger.debug(`[Gemini Voyager] Simulating click on top node (Attempt ${state.attempt + 1})...`);
 
     // Update state before action to persist across potential reload
     persistPendingExportState(sessionStorage, state, Date.now());
@@ -290,41 +255,31 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
     throwIfExportCancelled(signal);
 
     if (changed) {
-      console.log('[Gemini Voyager] History expanded (soft refresh). Clicking top node again...');
-      await executeExportSequence(format, dict, lang, advancePendingExportState(state, Date.now()));
+      logger.debug('[Gemini Voyager] History expanded (soft refresh). Clicking top node again...');
+      await executeExportSequence(advancePendingExportState(state, Date.now()), { dict, lang });
       return;
     }
 
-    console.log('[Gemini Voyager] No refresh or update detected. Exporting...');
+    logger.debug('[Gemini Voyager] No refresh or update detected. Exporting...');
     clearPendingExportState(sessionStorage);
     await performFinalExport(state, dict, lang);
   }
 
   async function executeExportSequenceWithProgress(
-    format: ExportFormat,
-    dict: ExportDictionaries,
-    lang: AppLanguage,
-    paramState?: PendingExportState,
-    fontSize?: number,
-    initialSelectedMessageId?: string,
-    imageWidth?: number,
-    usePromptAsTurnHeading?: boolean,
-    speakerLabels?: ExportSpeakerLabels,
+    request: ExportRunRequest | PendingExportState,
+    locale: ExportRunLocale,
   ): Promise<void> {
-    const t = createExportTranslator(dict, lang);
+    const t = createExportTranslator(locale.dict, locale.lang);
     const hideProgress = showExportProgressOverlay(collector, t);
     try {
-      await executeExportSequence(
-        format,
-        dict,
-        lang,
-        paramState,
-        fontSize,
-        initialSelectedMessageId,
-        imageWidth,
-        usePromptAsTurnHeading,
-        speakerLabels,
-      );
+      throwIfExportCancelled(activeExportController?.signal);
+      const resumed = 'attempt' in request;
+      // Snapshot before history clicks can replace the open Canvas documents.
+      if (!resumed) collector.snapshotOpenCanvasDocs();
+      const state = resumed
+        ? request
+        : createPendingExportState(request.format, location.href, Date.now(), request);
+      await executeExportSequence(state, locale);
     } finally {
       hideProgress();
       collector.releaseCanvasDocs();
@@ -357,7 +312,7 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
     removeExportProgressOverlays();
 
     const selectionUrl = location.href;
-    const selectionTitle = getConversationTitleForExport();
+    const selectionTitle = exportAdapter.extractConversationTitle();
     const showCollectingBanner = () =>
       showExportProgressOverlay(collector, t, {
         title: t('export_collecting_title'),
@@ -467,23 +422,13 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
 
       // If state exists, it means we clicked and page refreshed.
       // So we resume the sequence.
-      console.log('[Gemini Voyager] Resuming pending export sequence...');
+      logger.debug('[Gemini Voyager] Resuming pending export sequence...');
 
       // We need i18n for final export/alert
       const dict = await loadExportDictionaries();
       const lang = await readExportLanguage();
 
-      await executeExportSequenceWithProgress(
-        state.format,
-        dict,
-        lang,
-        state,
-        state.fontSize,
-        state.initialSelectedMessageId,
-        state.imageWidth,
-        state.usePromptAsTurnHeading,
-        state.speakerLabels,
-      );
+      await executeExportSequenceWithProgress(state, { dict, lang });
     } catch (e) {
       console.error('[Gemini Voyager] Failed to resume pending export:', e);
       clearPendingExportState(sessionStorage);
@@ -498,17 +443,7 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
     const controller = beginExportOperation();
     try {
       await prepare?.(controller.signal);
-      await executeExportSequenceWithProgress(
-        request.format,
-        locale.dict,
-        locale.lang,
-        undefined,
-        request.fontSize,
-        request.initialSelectedMessageId,
-        request.imageWidth,
-        request.usePromptAsTurnHeading,
-        request.speakerLabels,
-      );
+      await executeExportSequenceWithProgress(request, locale);
     } catch (err) {
       if (!isAbortError(err)) console.error('[Gemini Voyager] Export error:', err);
     } finally {

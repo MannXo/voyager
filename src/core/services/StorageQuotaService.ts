@@ -1,6 +1,8 @@
 import { StorageKeys } from '@/core/types/common';
 
+import { StorageQuotaApi } from './StorageQuotaApi';
 import { StorageQuotaPolicy } from './StorageQuotaPolicy';
+import type { StorageAreaLike, StorageQuotaBrowserOptions } from './StorageQuotaTypes';
 
 const MEBIBYTE = 1024 * 1024;
 
@@ -42,38 +44,13 @@ export interface StorageCategoryUsage {
   estimated: boolean;
 }
 
-export type UnlimitedStoragePermissionReason =
-  | 'available'
-  | 'already-granted'
-  | 'not-declared'
-  | 'unsupported-firefox'
-  | 'unsupported-api';
-
-export interface UnlimitedStoragePermissionStatus {
-  supported: boolean;
-  declared: boolean;
-  granted: boolean;
-  requestable: boolean;
-  browser: 'chromium' | 'firefox' | 'safari' | 'unknown';
-  reason: UnlimitedStoragePermissionReason;
-}
-
+export type UnlimitedStoragePermissionStatus = Awaited<ReturnType<StorageQuotaPolicy['getStatus']>>;
+export type UnlimitedStoragePermissionReason = UnlimitedStoragePermissionStatus['reason'];
+export type UnlimitedStoragePermissionRequestResult = Awaited<
+  ReturnType<StorageQuotaPolicy['request']>
+>;
 export type UnlimitedStoragePermissionRequestReason =
-  | 'granted'
-  | 'already-granted'
-  | 'denied'
-  | 'not-declared'
-  | 'unsupported-firefox'
-  | 'unsupported-api'
-  | 'error';
-
-export interface UnlimitedStoragePermissionRequestResult {
-  requested: boolean;
-  granted: boolean;
-  reason: UnlimitedStoragePermissionRequestReason;
-  status: UnlimitedStoragePermissionStatus;
-  error?: string;
-}
+  UnlimitedStoragePermissionRequestResult['reason'];
 
 export interface StorageQuotaSnapshot {
   measuredAt: number;
@@ -98,11 +75,7 @@ export interface LocalStorageHeadroom {
   quotaBytes: number | null;
 }
 
-/** The one local quota every writer measures against (addendum P3P4 §0). */
-export interface EffectiveLocalQuota {
-  quotaBytes: number | null;
-  estimated: boolean;
-}
+export type EffectiveLocalQuota = ReturnType<StorageQuotaPolicy['localQuota']>;
 
 export function getStorageQuotaEffectiveUsageRatio(snapshot: StorageQuotaSnapshot): number | null {
   const localRatio =
@@ -126,43 +99,8 @@ export interface StorageCleanupResult {
   estimated: boolean;
 }
 
-interface StorageAreaLike {
-  get?: (...args: unknown[]) => unknown;
-  set?: (...args: unknown[]) => unknown;
-  remove?: (...args: unknown[]) => unknown;
-  getBytesInUse?: (...args: unknown[]) => unknown;
-  QUOTA_BYTES?: number;
-}
-
-interface PermissionsLike {
-  contains?: (...args: unknown[]) => unknown;
-  request?: (...args: unknown[]) => unknown;
-}
-
-interface RuntimeLike {
-  getManifest?: () => {
-    permissions?: string[];
-    optional_permissions?: string[];
-  };
-  lastError?: { message?: string } | null;
-}
-
-interface ChromeLike {
-  storage?: {
-    local?: StorageAreaLike;
-    sync?: StorageAreaLike;
-  };
-  permissions?: PermissionsLike;
-  runtime?: RuntimeLike;
-}
-
-export interface StorageQuotaServiceDependencies {
-  chromeApi?: ChromeLike;
+export interface StorageQuotaServiceDependencies extends StorageQuotaBrowserOptions {
   now?: () => number;
-  userAgent?: () => string;
-  buildTarget?: () => 'chrome' | 'edge' | 'firefox' | 'safari';
-  safariMajorVersion?: () => number | null;
-  legacySafariStorageLimit?: () => boolean;
 }
 
 interface AreaReadResult {
@@ -276,14 +214,6 @@ const CATEGORY_DEFINITIONS: readonly CategoryDefinition[] = [
   },
 ];
 
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return (
-    (typeof value === 'object' || typeof value === 'function') &&
-    value !== null &&
-    typeof (value as PromiseLike<unknown>).then === 'function'
-  );
-}
-
 function clampRatio(value: number): number {
   if (!Number.isFinite(value) || value < 0) return 0;
   return value;
@@ -318,90 +248,26 @@ function normalizeSoftCap(value: unknown): StorageSoftCapMb {
 }
 
 export class StorageQuotaService {
-  private readonly dependencies: StorageQuotaServiceDependencies;
+  private readonly api: StorageQuotaApi;
   private readonly policy: StorageQuotaPolicy;
 
-  constructor(dependencies: StorageQuotaServiceDependencies = {}) {
-    this.dependencies = dependencies;
-    this.policy = new StorageQuotaPolicy({
-      chromeApi: () => this.chromeApi,
-      callApi: <T>(
-        owner: object,
-        method: ((...args: unknown[]) => unknown) | undefined,
-        args: unknown[],
-      ) => this.callApi<T>(owner, method, args),
-      buildTarget: dependencies.buildTarget,
-      userAgent: dependencies.userAgent,
-      safariMajorVersion: dependencies.safariMajorVersion,
-      legacySafariStorageLimit: dependencies.legacySafariStorageLimit,
-    });
-  }
-
-  private get chromeApi(): ChromeLike {
-    return (
-      this.dependencies.chromeApi ??
-      (globalThis as typeof globalThis & { chrome?: ChromeLike }).chrome ??
-      {}
-    );
-  }
-
-  private get runtime(): RuntimeLike | undefined {
-    return this.chromeApi.runtime;
-  }
-
-  private async callApi<T>(
-    owner: object,
-    method: ((...args: unknown[]) => unknown) | undefined,
-    args: unknown[],
-  ): Promise<T> {
-    if (typeof method !== 'function') throw new Error('Storage API unavailable');
-
-    return await new Promise<T>((resolve, reject) => {
-      let settled = false;
-      const finish = (value: T): void => {
-        if (settled) return;
-        settled = true;
-        resolve(value);
-      };
-      const fail = (error: unknown): void => {
-        if (settled) return;
-        settled = true;
-        reject(error);
-      };
-      const callback = (value: T): void => {
-        const lastError = this.runtime?.lastError;
-        if (lastError) {
-          fail(new Error(lastError.message || 'Extension API request failed'));
-          return;
-        }
-        finish(value);
-      };
-
-      try {
-        const returned = method.apply(owner, [...args, callback]);
-        if (isPromiseLike(returned)) {
-          void Promise.resolve(returned).then((value) => finish(value as T), fail);
-        } else if (returned !== undefined) {
-          finish(returned as T);
-        }
-      } catch (error) {
-        fail(error);
-      }
-    });
+  constructor(private readonly dependencies: StorageQuotaServiceDependencies = {}) {
+    this.api = new StorageQuotaApi(dependencies);
+    this.policy = new StorageQuotaPolicy(dependencies);
   }
 
   private async readArea(
     areaId: StorageAreaId,
     unlimitedGranted: boolean,
   ): Promise<AreaReadResult> {
-    const area = this.chromeApi.storage?.[areaId];
+    const area = this.api.chromeApi.storage?.[areaId];
     if (!area?.get) {
       return this.unavailableArea(areaId);
     }
 
     let items: Record<string, unknown>;
     try {
-      items = (await this.callApi<Record<string, unknown>>(area, area.get, [null])) ?? {};
+      items = (await this.api.call<Record<string, unknown>>(area, area.get, [null])) ?? {};
     } catch {
       return this.unavailableArea(areaId);
     }
@@ -410,7 +276,7 @@ export class StorageQuotaService {
     let estimated = true;
     if (area.getBytesInUse) {
       try {
-        const measured = await this.callApi<number>(area, area.getBytesInUse, [null]);
+        const measured = await this.api.call<number>(area, area.getBytesInUse, [null]);
         if (typeof measured === 'number' && Number.isFinite(measured) && measured >= 0) {
           bytesInUse = measured;
           estimated = false;
@@ -479,7 +345,7 @@ export class StorageQuotaService {
     if (keys.length === 0) return { bytes: 0, estimated: false };
     if (area?.getBytesInUse) {
       try {
-        const measured = await this.callApi<number>(area, area.getBytesInUse, [[...keys]]);
+        const measured = await this.api.call<number>(area, area.getBytesInUse, [[...keys]]);
         if (typeof measured === 'number' && Number.isFinite(measured) && measured >= 0) {
           return { bytes: measured, estimated: false };
         }
@@ -500,7 +366,7 @@ export class StorageQuotaService {
       keysByCategory.get(definition?.id ?? 'other')?.push(key);
     }
 
-    const area = this.chromeApi.storage?.local;
+    const area = this.api.chromeApi.storage?.local;
     const categories: StorageCategoryUsage[] = [];
     for (const definition of CATEGORY_DEFINITIONS) {
       const keys = keysByCategory.get(definition.id) ?? [];
@@ -563,10 +429,10 @@ export class StorageQuotaService {
   /** A pre-write probe of the local area that reads no items when the browser can measure them. */
   async getLocalHeadroom(keyOrKeys: string | readonly string[]): Promise<LocalStorageHeadroom> {
     const keys = typeof keyOrKeys === 'string' ? [keyOrKeys] : [...keyOrKeys];
-    const area = this.chromeApi.storage?.local;
+    const area = this.api.chromeApi.storage?.local;
     const permission = await this.getUnlimitedStoragePermissionStatus();
     const settings =
-      (await this.callApi<Record<string, unknown>>(area ?? {}, area?.get, [
+      (await this.api.call<Record<string, unknown>>(area ?? {}, area?.get, [
         [STORAGE_QUOTA_SOFT_CAP_KEY],
       ])) ?? {};
     let bytesInUse: number | null = null;
@@ -574,8 +440,8 @@ export class StorageQuotaService {
     if (area?.getBytesInUse) {
       try {
         const [total, own] = await Promise.all([
-          this.callApi<number>(area, area.getBytesInUse, [null]),
-          keys.length > 0 ? this.callApi<number>(area, area.getBytesInUse, [keys]) : 0,
+          this.api.call<number>(area, area.getBytesInUse, [null]),
+          keys.length > 0 ? this.api.call<number>(area, area.getBytesInUse, [keys]) : 0,
         ]);
         if (Number.isFinite(total) && total >= 0 && Number.isFinite(own) && own >= 0) {
           bytesInUse = total;
@@ -587,7 +453,7 @@ export class StorageQuotaService {
     }
     if (bytesInUse === null || keyBytes === null) {
       const items =
-        (await this.callApi<Record<string, unknown>>(area ?? {}, area?.get, [null])) ?? {};
+        (await this.api.call<Record<string, unknown>>(area ?? {}, area?.get, [null])) ?? {};
       bytesInUse = estimateBytes(items);
       const present = keys.filter((key) => key in items);
       keyBytes = present.length > 0 ? estimateBytes(pickItems(items, present)) : 0;
@@ -606,8 +472,8 @@ export class StorageQuotaService {
     if (!STORAGE_SOFT_CAP_OPTIONS_MB.includes(value)) {
       throw new RangeError('Storage soft cap must be 25, 50, or 100 MB');
     }
-    const area = this.chromeApi.storage?.local;
-    await this.callApi<void>(area ?? {}, area?.set, [{ [STORAGE_QUOTA_SOFT_CAP_KEY]: value }]);
+    const area = this.api.chromeApi.storage?.local;
+    await this.api.call<void>(area ?? {}, area?.set, [{ [STORAGE_QUOTA_SOFT_CAP_KEY]: value }]);
   }
 
   async clearCategory(category: ClearableStorageCategoryId): Promise<StorageCleanupResult> {
@@ -619,8 +485,8 @@ export class StorageQuotaService {
     const before = beforeSnapshot.categories.find((item) => item.id === category);
     const removedKeys = [...(before?.keys ?? [])];
     if (removedKeys.length > 0) {
-      const area = this.chromeApi.storage?.local;
-      await this.callApi<void>(area ?? {}, area?.remove, [removedKeys]);
+      const area = this.api.chromeApi.storage?.local;
+      await this.api.call<void>(area ?? {}, area?.remove, [removedKeys]);
     }
     const afterSnapshot = await this.getSnapshot();
     const after = afterSnapshot.categories.find((item) => item.id === category);

@@ -58,7 +58,7 @@ export interface WatermarkInfo {
  * 'none' is what tells us Gemini's own "Media watermark: Off" switch is doing
  * the work for this account, which the native-watermark notice reports back.
  */
-export type WatermarkPresence = 'reliable' | 'difficult' | 'none';
+export type WatermarkPresence = ReturnType<typeof removeWatermarkFromAnchorOptions>;
 
 type WatermarkLogoSize = 36 | 48 | 96;
 type WatermarkAlphaMapKey = WatermarkLogoSize | `${WatermarkLogoSize}-${WatermarkAlphaVariant}`;

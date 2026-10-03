@@ -20,7 +20,8 @@ import {
   measureSevereUndershootRatio,
   measureWatermarkSignal,
 } from './watermarkDetector';
-import type { WatermarkPresence } from './watermarkEngine';
+
+type WatermarkPresence = 'reliable' | 'difficult' | 'none';
 
 export interface WatermarkConfig {
   logoSize: number;
@@ -72,36 +73,15 @@ export function chooseWatermarkAnchorOption(
     | { option: WatermarkAnchorOption; signal: ReturnType<typeof measureWatermarkSignal> }
     | undefined;
 
-  for (const option of options) {
-    const snapOffsets =
-      option.config.alphaVariant === '20260520-small' ? [-3, -2, -1, 0, 1, 2, 3] : [0];
-    for (const offsetX of snapOffsets) {
-      for (const offsetY of snapOffsets) {
-        const snappedOption =
-          offsetX === 0 && offsetY === 0
-            ? option
-            : {
-                ...option,
-                config: {
-                  ...option.config,
-                  marginRight: option.config.marginRight - offsetX,
-                  marginBottom: option.config.marginBottom - offsetY,
-                },
-              };
-        const position = calculateWatermarkPosition(
-          imageData.width,
-          imageData.height,
-          snappedOption.config,
-        );
-        const signal = measureWatermarkSignal(imageData, snappedOption.alphaMap, position);
-        if (!hasReliableWatermarkSignal(signal)) continue;
-        if (
-          !strongestReliable ||
-          getWatermarkSignalStrength(signal) > getWatermarkSignalStrength(strongestReliable.signal)
-        ) {
-          strongestReliable = { option: snappedOption, signal };
-        }
-      }
+  for (const option of getSnappedWatermarkAnchorOptions(options)) {
+    const position = calculateWatermarkPosition(imageData.width, imageData.height, option.config);
+    const signal = measureWatermarkSignal(imageData, option.alphaMap, position);
+    if (!hasReliableWatermarkSignal(signal)) continue;
+    if (
+      !strongestReliable ||
+      getWatermarkSignalStrength(signal) > getWatermarkSignalStrength(strongestReliable.signal)
+    ) {
+      strongestReliable = { option, signal };
     }
   }
 
@@ -150,7 +130,7 @@ function isWatermarkPositionInBounds(imageData: ImageData, position: WatermarkPo
   );
 }
 
-function getDifficultWatermarkAnchorOptions(
+function getSnappedWatermarkAnchorOptions(
   options: WatermarkAnchorOption[],
 ): WatermarkAnchorOption[] {
   return options.flatMap((option) => {
@@ -185,7 +165,7 @@ export function chooseDifficultWatermarkAnchorOption(
       }
     | undefined;
 
-  for (const option of getDifficultWatermarkAnchorOptions(options)) {
+  for (const option of getSnappedWatermarkAnchorOptions(options)) {
     const position = calculateWatermarkPosition(imageData.width, imageData.height, option.config);
     if (!isWatermarkPositionInBounds(imageData, position)) continue;
 
@@ -417,11 +397,11 @@ export function removeWatermarkWithResidualCheck(
   let currentSignal = measureWatermarkSignal(imageData, alphaMap, position);
   if (!hasReliableWatermarkSignal(currentSignal)) return passes;
 
-  const originalImageData = {
-    data: new Uint8ClampedArray(imageData.data),
-    width: imageData.width,
-    height: imageData.height,
-  } as ImageData;
+  const originalImageData = new ImageData(
+    new Uint8ClampedArray(imageData.data),
+    imageData.width,
+    imageData.height,
+  );
 
   while (passes < WATERMARK_MAX_REMOVAL_PASSES) {
     const previousRegion = snapshotWatermarkRegion(imageData, position);

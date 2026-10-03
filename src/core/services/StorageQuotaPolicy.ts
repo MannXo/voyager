@@ -4,48 +4,38 @@ import {
   hasLegacySafariStorageLimit,
 } from '@/core/utils/browser';
 
+import { StorageQuotaApi } from './StorageQuotaApi';
 import type {
   EffectiveLocalQuota,
-  StorageAreaUsage,
-  StorageQuotaServiceDependencies,
+  StorageQuotaBrowserOptions,
   UnlimitedStoragePermissionReason,
   UnlimitedStoragePermissionRequestReason,
   UnlimitedStoragePermissionRequestResult,
   UnlimitedStoragePermissionStatus,
-} from './StorageQuotaService';
+} from './StorageQuotaTypes';
 
 const MEBIBYTE = 1024 * 1024;
 const KIBIBYTE = 1024;
-
-const lowerQuota = (a: number | null, b: number | null): number | null =>
-  a === null ? b : b === null ? a : Math.min(a, b);
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-interface StorageQuotaPolicyOptions extends Pick<
-  StorageQuotaServiceDependencies,
-  'buildTarget' | 'userAgent' | 'safariMajorVersion' | 'legacySafariStorageLimit'
-> {
-  chromeApi: () => NonNullable<StorageQuotaServiceDependencies['chromeApi']>;
-  callApi: <T>(
-    owner: object,
-    method: ((...args: unknown[]) => unknown) | undefined,
-    args: unknown[],
-  ) => Promise<T>;
-}
-
 /** Owns browser permission prompts and conservative platform quota limits. */
 export class StorageQuotaPolicy {
-  constructor(private readonly options: StorageQuotaPolicyOptions) {}
+  private readonly api: StorageQuotaApi;
 
-  private get chromeApi() {
-    return this.options.chromeApi();
+  constructor(private readonly options: StorageQuotaBrowserOptions) {
+    this.api = new StorageQuotaApi(options);
   }
 
-  private get runtime() {
-    return this.chromeApi.runtime;
+  private permissionDeclaration(): { required: boolean; declared: boolean } {
+    const manifest = this.api.chromeApi.runtime?.getManifest?.() ?? {};
+    const required = (manifest.permissions ?? []).includes('unlimitedStorage');
+    return {
+      required,
+      declared: required || (manifest.optional_permissions ?? []).includes('unlimitedStorage'),
+    };
   }
 
   private detectBrowser(): UnlimitedStoragePermissionStatus['browser'] {
@@ -61,13 +51,8 @@ export class StorageQuotaPolicy {
 
   async getStatus(): Promise<UnlimitedStoragePermissionStatus> {
     const browser = this.detectBrowser();
-    const permissionsApi = this.chromeApi.permissions;
-    const manifest = this.runtime?.getManifest?.() ?? {};
-    const required = (manifest.permissions ?? []).includes('unlimitedStorage');
-    const declared = [
-      ...(manifest.permissions ?? []),
-      ...(manifest.optional_permissions ?? []),
-    ].includes('unlimitedStorage');
+    const permissionsApi = this.api.chromeApi.permissions;
+    const { required, declared } = this.permissionDeclaration();
 
     if (required) {
       return {
@@ -103,7 +88,7 @@ export class StorageQuotaPolicy {
     let granted = false;
     try {
       granted =
-        (await this.options.callApi<boolean>(permissionsApi, permissionsApi.contains, [
+        (await this.api.call<boolean>(permissionsApi, permissionsApi.contains, [
           { permissions: ['unlimitedStorage'] },
         ])) === true;
     } catch {
@@ -132,13 +117,8 @@ export class StorageQuotaPolicy {
     // Keep all gating synchronous. Browser permission prompts require a live
     // user gesture, which would be lost by awaiting contains() first.
     const browser = this.detectBrowser();
-    const permissionsApi = this.chromeApi.permissions;
-    const manifest = this.runtime?.getManifest?.() ?? {};
-    const required = (manifest.permissions ?? []).includes('unlimitedStorage');
-    const declared = [
-      ...(manifest.permissions ?? []),
-      ...(manifest.optional_permissions ?? []),
-    ].includes('unlimitedStorage');
+    const permissionsApi = this.api.chromeApi.permissions;
+    const { required, declared } = this.permissionDeclaration();
     if (required || browser === 'firefox') {
       const status = await this.getStatus();
       return {
@@ -169,7 +149,7 @@ export class StorageQuotaPolicy {
     try {
       // This must remain the first await in the supported path.
       const granted =
-        (await this.options.callApi<boolean>(permissionsApi, permissionsApi.request, [
+        (await this.api.call<boolean>(permissionsApi, permissionsApi.request, [
           { permissions: ['unlimitedStorage'] },
         ])) === true;
       const status = await this.getStatus();
@@ -191,59 +171,41 @@ export class StorageQuotaPolicy {
     }
   }
 
-  /** An estimated area limit stays below the fixed rule previously used by highlights. */
   localQuota(unlimitedGranted: boolean): EffectiveLocalQuota {
-    const declared = this.chromeApi.storage?.local?.QUOTA_BYTES;
-    const area = this.resolveLocalQuota(declared, unlimitedGranted);
-    if (!area.quotaEstimated) return { quotaBytes: area.quotaBytes, estimated: false };
-    const flat = this.flatLocalQuota(declared, unlimitedGranted);
-    return { quotaBytes: lowerQuota(area.quotaBytes, flat), estimated: true };
-  }
-
-  private flatLocalQuota(declared: number | undefined, unlimitedGranted: boolean): number | null {
+    const declared = this.api.chromeApi.storage?.local?.QUOTA_BYTES;
     const browser = this.detectBrowser();
-    if (unlimitedGranted) {
-      if (browser !== 'safari') return null;
-      const major = this.options.safariMajorVersion?.() ?? getSafariMajorVersion();
-      return major !== null && major >= 16 ? null : 10 * MEBIBYTE;
-    }
-    if (typeof declared === 'number' && declared > 0) return declared;
-    return browser === 'firefox' || browser === 'safari' ? 5 * MEBIBYTE : 10 * MEBIBYTE;
-  }
-
-  syncQuota(
-    declaredQuota: number | undefined,
-  ): Pick<StorageAreaUsage, 'quotaBytes' | 'quotaEstimated'> {
-    return typeof declaredQuota === 'number' && declaredQuota > 0
-      ? { quotaBytes: declaredQuota, quotaEstimated: false }
-      : { quotaBytes: 100 * KIBIBYTE, quotaEstimated: true };
-  }
-
-  private resolveLocalQuota(
-    declaredQuota: number | undefined,
-    unlimitedGranted: boolean,
-  ): Pick<StorageAreaUsage, 'quotaBytes' | 'quotaEstimated'> {
-    if (this.detectBrowser() === 'safari') {
-      if (!unlimitedGranted) return { quotaBytes: 5 * MEBIBYTE, quotaEstimated: false };
+    if (browser === 'safari') {
+      if (!unlimitedGranted) return { quotaBytes: 5 * MEBIBYTE, estimated: false };
 
       const majorVersion = this.options.safariMajorVersion?.() ?? getSafariMajorVersion();
       const hasLegacyLimit =
         this.options.legacySafariStorageLimit?.() ?? hasLegacySafariStorageLimit();
       if (hasLegacyLimit || (majorVersion !== null && majorVersion < 16)) {
-        return { quotaBytes: 10 * MEBIBYTE, quotaEstimated: false };
+        return { quotaBytes: 10 * MEBIBYTE, estimated: false };
       }
       if (majorVersion !== null && majorVersion >= 16) {
-        return { quotaBytes: null, quotaEstimated: false };
+        return { quotaBytes: null, estimated: false };
       }
-
-      return typeof declaredQuota === 'number' && declaredQuota > 0
-        ? { quotaBytes: declaredQuota, quotaEstimated: true }
-        : { quotaBytes: null, quotaEstimated: true };
+      // An unknown Safari version keeps the conservative 10 MiB writer limit.
+      return {
+        quotaBytes:
+          typeof declared === 'number' && declared > 0
+            ? Math.min(declared, 10 * MEBIBYTE)
+            : 10 * MEBIBYTE,
+        estimated: true,
+      };
     }
 
-    if (unlimitedGranted) return { quotaBytes: null, quotaEstimated: false };
+    if (unlimitedGranted) return { quotaBytes: null, estimated: false };
+    if (typeof declared === 'number' && declared > 0) {
+      return { quotaBytes: declared, estimated: false };
+    }
+    return { quotaBytes: (browser === 'firefox' ? 5 : 10) * MEBIBYTE, estimated: true };
+  }
+
+  syncQuota(declaredQuota: number | undefined): { quotaBytes: number; quotaEstimated: boolean } {
     return typeof declaredQuota === 'number' && declaredQuota > 0
       ? { quotaBytes: declaredQuota, quotaEstimated: false }
-      : { quotaBytes: 10 * MEBIBYTE, quotaEstimated: true };
+      : { quotaBytes: 100 * KIBIBYTE, quotaEstimated: true };
   }
 }
