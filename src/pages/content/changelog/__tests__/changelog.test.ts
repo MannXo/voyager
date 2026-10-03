@@ -1,16 +1,26 @@
-import DOMPurify from 'dompurify';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
 
 import {
   extractLocalizedContent,
   hasUnreadChangelog,
+  openChangelog,
   resolveChangelogImageUrl,
   rewriteChangelogImageUrls,
 } from '../index';
+import { createChangelogModal } from '../modal';
+
+const parseMarkdown = vi.hoisted(() => vi.fn());
+vi.mock('marked', () => ({ marked: { parse: parseMarkdown } }));
+vi.mock('@/utils/i18n', () => ({ getCurrentLanguage: async () => 'en' }));
+
+afterEach(() => {
+  document.body.replaceChildren();
+  vi.restoreAllMocks();
+});
 
 describe('extractLocalizedContent', () => {
   const sampleMarkdown = `<!-- lang:en -->
@@ -116,15 +126,24 @@ images:
 
 describe('changelog quote styles', () => {
   it('gives the leading quote an explicit cross-browser presentation', () => {
-    const source = readFileSync(
-      resolve(process.cwd(), 'src/pages/content/changelog/index.ts'),
-      'utf8',
+    const overlay = createChangelogModal(
+      '<blockquote>Opening quote</blockquote><p>Notes</p>',
+      'en',
     );
+    const leadingElement = overlay.querySelector('.gv-changelog-body')?.firstElementChild;
     const css = readFileSync(resolve(process.cwd(), 'public/contentStyle.css'), 'utf8');
 
-    expect(source).toContain("'gv-changelog-quote'");
-    expect(source).toContain("leadingElement?.tagName === 'BLOCKQUOTE'");
+    expect(leadingElement?.classList.contains('gv-changelog-quote')).toBe(true);
+    expect(leadingElement?.tagName).toBe('BLOCKQUOTE');
     expect(css).toMatch(/\.gv-changelog-body > \.gv-changelog-quote\s*\{[^}]*display:\s*block;/s);
+  });
+
+  it('leaves a quote after the opening paragraph unclassified', () => {
+    const overlay = createChangelogModal('<p>Notes</p><blockquote>Later quote</blockquote>', 'en');
+
+    expect(overlay.querySelector('blockquote')?.classList.contains('gv-changelog-quote')).toBe(
+      false,
+    );
   });
 });
 
@@ -183,37 +202,31 @@ describe('changelog sanitizer URI policy', () => {
   // The bundled screenshot resolves to a chrome-extension:// or moz-extension://
   // URL. DOMPurify's default URI policy allows neither, so it strips the src and
   // renders a broken image with no error anywhere — the exact failure this pins.
-  const SANITIZE_OPTIONS = {
-    ALLOWED_TAGS: ['img', 'p', 'a'],
-    ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'class'],
-    ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|chrome-extension:|moz-extension:)/i,
-  };
+  it('sanitizes markup before mounting the changelog', async () => {
+    parseMarkdown.mockReturnValue('<script>alert(1)</script><p onclick="alert(1)">Notes</p>');
 
-  it('matches the options the changelog actually sanitizes with', () => {
-    const source = readFileSync(
-      resolve(process.cwd(), 'src/pages/content/changelog/index.ts'),
-      'utf8',
-    );
-
-    expect(source).toContain(
-      'ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|chrome-extension:|moz-extension:)/i',
-    );
+    expect(await openChangelog()).toBe(true);
+    const body = document.querySelector('.gv-changelog-body');
+    expect(body?.querySelector('script')).toBeNull();
+    expect(body?.querySelector('p')?.hasAttribute('onclick')).toBe(false);
   });
 
   it.each([
     ['chrome-extension://abc/changelog-activity-view.png'],
     ['moz-extension://abc/changelog-activity-view.png'],
     ['https://voyager.nagi.fun/assets/promotion/Activity-View.png'],
-  ])('keeps the src for %s', (src) => {
-    const result = DOMPurify.sanitize(`<img src="${src}" alt="x">`, SANITIZE_OPTIONS);
+  ])('keeps the src for %s', async (src) => {
+    parseMarkdown.mockReturnValue(`<img src="${src}" alt="x">`);
 
-    expect(result).toContain(`src="${src}"`);
+    expect(await openChangelog()).toBe(true);
+    expect(document.querySelector('.gv-changelog-body img')?.getAttribute('src')).toBe(src);
   });
 
-  it('still drops a javascript: src', () => {
-    const result = DOMPurify.sanitize(`<img src="javascript:alert(1)" alt="x">`, SANITIZE_OPTIONS);
+  it('still drops a javascript: src', async () => {
+    parseMarkdown.mockReturnValue('<img src="javascript:alert(1)" alt="x">');
 
-    expect(result).not.toContain('javascript:');
+    expect(await openChangelog()).toBe(true);
+    expect(document.querySelector('.gv-changelog-body img')?.getAttribute('src')).toBeNull();
   });
 });
 
