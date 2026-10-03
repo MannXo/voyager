@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StorageKeys } from '@/core/types/common';
 
 import { hasUnreadChangelog, showChangelogModalDirect } from '../../changelog/index';
-import { writePromptPref } from '../promptPrefs';
+import { readPromptPref, writePromptPref } from '../promptPrefs';
 import { type PromptTrigger, mountPromptTrigger } from '../promptTrigger';
 
 vi.mock('webextension-polyfill', () => ({ default: globalThis.chrome }));
@@ -138,5 +138,42 @@ describe('prompt trigger activation', () => {
     expect(onActivate).not.toHaveBeenCalled();
     ball.click();
     expect(onActivate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('prompt trigger default spot', () => {
+  /** A Material FAB touch target laid out at the given viewport rect. */
+  function mountMaterialFab(rect: DOMRect): void {
+    const target = document.createElement('span');
+    target.className = 'mat-mdc-button-touch-target';
+    target.getBoundingClientRect = () => rect;
+    document.body.appendChild(target);
+  }
+
+  it('sits beside the Material FAB when the user never dragged it', async () => {
+    mountMaterialFab(new DOMRect(900, 700, 40, 40));
+
+    const { ball } = await mount();
+
+    // jsdom's viewport is 1024x768 and the ball reports no height, so 36 is assumed.
+    expect(ball.style.right).toBe(`${1024 - 900 + 10}px`);
+    expect(ball.style.bottom).toBe(`${768 - (700 + 20 + 18)}px`);
+  });
+
+  it('keeps the stylesheet corner on a page without a Material FAB', async () => {
+    const { ball } = await mount();
+
+    expect(ball.style.right).toBe('');
+    expect(ball.style.bottom).toBe('');
+  });
+
+  it('restores the dragged position instead of snapping to the FAB', async () => {
+    mountMaterialFab(new DOMRect(900, 700, 40, 40));
+    vi.mocked(readPromptPref).mockResolvedValueOnce({ right: 120, bottom: 90 });
+
+    const { ball } = await mount();
+
+    expect(ball.style.right).toBe('120px');
+    expect(ball.style.bottom).toBe('90px');
   });
 });

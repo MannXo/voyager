@@ -175,3 +175,172 @@ describe('prompt manager settings', () => {
     expect(panel.classList.contains('gv-hidden')).toBe(false);
   });
 });
+
+describe('prompt row press', () => {
+  const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  const writeText = vi.fn(async (_text: string) => {});
+
+  beforeEach(() => {
+    writeText.mockClear();
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  });
+
+  afterEach(() => {
+    if (clipboardDescriptor) Object.defineProperty(navigator, 'clipboard', clipboardDescriptor);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+  });
+
+  function pressFirstRow(panel: HTMLElement): void {
+    panel
+      .querySelector<HTMLElement>('.gv-pm-item-text')!
+      .dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true, cancelable: true }));
+  }
+
+  function mountVisibleTextarea(): HTMLTextAreaElement {
+    const composer = document.createElement('textarea');
+    // jsdom lays nothing out; the composer lookup only takes a visible input.
+    composer.getBoundingClientRect = () => new DOMRect(0, 600, 600, 48);
+    document.body.appendChild(composer);
+    return composer;
+  }
+
+  it('inserts the whole multi-line body into the composer when insert-on-click is on', async () => {
+    vi.mocked(chrome.storage.sync.get).mockImplementation(
+      storageGet({ [StorageKeys.LANGUAGE]: 'en', [StorageKeys.PROMPT_INSERT_ON_CLICK]: true }),
+    );
+    const composer = mountVisibleTextarea();
+    const panel = await openManager([prompt('a', 'Alpha', 'line one\nline two')]);
+
+    pressFirstRow(panel);
+
+    await vi.waitFor(() =>
+      expect(panel.querySelector('.gv-pm-notice')!.textContent).toBe('Inserted'),
+    );
+    expect(composer.value).toBe('line one\nline two');
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it('copies the body when insert-on-click is on but the page has no composer', async () => {
+    vi.mocked(chrome.storage.sync.get).mockImplementation(
+      storageGet({ [StorageKeys.LANGUAGE]: 'en', [StorageKeys.PROMPT_INSERT_ON_CLICK]: true }),
+    );
+    const panel = await openManager([prompt('a', 'Alpha', 'line one\nline two')]);
+
+    pressFirstRow(panel);
+
+    await vi.waitFor(() =>
+      expect(panel.querySelector('.gv-pm-notice')!.textContent).toBe('Copied'),
+    );
+    expect(writeText).toHaveBeenCalledExactlyOnceWith('line one\nline two');
+  });
+
+  it('copies rather than inserts while insert-on-click is off', async () => {
+    const composer = mountVisibleTextarea();
+    const panel = await openManager([prompt('a', 'Alpha')]);
+
+    pressFirstRow(panel);
+
+    await vi.waitFor(() =>
+      expect(panel.querySelector('.gv-pm-notice')!.textContent).toBe('Copied'),
+    );
+    expect(writeText).toHaveBeenCalledExactlyOnceWith('Alpha body');
+    expect(composer.value).toBe('');
+  });
+});
+
+describe('prompt manager starting theme', () => {
+  function stubOsDark(dark: boolean): void {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query: string) =>
+        ({
+          matches: dark && query.includes('dark'),
+          media: query,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        }) as unknown as MediaQueryList,
+    );
+  }
+
+  it("starts in Gemini's dark theme even when the OS is light", async () => {
+    stubOsDark(false);
+    document.body.insertAdjacentHTML('afterbegin', '<div class="theme-host dark-theme"></div>');
+
+    const panel = await openManager([prompt('a', 'Alpha')]);
+
+    expect(panel.getAttribute('data-gv-theme')).toBe('dark');
+  });
+
+  it("starts in Gemini's light theme even when the OS is dark", async () => {
+    stubOsDark(true);
+    document.body.insertAdjacentHTML('afterbegin', '<div class="theme-host light-theme"></div>');
+
+    const panel = await openManager([prompt('a', 'Alpha')]);
+
+    expect(panel.getAttribute('data-gv-theme')).toBe('light');
+  });
+
+  it('follows the OS on a page that marks no theme', async () => {
+    stubOsDark(true);
+
+    const panel = await openManager([prompt('a', 'Alpha')]);
+
+    expect(panel.getAttribute('data-gv-theme')).toBe('dark');
+  });
+
+  it('takes the saved panel theme over the page theme', async () => {
+    stubOsDark(false);
+    vi.mocked(chrome.storage.sync.get).mockImplementation(
+      storageGet({ [StorageKeys.LANGUAGE]: 'en', [StorageKeys.PROMPT_THEME]: 'dark' }),
+    );
+    document.body.insertAdjacentHTML('afterbegin', '<div class="theme-host light-theme"></div>');
+
+    const panel = await openManager([prompt('a', 'Alpha')]);
+
+    await vi.waitFor(() => expect(panel.getAttribute('data-gv-theme')).toBe('dark'));
+  });
+});
+
+describe('Saved Library highlight scope', () => {
+  function answerRuntimeMessages(): ReturnType<typeof vi.fn> {
+    const sendMessage = vi.fn((message: { type: string }, callback?: (r: unknown) => void) => {
+      const response =
+        message.type === 'gv.highlight.list'
+          ? { ok: true, records: [] }
+          : { ok: true, messages: [], data: { messages: {} } };
+      callback?.(response);
+      return Promise.resolve(response);
+    });
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation(sendMessage as never);
+    return sendMessage;
+  }
+
+  async function requestedHighlightPlatform(url: string): Promise<unknown> {
+    vi.stubGlobal('location', new URL(url));
+    const sendMessage = answerRuntimeMessages();
+    const panel = await openManager([prompt('a', 'Alpha')]);
+    panel.querySelector<HTMLButtonElement>('.gv-pm-backup-btn')!.click();
+    const call = await vi.waitFor(() => {
+      const found = sendMessage.mock.calls.find(
+        ([message]) => message.type === 'gv.highlight.list',
+      );
+      if (!found) throw new Error('highlights not requested yet');
+      return found;
+    });
+    return (call[0] as { payload: { scope: { platform: unknown } } }).payload.scope.platform;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    ['https://gemini.google.com/app', 'gemini'],
+    ['https://gemini.google.com/u/1/app', 'gemini'],
+    ['https://aistudio.google.com/prompts/new_chat', 'aistudio'],
+    ['https://aistudio.google.cn/prompts/new_chat', 'aistudio'],
+    ['https://chatgpt.com/', 'gemini'],
+    ['https://chat.deepseek.com/', 'gemini'],
+  ])('asks for highlights of %s under platform %s', async (url, platform) => {
+    expect(await requestedHighlightPlatform(url)).toBe(platform);
+  });
+});
