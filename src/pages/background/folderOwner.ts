@@ -71,10 +71,16 @@ export function handleFolderOwnerMessage(
 
 export function startFolderOwner(authority: Authority = FOLDER_WRITE_AUTHORITY): FolderOwnerCore {
   const allowances = createAllowanceLedger(localFolderArea, authority);
+  const fence = startupFence(authority, () => drainOwnedKeys(localFolderArea, core, authority));
   const core = createFolderOwnerCore({
     area: localFolderArea,
     authority,
-    serialize: backgroundWriteQueue,
+    // Any core turn may write an owner site's keys, so each publishes the fence first (§3.3).
+    serialize: (turn, readKeys) =>
+      backgroundWriteQueue(async () => {
+        await fence();
+        return turn();
+      }, readKeys),
     budget: storageBudget,
     allowances,
   });
@@ -86,7 +92,6 @@ export function startFolderOwner(authority: Authority = FOLDER_WRITE_AUTHORITY):
     void reply.then(sendResponse);
     return true;
   });
-  const fence = startupFence(core, authority);
   if (hasOwnerSite(authority)) watchOwnedKeys(core, authority, fence);
   void fence().catch((error: unknown) =>
     logger.warn('Folder authority fence write failed', { error: String(error) }),
@@ -97,9 +102,10 @@ export function startFolderOwner(authority: Authority = FOLDER_WRITE_AUTHORITY):
 /**
  * Publishes this build's authority before startup touches any owner site's
  * keys (§3.3), then starts the drain (§6.7). A failed write is attempted again
- * by the next caller, so it never blocks owner turns for the worker's lifetime.
+ * by the next owner turn or bundle resolution, so it never blocks them for the
+ * worker's lifetime; a prompt-library turn waits for it only to resolve an open bundle.
  */
-function startupFence(core: FolderOwnerCore, authority: Authority): () => Promise<void> {
+function startupFence(authority: Authority, drain: () => Promise<void>): () => Promise<void> {
   let written: Promise<void> | null = null;
   return () =>
     (written ??= writeAuthorityFence(
@@ -108,8 +114,8 @@ function startupFence(core: FolderOwnerCore, authority: Authority): () => Promis
       authority,
     )
       .then(() => {
-        // Draining joins the queue whose prelude awaits this fence, so awaiting it here would deadlock.
-        void drainOwnedKeys(localFolderArea, core, authority).catch((error: unknown) =>
+        // Draining joins the queue whose turns await this fence, so awaiting it here would deadlock.
+        void drain().catch((error: unknown) =>
           logger.warn('Folder owner startup drain failed', { error: String(error) }),
         );
       })

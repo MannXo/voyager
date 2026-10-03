@@ -378,6 +378,8 @@ export async function resolveBundleIntent(
   now: () => number = Date.now,
   options: {
     readKeys?: readonly string[];
+    /** Awaited once an intent is found open, before resolution writes anything (§3.3). */
+    fence?: () => Promise<void>;
     onBlocked?: () => void;
   } = {},
 ): Promise<'ok' | 'read_failed' | 'write_failed'> {
@@ -395,6 +397,11 @@ export async function resolveBundleIntent(
     options.onBlocked?.();
     return keys && options.readKeys?.every((key) => !keys.includes(key)) ? 'ok' : reason;
   };
+  try {
+    await options.fence?.();
+  } catch {
+    return blocked('write_failed');
+  }
   if (!isOpenBundle(intent) || !ownedBy(intent, authority)) {
     const txId = isRecord(intent) && typeof intent.txId === 'string' ? intent.txId : '';
     try {

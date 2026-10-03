@@ -11,9 +11,12 @@ import { BUNDLE_INTENT_KEY } from '@/features/folder/owner/bundleIntent';
 import { hashValue } from '@/features/folder/owner/canonicalHash';
 import { createFolderOwnerCore } from '@/features/folder/owner/folderOwnerCore';
 import type { FolderSite } from '@/features/folder/owner/folderOwnerPolicy';
+import { ownerMetaKey } from '@/features/folder/owner/folderOwnerState';
+import { PROMPT_LIBRARY_KEY } from '@/features/prompt/library/promptLibraryOwner';
 import { backgroundWriteQueue } from '@/features/storage/writeQueue';
 
 import { handleFolderOwnerMessage, startFolderOwner } from '../folderOwner';
+import { promptLibraryOwner } from '../promptLibraryOwner';
 
 const GEMINI_TAB = {
   id: 'test-extension-id',
@@ -245,32 +248,55 @@ describe('startFolderOwner', () => {
     await vi.waitFor(() => expect(alarms).toEqual(new Set()));
   });
 
-  it('retries a failed startup fence after cleanup instead of permanently blocking owner turns', async () => {
-    const data = folderData([folder('F', 'Keep')]);
-    const storage = createFaultyStorage({ gvFolderData: data, cache: 'cache' });
+  it('lets prompt-library turns commit while a failing fence write holds back owner writes', async () => {
+    const storage = createFaultyStorage({ gvFolderData: folderData([folder('F', 'Keep')]) });
     storage.failWhen((op, keys) => op === 'set' && keys.includes(AUTHORITY_FENCE_KEY));
     routeLocalStorage(storage);
     const owner = startFolderOwner(GEMINI_OWNER);
+    const open = { key: 'gvFolderData', clientId: 'c', ackedThrough: 0 };
+    const prompt = { id: 'p', text: 'Saved', tags: [], createdAt: 1 };
+
+    await expect(promptLibraryOwner.apply({ kind: 'add', items: [prompt] })).resolves.toMatchObject(
+      { added: 1 },
+    );
+    await expect(owner.open(open)).rejects.toThrow('fault at call');
+
+    expect(storage.read(PROMPT_LIBRARY_KEY)).toEqual([prompt]);
+    expect(storage.read(ownerMetaKey('gvFolderData'))).toBeUndefined();
+    storage.failWhen(null);
+    await expect(owner.open(open)).resolves.toMatchObject({ kind: 'ready' });
+    expect(storage.read(AUTHORITY_FENCE_KEY)).toEqual({ build: '1.9.0', sites: GEMINI_OWNER });
+  });
+
+  it('rolls an open bundle forward from the no-read retry turn only after the fence lands', async () => {
+    const storage = createFaultyStorage({
+      gvFolderData: 'prev',
+      [BUNDLE_INTENT_KEY]: {
+        v: 1,
+        txId: 'tx',
+        status: 'open',
+        site: 'gemini',
+        clientId: 'c',
+        seq: 1,
+        at: 0,
+        keys: {
+          gvFolderData: { prevHash: await hashValue('prev'), nextHash: await hashValue('next') },
+        },
+        values: { gvFolderData: 'next' },
+      },
+    });
+    storage.failWhen((op, keys) => op === 'set' && keys.includes(AUTHORITY_FENCE_KEY));
+    routeLocalStorage(storage);
+    startFolderOwner(GEMINI_OWNER);
     await vi.waitFor(() => expect(alarms).toEqual(new Set([RETRY_ALARM])));
-    expect(chrome.storage.local.get).not.toHaveBeenCalled();
-    expect(storage.read('gvFolderData')).toEqual(data);
-    expect(storage.read(AUTHORITY_FENCE_KEY)).toBeUndefined();
+    expect(storage.read('gvFolderData')).toBe('prev');
 
     storage.failWhen(null);
-    await storage.area.remove(['cache']);
-    emitLocalChange({ cache: { oldValue: 'cache' } });
-    await expect(owner.snapshot({ key: 'gvFolderData', clientId: 'c' })).resolves.toMatchObject({
-      kind: 'ready',
-      data,
-    });
-
+    fireAlarm(RETRY_ALARM);
+    await vi.waitFor(() =>
+      expect(storage.read(BUNDLE_INTENT_KEY)).toMatchObject({ status: 'closed' }),
+    );
     expect(storage.read(AUTHORITY_FENCE_KEY)).toEqual({ build: '1.9.0', sites: GEMINI_OWNER });
-    expect(storage.read('gvFolderData')).toEqual(data);
-    expect(
-      vi
-        .mocked(chrome.storage.local.set)
-        .mock.calls.filter(([items]) => AUTHORITY_FENCE_KEY in items),
-    ).toHaveLength(2);
-    await vi.waitFor(() => expect(alarms).toEqual(new Set()));
+    expect(storage.read('gvFolderData')).toBe('next');
   });
 });

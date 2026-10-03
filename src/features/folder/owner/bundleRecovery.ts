@@ -24,7 +24,7 @@ export interface BundleRecoveryOptions {
   ) => () => void;
   /** One-shot wake-up after `ms`; returns its cancel. */
   setTimer: (run: () => void, ms: number) => () => void;
-  /** Must succeed before resolution may write; a failure blocks and retries like a stuck bundle. */
+  /** Must succeed before resolution writes an open bundle; a failure blocks and retries like a stuck one. */
   fence?: () => Promise<void>;
 }
 
@@ -54,21 +54,15 @@ export function createBundleRecovery(options: BundleRecoveryOptions) {
 
   async function resolve(readKeys?: readonly string[]) {
     let open = false;
-    try {
-      await options.fence?.();
-      const result = await resolveBundleIntent(options.area, options.authority, Date.now, {
-        readKeys,
-        onBlocked: () => (open = true),
-      });
-      blocked = open || result !== 'ok';
-      if (!blocked) clearTimer();
-      return result;
-    } catch (error) {
-      blocked = true;
-      throw error;
-    } finally {
-      armTimer();
-    }
+    const result = await resolveBundleIntent(options.area, options.authority, Date.now, {
+      readKeys,
+      fence: options.fence,
+      onBlocked: () => (open = true),
+    });
+    blocked = open || result !== 'ok';
+    if (blocked) armTimer();
+    else clearTimer();
+    return result;
   }
 
   function retry() {
