@@ -29,14 +29,10 @@ class StarredMessagesManager {
   }
 
   private async getFromStorage(): Promise<StarredMessagesData> {
-    try {
-      const result = await this.area.get([StorageKeys.TIMELINE_STARRED_MESSAGES]);
-      const starred = result[StorageKeys.TIMELINE_STARRED_MESSAGES];
-      return isStarredMessagesData(starred) ? starred : { messages: {} };
-    } catch (error) {
-      console.error('[Background] Failed to get starred messages:', error);
-      return { messages: {} };
-    }
+    // Let the runtime boundary report failed reads instead of claiming all stars were removed.
+    const result = await this.area.get([StorageKeys.TIMELINE_STARRED_MESSAGES]);
+    const starred = result[StorageKeys.TIMELINE_STARRED_MESSAGES];
+    return isStarredMessagesData(starred) ? starred : { messages: {} };
   }
 
   private async saveToStorage(data: StarredMessagesData): Promise<void> {

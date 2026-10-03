@@ -112,16 +112,11 @@ describe('starred messages owner', () => {
     expect(stored()).toEqual({ messages: {} });
   });
 
-  it('retains read-error and malformed-data empty fallback, and leaves unrelated messages alone', async () => {
+  it('rejects failed reads while retaining malformed-data fallback and leaving unrelated messages alone', async () => {
     const { owner, area } = setup({ messages: { broken: null } });
     await expect(owner.getAllStarredMessages()).resolves.toEqual({ messages: {} });
     area.get.mockRejectedValueOnce(new Error('unavailable'));
-    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-    await expect(owner.handle({ type: 'gv.starred.getAll' })).resolves.toEqual({
-      ok: true,
-      data: { messages: {} },
-    });
-    log.mockRestore();
+    await expect(owner.handle({ type: 'gv.starred.getAll' })).rejects.toThrow('unavailable');
     expect(owner.handle({ type: 'gv.fork.getAll' })).toBeNull();
     expect(owner.handle(null)).toBeNull();
   });
