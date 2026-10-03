@@ -15,6 +15,11 @@ function turn(user: string, assistant = ''): ChatTurn {
   return { user, assistant, starred: false, omitEmptySections: true };
 }
 
+function containingInOrder(...parts: string[]) {
+  const escaped = parts.map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return expect.stringMatching(new RegExp(escaped.join('[\\s\\S]*')));
+}
+
 describe('temporary chat handoff planning', () => {
   it('builds a role-preserving Markdown transcript and localized inline handoff', () => {
     const turns = [turn('First question', 'First answer')];
@@ -24,17 +29,19 @@ describe('temporary chat handoff planning', () => {
     const chinese = planHandoff(turns, 'zh', 'zh.md');
     const english = planHandoff(turns, 'en', 'en.md');
     const japanese = planHandoff(turns, 'ja', 'ja.md');
-    expect(chinese.delivery.mode).toBe('inline');
-    expect(english.delivery.mode).toBe('inline');
-    if (chinese.delivery.mode === 'inline' && english.delivery.mode === 'inline') {
-      expect(chinese.delivery.text).toContain('[从临时对话继续]');
-      expect(english.delivery.text).toContain('[Continue from a temporary chat]');
-    }
+    expect(chinese.delivery).toMatchObject({
+      mode: 'inline',
+      text: expect.stringContaining('[从临时对话继续]'),
+    });
+    expect(english.delivery).toMatchObject({
+      mode: 'inline',
+      text: expect.stringContaining('[Continue from a temporary chat]'),
+    });
     expect(japanese.transcript).toContain('## ユーザー\n\nFirst question');
-    if (japanese.delivery.mode === 'inline') {
-      expect(japanese.delivery.text).toContain('[一時チャットから続ける]');
-      expect(japanese.delivery.text).toContain('--- 会話記録 開始 ---');
-    }
+    expect(japanese.delivery).toMatchObject({
+      mode: 'inline',
+      text: containingInOrder('[一時チャットから続ける]', '--- 会話記録 開始 ---'),
+    });
   });
 
   it('includes an unsent draft in the downloaded backup without adding it to the handoff transcript', () => {
@@ -58,18 +65,19 @@ describe('temporary chat handoff planning', () => {
       const inline = planHandoff(shortTurns, language, `${language}-inline.md`);
       const attachment = planHandoff(longTurns, language, `${language}-attachment.md`);
       expect(inline.transcript).toContain(`## ${copy.userRole}\n\nQuestion`);
-      expect(inline.delivery.mode).toBe('inline');
-      if (inline.delivery.mode === 'inline') {
-        expect(inline.delivery.text).toContain(copy.handoffTitle);
-        expect(inline.delivery.text).toContain(copy.inlineInstruction);
-        expect(inline.delivery.text).toContain(copy.transcriptStart);
-        expect(inline.delivery.text).toContain(copy.transcriptEnd);
-      }
-      expect(attachment.delivery.mode).toBe('attachment');
-      if (attachment.delivery.mode === 'attachment') {
-        expect(attachment.delivery.directive).toContain(copy.handoffTitle);
-        expect(attachment.delivery.directive).toContain(copy.attachmentInstruction);
-      }
+      expect(inline.delivery).toMatchObject({
+        mode: 'inline',
+        text: containingInOrder(
+          copy.handoffTitle,
+          copy.inlineInstruction,
+          copy.transcriptStart,
+          copy.transcriptEnd,
+        ),
+      });
+      expect(attachment.delivery).toMatchObject({
+        mode: 'attachment',
+        directive: containingInOrder(copy.handoffTitle, copy.attachmentInstruction),
+      });
       expect(buildHandoffBackup(inline.transcript, 'Draft', language)).toContain(
         `## ${copy.unsentDraftHeading}`,
       );
@@ -93,11 +101,12 @@ describe('temporary chat handoff planning', () => {
 
   it('uses the same unique filename for a long transcript backup and attachment', () => {
     const plan = planHandoff([turn('x'.repeat(5_100))], 'en', 'unique-handoff.md');
-    expect(plan.delivery.mode).toBe('attachment');
     expect(plan.backupFilename).toBe('unique-handoff.md');
-    if (plan.delivery.mode === 'attachment') {
-      expect(plan.delivery.filename).toBe('unique-handoff.md');
-      expect(plan.delivery.attachment.length).toBeGreaterThan(5_000);
-    }
+    expect(plan.delivery).toMatchObject({
+      mode: 'attachment',
+      filename: 'unique-handoff.md',
+      attachment: plan.transcript,
+    });
+    expect(plan.transcript.length).toBeGreaterThan(5_000);
   });
 });
