@@ -797,7 +797,11 @@ export class FolderRepository {
     }
   }
 
-  /** Retry transient scope failures; the global bucket may belong to another account. */
+  /**
+   * Firefox resolves the scope through a background that may not be listening yet.
+   * An unbound store silently drops edits, and the global bucket may belong to
+   * another account, so retry instead of falling back.
+   */
   private scheduleAccountScopeRetry(request: number): void {
     if (this.destroyed || request !== this.accountScopeRequest) return;
     const delay = ACCOUNT_SCOPE_RETRY_DELAYS[this.accountScopeRetryAttempt];
