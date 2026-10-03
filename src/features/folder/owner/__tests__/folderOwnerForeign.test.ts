@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import { BUNDLE_INTENT_KEY, writeBundle } from '../bundleIntent';
+import { hashValue } from '../canonicalHash';
+import type { FolderOwnerMeta } from '../folderOwnerState';
 import { ownerBackupKey, ownerMetaKey } from '../folderOwnerState';
 import { createFaultyStorage } from './faultyStorage';
 import {
@@ -36,6 +39,47 @@ const foreignCopy = (storage: ReturnType<typeof createFaultyStorage>) =>
   (storage.read(ownerBackupKey(KEY, 'foreign')) as { value: unknown } | undefined)?.value;
 
 describe('foreign-write detector (§6.4)', () => {
+  it('R3.6: defers detector copies while its key belongs to an unresolved bundle', async () => {
+    const storage = createFaultyStorage({ [KEY]: START });
+    const world = createWorld(storage);
+    const owner = world.process();
+    await new TestClient(world, 'A').open(owner);
+    const meta = storage.read(ownerMetaKey(KEY)) as FolderOwnerMeta;
+    storage.failWhen((op, keys) => op === 'set' && keys.includes(KEY));
+    expect(
+      await writeBundle(storage.area, {
+        txId: 'tx',
+        site: 'gemini',
+        clientId: 'A',
+        seq: 1,
+        at: world.now(),
+        values: {
+          [KEY]: FOREIGN,
+          [ownerMetaKey(KEY)]: {
+            ...meta,
+            rev: meta.rev + 1,
+            dataHash: await hashValue(FOREIGN),
+            clients: {
+              A: {
+                ...meta.clients.A,
+                applied: 1,
+                outcomes: { 1: { kind: 'bundle_pending', txId: 'tx' } },
+              },
+            },
+          },
+        },
+      }),
+    ).toEqual({ kind: 'pending' });
+    const before = storage.snapshot();
+
+    await owner.observe(KEY, FOREIGN);
+
+    expect(storage.read(KEY)).toEqual(before[KEY]);
+    expect(storage.read(ownerMetaKey(KEY))).toEqual(before[ownerMetaKey(KEY)]);
+    expect(storage.read(BUNDLE_INTENT_KEY)).toMatchObject({ status: 'open' });
+    expect(foreignCopy(storage)).toBeUndefined();
+  });
+
   it('T1c: keeps a raw write that lands inside a turn, which the commit then overwrites', async () => {
     const { storage, owner, tab, settled } = await detectorWorld();
     storage.onCall((_call, op, keys) => {

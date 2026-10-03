@@ -17,6 +17,8 @@ export interface ByteStoreOptions {
   perKey?: boolean;
 }
 
+type Changes = Record<string, { oldValue?: unknown; newValue?: unknown }>;
+
 export function createByteStore(
   initial: Record<string, unknown> = {},
   options: ByteStoreOptions = {},
@@ -26,6 +28,13 @@ export function createByteStore(
   let gate: Promise<void> | null = null;
   let open: (() => void) | null = null;
   const log: string[] = [];
+  const listeners = new Set<(changes: Changes) => void>();
+  let beforeSet: ((values: Record<string, unknown>) => void | Promise<void>) | null = null;
+  const emit = (changes: Changes) => {
+    if (Object.keys(changes).length > 0) {
+      queueMicrotask(() => listeners.forEach((listener) => listener(structuredClone(changes))));
+    }
+  };
 
   const used = (): number =>
     [...items].reduce((sum, [key, value]) => sum + itemBytes(key, value), 0);
@@ -48,19 +57,33 @@ export function createByteStore(
     const quota = options.quota ?? null;
     const fits = (key: string, value: unknown) =>
       quota === null || used() - bytesOf([key]) + itemBytes(key, value) <= quota;
-    if (options.perKey) {
-      let failed = false;
-      for (const [key, value] of entries) {
-        if (fits(key, value)) items.set(key, structuredClone(value));
-        else failed = true;
+    const changes: Changes = {};
+    const land = (key: string, value: unknown) => {
+      if (JSON.stringify(items.get(key)) !== JSON.stringify(value)) {
+        changes[key] = {
+          oldValue: structuredClone(items.get(key)),
+          newValue: structuredClone(value),
+        };
       }
-      if (failed) throw new QuotaExceeded('QUOTA_BYTES quota exceeded');
-      return;
+      items.set(key, structuredClone(value));
+    };
+    try {
+      if (options.perKey) {
+        let failed = false;
+        for (const [key, value] of entries) {
+          if (fits(key, value)) land(key, value);
+          else failed = true;
+        }
+        if (failed) throw new QuotaExceeded('QUOTA_BYTES quota exceeded');
+        return;
+      }
+      const keys = entries.map(([key]) => key);
+      const next = used() - bytesOf(keys) + entries.reduce((s, [k, v]) => s + itemBytes(k, v), 0);
+      if (quota !== null && next > quota) throw new QuotaExceeded('QUOTA_BYTES quota exceeded');
+      for (const [key, value] of entries) land(key, value);
+    } finally {
+      emit(changes);
     }
-    const keys = entries.map(([key]) => key);
-    const next = used() - bytesOf(keys) + entries.reduce((s, [k, v]) => s + itemBytes(k, v), 0);
-    if (quota !== null && next > quota) throw new QuotaExceeded('QUOTA_BYTES quota exceeded');
-    for (const [key, value] of entries) items.set(key, structuredClone(value));
   }
 
   const area = {
@@ -74,9 +97,20 @@ export function createByteStore(
         );
       }),
     getAll: () => area.get(null),
-    set: (values: Record<string, unknown>) => enqueue('set', () => put(Object.entries(values))),
+    set: (values: Record<string, unknown>) => {
+      const dispatch = () => enqueue('set', () => put(Object.entries(values)));
+      const waiting = beforeSet?.(values);
+      return waiting ? waiting.then(dispatch) : dispatch();
+    },
     remove: (keys: string | readonly string[]) =>
-      enqueue('remove', () => [keys].flat().forEach((key) => items.delete(key))),
+      enqueue('remove', () => {
+        const changes: Changes = {};
+        for (const key of [keys].flat()) {
+          if (items.has(key)) changes[key] = { oldValue: structuredClone(items.get(key)) };
+          items.delete(key);
+        }
+        emit(changes);
+      }),
     getBytesInUse: (keys: string | readonly string[] | null) =>
       enqueue('bytes', () => (keys === null ? used() : bytesOf([keys].flat()))),
   };
@@ -87,6 +121,14 @@ export function createByteStore(
     log,
     read: (key: string): unknown => structuredClone(items.get(key)),
     has: (key: string): boolean => items.has(key),
+    subscribe(listener: (changes: Changes) => void): () => void {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
+    },
+    /** Pauses before dispatch, so later dispatched calls still run FIFO. */
+    onBeforeSet(hook: typeof beforeSet): void {
+      beforeSet = hook;
+    },
     /** Stalls every call issued from now on until `release`. */
     hold(): void {
       gate ??= new Promise<void>((resolve) => (open = resolve));

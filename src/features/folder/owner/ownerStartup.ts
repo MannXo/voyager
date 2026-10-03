@@ -13,10 +13,6 @@ export const hasOwnerSite = (authority: Authority): boolean =>
  * resolves and drains only keys whose site this build owns. With every site
  * legacy it does not touch storage at all, so sidecars an owner build left
  * behind stay frozen under a legacy writer after a rollback.
- *
- * Hook for REVIEW-v2 problem 5: an open bundle intent naming a legacy site's
- * key is still resolved by the first owner-site turn; that cross-boundary rule
- * is being designed separately.
  */
 export async function drainOwnedKeys(
   area: FolderOwnerStorageArea,

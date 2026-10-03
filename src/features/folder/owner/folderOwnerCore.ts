@@ -1,7 +1,8 @@
 import type { StorageBudget } from '@/features/storage/storageBudget';
-import { createWriteQueue } from '@/features/storage/writeQueue';
+import { type Serialize, createWriteQueue } from '@/features/storage/writeQueue';
 
 import type { FolderAuthority } from './authority';
+import { resolveBundleIntent } from './bundleIntent';
 import { canonicalJson } from './canonicalHash';
 import type { StoredOutcome } from './folderOps';
 import type {
@@ -30,6 +31,7 @@ import {
   type ReadyState,
   commitOwnerState,
   hashStored,
+  ownerMetaKey,
   pendingOpKey,
   resolveOwnerState,
 } from './folderOwnerState';
@@ -82,7 +84,7 @@ export interface FolderOwnerCoreOptions {
   /** Told each durable meta, so the budget reserves every registered client's allowance (R3.2). */
   allowances?: Pick<AllowanceLedger, 'observe'>;
   /** The shared in-process write queue; defaults to a private one. */
-  serialize?: <T>(turn: () => Promise<T>) => Promise<T>;
+  serialize?: Serialize;
 }
 
 export interface FolderOwnerCore {
@@ -376,7 +378,7 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
   return {
     snapshot(request) {
       if (!policyFor(request.key)) return Promise.resolve({ kind: 'refused', reason: 'not_owner' });
-      return serialize(() => snapshotTurn(request));
+      return serialize(() => snapshotTurn(request), [request.key, ownerMetaKey(request.key)]);
     },
     ack({ key, clientId, ackedThrough }) {
       const forKey = acks.get(key) ?? new Map<string, number>();
@@ -386,12 +388,12 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
     open(request) {
       const policy = policyFor(request.key);
       if (!policy) return Promise.resolve({ kind: 'refused', reason: 'not_owner' });
-      return serialize(() => openTurn(request, policy));
+      return serialize(() => openTurn(request, policy), [request.key, ownerMetaKey(request.key)]);
     },
     apply(request) {
       const policy = policyFor(request.key);
       if (!policy) return Promise.resolve({ kind: 'refused', reason: 'not_owner' });
-      return serialize(() => applyTurn(request, policy));
+      return serialize(() => applyTurn(request, policy), [request.key, ownerMetaKey(request.key)]);
     },
     held(request) {
       const policy = policyFor(request.key);
@@ -401,7 +403,7 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
         if (typeof state === 'string') return { kind: 'refused', reason: state };
         const { key, heldClientId, decision } = request;
         return resolveHeld(ctx, key, state, heldClientId, decision, policy);
-      });
+      }, [request.key, ownerMetaKey(request.key)]);
     },
     adoptJournal(request) {
       const policy = policyFor(request.key);
@@ -410,17 +412,21 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
         const state = await readyFor(request.key);
         if (typeof state === 'string') return { kind: 'refused', reason: state };
         return adoptJournal(ctx, request.key, state, request, policy, newId);
-      });
+      }, [request.key, ownerMetaKey(request.key)]);
     },
     observe(key, value) {
       if (!policyFor(key)) return Promise.resolve();
       return serialize(async () => {
+        const bundle = await resolveBundleIntent(area, options.authority, now, {
+          readKeys: [key, ownerMetaKey(key)],
+        });
+        if (bundle !== 'ok') return;
         const hash = await hashStored(value);
         if (value !== undefined && !ownHashes.get(key)?.includes(hash)) {
           await keepForeignCopy(area, key, value, hash, now());
         }
         await resolve(key);
-      });
+      }, [key, ownerMetaKey(key)]);
     },
     async drain(key) {
       const policy = policyFor(key);
@@ -428,7 +434,7 @@ export function createFolderOwnerCore(options: FolderOwnerCoreOptions): FolderOw
       await serialize(async () => {
         const state = await resolve(key);
         if (state.kind === 'ready') await drainKey(ctx, key, state, policy);
-      });
+      }, [key, ownerMetaKey(key)]);
     },
   };
 }

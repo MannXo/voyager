@@ -4,10 +4,10 @@
  * queue never interleave their read-change-write turns. Nothing about the
  * queue is persisted: what survives a worker restart is storage itself.
  */
-export type Serialize = <T>(turn: () => Promise<T>) => Promise<T>;
+export type Serialize = <T>(turn: () => Promise<T>, readKeys?: readonly string[]) => Promise<T>;
 
-/** A step every turn runs first; a throw fails that turn without running it. */
-export type QueuePrelude = () => Promise<void>;
+/** A pre-read guard; absent readKeys means unknown reads, [] means no reads. A throw skips the turn. */
+export type QueuePrelude = (readKeys: readonly string[] | undefined) => Promise<void>;
 
 export interface WriteQueue extends Serialize {
   /** Registers or clears the prelude. With none, a turn runs exactly as it was given. */
@@ -17,8 +17,8 @@ export interface WriteQueue extends Serialize {
 export function createWriteQueue(): WriteQueue {
   let queue: Promise<unknown> = Promise.resolve();
   let prelude: QueuePrelude | null = null;
-  const serialize = <T>(turn: () => Promise<T>): Promise<T> => {
-    const run = prelude ? withPrelude(prelude, turn) : turn;
+  const serialize = <T>(turn: () => Promise<T>, readKeys?: readonly string[]): Promise<T> => {
+    const run = prelude ? withPrelude(prelude, turn, readKeys) : turn;
     const next = queue.then(run, run);
     queue = next.catch(() => undefined);
     return next;
@@ -31,9 +31,9 @@ export function createWriteQueue(): WriteQueue {
 }
 
 const withPrelude =
-  <T>(prelude: QueuePrelude, turn: () => Promise<T>) =>
+  <T>(prelude: QueuePrelude, turn: () => Promise<T>, readKeys?: readonly string[]) =>
   async (): Promise<T> => {
-    await prelude();
+    await prelude(readKeys);
     return turn();
   };
 

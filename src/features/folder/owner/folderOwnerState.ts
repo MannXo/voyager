@@ -155,7 +155,9 @@ export async function resolveOwnerState(
   newId: () => string,
   authority: Readonly<Record<FolderSite, FolderAuthority>>,
 ): Promise<OwnerState> {
-  const bundle = await resolveBundleIntent(area, authority, () => now);
+  const bundle = await resolveBundleIntent(area, authority, () => now, {
+    readKeys: [key, ownerMetaKey(key)],
+  });
   if (bundle !== 'ok') return { kind: bundle };
 
   const metaKey = ownerMetaKey(key);

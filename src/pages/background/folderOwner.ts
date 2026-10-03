@@ -1,6 +1,15 @@
+/**
+ * Background owner of folder writes (DESIGN-v2 §6). Dormant: while every site
+ * in `FOLDER_WRITE_AUTHORITY` is `legacy`, each request is refused with
+ * `not_owner` before any storage access, and startup writes only the authority fence.
+ */
 import { logger } from '@/core/services/LoggerService';
 import { FOLDER_WRITE_AUTHORITY, type FolderAuthority } from '@/features/folder/owner/authority';
-import { resolveBundleIntent } from '@/features/folder/owner/bundleIntent';
+import { writeAuthorityFence } from '@/features/folder/owner/authorityFence';
+import {
+  type BundleRecoveryOptions,
+  createBundleRecovery,
+} from '@/features/folder/owner/bundleRecovery';
 import {
   type FolderOwnerCore,
   createFolderOwnerCore,
@@ -19,15 +28,11 @@ import {
 import type { FolderOwnerStorageArea } from '@/features/folder/owner/folderOwnerState';
 import { createAllowanceLedger } from '@/features/folder/owner/ownerAllowances';
 import { drainOwnedKeys, hasOwnerSite } from '@/features/folder/owner/ownerStartup';
-/**
- * Background owner of folder writes (DESIGN-v2 §6). Dormant: while every site
- * in `FOLDER_WRITE_AUTHORITY` is `legacy`, each request is refused with
- * `not_owner` before any storage access, and startup reads nothing.
- */
 import { storageBudget } from '@/features/storage/storageBudget';
 import { backgroundWriteQueue } from '@/features/storage/writeQueue';
 
 type Authority = Readonly<Record<FolderSite, FolderAuthority>>;
+const BUNDLE_RETRY_ALARM = 'gv-folder-owner-bundle-retry';
 
 export const localFolderArea: FolderOwnerStorageArea = {
   get: (keys) => chrome.storage.local.get(keys),
@@ -81,25 +86,62 @@ export function startFolderOwner(authority: Authority = FOLDER_WRITE_AUTHORITY):
     void reply.then(sendResponse);
     return true;
   });
-  // The fence write (§3.3) ships with L1; startup drains only keys of owner sites.
-  void drainOwnedKeys(localFolderArea, core, authority).catch((error: unknown) =>
-    logger.warn('Folder owner startup drain failed', { error: String(error) }),
+  const fence = startupFence(core, authority);
+  if (hasOwnerSite(authority)) watchOwnedKeys(core, authority, fence);
+  void fence().catch((error: unknown) =>
+    logger.warn('Folder authority fence write failed', { error: String(error) }),
   );
-  if (hasOwnerSite(authority)) watchOwnedKeys(core, authority);
   return core;
 }
 
 /**
- * Only a build that owns a site: the foreign-write detector, and bundle
- * resolution before every queue turn of both owners (§9). With every site
- * legacy neither exists, so prompt-owner turns read exactly what they read today.
- * Hook: the reviewed bundle rules (addendum P3P4 R5.2) replace the P0 resolver here.
+ * Publishes this build's authority before startup touches any owner site's
+ * keys (§3.3), then starts the drain (§6.7). A failed write is attempted again
+ * by the next caller, so it never blocks owner turns for the worker's lifetime.
  */
-function watchOwnedKeys(core: FolderOwnerCore, authority: Authority): void {
-  backgroundWriteQueue.setPrelude(async () => {
-    const bundle = await resolveBundleIntent(localFolderArea, authority);
-    if (bundle !== 'ok') throw new Error(`Folder bundle resolution: ${bundle}`);
+function startupFence(core: FolderOwnerCore, authority: Authority): () => Promise<void> {
+  let written: Promise<void> | null = null;
+  return () =>
+    (written ??= writeAuthorityFence(
+      localFolderArea,
+      chrome.runtime.getManifest().version,
+      authority,
+    )
+      .then(() => {
+        // Draining joins the queue whose prelude awaits this fence, so awaiting it here would deadlock.
+        void drainOwnedKeys(localFolderArea, core, authority).catch((error: unknown) =>
+          logger.warn('Folder owner startup drain failed', { error: String(error) }),
+        );
+      })
+      .catch((error: unknown) => {
+        written = null;
+        throw error;
+      }));
+}
+
+/**
+ * Only a build that owns a site: the foreign-write detector, and bundle
+ * resolution before affected queue turns of both owners (§9). With every site
+ * legacy neither exists, so prompt-owner turns read exactly what they read today.
+ */
+function watchOwnedKeys(
+  core: FolderOwnerCore,
+  authority: Authority,
+  fence: () => Promise<void>,
+): void {
+  const recovery = createBundleRecovery({
+    area: localFolderArea,
+    authority,
+    serialize: backgroundWriteQueue,
+    fence,
+    setTimer: alarmTimer(BUNDLE_RETRY_ALARM),
+    subscribe: (listener) => {
+      chrome.storage.onChanged.addListener(listener);
+      return () => chrome.storage.onChanged.removeListener(listener);
+    },
   });
+  backgroundWriteQueue.setPrelude(recovery.prelude);
+  recovery.start();
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'local') return;
     for (const [key, change] of Object.entries(changes)) {
@@ -107,4 +149,20 @@ function watchOwnedKeys(core: FolderOwnerCore, authority: Authority): void {
       if (siteOfFolderKey(key)) void core.observe(key, change.newValue);
     }
   });
+}
+
+/** A one-shot alarm: MV3 may terminate an idle worker before a 60-second `setTimeout` fires. */
+function alarmTimer(name: string): BundleRecoveryOptions['setTimer'] {
+  let fire: (() => void) | null = null;
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === name) fire?.();
+  });
+  return (run, ms) => {
+    fire = run;
+    void chrome.alarms.create(name, { delayInMinutes: ms / 60_000 });
+    return () => {
+      fire = null;
+      void chrome.alarms.clear(name);
+    };
+  };
 }

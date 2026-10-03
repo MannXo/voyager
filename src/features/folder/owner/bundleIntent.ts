@@ -1,7 +1,7 @@
 /**
- * Multi-key bundles (DESIGN-v2 §9, addendum P3P4 R3.1–R3.5, R4.1–R4.3, R5.2).
+ * Multi-key bundles (DESIGN-v2 §9, addendum P3P4 R3.1–R3.6, R4.1–R4.3, R5.2).
  * Dormant: nothing produces a bundle until the cloud merge moves to the owner
- * (P4); every queue turn of both owners still resolves an open one first.
+ * (P4); turns reading its keys resolve an open one first.
  *
  * A bundle writes several keys, one of them an owned K's meta, as one
  * transaction with respect to queue participants. The intent records every
@@ -15,6 +15,7 @@ import type { StorageBudget } from '@/features/storage/storageBudget';
 import { storedItemBytes, storedItemsBytes } from '@/features/storage/storageBudget';
 
 import type { FolderAuthority } from './authority';
+import { createBundleSpaceRelease } from './bundleRelease';
 import { hashValue } from './canonicalHash';
 import { INTERRUPTED, type OpOutcome, type StoredOutcome } from './folderOps';
 import { type FolderSite, siteOfFolderKey } from './folderOwnerPolicy';
@@ -67,7 +68,8 @@ export type BundleResult =
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const isOpenStatus = (value: unknown): boolean => isRecord(value) && value.status === 'open';
+/** Whether a stored intent value is open, whatever its version. */
+export const isOpenStatus = (value: unknown): boolean => isRecord(value) && value.status === 'open';
 
 function isOpenBundle(value: unknown): value is OpenBundle {
   return (
@@ -364,20 +366,26 @@ async function afterValueFailure(
 }
 
 /**
- * Settles an open bundle before any participant reads; every queue turn of
- * both owners runs this first. A bundle this build may not roll forward (a
- * legacy site, an unknown version) is abandoned with a status-only write and
- * nothing else (R5.2): a legacy site's K and meta stay frozen.
+ * Settles an open bundle before a participant reads its keys. Unsupported
+ * authority or version is abandoned with a status-only write (R5.2): a legacy
+ * site's K and meta stay frozen. A quota failure releases space (R3.6) and
+ * tries again. `readKeys` disjoint from a still-open bundle's keys get `ok`;
+ * `onBlocked` is told whenever the bundle stays open.
  */
 export async function resolveBundleIntent(
   area: FolderOwnerStorageArea,
   authority: Authority,
   now: () => number = Date.now,
+  options: {
+    readKeys?: readonly string[];
+    onBlocked?: () => void;
+  } = {},
 ): Promise<'ok' | 'read_failed' | 'write_failed'> {
   let intent: unknown;
   try {
     intent = (await area.get([BUNDLE_INTENT_KEY]))[BUNDLE_INTENT_KEY];
   } catch {
+    options.onBlocked?.();
     return 'read_failed';
   }
   if (!isOpenStatus(intent)) return 'ok';
@@ -387,14 +395,33 @@ export async function resolveBundleIntent(
       await area.set(settledStatus(txId, 'abandoned', now()));
       return 'ok';
     }
-    let current: Record<string, unknown>;
-    try {
-      current = await readKeys(area, intent);
-    } catch {
-      return 'read_failed';
+    const keys = Object.keys(intent.keys);
+    const blocked = (reason: 'read_failed' | 'write_failed') => {
+      options.onBlocked?.();
+      return options.readKeys?.every((key) => !keys.includes(key)) ? 'ok' : reason;
+    };
+    const release = createBundleSpaceRelease(area, authority, keys);
+    for (;;) {
+      let current: Record<string, unknown>;
+      try {
+        current = await readKeys(area, intent);
+      } catch {
+        return blocked('read_failed');
+      }
+      try {
+        await finish(area, intent, current, now());
+        break;
+      } catch (error) {
+        if (!isQuotaError(error)) return blocked('write_failed');
+        try {
+          if (!(await release())) return blocked('write_failed');
+        } catch {
+          return blocked('write_failed');
+        }
+      }
     }
-    await finish(area, intent, current, now());
   } catch {
+    options.onBlocked?.();
     return 'write_failed';
   }
   return 'ok';

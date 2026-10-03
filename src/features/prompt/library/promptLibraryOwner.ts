@@ -230,7 +230,7 @@ export function createPromptLibraryOwner(options: {
       }
       await options.area.set({ [PROMPT_LIBRARY_KEY]: items });
       return summarize(items, items.length, 0);
-    });
+    }, [PROMPT_LIBRARY_KEY]);
 
   const transact = <T>(
     change: (stored: unknown[]) => { items: unknown[] | null; result: T },
@@ -239,12 +239,12 @@ export function createPromptLibraryOwner(options: {
       const { items, result } = change(await readStored());
       if (items) await options.area.set({ [PROMPT_LIBRARY_KEY]: items });
       return result;
-    });
+    }, [PROMPT_LIBRARY_KEY]);
 
   return {
     apply: (op) =>
       op.kind === 'seed' ? seed(op.items) : transact((stored) => applyPromptLibraryOp(stored, op)),
-    read: () => serialize(readStored),
+    read: () => serialize(readStored, [PROMPT_LIBRARY_KEY]),
     transact,
   };
 }
