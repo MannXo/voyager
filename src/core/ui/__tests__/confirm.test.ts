@@ -111,22 +111,23 @@ describe('askConfirm', () => {
     await expect(answer).resolves.toBeNull();
   });
 
-  it('an unrelated container scroll keeps the confirm open', async () => {
+  it('an unrelated container scroll keeps the confirm open', () => {
     const elsewhere = document.createElement('div');
     document.body.append(elsewhere);
-    const answer = ask();
+    void ask();
 
     elsewhere.dispatchEvent(new Event('scroll'));
-    expect(confirmDriver.isOpen()).toBe(true);
 
-    document.querySelector('#scroller')!.dispatchEvent(new Event('scroll'));
-    await expect(answer).resolves.toBeNull();
+    expect(confirmDriver.isOpen()).toBe(true);
   });
 
-  it('closes when the page itself scrolls', async () => {
+  it('closes when its anchor leaves the page', async () => {
     const answer = ask();
-    document.dispatchEvent(new Event('scroll'));
+
+    document.querySelector('#scroller')!.remove();
+
     await expect(answer).resolves.toBeNull();
+    expect(host()).toBeNull();
   });
 
   it('answers null for the older confirm when a newer one opens', async () => {
@@ -237,6 +238,29 @@ describe('askConfirm', () => {
       expect(position()).toEqual({ left: '292px', top: '70px' });
       confirmDriver.answer('Cancel');
       await rtl;
+    });
+
+    it('stays open and follows its anchor while a streaming scroll keeps the anchor in view', async () => {
+      placeWith(rect(100, 300, 40, 20));
+      const answer = ask();
+
+      placeWith(rect(100, 200, 40, 20));
+      document.querySelector('#scroller')!.dispatchEvent(new Event('scroll'));
+
+      expect(confirmDriver.isOpen()).toBe(true);
+      expect(position()).toEqual({ left: '100px', top: '228px' });
+      confirmDriver.answer('Cancel');
+      await answer;
+    });
+
+    it('closes once a scroll takes its anchor out of view', async () => {
+      placeWith(rect(100, 100, 40, 20));
+      const answer = ask();
+
+      placeWith(rect(100, -40, 40, 20));
+      document.dispatchEvent(new Event('scroll'));
+
+      await expect(answer).resolves.toBeNull();
     });
 
     it('stays inside the viewport at the right edge', async () => {

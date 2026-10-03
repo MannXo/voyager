@@ -4,8 +4,9 @@
  * Every layer is a shadow host on `document.body` carrying `data-gv-layer`, so a
  * page surface can tell a press on Voyager's own confirm or toast from a press
  * outside it without knowing any class name. Popovers sit on a stack and only
- * the top one takes Escape, Tab and outside presses. Toast hosts are marked but
- * never stacked: they take no Escape, outside press or focus.
+ * the top one takes Escape, Tab and outside presses; each follows its anchor and
+ * closes once the anchor leaves the page or the viewport. Toast hosts are marked
+ * but never stacked: they take no Escape, outside press or focus.
  */
 import { SHADOW_RTL_ATTR, attachShadowSurface } from '@/pages/content/folder/shadowHost';
 
@@ -13,9 +14,6 @@ import tokensCss from './tokens.css?raw';
 
 export const LAYER_ATTR = 'data-gv-layer';
 export type LayerKind = 'popover' | 'toast';
-
-/** Layers that hold focus and expect an answer; a toast never does. */
-export const VOYAGER_POPOVER_SELECTOR = `[${LAYER_ATTR}="popover"]`;
 
 /**
  * Did this event pass through any Voyager layer, toasts included? Read it during
@@ -62,11 +60,12 @@ export type PopoverOptions = {
   anchor: HTMLElement;
   side: PopoverSide;
   css: string;
-  /** Where focus returns if the popover still holds it when it closes. Default: the anchor. */
-  returnFocus?: HTMLElement | null;
   /** The owner's lifetime; aborting dismisses the popover. */
   signal?: AbortSignal;
-  /** The stack closed the popover: Escape, outside press, scroll, resize or abort. */
+  /**
+   * The stack closed the popover: Escape, an outside press, abort, or its anchor
+   * leaving the page or the viewport.
+   */
   onDismiss: () => void;
 };
 
@@ -80,11 +79,13 @@ export type Popover = {
 type Entry = {
   layer: LayerHost;
   anchor: HTMLElement;
+  place: () => void;
   close: () => void;
   dismiss: () => void;
 };
 
 const stack: Entry[] = [];
+let detachWatcher: MutationObserver | null = null;
 
 const GAP = 8;
 const VIEWPORT_PAD = 8;
@@ -129,20 +130,49 @@ function onKeyDown(event: KeyboardEvent): void {
   focusable[next].focus({ preventScroll: true });
 }
 
+function viewportSize(): { width: number; height: number } {
+  return {
+    width: document.documentElement.clientWidth || window.innerWidth,
+    height: document.documentElement.clientHeight || window.innerHeight,
+  };
+}
+
+/** Re-place the popover beside its anchor, or dismiss it once the anchor is out of sight. */
+function follow(entry: Entry): void {
+  const rect = entry.anchor.getBoundingClientRect();
+  const view = viewportSize();
+  const visible =
+    entry.anchor.isConnected &&
+    (rect.width > 0 || rect.height > 0) &&
+    rect.bottom > 0 &&
+    rect.right > 0 &&
+    rect.top < view.height &&
+    rect.left < view.width;
+  if (visible) entry.place();
+  else entry.dismiss();
+}
+
 function onScroll(event: Event): void {
   const target = event.target;
-  // Only a scroll that moves the anchor strands the popover. Gemini scrolls the
-  // chat while a reply streams and the sidebar while it lazy-loads; those must
-  // not close a confirm anchored somewhere else.
+  // Gemini auto-scrolls the chat while a reply streams, so a scroll that moves
+  // the anchor must not close its confirm while the anchor is still in view.
   for (const entry of [...stack].reverse()) {
     if (target instanceof Document || (target instanceof Node && target.contains(entry.anchor))) {
-      entry.dismiss();
+      follow(entry);
     }
   }
 }
 
 function onResize(): void {
-  for (const entry of [...stack].reverse()) entry.dismiss();
+  for (const entry of [...stack].reverse()) follow(entry);
+}
+
+// Keyboard navigation swaps the conversation without a press or a scroll; a
+// confirm whose anchor left the page would otherwise answer for the wrong one.
+function onMutations(): void {
+  for (const entry of [...stack].reverse()) {
+    if (!entry.anchor.isConnected) entry.dismiss();
+  }
 }
 
 function listen(on: boolean): void {
@@ -151,6 +181,12 @@ function listen(on: boolean): void {
   window[method]('keydown', onKeyDown as EventListener, true);
   window[method]('scroll', onScroll, true);
   window[method]('resize', onResize);
+  detachWatcher?.disconnect();
+  detachWatcher = null;
+  if (on) {
+    detachWatcher = new MutationObserver(onMutations);
+    detachWatcher.observe(document.documentElement, { childList: true, subtree: true });
+  }
 }
 
 /** Viewport coordinates for a box of `size` next to `anchor`, clamped on both axes. */
@@ -160,8 +196,7 @@ function placeNear(
   side: PopoverSide,
   rtl: boolean,
 ): { left: number; top: number } {
-  const viewWidth = document.documentElement.clientWidth || window.innerWidth;
-  const viewHeight = document.documentElement.clientHeight || window.innerHeight;
+  const { width: viewWidth, height: viewHeight } = viewportSize();
   let left: number;
   let top: number;
 
@@ -194,7 +229,6 @@ function placeNear(
  */
 export function openPopover(options: PopoverOptions): Popover & { place: () => void } {
   const layer = mountLayerHost('popover', options.css);
-  const returnFocus = options.returnFocus ?? options.anchor;
 
   const close = (): void => {
     const index = stack.indexOf(entry);
@@ -205,7 +239,7 @@ export function openPopover(options: PopoverOptions): Popover & { place: () => v
     const active = document.activeElement;
     const heldFocus = active === layer.host || active === document.body || active === null;
     layer.remove();
-    if (heldFocus && returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+    if (heldFocus && options.anchor.isConnected) options.anchor.focus({ preventScroll: true });
   };
 
   const dismiss = (): void => {
@@ -214,25 +248,22 @@ export function openPopover(options: PopoverOptions): Popover & { place: () => v
     options.onDismiss();
   };
 
-  const entry: Entry = { layer, anchor: options.anchor, close, dismiss };
+  const place = (): void => {
+    const rect = layer.host.getBoundingClientRect();
+    const { left, top } = placeNear(
+      options.anchor.getBoundingClientRect(),
+      { width: rect.width, height: rect.height },
+      options.side,
+      layer.host.hasAttribute(SHADOW_RTL_ATTR),
+    );
+    layer.host.style.left = `${left}px`;
+    layer.host.style.top = `${top}px`;
+  };
+
+  const entry: Entry = { layer, anchor: options.anchor, place, close, dismiss };
   if (stack.length === 0) listen(true);
   stack.push(entry);
   options.signal?.addEventListener('abort', dismiss, { once: true });
 
-  return {
-    host: layer.host,
-    root: layer.root,
-    close,
-    place: () => {
-      const rect = layer.host.getBoundingClientRect();
-      const { left, top } = placeNear(
-        options.anchor.getBoundingClientRect(),
-        { width: rect.width, height: rect.height },
-        options.side,
-        layer.host.hasAttribute(SHADOW_RTL_ATTR),
-      );
-      layer.host.style.left = `${left}px`;
-      layer.host.style.top = `${top}px`;
-    },
-  };
+  return { host: layer.host, root: layer.root, close, place };
 }

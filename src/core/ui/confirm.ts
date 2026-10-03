@@ -28,15 +28,14 @@ export type ConfirmRequest<C extends string> = {
   readonly cancelLabel?: string;
   /** The owner's lifetime: aborting answers null and removes the card. */
   readonly signal?: AbortSignal;
-  /** Where focus goes afterwards when the anchor is about to disappear. */
-  readonly returnFocus?: HTMLElement | null;
 };
 
 let current: { popover: Popover; settle: (answer: null) => void } | null = null;
 
 /**
- * Ask, and resolve the chosen id, or null on Cancel, Escape, an outside press, a
- * scroll that moves the anchor, an aborted signal, or a newer confirm.
+ * Ask, and resolve the chosen id, or null on Cancel, Escape, an outside press,
+ * the anchor leaving the page or the viewport, an aborted signal, or a newer
+ * confirm. The page may have changed meanwhile: re-check what the answer acts on.
  */
 export function askConfirm<C extends string = 'confirm'>(
   request: ConfirmRequest<C>,
@@ -59,7 +58,6 @@ export function askConfirm<C extends string = 'confirm'>(
       anchor: request.anchor,
       side: request.side ?? 'below',
       css: confirmCss,
-      returnFocus: request.returnFocus,
       signal: request.signal,
       onDismiss: () => settle(null),
     });
