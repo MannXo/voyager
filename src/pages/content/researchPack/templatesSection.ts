@@ -22,8 +22,6 @@ import {
 } from '@/features/researchPack/services/templates';
 import type { TranslationKey } from '@/utils/translations';
 
-import type { ConfirmRequest } from '../prompt/promptRowConfirm';
-
 type Translate = (key: TranslationKey) => string;
 
 export interface TemplatesSectionDeps {
@@ -33,7 +31,12 @@ export interface TemplatesSectionDeps {
   instruction: () => string;
   /** Put a template's text into the instruction and save it to the pack. */
   applyInstruction: (text: string) => void;
-  confirm: (request: ConfirmRequest) => void;
+  /** Ask before a destructive step; resolves true only when the user confirms. */
+  confirm: (request: {
+    anchor: HTMLElement;
+    message: string;
+    confirmLabel: string;
+  }) => Promise<boolean>;
   notify: (message: string, tone?: 'ok' | 'error') => void;
   download: (filename: string, content: string) => void;
   now?: () => number;
@@ -286,7 +289,7 @@ export function createTemplatesSection(deps: TemplatesSectionDeps): TemplatesSec
     showPreview(planTemplateSave(library, parsed.templates));
   };
 
-  const applyTemplate = (): void => {
+  const applyTemplate = async (): Promise<void> => {
     const id = select.value;
     const template = checkedTemplate(id);
     if (!template) return;
@@ -295,17 +298,15 @@ export function createTemplatesSection(deps: TemplatesSectionDeps): TemplatesSec
       deps.applyInstruction(template.text);
       return;
     }
-    deps.confirm({
+    const confirmed = await deps.confirm({
       anchor: useButton,
       message: t('researchPackTemplateUseConfirm'),
       confirmLabel: t('researchPackTemplateReplace'),
-      cancelLabel: t('pm_cancel'),
-      onConfirm: () => {
-        // The template may have been edited or deleted while the confirm was open.
-        const current = checkedTemplate(id);
-        if (current) deps.applyInstruction(current.text);
-      },
     });
+    if (!confirmed) return;
+    // The template may have been edited or deleted while the confirm was open.
+    const current = checkedTemplate(id);
+    if (current) deps.applyInstruction(current.text);
   };
 
   const saveTemplate = (): Promise<void> =>
@@ -368,7 +369,7 @@ export function createTemplatesSection(deps: TemplatesSectionDeps): TemplatesSec
     });
 
   select.addEventListener('change', syncControls);
-  useButton.addEventListener('click', applyTemplate);
+  useButton.addEventListener('click', () => void applyTemplate());
   exportButton.addEventListener('click', () => {
     const template = checkedTemplate(select.value);
     if (!template) return;

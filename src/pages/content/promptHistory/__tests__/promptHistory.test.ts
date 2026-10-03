@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
 import { hashString } from '@/core/utils/hash';
+import { confirmDriver } from '@/tests/confirmDriver';
 
 import { buildInstructionBlock } from '../../folderProject/instructionBlock';
 import { addPromptHistory, getPromptHistory } from '../storage';
@@ -361,14 +362,10 @@ describe('Prompt History capture and lifecycle', () => {
     const clearButton = document.querySelector<HTMLButtonElement>('.gv-ph-header .gv-ph-action');
     clearButton?.click();
 
-    await vi.waitFor(() => expect(document.querySelector('.gv-ph-confirm')).not.toBeNull());
+    await vi.waitFor(() => expect(confirmDriver.isOpen()).toBe(true));
     expect(await getPromptHistory(PRIMARY_ACCOUNT_SCOPE)).toHaveLength(1);
-    const cancel = document.querySelector<HTMLButtonElement>('.gv-ph-confirm button:last-child');
-    expect(document.activeElement).toBe(cancel);
-    cancel?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-    const confirm = document.querySelector<HTMLButtonElement>('.gv-pm-confirm-yes');
-    expect(document.activeElement).toBe(confirm);
-    confirm?.click();
+    expect(confirmDriver.focusedLabel()).toBe('Cancel');
+    confirmDriver.answer('Clear');
 
     await vi.waitFor(async () =>
       expect(await getPromptHistory(PRIMARY_ACCOUNT_SCOPE)).toHaveLength(0),

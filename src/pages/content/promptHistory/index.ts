@@ -11,6 +11,8 @@ import {
 } from '@/core/services/AccountIsolationService';
 import { LoggerService } from '@/core/services/LoggerService';
 import { StorageKeys } from '@/core/types/common';
+import { askConfirm } from '@/core/ui/confirm';
+import { isVoyagerLayerEvent } from '@/core/ui/layer';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
 import { getTranslationSync } from '@/utils/i18n';
 
@@ -38,7 +40,6 @@ const logger = LoggerService.getInstance().createChild('PromptHistory');
 const ROOT_ID = 'gv-ph-root';
 const PANEL_ID = 'gv-ph-panel';
 const TITLE_ID = 'gv-ph-title';
-const CONFIRM_CLASS = 'gv-ph-confirm';
 const CAPTURE_DEDUPLICATION_WINDOW_MS = 10_000;
 const PROMPT_INPUT_SELECTOR = '[contenteditable="true"], textarea';
 const EDIT_CONTAINER_SELECTOR = 'chat-message, .query-content.edit-mode, .edit-container';
@@ -62,7 +63,8 @@ let panel: HTMLDivElement | null = null;
 let listEl: HTMLDivElement | null = null;
 let panelOpen = false;
 let panelCleanup: (() => void) | null = null;
-let confirmCleanup: ((restoreFocus?: boolean) => void) | null = null;
+// Answers an open clear confirm with null when the panel closes or tears down.
+let confirmOwner: AbortController | null = null;
 let globalNoticeTimer: number | null = null;
 let renderRevision = 0;
 const recentCaptures = new Map<string, number>();
@@ -395,7 +397,7 @@ function renderHistoryList(): void {
 
 function closePanel(restoreFocus = false): void {
   if (!panel) return;
-  confirmCleanup?.(false);
+  confirmOwner?.abort();
   panelOpen = false;
   panel.classList.add('gv-hidden');
   trigger?.setAttribute('aria-expanded', 'false');
@@ -417,89 +419,25 @@ function togglePanel(): void {
 }
 
 async function showClearConfirmation(anchor: HTMLButtonElement): Promise<void> {
-  if (document.body.querySelector('.gv-pm-confirm')) return;
   const { accountScope, identity } = await resolveCurrentAccountScope();
   if (!panelOpen || identity !== getCurrentAccountIdentity().identity) return;
-  const confirm = createEl('div', `gv-pm-confirm ${CONFIRM_CLASS}`);
-  confirm.setAttribute('role', 'alertdialog');
-  confirm.setAttribute('aria-modal', 'true');
-  const message = createEl('span');
-  message.id = 'gv-ph-clear-confirm-message';
-  message.textContent = getTranslationSync('promptHistoryClearConfirm');
-  confirm.setAttribute('aria-labelledby', message.id);
-  const yes = createEl('button', 'gv-pm-confirm-yes');
-  yes.type = 'button';
-  yes.textContent = getTranslationSync('promptHistoryClear');
-  const no = createEl('button');
-  no.type = 'button';
-  no.textContent = getTranslationSync('promptHistoryCancel');
-  confirm.append(message, yes, no);
-  document.body.appendChild(confirm);
-
-  const anchorRect = anchor.getBoundingClientRect();
-  const width = confirm.offsetWidth || 240;
-  const height = confirm.offsetHeight || 40;
-  const side: 'left' | 'right' =
-    anchorRect.right + width + 10 > window.innerWidth ? 'left' : 'right';
-  const rawLeft = side === 'right' ? anchorRect.right + 10 : anchorRect.left - width - 10;
-  const left = Math.min(Math.max(8, rawLeft), Math.max(8, window.innerWidth - width - 8));
-  const top = Math.min(
-    Math.max(8, anchorRect.top - 6),
-    Math.max(8, window.innerHeight - height - 8),
-  );
-  confirm.style.top = `${top}px`;
-  confirm.style.left = `${left}px`;
-  confirm.setAttribute('data-side', side);
-
-  const cleanupConfirm = (restoreFocus = true) => {
-    confirm.remove();
-    window.removeEventListener('pointerdown', onOutside, true);
-    window.removeEventListener('keydown', onKeyDown);
-    confirmCleanup = null;
-    if (restoreFocus) anchor.focus();
-  };
-  const onOutside = (event: PointerEvent) => {
-    const target = event.target instanceof Element ? event.target : null;
-    if (!target?.closest(`.${CONFIRM_CLASS}`)) cleanupConfirm();
-  };
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') {
-      cleanupConfirm();
-      return;
-    }
-    if (event.key !== 'Tab') return;
-    const buttons = [yes, no];
-    const currentIndex = buttons.indexOf(document.activeElement as HTMLButtonElement);
-    const nextIndex = event.shiftKey
-      ? (currentIndex - 1 + buttons.length) % buttons.length
-      : (currentIndex + 1) % buttons.length;
-    event.preventDefault();
-    buttons[nextIndex].focus();
-  };
-  confirmCleanup = cleanupConfirm;
-  window.addEventListener('pointerdown', onOutside, true);
-  window.addEventListener('keydown', onKeyDown);
-
-  no.addEventListener('click', (event) => {
-    event.stopPropagation();
-    cleanupConfirm();
+  confirmOwner?.abort();
+  const owner = new AbortController();
+  confirmOwner = owner;
+  const answer = await askConfirm({
+    message: getTranslationSync('promptHistoryClearConfirm'),
+    anchor,
+    side: 'beside',
+    tone: 'danger',
+    cancelLabel: getTranslationSync('promptHistoryCancel'),
+    choices: [{ id: 'confirm', label: getTranslationSync('promptHistoryClear') }],
+    signal: owner.signal,
   });
-  yes.addEventListener('click', (event) => {
-    event.stopPropagation();
-    yes.disabled = true;
-    no.disabled = true;
-    void clearPromptHistory(accountScope)
-      .then(() => {
-        cleanupConfirm(false);
-        renderHistoryList();
-      })
-      .catch((error) => {
-        yes.disabled = false;
-        no.disabled = false;
-        reportStorageError(error);
-      });
-  });
-  no.focus();
+  if (confirmOwner === owner) confirmOwner = null;
+  // The account may have changed while the confirm was open; never clear another one's history.
+  if (!answer || !panelOpen || identity !== getCurrentAccountIdentity().identity) return;
+  await clearPromptHistory(accountScope);
+  renderHistoryList();
 }
 
 function setupPanel(): void {
@@ -548,18 +486,18 @@ function setupPanel(): void {
     if (!panelOpen) return;
     const target = event.target instanceof Element ? event.target : null;
     if (!target) return;
-    if (target.closest('.gv-ph-panel, .gv-ph-trigger, .gv-pm-confirm')) return;
+    if (isVoyagerLayerEvent(event) || target.closest('.gv-ph-panel, .gv-ph-trigger')) return;
     closePanel(false);
   };
   const onKeyDown = (event: KeyboardEvent) => {
-    if (!panelOpen || event.key !== 'Escape' || confirmCleanup) return;
+    if (!panelOpen || event.key !== 'Escape') return;
     closePanel(true);
   };
   window.addEventListener('pointerdown', onPointerDown, true);
   window.addEventListener('keydown', onKeyDown);
 
   panelCleanup = () => {
-    confirmCleanup?.(false);
+    confirmOwner?.abort();
     window.removeEventListener('pointerdown', onPointerDown, true);
     window.removeEventListener('keydown', onKeyDown);
     trigger?.remove();

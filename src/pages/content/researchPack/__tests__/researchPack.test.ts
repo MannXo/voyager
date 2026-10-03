@@ -6,6 +6,7 @@ import {
   createResearchPackOwner,
 } from '@/features/researchPack/services/packStore';
 import type { ResearchPack } from '@/features/researchPack/services/types';
+import { confirmDriver } from '@/tests/confirmDriver';
 import { getTranslationSync } from '@/utils/i18n';
 
 import { findChatInput, insertTextIntoChatInput } from '../../chatInput';
@@ -127,7 +128,7 @@ describe('research pack on Gemini', () => {
     expect(stored()!.items).toHaveLength(1);
 
     clear.click();
-    document.querySelector<HTMLButtonElement>('.gv-pm-confirm-yes')!.click();
+    confirmDriver.answer('Clear');
     await flush();
     expect(stored()!.items).toHaveLength(0);
   });

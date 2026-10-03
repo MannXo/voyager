@@ -1,3 +1,4 @@
+import { askConfirm } from '@/core/ui/confirm';
 /**
  * Research Pack panel: a floating launcher plus a side panel that lists the
  * pack, edits the instruction, previews the Markdown and offers the actions.
@@ -14,7 +15,6 @@ import type { ResearchPack, ResearchPackItem } from '@/features/researchPack/ser
 import type { TranslationKey } from '@/utils/translations';
 
 import { announceSurfaceOpened } from '../floatingSurfaces';
-import { createPromptRowSurfaces } from '../prompt/promptRowConfirm';
 import { formatTarget } from './continueIn';
 import { createTemplatesSection } from './templatesSection';
 
@@ -182,7 +182,27 @@ export function createResearchPackPanel(
   toast.setAttribute('aria-live', 'polite');
   root.append(launcher, toast, panel);
 
-  const confirmSurfaces = createPromptRowSurfaces();
+  // Owns any open confirm: closing, locking or destroying the panel answers it
+  // with null, so a confirm opened for one pack never acts on another.
+  let confirmOwner = new AbortController();
+  const dropConfirm = (): void => {
+    confirmOwner.abort();
+    confirmOwner = new AbortController();
+  };
+  const confirm = async (request: {
+    anchor: HTMLElement;
+    message: string;
+    confirmLabel: string;
+  }): Promise<boolean> =>
+    (await askConfirm({
+      message: request.message,
+      anchor: request.anchor,
+      side: 'above',
+      tone: 'danger',
+      cancelLabel: t('pm_cancel'),
+      choices: [{ id: 'confirm', label: request.confirmLabel }],
+      signal: confirmOwner.signal,
+    })) === 'confirm';
   let currentPack: ResearchPack | null = null;
   let loadFailed = false;
   let instructionTimer: ReturnType<typeof setTimeout> | null = null;
@@ -224,7 +244,7 @@ export function createResearchPackPanel(
     library: actions.templateLibrary,
     instruction: () => instruction.value,
     applyInstruction,
-    confirm: (request) => confirmSurfaces.openConfirm(request),
+    confirm,
     notify: (message, tone) => notify(message, tone),
     download: actions.onDownloadFile,
   });
@@ -257,7 +277,7 @@ export function createResearchPackPanel(
 
   const close = (): void => {
     flushInstruction();
-    confirmSurfaces.close();
+    dropConfirm();
     panel.hidden = true;
     syncLauncher();
   };
@@ -357,7 +377,7 @@ export function createResearchPackPanel(
     instruction.disabled = locked;
     templates.setLocked(locked);
     // A confirm opened for the old content must not act on what replaces it.
-    if (locked) confirmSurfaces.close();
+    if (locked) dropConfirm();
     count.textContent = format(t('researchPackItemCount'), { count: pack.items.length });
     const hasItems = pack.items.length > 0;
     empty.hidden = hasItems || loadFailed;
@@ -403,7 +423,7 @@ export function createResearchPackPanel(
   retryButton.addEventListener('click', () => actions.onRetry());
   closeButton.addEventListener('click', close);
   panel.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape' || confirmSurfaces.isOpen()) return;
+    if (event.key !== 'Escape') return;
     event.stopPropagation();
     close();
     if (!launcher.hidden) launcher.focus({ preventScroll: true });
@@ -434,14 +454,13 @@ export function createResearchPackPanel(
       actions.onContinue(target);
     });
   }
-  clearButton.addEventListener('click', () => {
-    confirmSurfaces.openConfirm({
+  clearButton.addEventListener('click', async () => {
+    const confirmed = await confirm({
       anchor: clearButton,
       message: t('researchPackClearConfirm'),
       confirmLabel: t('researchPackClear'),
-      cancelLabel: t('pm_cancel'),
-      onConfirm: actions.onClear,
     });
+    if (confirmed) actions.onClear();
   });
 
   relabel();
@@ -467,7 +486,7 @@ export function createResearchPackPanel(
       if (statusTimer !== null) clearTimeout(statusTimer);
       statusTimer = null;
       templates.destroy();
-      confirmSurfaces.destroy();
+      confirmOwner.abort();
       root.remove();
     },
   };

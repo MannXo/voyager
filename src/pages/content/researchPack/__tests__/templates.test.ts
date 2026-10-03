@@ -11,6 +11,7 @@ import {
   RESEARCH_PACK_TEMPLATE_TAG,
   createTemplateLibrary,
 } from '@/features/researchPack/services/templates';
+import { confirmDriver } from '@/tests/confirmDriver';
 
 import { startResearchPack } from '../index';
 import { emitStorageChange, flush, packOf, readBlob, sharedStorage } from './fixtures';
@@ -122,7 +123,7 @@ describe('research pack templates in the panel', () => {
 
     expect(instructionBox().value).toBe('Compare the sources.');
     expect(shared.instruction(KEY)).toBe('Compare the sources.');
-    expect(document.querySelector('.gv-pm-confirm')).toBeNull();
+    expect(confirmDriver.isOpen()).toBe(false);
   });
 
   it('asks before replacing a typed instruction, and the template wins over the pending save', async () => {
@@ -134,7 +135,7 @@ describe('research pack templates in the panel', () => {
     $<HTMLButtonElement>('.gv-rp-template-use').click();
     expect(instructionBox().value).toBe('Half-typed text');
 
-    $<HTMLButtonElement>('.gv-pm-confirm-yes').click();
+    confirmDriver.answer('Replace');
     await vi.advanceTimersByTimeAsync(1000);
 
     expect(instructionBox().value).toBe('Compare.');
@@ -180,7 +181,7 @@ describe('research pack templates in the panel', () => {
     lib.replace([{ id: 'a', name: 'Review', text: long, tags: [TAG] }]);
     emitStorageChange({ [PROMPTS]: { newValue: lib.prompts() } }, 'local');
     await flush();
-    $<HTMLButtonElement>('.gv-pm-confirm-yes').click();
+    confirmDriver.answer('Replace');
     await flush();
 
     expect(instructionBox().value).toBe('Typed first');
