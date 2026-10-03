@@ -111,6 +111,7 @@ export const normalizeWhitespace = (code: string): string => {
  * models. Keep these rules narrow so valid diagram text is not rewritten.
  */
 export const normalizeMermaidCode = (code: string): string => {
+  // Convert simple emphasis to Mermaid Markdown because HTML labels are disabled.
   const lines = normalizeWhitespace(code)
     .replace(/<\s*(?:b|strong)\s*>/gi, '**')
     .replace(/<\s*\/\s*(?:b|strong)\s*>/gi, '**')

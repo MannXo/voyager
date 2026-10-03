@@ -1,3 +1,5 @@
+// Keep sent quote markers for export, timeline and teardown; repaint after user-LaTeX rendering.
+// Composer classes alone preserve caret, IME and native submitted Markdown.
 import { CHAT_INPUT_SELECTOR, findChatInput } from '../chatInput/index';
 
 const USER_LINE_SELECTOR = 'p.query-text-line';

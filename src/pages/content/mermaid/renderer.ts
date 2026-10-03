@@ -46,6 +46,7 @@ function decodeCssEscapes(value: string): string {
 }
 
 function containsUnsafeMermaidCss(value: string): boolean {
+  // Contained tooltip stacking is safe; rejecting its z-index removes the whole theme.
   const normalized = decodeCssEscapes(value)
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .toLowerCase();
@@ -92,6 +93,7 @@ export async function sanitizeMermaidSvg(svg: string): Promise<string> {
       }
     }
   });
+  // Mermaid double-escapes ampersands; decode only sanitized SVG text, never markup.
   template.content.querySelectorAll('text, tspan').forEach((element) => {
     element.childNodes.forEach((node) => {
       if (node.nodeType === 3 && node.textContent?.includes('&amp;')) {
@@ -166,6 +168,7 @@ export class MermaidRenderer {
     mermaid.initialize({
       startOnLoad: false,
       theme: theme === 'dark' ? 'dark' : 'default',
+      // SVG text labels survive sanitization; foreignObject labels disappear.
       htmlLabels: false,
       flowchart: { htmlLabels: false },
       securityLevel: 'strict',

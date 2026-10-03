@@ -14,6 +14,8 @@ export function filterOutDeepResearchImmersiveNodes<T extends HTMLElement>(eleme
   return elements.filter((element) => !element.closest('deep-research-immersive-panel'));
 }
 
+// Virtualized turns have incomparable offset parents; DOM order bounds replies by the next prompt.
+// Repeated prompt text still represents separate turns.
 export function findFirstElementBetweenTurns(
   currentTurn: HTMLElement,
   nextTurn: HTMLElement | undefined,
