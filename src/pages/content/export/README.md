@@ -1,14 +1,16 @@
 # Export ownership
 
 Start with the owner of the behavior being changed. `index.ts` is the composition root: it
-resolves the platform adapter once per page, creates the collector and the runner, and mounts the
-entry points (persistent toolbar, conversation/response menus, logo dropdown, copy-as-image). File
-writing (JSON/Markdown/PDF/image) lives in `src/features/export/`.
+resolves the export site once per page, creates the runner, and mounts the entry points
+(persistent toolbar, conversation/response menus, logo dropdown, copy-as-image). File writing
+(JSON/Markdown/PDF/image) lives in `src/features/export/`; it renders only content that was read
+from the page beforehand (`extractTurnContent` with an extractor from `createContentExtractor`).
 
 | Change                                                                               | Owner                                                                                |
 | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| Platform selectors, titles, lazy-history policy, ChatGPT crawl/snapshot/thread watch | `adapter/`                                                                           |
-| Read turns and selectable messages from the page, Canvas snapshots, message ids      | `conversationCollector.ts`                                                           |
+| Platform selectors, titles and content dialect; ChatGPT crawl, session, thread watch | `adapter/`                                                                           |
+| Per-host export: label, conversation pages, turn source, lazy history                | `exportSite.ts`, `sites/`                                                            |
+| Read turns and selectable messages from the page, Canvas snapshots, message ids      | `conversationCollector.ts` (+ `conversationDom.ts`, shared with fork)                |
 | One export run: preload, resume, preparation/release, final export, operation abort  | `exportRun.ts` (+ `preparedExport.ts`, `pendingExportState.ts`, `topNodePreload.ts`) |
 | Selection mode: checkboxes, bar, role filters, lazy-load refresh, Cancel/Escape      | `exportSelectionSession.ts`                                                          |
 | ChatGPT crawl progress and cancellation                                              | `chatgptCrawlProgress.ts`                                                            |
@@ -23,7 +25,7 @@ writing (JSON/Markdown/PDF/image) lives in `src/features/export/`.
 | Always-visible toolbar (lr26 Gemini, ChatGPT and other plugin hosts)                 | `persistentExportToolbar.ts`, `exportEntryGate.ts`                                   |
 | Dictionaries, language reads and the `t()` used by every export surface              | `exportLocale.ts`                                                                    |
 
-Each owner takes its dependencies explicitly (adapter, collector, translator, callbacks) and keeps
+Each owner takes its dependencies explicitly (site, translator, callbacks) and keeps
 its listeners, observers and timers beside the code that installs them. Page-wide observers
 (menu watcher, copy-image buttons) are singletons that stop on `beforeunload`. The runner is the only
 owner of the active export operation: a new run aborts the previous one and dismisses its
@@ -36,12 +38,15 @@ Keep these less obvious boundaries intact:
 - `generatedUiScreenshots.ensureGeneratedUiScreenshotPermission()` must run while the user gesture
   is still valid: before the run in the dialog, and before `takeSelection()` in selection mode.
 - `exportRun.ts` awaits `preparedExport.runPreparedExport()` through the entire selection session.
-  The adapter owns the snapshot and thread watch; its preparation releases only its own snapshot
-  after selection ends, including cancellation, teardown and failures. An older run must never
-  clear the preparation of a newer run.
+  A turn source's `prepare()` returns a session that owns what it read (ChatGPT: the crawl, the
+  thread watch and the checkbox hosts) and stands in for the source until it is released after
+  selection ends, including cancellation, teardown and failures. Starting a preparation releases
+  the previous one, so an older run can never publish over a newer run.
+- Fork and export share Gemini pairing (`conversationDom.ts`) but not ids: fork keeps `makeTurnId`
+  (`fork/turnId.ts`); export keeps `resolveUniqueExportTurnIds` (`selectionIds.ts`).
 - Selection UI is removed (`takeSelection()`) before screenshots so it is not captured.
 - Opening a sidebar conversation uses the native link click; the `location.assign` fallback is the
   only full navigation and is pre-existing.
 
 Owner tests exercise DOM behavior through each module's interface: `exportRun.test.ts` covers a run
-end to end with a fake adapter and collector, `exportSelectionSession.test.ts` the selection UI.
+end to end with a fake site, `exportSelectionSession.test.ts` the selection UI.
