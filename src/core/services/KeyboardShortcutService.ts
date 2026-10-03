@@ -310,6 +310,9 @@ export class KeyboardShortcutService {
    * Attach storage change listener for cross-tab sync
    */
   private attachStorageListener(): void {
+    // Timeline remounts reuse this singleton; keep the one handler destroy() can remove.
+    if (this.storageChangeHandler) return;
+
     if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
       this.storageChangeHandler = (changes, areaName) => {
         if (areaName !== 'sync') return;

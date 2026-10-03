@@ -182,22 +182,26 @@ describe('leaving conversations tears the timeline down', () => {
     expect(timelineUiLeft()).toEqual([]);
   });
 
-  // Only window/document listeners are compared: the shared keyboard-shortcut service currently
-  // adds one `chrome.storage.onChanged` listener per visit, so a storage-listener count would fail.
-  it('entering and leaving conversations repeatedly does not pile up page listeners', async () => {
+  it('entering and leaving conversations repeatedly does not pile up page or storage listeners', async () => {
     const pageListeners = trackPageListeners();
     const page = new GeminiPage(KYOTO);
     await startTimelineOnPage();
     const whileOpen = pageListeners();
+    const storageWhileOpen = ext().listeners.size;
+    expect(storageWhileOpen).toBeGreaterThan(0);
     await leaveConversation('/');
     const afterFirstVisit = pageListeners();
+    const storageAfterFirstVisit = ext().listeners.size;
     expect(afterFirstVisit).toBeLessThan(whileOpen);
+    expect(storageAfterFirstVisit).toBeLessThan(storageWhileOpen);
 
     for (let visit = 0; visit < 3; visit += 1) {
       page.render(KYOTO);
       await navigateTo('/app/kyoto');
       expect(dotLabels()).toEqual(KYOTO.map((turn) => turn.prompt));
+      expect(ext().listeners.size).toBe(storageWhileOpen);
       await leaveConversation('/');
+      expect(ext().listeners.size).toBe(storageAfterFirstVisit);
     }
 
     expect(pageListeners()).toBe(afterFirstVisit);
