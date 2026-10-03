@@ -33,12 +33,14 @@ const SCRAPE_DEBOUNCE_MS = 300;
 // -----------------------------------------------------------------------------
 
 let started = false;
+let generation = 0;
 let enabled = false;
 let snapshot: UsageSnapshot | null = null;
 
 let scrapeObserver: MutationObserver | null = null;
 let scrapeTimer: number | null = null;
 let scrapeRetryTimer: number | null = null;
+let navigationTimer: number | null = null;
 let stopRouteWatcher: (() => void) | null = null;
 let storageListener:
   | ((changes: Record<string, chrome.storage.StorageChange>, areaName: string) => void)
@@ -48,7 +50,7 @@ let uiLocale: string | undefined;
 
 const pill = createUsagePill(() => refresh.requestReplay(true));
 const refresh = createUsageRefresh(
-  () => ({ enabled, snapshot, locale: uiLocale }),
+  () => ({ enabled, snapshot, locale: uiLocale, generation }),
   (next) => {
     snapshot = next;
     void saveSnapshot(next);
@@ -60,6 +62,10 @@ const refresh = createUsageRefresh(
 // -----------------------------------------------------------------------------
 // Account cache and usage-page observation
 // -----------------------------------------------------------------------------
+
+function isCurrentGeneration(expected: number): boolean {
+  return started && generation === expected;
+}
 
 function isOnUsagePage(): boolean {
   return isUsagePathname(location.pathname);
@@ -201,8 +207,10 @@ function setupStorageListener(): void {
       return;
     }
     if (changes[StorageKeys.LANGUAGE]) {
+      const currentGeneration = generation;
       // Voyager language changed — re-localize reset dates + labels.
       void getCurrentLanguage().then((lang) => {
+        if (!isCurrentGeneration(currentGeneration)) return;
         uiLocale = localeFromLanguage(lang);
         if (snapshot) {
           // Reformat reset labels under the new locale.
@@ -248,9 +256,16 @@ function setupStorageListener(): void {
 
 function handleNavigation(): void {
   refresh.clearRegressionConfirmation();
-  window.setTimeout(() => {
+  if (navigationTimer !== null) clearTimeout(navigationTimer);
+  const currentGeneration = generation;
+  const accountKey = currentUsageAccountKey();
+  navigationTimer = window.setTimeout(() => {
+    navigationTimer = null;
     void (async () => {
-      snapshot = await loadSnapshot();
+      const next = await loadSnapshot();
+      if (!isCurrentGeneration(currentGeneration) || accountKey !== currentUsageAccountKey())
+        return;
+      snapshot = next;
       if (isOnUsagePage()) {
         setupScrapeObserver();
       } else {
@@ -265,6 +280,7 @@ function handleNavigation(): void {
 export async function startUsageStatus(): Promise<() => void> {
   if (started) return () => {};
   started = true;
+  generation += 1;
 
   // Ensure the language is resolved before the first render so labels and reset
   // dates localize correctly (no frozen English).
@@ -290,6 +306,11 @@ export async function startUsageStatus(): Promise<() => void> {
 
   return () => {
     started = false;
+    generation += 1;
+    if (navigationTimer !== null) {
+      clearTimeout(navigationTimer);
+      navigationTimer = null;
+    }
     teardownScrapeObserver();
     refresh.stop();
     pill.remove();

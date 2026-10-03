@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import { getCurrentLanguage } from '@/utils/i18n';
+import type { AppLanguage } from '@/utils/language';
 
 import { startUsageStatus } from '../index';
 import type { UsageSnapshot } from '../usageSnapshot';
@@ -302,5 +304,97 @@ describe('usage feature lifecycle', () => {
     await Promise.resolve();
     expect(pill().querySelector<HTMLElement>('.gv-usage-metric')?.title).toBe('Resets 14:00');
     expect(chrome.storage.local.set).not.toHaveBeenCalled();
+  });
+  it('does not show or save a late replay from another account or a stopped session', async () => {
+    navigate('/u/1/app');
+    stored = { 'gvUsageCache:u/1': cached(7, 'u/1') };
+    await start();
+    pill().querySelector<HTMLButtonElement>('.gv-usage-refresh')!.click();
+    const oldRequest = replayMessages().at(-1)!;
+    navigate('/u/2/app');
+    await vi.advanceTimersByTimeAsync(250);
+    expect(pill().querySelector('.gv-usage-empty')?.hasAttribute('hidden')).toBe(false);
+    observer('replay-result', { id: oldRequest.id, body: response(80) });
+    expect(pill().querySelector('.gv-usage-empty')?.hasAttribute('hidden')).toBe(false);
+    expect(chrome.storage.local.set).not.toHaveBeenCalled();
+    const currentRequest = replayMessages().at(-1)!;
+    observer('replay-result', { id: currentRequest.id, body: response(20) });
+    expect(pill().querySelector('.gv-usage-pct')?.textContent).toContain('20%');
+    expect(chrome.storage.local.set).toHaveBeenLastCalledWith({
+      'gvUsageCache:u/2': expect.objectContaining({
+        accountKey: 'u/2',
+        daily: expect.objectContaining({ percent: 20 }),
+      }),
+      [StorageKeys.GV_USAGE_CACHE]: expect.objectContaining({ accountKey: 'u/2' }),
+    });
+    pill().querySelector<HTMLButtonElement>('.gv-usage-refresh')!.click();
+    const stoppedRequest = replayMessages().at(-1)!;
+    stop!();
+    await start();
+    vi.mocked(chrome.storage.local.set).mockClear();
+    observer('replay-result', { id: stoppedRequest.id, body: response(90) });
+    expect(pill().querySelector('.gv-usage-empty')?.hasAttribute('hidden')).toBe(false);
+    expect(chrome.storage.local.set).not.toHaveBeenCalled();
+  });
+
+  it('does not revive the pill or observer after stop or apply old loads to a restarted session', async () => {
+    await start();
+    navigate('/u/2/usage');
+    stop!();
+    stop = undefined;
+    await vi.advanceTimersByTimeAsync(800);
+    expect(document.getElementById('gv-usage-pill')).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(chrome.storage.local.set).not.toHaveBeenCalled();
+
+    navigate('/u/2/app');
+    await start();
+    let resolveCache!: (value: Record<string, unknown>) => void;
+    const pendingCache = new Promise<Record<string, unknown>>((resolve) => {
+      resolveCache = resolve;
+    });
+    vi.mocked(chrome.storage.local.get).mockImplementationOnce(() => pendingCache);
+    let resolveLanguage!: (value: AppLanguage) => void;
+    const pendingLanguage = new Promise<AppLanguage>((resolve) => {
+      resolveLanguage = resolve;
+    });
+    vi.mocked(getCurrentLanguage).mockImplementationOnce(() => pendingLanguage);
+    navigate('/u/2/usage');
+    await vi.advanceTimersByTimeAsync(250);
+    storageChange(StorageKeys.LANGUAGE, 'zh', 'sync');
+    stop!();
+    stop = undefined;
+    expect(vi.getTimerCount()).toBe(0);
+    navigate('/u/2/app');
+    await start();
+    resolveCache({ 'gvUsageCache:u/2': cached(42) });
+    resolveLanguage('zh');
+    await vi.advanceTimersByTimeAsync(800);
+    expect(pill().querySelector('.gv-usage-pct')?.textContent).toContain('7%');
+    expect(pill().querySelector<HTMLElement>('.gv-usage-metric')?.title).toBe('Resets 2:00 PM');
+    expect(chrome.storage.local.set).not.toHaveBeenCalled();
+    stop!();
+    stop = undefined;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not throw on a null replay payload and still adopts a valid refresh', async () => {
+    await start();
+    const errors: unknown[] = [];
+    const onError = (event: ErrorEvent) => {
+      errors.push(event.error);
+      event.preventDefault();
+    };
+    window.addEventListener('error', onError);
+    try {
+      observer('replay-result', null);
+      observer('replay-result');
+      expect(errors).toEqual([]);
+      pill().querySelector<HTMLButtonElement>('.gv-usage-refresh')!.click();
+      observer('replay-result', { id: replayMessages().at(-1)!.id, body: response(20) });
+      expect(pill().querySelector('.gv-usage-pct')?.textContent).toContain('20%');
+    } finally {
+      window.removeEventListener('error', onError);
+    }
   });
 });

@@ -18,6 +18,7 @@ import type {
 } from './usageSnapshot';
 
 interface RefreshState {
+  generation: number;
   enabled: boolean;
   snapshot: UsageSnapshot | null;
   locale: string | undefined;
@@ -55,7 +56,15 @@ export function createUsageRefresh(
   let recipe: UsageRecipe | null = null;
   let replayTimer: number | null = null;
   let replaySeq = 0;
-  const replayRequests = new Map<number, { allowRegression: boolean; startedAt: number }>();
+  const replayRequests = new Map<
+    number,
+    {
+      allowRegression: boolean;
+      startedAt: number;
+      accountKey: string;
+      generation: number;
+    }
+  >();
   let pendingRegression: UsageSnapshot | null = null;
   let regressionConfirmTimer: number | null = null;
   let genTimer: number | null = null;
@@ -106,6 +115,7 @@ export function createUsageRefresh(
     tier: string | undefined,
     options: MergeUsageSnapshotOptions = {},
     sourceStartedAt: number = Date.now(),
+    accountKey = currentUsageAccountKey(),
   ): void {
     if (!parsed.daily && !parsed.weekly) return;
     const { snapshot, locale } = readState();
@@ -116,7 +126,7 @@ export function createUsageRefresh(
         parsed,
         now,
         tier ?? snapshot?.tier,
-        currentUsageAccountKey(),
+        accountKey,
         locale,
         sourceStartedAt,
         options.allowRegression === true,
@@ -145,6 +155,7 @@ export function createUsageRefresh(
   function applyAutomaticParsed(
     parsed: { daily: RawMetric | null; weekly: RawMetric | null },
     sourceStartedAt: number,
+    accountKey: string,
   ): void {
     if (!parsed.daily && !parsed.weekly) return;
     const { snapshot, locale } = readState();
@@ -153,7 +164,7 @@ export function createUsageRefresh(
       parsed,
       now,
       snapshot?.tier,
-      currentUsageAccountKey(),
+      accountKey,
       locale,
       sourceStartedAt,
     );
@@ -190,25 +201,41 @@ export function createUsageRefresh(
     applyParsed(parsed, dom?.tier, { allowRegression: true });
   }
 
-  function handleReplayResult(payload: { id?: number; body?: string; error?: string }): void {
+  function handleReplayResult(
+    payload: { id?: number; body?: string; error?: string } | null | undefined,
+  ): void {
+    if (!payload) return;
+    const request = typeof payload.id === 'number' ? replayRequests.get(payload.id) : undefined;
+    if (typeof payload.id === 'number') replayRequests.delete(payload.id);
+    // A late reply must not borrow the account or lifetime of the receiving page.
+    if (
+      !request ||
+      request.accountKey !== currentUsageAccountKey() ||
+      request.generation !== readState().generation
+    )
+      return;
     setSpinning(false);
     if (spinTimer !== null) {
       clearTimeout(spinTimer);
       spinTimer = null;
     }
-    const request = typeof payload.id === 'number' ? replayRequests.get(payload.id) : undefined;
-    if (typeof payload.id === 'number') replayRequests.delete(payload.id);
     if (typeof payload.error === 'string' && payload.error) {
       console.warn('[UsageStatus] Usage refresh failed:', payload.error);
     }
-    if (!readState().enabled || !payload || typeof payload.body !== 'string') return;
+    if (!readState().enabled || typeof payload.body !== 'string') return;
     const parsed = parseUsageRpcResponse(payload.body);
     if (!parsed) return;
-    if (request?.allowRegression) {
+    if (request.allowRegression) {
       clearRegressionConfirmation();
-      applyParsed(parsed, undefined, { allowRegression: true }, request.startedAt);
+      applyParsed(
+        parsed,
+        undefined,
+        { allowRegression: true },
+        request.startedAt,
+        request.accountKey,
+      );
     } else {
-      applyAutomaticParsed(parsed, request?.startedAt ?? Date.now());
+      applyAutomaticParsed(parsed, request.startedAt, request.accountKey);
     }
   }
 
@@ -274,7 +301,12 @@ export function createUsageRefresh(
     for (const [requestId, request] of replayRequests) {
       if (startedAt - request.startedAt > 30_000) replayRequests.delete(requestId);
     }
-    replayRequests.set(id, { allowRegression, startedAt });
+    replayRequests.set(id, {
+      allowRegression,
+      startedAt,
+      accountKey: currentUsageAccountKey(),
+      generation: readState().generation,
+    });
     try {
       window.postMessage(
         {
