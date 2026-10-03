@@ -21,6 +21,7 @@ import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContex
 import { stripInstructionBlock } from '../folderProject/instructionBlock';
 import { setInputText } from '../utils/inputHelper';
 import { watchRouteChanges } from '../utils/routeWatcher';
+import { DraftStore } from './draftStore';
 
 // ============================================================================
 // Constants
@@ -28,17 +29,8 @@ import { watchRouteChanges } from '../utils/routeWatcher';
 
 const LOG_PREFIX = '[DraftSave]';
 
-/** Storage key prefix for draft entries in chrome.storage.local */
-const DRAFT_STORAGE_PREFIX = 'gvDraft_';
-
-/** Maximum number of drafts to keep (oldest are pruned) */
-const MAX_DRAFTS = 5;
-
 /** Debounce delay for saving drafts (ms) */
 const SAVE_DEBOUNCE_MS = 1000;
-
-/** Only run pruneOldDrafts every N saves to avoid reading all storage too often */
-const PRUNE_EVERY_N_SAVES = 10;
 
 /** Delay before restoring a draft to ensure input is ready (ms) */
 const RESTORE_DELAY_MS = 500;
@@ -84,7 +76,9 @@ let sendCheckTimer: ReturnType<typeof setInterval> | null = null;
 let stopRouteWatcher: (() => void) | null = null;
 let currentPath = '';
 let lastSavedContent = '';
-let saveCount = 0;
+const drafts = new DraftStore((path, content) => {
+  if (path === currentPath) lastSavedContent = content;
+});
 let storageListener:
   | ((changes: Record<string, chrome.storage.StorageChange>, areaName: string) => void)
   | null = null;
@@ -107,13 +101,6 @@ let sendIntentListener: ((event: Event) => void) | null = null;
  */
 function getConversationPath(): string {
   return window.location.pathname;
-}
-
-/**
- * Get the storage key for a conversation path.
- */
-function getDraftStorageKey(path: string): string {
-  return `${DRAFT_STORAGE_PREFIX}${path}`;
 }
 
 /**
@@ -163,113 +150,6 @@ function isInputEffectivelyEmpty(input: HTMLElement): boolean {
 }
 
 // ============================================================================
-// Draft Storage Operations
-// ============================================================================
-
-/**
- * Save a draft for the current conversation.
- */
-function saveDraft(path: string, content: string): void {
-  const sanitizedContent = stripInstructionBlock(content).trim();
-
-  if (!sanitizedContent) {
-    // Remove draft if content is empty
-    removeDraft(path);
-    return;
-  }
-
-  const key = getDraftStorageKey(path);
-  const data = {
-    content: sanitizedContent,
-    timestamp: Date.now(),
-    path,
-  };
-
-  try {
-    chrome.storage?.local?.set({ [key]: data }, () => {
-      if (chrome.runtime.lastError) {
-        console.warn(LOG_PREFIX, 'Failed to save draft:', chrome.runtime.lastError.message);
-        return;
-      }
-      if (path === currentPath) lastSavedContent = sanitizedContent;
-      // Prune old drafts periodically (not every save)
-      saveCount++;
-      if (saveCount % PRUNE_EVERY_N_SAVES === 0) {
-        pruneOldDrafts();
-      }
-    });
-  } catch (error) {
-    if (isExtensionContextInvalidatedError(error)) return;
-    console.warn(LOG_PREFIX, 'Failed to save draft:', error);
-  }
-}
-
-/**
- * Remove a draft for a given path.
- */
-function removeDraft(path: string): void {
-  const key = getDraftStorageKey(path);
-  try {
-    chrome.storage?.local?.remove(key);
-    if (path === currentPath) lastSavedContent = '';
-  } catch (error) {
-    if (isExtensionContextInvalidatedError(error)) return;
-    console.warn(LOG_PREFIX, 'Failed to remove draft:', error);
-  }
-}
-
-/**
- * Load a draft for a given path.
- */
-async function loadDraft(path: string): Promise<string | null> {
-  const key = getDraftStorageKey(path);
-  return new Promise((resolve) => {
-    try {
-      chrome.storage?.local?.get(key, (result) => {
-        const data = result?.[key] as { content?: string } | undefined;
-        resolve(data?.content ?? null);
-      });
-    } catch (error) {
-      if (isExtensionContextInvalidatedError(error)) {
-        resolve(null);
-        return;
-      }
-      console.warn(LOG_PREFIX, 'Failed to load draft:', error);
-      resolve(null);
-    }
-  });
-}
-
-/**
- * Prune old drafts to keep storage usage bounded.
- */
-function pruneOldDrafts(): void {
-  try {
-    chrome.storage?.local?.get(null, (items) => {
-      if (chrome.runtime.lastError) return;
-
-      const draftEntries: { key: string; timestamp: number }[] = [];
-      for (const [key, value] of Object.entries(items)) {
-        if (key.startsWith(DRAFT_STORAGE_PREFIX) && value && typeof value === 'object') {
-          const entry = value as { timestamp?: number };
-          draftEntries.push({ key, timestamp: entry.timestamp ?? 0 });
-        }
-      }
-
-      if (draftEntries.length <= MAX_DRAFTS) return;
-
-      // Sort by timestamp ascending (oldest first)
-      draftEntries.sort((a, b) => a.timestamp - b.timestamp);
-
-      const toRemove = draftEntries.slice(0, draftEntries.length - MAX_DRAFTS).map((e) => e.key);
-      chrome.storage?.local?.remove(toRemove);
-    });
-  } catch (error) {
-    if (isExtensionContextInvalidatedError(error)) return;
-  }
-}
-
-// ============================================================================
 // Input Monitoring
 // ============================================================================
 
@@ -286,7 +166,7 @@ function flushPendingSave(): void {
 
   if (pending.path === currentPath && pending.content === lastSavedContent) return;
 
-  saveDraft(pending.path, pending.content);
+  drafts.save(pending.path, pending.content);
 }
 
 function discardPendingSave(path: string): void {
@@ -320,7 +200,7 @@ function handleInputChange(input: HTMLElement): void {
   if (!content && pendingSendPath) {
     const sentPath = pendingSendPath;
     discardPendingSave(sentPath);
-    removeDraft(sentPath);
+    drafts.remove(sentPath);
     clearSendIntent();
     return;
   }
@@ -394,7 +274,7 @@ function startSendDetection(): void {
     if (wasNonEmpty && empty) {
       // Input went from non-empty to empty — message was likely sent
       discardPendingSave(observedPath);
-      removeDraft(observedPath);
+      drafts.remove(observedPath);
       clearSendIntent();
       wasNonEmpty = false;
     } else if (!empty) {
@@ -461,7 +341,7 @@ async function restoreDraft(generation = restoreGeneration): Promise<void> {
   const path = getConversationPath();
   if (hasRestoredForCurrentPath && path === currentPath) return;
 
-  const savedContent = await loadDraft(path);
+  const savedContent = await drafts.load(path);
   if (!isCurrent()) return;
   if (path !== currentPath || path !== getConversationPath()) return;
 
@@ -519,7 +399,7 @@ function startUrlWatcher(): void {
         // Sending a first message navigates /app to /app/<id>. Do not flush the
         // still-debounced, already-sent text back into the old draft key.
         discardPendingSave(previousPath);
-        removeDraft(previousPath);
+        drafts.remove(previousPath);
         clearSendIntent();
       } else {
         // Sidebar navigation should preserve the source draft. The pending
