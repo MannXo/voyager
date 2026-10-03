@@ -61,7 +61,6 @@ afterEach(async () => {
   await settle(30);
   chrome.storage = originalStorage;
   localStorage.clear();
-  localStorage.clear();
   vi.restoreAllMocks();
   vi.clearAllTimers();
   vi.useRealTimers();
@@ -140,7 +139,7 @@ describe.each([
   });
 
   it.each([0, 5_000])(
-    'retains a failed trailing edit when its own active write completes %i ms after resume',
+    'resumes from the committed active write when the trailing edit fails after %i ms',
     async (delay) => {
       await ready(config);
       const set = memory.api.local.set.bind(memory.api.local);
@@ -167,7 +166,7 @@ describe.each([
       await expect(trailing).resolves.toBe(false);
       await settle(60);
       expect(repository.canEdit).toBe(true);
-      expect(repository.data).toEqual(data('Unsaved trailing edit'));
+      expect(repository.data).toEqual(data('Active edit'));
       expect(memory.values.local.get(config.storageKey)).toEqual(data('Active edit'));
     },
   );
@@ -205,16 +204,19 @@ describe.each([
       legacyMetadata: true,
     },
   ])(
-    'keeps failed trailing edits after resumption unless $scenario contains a replacement',
+    'resumes from valid storage after failed trailing edits: $scenario',
     async ({ scenario, replacedElsewhere, legacyMetadata }) => {
       await ready(config);
-      const initial = data(scenario.includes('earlier restore') ? 'Earlier restore' : 'Initial');
+      const initialData = data(
+        scenario.includes('earlier restore') ? 'Earlier restore' : 'Initial',
+      );
+      const initial = legacyMetadata ? { ...initialData, version: 2 } : initialData;
       if (scenario.includes('earlier restore')) {
         memory.external('local', config.storageKey, initial);
         await settle(30);
       }
       if (legacyMetadata) {
-        memory.values.local.set(config.storageKey, { ...initial, version: 2 });
+        memory.values.local.set(config.storageKey, initial);
         await repository.loadData();
       }
       const set = memory.api.local.set.bind(memory.api.local);
@@ -247,15 +249,9 @@ describe.each([
       await expect(trailing).resolves.toBe(false);
       await settle(60);
       expect(repository.canEdit).toBe(true);
-      expect(repository.data).toEqual(
-        data(replacedElsewhere ? 'Restored elsewhere' : 'Unsaved trailing edit'),
-      );
+      expect(repository.data).toEqual(replacedElsewhere ? data('Restored elsewhere') : initial);
       expect(memory.values.local.get(config.storageKey)).toEqual(
-        replacedElsewhere
-          ? data('Restored elsewhere')
-          : legacyMetadata
-            ? { ...initial, version: 2 }
-            : initial,
+        replacedElsewhere ? data('Restored elsewhere') : initial,
       );
     },
   );
@@ -366,10 +362,6 @@ describe.each([
     { symptom: 'null bucket', value: null },
     { symptom: 'false bucket', value: false },
     { symptom: 'empty string bucket', value: '' },
-    { symptom: 'array contents', value: { folders: [], folderContents: [] } },
-    { symptom: 'malformed bucket', value: { folders: [], folderContents: { folder: 'broken' } } },
-    { symptom: 'malformed folder', value: { folders: [null], folderContents: {} } },
-    { symptom: 'malformed entry', value: { folders: [], folderContents: { folder: [null] } } },
   ])('keeps an unsaved rename after a corrupt external event: $symptom', async ({ value }) => {
     await ready(config);
     const set = memory.api.local.set.bind(memory.api.local);
@@ -389,66 +381,100 @@ describe.each([
     expect(memory.values.local.get(config.storageKey)).toEqual(data('Mine'));
   });
 
-  it.each([
-    { order: 'restore after tail', restoreBeforeTail: false, newerExternal: false },
-    { order: 'restore before tail', restoreBeforeTail: true, newerExternal: false },
-    { order: 'newer restore during proof delay', restoreBeforeTail: true, newerExternal: true },
-  ])(
-    'an external restore matching a failed pending write respects newer edits: $order',
-    async ({ restoreBeforeTail, newerExternal }) => {
-      await ready(config);
-      const restored = data('Restored elsewhere');
-      const newerEdit = data('Newer local edit');
-      const latestExternal = data('Latest external restore');
-      const set = memory.api.local.set.bind(memory.api.local);
-      const failedWrite = Promise.withResolvers<void>();
-      const startedWrite = Promise.withResolvers<void>();
-      const writes = vi.spyOn(memory.api.local, 'set').mockImplementation(async (items) => {
-        if (config.storageKey in items) {
-          startedWrite.resolve();
-          await failedWrite.promise;
-          throw new Error('Own write never committed');
-        }
+  it('a restored folder survives resume while an earlier committed write is still settling', async () => {
+    await ready(config);
+    const restored = data('Restored folder');
+    const set = memory.api.local.set.bind(memory.api.local);
+    const committed = Promise.withResolvers<void>();
+    const settlement = Promise.withResolvers<void>();
+    let folderWrites = 0;
+    const writes = vi.spyOn(memory.api.local, 'set').mockImplementation(async (items) => {
+      if (config.storageKey in items) {
+        folderWrites += 1;
+        if (folderWrites > 1) throw new Error('Queued deletion failed');
         await set(items);
-      });
-      repository.data = restored;
-      const active = repository.saveData();
-      await startedWrite.promise;
-      if (restoreBeforeTail) {
-        await vi.advanceTimersByTimeAsync(5_000);
-        memory.external('local', config.storageKey, restored);
-        await settle(30);
+        committed.resolve();
+        await settlement.promise;
+        return;
       }
-      repository.data = restoreBeforeTail ? newerEdit : { folders: [], folderContents: {} };
-      const trailing = repository.saveData();
-      enabled = false;
-      repository.suspend();
-      await resume();
-      if (!restoreBeforeTail) {
-        await vi.advanceTimersByTimeAsync(5_000);
-        memory.external('local', config.storageKey, restored);
-        await settle(30);
-      }
-      if (newerExternal) {
-        memory.external('local', config.storageKey, latestExternal);
-        await settle(30);
-      } else if (restoreBeforeTail) {
-        memory.external('local', config.storageKey, { corrupted: true });
-        await settle(30);
-      }
-      expect(repository.canEdit).toBe(false);
-      failedWrite.resolve();
-      await expect(active).resolves.toBe(false);
-      await expect(trailing).resolves.toBe(false);
-      await settle(60);
-      writes.mockRestore();
-      expect(repository.canEdit).toBe(true);
-      await expect(repository.saveData()).resolves.toBe(true);
-      const expected = newerExternal ? latestExternal : restoreBeforeTail ? newerEdit : restored;
-      expect(memory.values.local.get(config.storageKey)).toEqual(expected);
-      expect(repository.data).toEqual(expected);
-    },
-  );
+      await set(items);
+    });
+    repository.data = restored;
+    const active = repository.saveData();
+    await committed.promise;
+    memory.external('local', config.storageKey, data('Temporary replacement'));
+    await settle(30);
+    repository.data = { folders: [], folderContents: {} };
+    const trailing = repository.saveData();
+    enabled = false;
+    repository.suspend();
+    await resume();
+    memory.external('local', config.storageKey, restored);
+    await settle(30);
+    settlement.resolve();
+    await expect(active).resolves.toBe(true);
+    await expect(trailing).resolves.toBe(false);
+    await settle(60);
+    writes.mockRestore();
+    expect(repository.canEdit).toBe(true);
+    expect(repository.data).toEqual(restored);
+    await expect(repository.saveData()).resolves.toBe(true);
+    expect(memory.values.local.get(config.storageKey)).toEqual(restored);
+  });
+
+  it('a valid restored conversation with an empty title survives a failed rename on resume', async () => {
+    await ready(config);
+    const set = memory.api.local.set.bind(memory.api.local);
+    const writes = vi.spyOn(memory.api.local, 'set').mockImplementation(async (items) => {
+      if (config.storageKey in items) throw new Error('Rename failed');
+      await set(items);
+    });
+    repository.data = data('Mine');
+    await expect(repository.saveData()).resolves.toBe(false);
+    enabled = false;
+    repository.suspend();
+    const restored = data('Imported');
+    restored.folderContents.folder = [
+      {
+        conversationId: 'untitled',
+        title: '',
+        url: 'https://aistudio.google.com/prompts/untitled',
+        addedAt: 1,
+        sortIndex: 0,
+      },
+    ];
+    memory.external('local', config.storageKey, restored);
+    await settle(30);
+    writes.mockRestore();
+    await resume();
+    expect(repository.canEdit).toBe(true);
+    expect(repository.data).toEqual(restored);
+    await expect(repository.saveData()).resolves.toBe(true);
+    expect(memory.values.local.get(config.storageKey)).toEqual(restored);
+  });
+
+  it('an unreadable resume keeps the failed rename until valid storage can be read', async () => {
+    await ready(config);
+    const set = memory.api.local.set.bind(memory.api.local);
+    const writes = vi.spyOn(memory.api.local, 'set').mockImplementation(async (items) => {
+      if (config.storageKey in items) throw new Error('Rename failed');
+      await set(items);
+    });
+    repository.data = data('Mine');
+    await expect(repository.saveData()).resolves.toBe(false);
+    writes.mockRestore();
+    enabled = false;
+    repository.suspend();
+    const reads = vi.spyOn(memory.api.local, 'get').mockRejectedValue(new Error('Unreadable'));
+    await resume();
+    expect(repository.canEdit).toBe(false);
+    expect(repository.data).toEqual(data('Mine'));
+    expect(memory.values.local.get(config.storageKey)).toEqual(data('Initial'));
+    reads.mockRestore();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(repository.canEdit).toBe(true);
+    expect(repository.data).toEqual(data('Initial'));
+  });
 
   it('backs off superseded resume reads until writes stop, then enables editing', async () => {
     await ready(config);

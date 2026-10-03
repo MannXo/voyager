@@ -19,7 +19,6 @@ import {
   StorageEchoTracker,
   serializeStoredValue,
 } from './storage/StorageEchoTracker';
-import { isValidFolderWrite } from './storage/validFolderWrite';
 import type { FolderData } from './types';
 
 /** Growing gaps between account-scope retries, in ms. Length caps the attempts. */
@@ -263,18 +262,18 @@ export class FolderRepository {
     const isCurrent = () =>
       this.dataSession === session && session.loadVersion === version && !this.destroyed;
     session.loadsInFlight += 1;
-    const externalWrites = session.externalWrites;
+    session.storageChangedDuringRead = false;
+    session.reconcileAttempted = true;
     const writesBefore = session.writeGen;
     let applied = false; // a valid read or recovery applied
-    let retainedFailedEdits = false;
     let recovering = false; // recovery's own write supersedes this read; it is not discarded
     try {
       let loadedData: FolderData | null;
       try {
         loadedData = await this.storage.loadData(session.storageKey);
         if (!isCurrent()) return;
-        // A superseded resume read cannot reopen editing or prove failed edits still own storage.
-        if (!session.ready && session.externalWrites !== externalWrites) {
+        // A resumed snapshot stays unavailable until a read unaffected by bucket events lands.
+        if (!session.ready && session.storageChangedDuringRead) {
           // Reuse read backoff so continuous external writes cannot cause an immediate reload loop.
           this.scheduleReadRetry(session);
           return;
@@ -298,20 +297,15 @@ export class FolderRepository {
       }
       session.readFailed = false;
 
-      if (
-        loadedData &&
-        validateFolderData(loadedData) &&
-        (!session.hasRetainedFailedEdit || isValidFolderWrite(loadedData))
-      ) {
+      if (loadedData && validateFolderData(loadedData)) {
         // Validate and repair data integrity
         const fresh = this.config.normalize(loadedData);
         const base = session.baseline;
-        // Only a valid external replacement can supersede a retained failed edit.
-        retainedFailedEdits = session.hasRetainedFailedEdit && validateFolderData(this.data);
         session.baseline = cloneFolderData(fresh);
         // Edits still waiting on the debounce were made after `base`; keep them.
         if (this.saveDebounceTimer !== null && base) mergeDebouncedEdits(fresh, this.data, base);
-        this.data = retainedFailedEdits ? this.config.normalize(this.data) : fresh;
+        // Readable storage wins on resumption; failed edits are retained only for recovery.
+        this.data = fresh;
 
         // Clean up orphaned folderContents (folders that no longer exist)
         if (this.config.pruneOrphanBuckets) {
@@ -341,7 +335,7 @@ export class FolderRepository {
           { reason: 'corrupted', originalData: loadedData },
           session,
         );
-      } else if (session.hasRetainedFailedEdit || this.config.recoverMissingData) {
+      } else if (session.failedEditGen !== null || this.config.recoverMissingData) {
         console.warn(`${this.tag} Storage returned no data, attempting recovery from backup`);
         recovering = true;
         applied = await this.attemptDataRecovery(null, session);
@@ -366,11 +360,11 @@ export class FolderRepository {
     } finally {
       session.loadsInFlight -= 1;
       if (applied && this.dataSession === session) this.clearReadRetry();
-      // Only a read that started after every observed external write settles them.
-      if (applied && session.externalWrites === externalWrites) session.reconcilePending = false;
+      // A bucket event during this read still needs a fresh answer.
+      if (applied && !session.storageChangedDuringRead) session.reconcilePending = false;
       // Authoritative data replaced a failed edit made before this read; merged debounced
       // edits are pending, not failed, and a write that failed during recovery is newer.
-      if (applied && !retainedFailedEdits) session.settleFailedEdit(writesBefore);
+      if (applied) session.settleFailedEdit(writesBefore);
       if (isCurrent() && session.ready) {
         this.hooks.onChange('loaded');
       }
@@ -434,7 +428,7 @@ export class FolderRepository {
 
     // Memory holding an edit whose save failed is newer than every backup (the
     // primary predates it); repair storage from it instead of rolling it back.
-    if (session.hasRetainedFailedEdit && validateFolderData(this.data)) {
+    if (session.failedEditGen !== null && validateFolderData(this.data)) {
       this.data = this.config.normalize(this.data);
       session.markReady();
       this.hooks.onRecovery('kept');
@@ -513,33 +507,13 @@ export class FolderRepository {
     for (const session of sessions) {
       const change = changes[session.storageKey];
       if (!change) continue;
-      session.externalWrites += 1;
-      if (
-        !this.storageEchoes.consume(session.storageKey, change.newValue, session.externalWrites)
-      ) {
-        this.recordExternalWrite(session, change.newValue, session.externalWrites);
+      session.storageChangedDuringRead = true;
+      if (!this.storageEchoes.consume(session.storageKey, change.newValue)) {
+        session.reconcilePending = true;
+        session.reconcileAttempted = false;
       }
     }
     this.tryReconcile();
-  }
-
-  private recordExternalWrite(
-    session: FolderDataSession,
-    value: unknown,
-    observedAt: number,
-  ): void {
-    session.reconcilePending = true;
-    if (isValidFolderWrite(value)) {
-      // Late proof of an older provisional event must not supersede a newer local edit.
-      session.validExternalWriteAt = Math.max(session.validExternalWriteAt, observedAt);
-    }
-  }
-
-  private rejectStorageEcho(session: FolderDataSession, echo: StorageEcho | null): void {
-    // A failed write cannot own the matching events held while it was pending.
-    for (const event of this.storageEchoes.disarm(echo)) {
-      this.recordExternalWrite(session, event.value, event.observedAt);
-    }
   }
 
   /**
@@ -553,7 +527,7 @@ export class FolderRepository {
     // Only skips a reload that could not apply yet; the flag survives it, and
     // persist, `replaceData` and `loadData` call back once they settle.
     if (session.saveInProgress || session.replacingData || session.loadsInFlight > 0) return;
-    session.reconcileAttemptedAt = session.externalWrites;
+    session.reconcileAttempted = true;
     this.hooks.onExternalChange();
   }
 
@@ -563,8 +537,7 @@ export class FolderRepository {
    * an external write since the last attempt, avoiding repeated recovery of unchanged storage.
    */
   private reconcileAfterWrite(session: FolderDataSession, saved: boolean): void {
-    if (!session.ready || saved || session.externalWrites !== session.reconcileAttemptedAt)
-      this.tryReconcile();
+    if (!session.ready || saved || !session.reconcileAttempted) this.tryReconcile();
   }
 
   flushPendingSaveData(): void {
@@ -623,7 +596,6 @@ export class FolderRepository {
     try {
       this.data = this.config.normalize(this.data);
       const snapshot = cloneFolderData(session.data);
-      if (carriesEdit) session.failedEditAcceptedAt = session.externalWrites;
       // A mutation supersedes any storage read already in flight for this session.
       session.loadVersion += 1;
       session.markReady();
@@ -705,16 +677,14 @@ export class FolderRepository {
       // this value so the echo doesn't trigger a redundant full reload.
       echo = this.storageEchoes.arm(session.storageKey, serialized);
       success = (await this.writeSnapshot(session.storageKey, snapshot, companions)) !== false;
-      if (success) this.storageEchoes.settle(echo);
-      else this.rejectStorageEcho(session, echo);
+      if (!success) this.storageEchoes.disarm(echo);
 
       // Retry once if the first attempt fails (for transient errors)
       if (!success && this.config.retryFailedSave) {
         console.warn(`${this.tag} Save failed, retrying once...`);
         echo = this.storageEchoes.arm(session.storageKey, serialized);
         success = (await this.writeSnapshot(session.storageKey, snapshot, companions)) !== false;
-        if (success) this.storageEchoes.settle(echo);
-        else this.rejectStorageEcho(session, echo);
+        if (!success) this.storageEchoes.disarm(echo);
       }
 
       if (success) {
@@ -734,7 +704,7 @@ export class FolderRepository {
       }
     } catch (error) {
       console.error(`${this.tag} Save data error:`, error);
-      this.rejectStorageEcho(session, echo);
+      this.storageEchoes.disarm(echo);
       success = false;
     } finally {
       if (success) session.settleFailedEdit(gen);

@@ -1,11 +1,10 @@
-/** How long a completed write may wait for its storage.onChanged echo. */
+/** How long an armed write may wait for its storage.onChanged echo. */
 export const STORAGE_ECHO_SUPPRESS_WINDOW_MS = 2000;
 
 export interface StorageEcho {
   readonly key: string;
   readonly serialized: string;
-  settledAt: number | null;
-  provisionalEvents: { value: unknown; observedAt: number }[];
+  readonly armedAt: number;
 }
 
 /**
@@ -24,7 +23,13 @@ export function serializeStoredValue(value: unknown): string | undefined {
   });
 }
 
-/** Own echoes must not invalidate failed edits; pending writes remain attributable until settled. */
+/**
+ * Recognises this context's own storage writes so their echo can skip a
+ * reload. An optimisation only: a missed echo costs one reload of this
+ * context's own data. An echo matches only the exact value written, since
+ * Chrome emits nothing for an unchanged or rejected write while Firefox
+ * reports unchanged ones too.
+ */
 export class StorageEchoTracker {
   private echoes: StorageEcho[] = [];
 
@@ -36,52 +41,30 @@ export class StorageEchoTracker {
   arm(key: string, serialized: string | undefined): StorageEcho | null {
     this.echoes = this.live();
     if (serialized === undefined) return null;
-    const echo: StorageEcho = { key, serialized, settledAt: null, provisionalEvents: [] };
+    const echo: StorageEcho = { key, serialized, armedAt: Date.now() };
     this.echoes.push(echo);
     return echo;
   }
 
-  /** Failed attempts return held matching events: those writes came from another context. */
-  disarm(echo: StorageEcho | null): StorageEcho['provisionalEvents'] {
-    if (!echo) return [];
-    this.echoes = this.echoes.filter((entry) => entry !== echo);
-    const provisional = echo.provisionalEvents;
-    echo.provisionalEvents = [];
-    return provisional;
+  /** Remove suppression for an attempt that reported failure. */
+  disarm(echo: StorageEcho | null): void {
+    if (echo) this.echoes = this.echoes.filter((entry) => entry !== echo);
   }
 
-  /** Successful settlement confirms provisional events as this write's own echoes. */
-  settle(echo: StorageEcho | null): void {
-    if (!echo) return;
-    echo.settledAt = Date.now();
-    if (echo.provisionalEvents.length > 0) {
-      this.echoes = this.echoes.filter((entry) => entry !== echo);
-      echo.provisionalEvents = [];
-    }
-  }
-
-  /** Holds a pending match or consumes a confirmed echo; false means external now. */
-  consume(key: string, newValue: unknown, observedAt: number): boolean {
+  /** True when a storage change for `key` is the echo of an armed write. */
+  consume(key: string, newValue: unknown): boolean {
     const serialized = serializeStoredValue(newValue);
     const live = this.live();
     const index = live.findIndex((echo) => echo.key === key && echo.serialized === serialized);
-    if (index !== -1 && live[index].settledAt === null) {
-      // Equal bytes prove ownership only after the pending write commits.
-      live[index].provisionalEvents.push({ value: newValue, observedAt });
-    }
     // Events arrive in write order, so earlier echoes for this key will never come.
-    // On a mismatch, drop completed writes; pending writes can still produce their own echo.
+    // On a mismatch, drop them all: a later external write could restore their value.
     const cutoff = index === -1 ? Infinity : index;
-    this.echoes = live.filter(
-      (echo, position) => echo.key !== key || position > cutoff || echo.settledAt === null,
-    );
+    this.echoes = live.filter((echo, position) => echo.key !== key || position > cutoff);
     return index !== -1;
   }
 
   private live(): StorageEcho[] {
     const now = Date.now();
-    return this.echoes.filter(
-      (echo) => echo.settledAt === null || now - echo.settledAt <= STORAGE_ECHO_SUPPRESS_WINDOW_MS,
-    );
+    return this.echoes.filter((echo) => now - echo.armedAt <= STORAGE_ECHO_SUPPRESS_WINDOW_MS);
   }
 }
