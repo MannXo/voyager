@@ -19,12 +19,7 @@ import { resolveExportErrorMessage } from '../../../features/export/ui/ExportErr
 import { reportFinishedExport } from '../../../features/export/ui/exportResultNotice';
 import { watchRouteChanges } from '../utils/routeWatcher';
 import { ExportPlatformAdapter, resolveExportAdapter } from './adapter/platformAdapters';
-import {
-  type ExportMessage,
-  type ExportMessageRole,
-  createConversationCollector,
-  removeCanvasExportSections,
-} from './conversationCollector';
+import { createConversationCollector, removeCanvasExportSections } from './conversationCollector';
 import { watchConversationMenusForExport } from './conversationMenuExportObserver';
 import { waitForAnyElement, waitForElement } from './domWait';
 import { isAbortError, throwIfExportCancelled } from './exportCancellation';
@@ -38,11 +33,11 @@ import {
   translateExportOr,
 } from './exportLocale';
 import { resolveExportLogoAnchor } from './exportLogoAnchor';
+import { removeExportProgressOverlays, showExportProgressOverlay } from './exportOverlayUi';
 import {
-  alignToConversationCenter,
-  removeExportProgressOverlays,
-  showExportProgressOverlay,
-} from './exportOverlayUi';
+  type ExportSelectionConfirmation,
+  startExportSelectionSession,
+} from './exportSelectionSession';
 import {
   captureGeneratedUiScreenshots,
   ensureGeneratedUiScreenshotPermission,
@@ -60,12 +55,6 @@ import {
 import { mountPersistentExportToolbar } from './persistentExportToolbar';
 import { runPreparedExport } from './preparedExport';
 import { startResponseCopyImageActions } from './responseCopyImageAction';
-import {
-  pruneMissingSelectionIds,
-  reconcileExistingSelectionHost,
-  resolveInitialSelectedMessageIds,
-  shouldRefreshSelectionUi,
-} from './selectionUtils';
 import { openSidebarConversationForExport } from './sidebarConversationNavigation';
 import {
   computeConversationFingerprint,
@@ -381,422 +370,31 @@ async function performFinalExport(
   }
   removeExportProgressOverlays();
 
-  const selectedIds = new Set<string>();
-  let allMessageIds: string[] = [];
-  const cleanupTasks: Array<() => void> = [];
-  const idToHost = new Map<string, HTMLElement>();
-  const idToCheckbox = new Map<string, HTMLButtonElement>();
-  const selectorBindings = new Map<
-    string,
-    { readonly host: HTMLElement; readonly cleanup: () => void }
-  >();
-  const messageRoles = new Map<string, ExportMessageRole>();
-  let pendingInitialSelectionId: string | null = state.initialSelectedMessageId || null;
-  let refreshTimer: number | null = null;
-  let uiCleaned = false;
-  let sessionSettled = false;
-  let resolveSession: () => void = () => {};
-  const sessionPromise = new Promise<void>((resolve) => {
-    resolveSession = resolve;
-  });
   const selectionUrl = location.href;
   const selectionTitle = getConversationTitleForExport();
-
-  let autoSelectAll = false;
-  let selectionBusy = false;
-
-  const cleanup = () => {
-    if (uiCleaned) return;
-    uiCleaned = true;
-    if (refreshTimer !== null) {
-      window.clearTimeout(refreshTimer);
-      refreshTimer = null;
-    }
-    selectorBindings.forEach(({ cleanup: cleanupBinding }) => cleanupBinding());
-    selectorBindings.clear();
-    idToHost.clear();
-    idToCheckbox.clear();
-    cleanupTasks.forEach((fn) => {
-      try {
-        fn();
-      } catch {}
+  const showCollectingBanner = () =>
+    showExportProgressOverlay(collector, t, {
+      title: t('export_collecting_title'),
+      desc: t('export_collecting_desc'),
     });
-    cleanupTasks.length = 0;
-  };
+  const resolveSelectionRoles = exportAdapter.resolveSelectionRoles;
 
-  const settleSession = () => {
-    if (sessionSettled) return;
-    sessionSettled = true;
-    if (activeExportSelectionCleanup === cancelSession) activeExportSelectionCleanup = null;
-    resolveSession();
-  };
-
-  const cancelSession = () => {
-    cleanup();
-    settleSession();
-  };
-
-  const setSelected = (id: string, next: boolean) => {
-    if (next) selectedIds.add(id);
-    else selectedIds.delete(id);
-
-    const btn = idToCheckbox.get(id);
-    if (btn) {
-      btn.setAttribute('aria-pressed', next ? 'true' : 'false');
-      btn.dataset.selected = next ? 'true' : 'false';
-    }
-    const host = idToHost.get(id);
-    if (host) {
-      if (next) host.classList.add('gv-export-msg-selected');
-      else host.classList.remove('gv-export-msg-selected');
-    }
-  };
-
-  const updateBottomBar = (bar: HTMLElement) => {
-    const countEl = bar.querySelector(
-      '[data-gv-export-selection-count="true"]',
-    ) as HTMLElement | null;
-    if (countEl) {
-      countEl.textContent = t('export_select_mode_count').replace(
-        '{count}',
-        String(selectedIds.size),
-      );
-    }
-
-    const exportBtn = bar.querySelector(
-      '[data-gv-export-action="export"]',
-    ) as HTMLButtonElement | null;
-    if (exportBtn) {
-      exportBtn.disabled = selectionBusy || selectedIds.size === 0;
-    }
-
-    const selectAllBtn = bar.querySelector(
-      '[data-gv-export-action="selectAll"]',
-    ) as HTMLButtonElement | null;
-    if (selectAllBtn) {
-      selectAllBtn.disabled = selectionBusy;
-      const isAllSelected = allMessageIds.length > 0 && selectedIds.size === allMessageIds.length;
-      selectAllBtn.dataset.checked = isAllSelected ? 'true' : 'false';
-    }
-
-    const selectUserBtn = bar.querySelector(
-      '[data-gv-export-action="selectUser"]',
-    ) as HTMLButtonElement | null;
-    if (selectUserBtn) {
-      selectUserBtn.disabled = selectionBusy;
-      const userMessageIds = allMessageIds.filter((id) => messageRoles.get(id) === 'user');
-      const isOnlyUserSelected =
-        userMessageIds.length > 0 &&
-        selectedIds.size === userMessageIds.length &&
-        userMessageIds.every((id) => selectedIds.has(id));
-      selectUserBtn.dataset.checked = isOnlyUserSelected ? 'true' : 'false';
-    }
-
-    const selectAIBtn = bar.querySelector(
-      '[data-gv-export-action="selectAI"]',
-    ) as HTMLButtonElement | null;
-    if (selectAIBtn) {
-      selectAIBtn.disabled = selectionBusy;
-      const aiMessageIds = allMessageIds.filter((id) => messageRoles.get(id) === 'assistant');
-      const isOnlyAISelected =
-        aiMessageIds.length > 0 &&
-        selectedIds.size === aiMessageIds.length &&
-        aiMessageIds.every((id) => selectedIds.has(id));
-      selectAIBtn.dataset.checked = isOnlyAISelected ? 'true' : 'false';
-    }
-
-    idToCheckbox.forEach((checkbox) => {
-      checkbox.disabled = selectionBusy;
-    });
-  };
-
-  const attachSelectorIfNeeded = (msg: ExportMessage) => {
-    messageRoles.set(msg.messageId, msg.role);
-    const previousBinding = selectorBindings.get(msg.messageId);
-    if (
-      reconcileExistingSelectionHost(
-        previousBinding?.host,
-        msg.hostElement,
-        selectedIds.has(msg.messageId),
-      )
-    ) {
-      setSelected(msg.messageId, selectedIds.has(msg.messageId));
-      return;
-    }
-    previousBinding?.cleanup();
-
-    const host = msg.hostElement;
-    idToHost.set(msg.messageId, host);
-    host.classList.add('gv-export-msg-host');
-
-    const selector = document.createElement('div');
-    selector.className = 'gv-export-msg-selector';
-    selector.dataset.gvExportMessageId = msg.messageId;
-
-    const checkbox = document.createElement('button');
-    checkbox.type = 'button';
-    checkbox.className = 'gv-export-msg-checkbox';
-    checkbox.setAttribute('aria-pressed', 'false');
-    checkbox.title = t('export_select_mode_toggle');
-
-    const mark = document.createElement('span');
-    mark.className = 'gv-export-msg-checkbox-mark';
-    checkbox.appendChild(mark);
-
-    const swallow = (ev: Event) => {
-      try {
-        ev.preventDefault();
-      } catch {}
-      try {
-        ev.stopPropagation();
-      } catch {}
-    };
-
-    const toggleSelection = () => {
-      if (selectionBusy) return;
-      autoSelectAll = false;
-      const next = !selectedIds.has(msg.messageId);
-      setSelected(msg.messageId, next);
-      const bar = document.querySelector(
-        '[data-gv-export-select-bar="true"]',
-      ) as HTMLElement | null;
-      if (bar) updateBottomBar(bar);
-    };
-
-    checkbox.addEventListener('click', (ev) => {
-      swallow(ev);
-      toggleSelection();
-    });
-
-    host.addEventListener('click', toggleSelection);
-
-    selector.appendChild(checkbox);
-    host.appendChild(selector);
-
-    idToCheckbox.set(msg.messageId, checkbox);
-    setSelected(msg.messageId, selectedIds.has(msg.messageId));
-
-    const cleanupBinding = () => {
-      host.removeEventListener('click', toggleSelection);
-      host.classList.remove('gv-export-msg-host', 'gv-export-msg-selected');
-      selector.remove();
-      if (idToHost.get(msg.messageId) === host) idToHost.delete(msg.messageId);
-      if (idToCheckbox.get(msg.messageId) === checkbox) idToCheckbox.delete(msg.messageId);
-    };
-    selectorBindings.set(msg.messageId, { host, cleanup: cleanupBinding });
-  };
-
-  const syncMessages = (selectionMessages: ExportMessage[]) => {
-    allMessageIds = selectionMessages.map((m) => m.messageId);
-    const liveMessageIds = new Set(allMessageIds);
-    const removedSelectionIds = pruneMissingSelectionIds(selectedIds, liveMessageIds);
-    removedSelectionIds.forEach((id) => setSelected(id, false));
-    for (const [id, binding] of selectorBindings) {
-      if (liveMessageIds.has(id)) continue;
-      binding.cleanup();
-      selectorBindings.delete(id);
-      messageRoles.delete(id);
-    }
-
-    selectionMessages.forEach((m) => attachSelectorIfNeeded(m));
-
-    // Auto-select new messages when a policy is active.
-    if (autoSelectAll) {
-      for (const id of allMessageIds) setSelected(id, true);
-    }
-
-    const initialSelected = resolveInitialSelectedMessageIds(
-      allMessageIds,
-      pendingInitialSelectionId,
-    );
-    if (initialSelected.size > 0) {
-      initialSelected.forEach((id) => setSelected(id, true));
-      pendingInitialSelectionId = null;
-    }
-  };
-
-  // Selection mode body class
-  document.body.classList.add('gv-export-select-mode');
-  cleanupTasks.push(() => document.body.classList.remove('gv-export-select-mode'));
-
-  // Bottom action bar
-  const bar = document.createElement('div');
-  bar.className = 'gv-export-select-bar';
-  bar.dataset.gvExportSelectBar = 'true';
-
-  const selectAllBtn = document.createElement('button');
-  selectAllBtn.type = 'button';
-  selectAllBtn.className = 'gv-export-select-all-toggle';
-  selectAllBtn.dataset.gvExportAction = 'selectAll';
-  selectAllBtn.textContent = t('export_select_mode_select_all');
-
-  const selectUserBtn = document.createElement('button');
-  selectUserBtn.type = 'button';
-  selectUserBtn.className = 'gv-export-select-role-btn';
-  selectUserBtn.dataset.gvExportAction = 'selectUser';
-  selectUserBtn.textContent = t('export_select_mode_only_user');
-
-  const selectAIBtn = document.createElement('button');
-  selectAIBtn.type = 'button';
-  selectAIBtn.className = 'gv-export-select-role-btn';
-  selectAIBtn.dataset.gvExportAction = 'selectAI';
-  selectAIBtn.textContent = t('export_select_mode_only_ai');
-
-  const count = document.createElement('div');
-  count.className = 'gv-export-select-count';
-  count.dataset.gvExportSelectionCount = 'true';
-  count.textContent = t('export_select_mode_count').replace('{count}', '0');
-
-  const exportBtn = document.createElement('button');
-  exportBtn.type = 'button';
-  exportBtn.className = 'gv-export-select-export-btn';
-  exportBtn.dataset.gvExportAction = 'export';
-  exportBtn.textContent = t('pm_export');
-  exportBtn.disabled = true;
-
-  const cancelBtn = document.createElement('button');
-  cancelBtn.type = 'button';
-  cancelBtn.className = 'gv-export-select-cancel-btn';
-  cancelBtn.title = t('pm_cancel');
-  cancelBtn.textContent = '×';
-
-  bar.appendChild(selectAllBtn);
-  bar.appendChild(selectUserBtn);
-  bar.appendChild(selectAIBtn);
-  bar.appendChild(count);
-  bar.appendChild(exportBtn);
-  bar.appendChild(cancelBtn);
-
-  document.body.appendChild(bar);
-
-  const swallow = (ev: Event) => {
-    try {
-      ev.preventDefault();
-    } catch {}
-    try {
-      ev.stopPropagation();
-    } catch {}
-  };
-
-  const selectOnlyRole = async (role: Exclude<ExportMessageRole, 'unknown'>) => {
-    if (selectionBusy) return;
-    autoSelectAll = false;
-    selectionBusy = true;
-    updateBottomBar(bar);
-    try {
-      throwIfExportCancelled(signal);
-      if (
-        exportAdapter.resolveSelectionRoles &&
-        allMessageIds.some((id) => messageRoles.get(id) === 'unknown')
-      ) {
-        const resolved = await withExportCollectingBanner(
-          () =>
-            showExportProgressOverlay(collector, t, {
-              title: t('export_collecting_title'),
-              desc: t('export_collecting_desc'),
-            }),
-          () =>
-            exportAdapter.resolveSelectionRoles!(new Set(allMessageIds), {
-              signal,
-              expectedUrl: selectionUrl,
-            }),
-        );
-        resolved.forEach((resolvedRole, id) => messageRoles.set(id, resolvedRole));
-      }
-
-      throwIfExportCancelled(signal);
-      const roleMessageIds = allMessageIds.filter((id) => messageRoles.get(id) === role);
-      const isOnlyRoleSelected =
-        roleMessageIds.length > 0 &&
-        selectedIds.size === roleMessageIds.length &&
-        roleMessageIds.every((id) => selectedIds.has(id));
-      for (const id of allMessageIds) {
-        setSelected(id, isOnlyRoleSelected ? false : messageRoles.get(id) === role);
-      }
-      updateBottomBar(bar);
-    } catch (error) {
-      if (!isAbortError(error)) alert(resolveExportErrorMessage(error, t));
-    } finally {
-      if (!signal?.aborted && !uiCleaned) {
-        selectionBusy = false;
-        updateBottomBar(bar);
-      }
-    }
-  };
-
-  selectUserBtn.addEventListener('click', (ev) => {
-    swallow(ev);
-    void selectOnlyRole('user');
-  });
-
-  selectAIBtn.addEventListener('click', (ev) => {
-    swallow(ev);
-    void selectOnlyRole('assistant');
-  });
-  cleanupTasks.push(() => bar.remove());
-  cleanupTasks.push(alignToConversationCenter(bar, collector));
-
-  selectAllBtn.addEventListener('click', (ev) => {
-    swallow(ev);
-    if (selectionBusy) return;
-    const isAllSelected = allMessageIds.length > 0 && selectedIds.size === allMessageIds.length;
-    if (isAllSelected) {
-      selectedIds.clear();
-      autoSelectAll = false;
-      allMessageIds.forEach((id) => setSelected(id, false));
-    } else {
-      selectedIds.clear();
-      autoSelectAll = true;
-      allMessageIds.forEach((id) => setSelected(id, true));
-    }
-    updateBottomBar(bar);
-  });
-
-  const finishUi = () => {
-    allMessageIds.forEach((id) => setSelected(id, false));
-    selectedIds.clear();
-    autoSelectAll = false;
-    cleanup();
-  };
-
-  cancelBtn.addEventListener('click', (ev) => {
-    swallow(ev);
-    activeExportController?.abort();
-    finishUi();
-    settleSession();
-  });
-
-  exportBtn.addEventListener('click', async (ev) => {
-    swallow(ev);
-    if (selectionBusy) return;
-    if (selectedIds.size === 0) {
-      alert(t('export_select_mode_empty'));
-      return;
-    }
-
+  const exportSelection = async ({ takeSelection }: ExportSelectionConfirmation) => {
     let hideProgress: (() => void) | null = null;
     try {
       throwIfExportCancelled(signal);
       await ensureGeneratedUiScreenshotPermission();
-      const selectedIdsForExport = new Set(selectedIds);
-      // Cleanup before capture/export so selection UI is not included in screenshots.
-      finishUi();
+      const selectedIdsForExport = takeSelection();
       await captureGeneratedUiScreenshots();
       throwIfExportCancelled(signal);
 
       const buildTurnsForSelection = exportAdapter.buildTurnsForSelection;
       const turnsForExport = buildTurnsForSelection
-        ? await withExportCollectingBanner(
-            () =>
-              showExportProgressOverlay(collector, t, {
-                title: t('export_collecting_title'),
-                desc: t('export_collecting_desc'),
-              }),
-            () =>
-              buildTurnsForSelection(selectedIdsForExport, {
-                signal,
-                expectedUrl: selectionUrl,
-              }),
+        ? await withExportCollectingBanner(showCollectingBanner, () =>
+            buildTurnsForSelection(selectedIdsForExport, {
+              signal,
+              expectedUrl: selectionUrl,
+            }),
           )
         : collector.turnsForMessageIds(selectedIdsForExport);
       throwIfExportCancelled(signal);
@@ -849,58 +447,28 @@ async function performFinalExport(
       hideProgress?.();
       removeCanvasExportSections();
       removeGeneratedUiScreenshotSections();
-      settleSession();
-    }
-  });
-
-  // Observe new lazy-loaded messages while selection mode is active.
-  const root = collector.conversationRoot();
-  const scheduleRefresh = () => {
-    if (refreshTimer) return;
-    refreshTimer = window.setTimeout(() => {
-      refreshTimer = null;
-      if (signal?.aborted || uiCleaned) return;
-      if (exportRouteKey(location.href) !== exportRouteKey(selectionUrl)) {
-        activeExportController?.abort();
-        cancelSession();
-        return;
-      }
-      try {
-        syncMessages(collector.collectSelectionMessages());
-        updateBottomBar(bar);
-      } catch {}
-    }, 250);
-  };
-
-  const obs = new MutationObserver((mutations) => {
-    if (shouldRefreshSelectionUi(mutations)) scheduleRefresh();
-  });
-  try {
-    obs.observe(root, {
-      attributes: true,
-      attributeFilter: ['class'],
-      childList: true,
-      subtree: true,
-    });
-    cleanupTasks.push(() => obs.disconnect());
-  } catch {}
-
-  // Escape to cancel
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      activeExportController?.abort();
-      finishUi();
-      settleSession();
     }
   };
-  document.addEventListener('keydown', onKeyDown);
-  cleanupTasks.push(() => document.removeEventListener('keydown', onKeyDown));
 
-  // Initial sync
-  activeExportSelectionCleanup = cancelSession;
-  syncMessages(collector.collectSelectionMessages());
-  updateBottomBar(bar);
-  await sessionPromise;
+  const session = startExportSelectionSession({
+    t,
+    signal,
+    abortExport: () => activeExportController?.abort(),
+    readMessages: () => collector.collectSelectionMessages(),
+    initialSelectedMessageId: state.initialSelectedMessageId || null,
+    anchors: collector,
+    isSameConversation: () => exportRouteKey(location.href) === exportRouteKey(selectionUrl),
+    resolveRoles: resolveSelectionRoles
+      ? (messageIds) =>
+          withExportCollectingBanner(showCollectingBanner, () =>
+            resolveSelectionRoles(messageIds, { signal, expectedUrl: selectionUrl }),
+          )
+      : undefined,
+    onConfirm: exportSelection,
+  });
+  activeExportSelectionCleanup = session.cancel;
+  await session.done;
+  if (activeExportSelectionCleanup === session.cancel) activeExportSelectionCleanup = null;
 }
 
 /**

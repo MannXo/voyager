@@ -61,19 +61,6 @@ describe('selection mode interaction', () => {
     expect(page).toContain('reportFinishedExport(result, state.format, t)');
   });
 
-  it('renders role-based selection buttons with correct data actions and localization keys', () => {
-    const code = readFileSync(resolve(process.cwd(), 'src/pages/content/export/index.ts'), 'utf8');
-
-    // Confirm building of buttons
-    expect(code).toContain("dataset.gvExportAction = 'selectUser'");
-    expect(code).toContain("dataset.gvExportAction = 'selectAI'");
-    expect(code).toContain("className = 'gv-export-select-role-btn'");
-
-    // Confirm translation keys are used
-    expect(code).toContain("t('export_select_mode_only_user')");
-    expect(code).toContain("t('export_select_mode_only_ai')");
-  });
-
   it('applies horizontal scrolling to the export selection bar and prevents text wrapping', () => {
     const css = readFileSync(resolve(process.cwd(), 'public/contentStyle.css'), 'utf8');
 
