@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { toastDriver } from '@/tests/toastDriver';
+
 import { startStorageQuotaWarningToast } from './index';
 
 vi.mock('@/utils/i18n', () => ({
@@ -34,6 +36,19 @@ function getMessageListener(): (message: unknown) => void {
 }
 
 describe('storage quota warning toast', () => {
+  it('drops a warning whose strings arrive after the feature stopped', async () => {
+    cleanup = startStorageQuotaWarningToast();
+    getMessageListener()({
+      type: 'gv.storageQuota.warning',
+      payload: { level: 'warning', percent: 82 },
+    });
+    cleanup();
+    cleanup = null;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(toastDriver.all()).toEqual([]);
+  });
+
   it('registers the current tab and renders a warning message', async () => {
     cleanup = startStorageQuotaWarningToast();
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'gv.storageQuota.ready' });
@@ -43,11 +58,13 @@ describe('storage quota warning toast', () => {
       payload: { level: 'warning', percent: 82 },
     });
 
-    await vi.waitFor(() => {
-      expect(document.querySelector('.gv-storage-quota-toast--warning')).not.toBeNull();
+    await vi.waitFor(() => expect(toastDriver.all()).toHaveLength(1));
+    expect(toastDriver.all()[0]).toMatchObject({
+      title: 'Near limit',
+      message: 'Voyager storage is 82% full.',
+      tone: 'warning',
+      role: 'status',
     });
-    expect(document.getElementById('gv-storage-quota-toast')?.textContent).toContain('82%');
-    expect(document.getElementById('gv-storage-quota-toast')?.textContent).toContain('Near limit');
   });
 
   it('replaces an existing warning with the critical state and supports dismissal', async () => {
@@ -57,23 +74,17 @@ describe('storage quota warning toast', () => {
       type: 'gv.storageQuota.warning',
       payload: { level: 'warning', percent: 82 },
     });
-    await vi.waitFor(() =>
-      expect(document.getElementById('gv-storage-quota-toast')).not.toBeNull(),
-    );
+    await vi.waitFor(() => expect(toastDriver.all()).toHaveLength(1));
 
     listener({
       type: 'gv.storageQuota.warning',
       payload: { level: 'critical', percent: 96 },
     });
-    await vi.waitFor(() => {
-      expect(document.querySelector('.gv-storage-quota-toast--critical')).not.toBeNull();
-    });
-    expect(document.getElementById('gv-storage-quota-toast')?.textContent).toContain('Almost full');
+    await vi.waitFor(() => expect(toastDriver.find('Almost full')?.tone).toBe('error'));
+    expect(toastDriver.all()).toHaveLength(1);
+    expect(toastDriver.all()[0].role).toBe('alert');
 
-    const dismiss = document.querySelector<HTMLButtonElement>('.gv-storage-quota-toast__dismiss');
-    dismiss?.click();
-    expect(document.getElementById('gv-storage-quota-toast')?.classList).not.toContain(
-      'gv-storage-quota-toast--show',
-    );
+    toastDriver.press(toastDriver.all()[0], 'Dismiss');
+    expect(toastDriver.all()).toEqual([]);
   });
 });
