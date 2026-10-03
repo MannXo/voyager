@@ -16,15 +16,6 @@ import {
   snapshotFromClaudeUsageApi,
 } from './usageSnapshot';
 
-export {
-  type ClaudeUsageMetric,
-  type ClaudeUsageSnapshot,
-  planFromClaudeBootstrap,
-  scrapeClaudeUsageFromDocument,
-  snapshotFromClaudeMessageLimit,
-  snapshotFromClaudeUsageApi,
-} from './usageSnapshot';
-
 const OBSERVER_SCRIPT_ID = 'gv-claude-usage-observer-script';
 const OBSERVER_SOURCE = 'gv-claude-usage-observer';
 const CLAUDE_ORIGIN = 'https://claude.ai';
@@ -388,10 +379,6 @@ function stopRefreshLoop(): void {
     document.removeEventListener('visibilitychange', visibilityHandler);
     visibilityHandler = null;
   }
-}
-
-export function buildClaudeUsagePill(doc: Document = document): HTMLElement {
-  return pill.build(doc);
 }
 
 export function startClaudeUsage(): void {

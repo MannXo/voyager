@@ -3,14 +3,16 @@ import { type Mock, afterEach, describe, expect, it, vi } from 'vitest';
 import {
   claudeUsageUrl,
   isClaudeUsageSettings,
-  planFromClaudeBootstrap,
-  scrapeClaudeUsageFromDocument,
   setClaudeUsageReloadForTest,
-  snapshotFromClaudeMessageLimit,
-  snapshotFromClaudeUsageApi,
   startClaudeUsage,
   stopClaudeUsage,
 } from '.';
+import {
+  planFromClaudeBootstrap,
+  scrapeClaudeUsageFromDocument,
+  snapshotFromClaudeMessageLimit,
+  snapshotFromClaudeUsageApi,
+} from './usageSnapshot';
 
 type StorageListener = (
   changes: Record<string, chrome.storage.StorageChange>,

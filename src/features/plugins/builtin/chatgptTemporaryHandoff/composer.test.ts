@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PluginScope } from '@/features/plugins/runtime/pluginScope';
 
-import { handoffTemporaryChat, markHandoffPageActive, readCurrentComposerDraft } from './handoff';
+import { readCurrentComposerDraft } from './composerDelivery';
+import { handoffTemporaryChat, markHandoffPageActive } from './handoff';
 import { CHATGPT_HANDOFF_GET_TAB_ID_MESSAGE } from './storage';
 
 const storageState = vi.hoisted(() => new Map<string, unknown>());

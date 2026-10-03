@@ -15,27 +15,29 @@ import { watchRouteChanges } from '@/pages/content/utils/routeWatcher';
 import { getCurrentLanguage } from '@/utils/i18n';
 
 import {
-  CHATGPT_COMPOSER_SELECTOR,
-  CHATGPT_NEW_CHAT_SELECTOR,
-  CHATGPT_SEND_CONTROL_SELECTOR,
-  CHATGPT_TEMP_TOGGLE_SELECTOR,
-  buildHandoffBackup,
-  cancelPendingHandoffRecovery,
-  discardPendingHandoff,
-  downloadHandoffBackup,
-  handoffTemporaryChat,
   hasCurrentComposerAttachments,
   isCurrentComposerAttachmentRemovalControl,
+  readCurrentComposerDraft,
+} from './composerDelivery';
+import {
+  cancelPendingHandoffRecovery,
+  handoffTemporaryChat,
   isHandoffPageUnloading,
   isTemporaryChat,
   markHandoffPageActive,
   markHandoffPageUnloading,
   pendingAttachmentPreviewReady,
-  planHandoff,
-  readCurrentComposerDraft,
   resumePendingHandoff,
 } from './handoff';
+import { buildHandoffBackup, downloadHandoffBackup, planHandoff } from './handoffPlan';
 import { type TemporaryHandoffCopy, getTemporaryHandoffCopy } from './i18n';
+import { discardPendingHandoff } from './pendingHandoff';
+import {
+  CHATGPT_COMPOSER_SELECTOR,
+  CHATGPT_NEW_CHAT_SELECTOR,
+  CHATGPT_SEND_CONTROL_SELECTOR,
+  CHATGPT_TEMP_TOGGLE_SELECTOR,
+} from './selectors';
 import { CHATGPT_TEMPORARY_HANDOFF_CSS } from './styles';
 import { showHandoffConfirmation, showHandoffProgress, showHandoffToast } from './ui';
 

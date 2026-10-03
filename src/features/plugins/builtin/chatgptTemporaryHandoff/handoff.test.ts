@@ -4,25 +4,27 @@ import browser from 'webextension-polyfill';
 import { PluginScope } from '@/features/plugins/runtime/pluginScope';
 
 import {
-  type HandoffDelivery,
-  PENDING_HANDOFF_KEY,
-  PENDING_HANDOFF_TAB_KEY,
-  cancelPendingHandoffRecovery,
-  discardDeliveredPendingHandoff,
-  discardPendingHandoff,
-  getChatGptNewChatPath,
-  handoffTemporaryChat,
   hasCurrentComposerAttachments,
   isCurrentComposerAttachmentRemovalControl,
+} from './composerDelivery';
+import {
+  cancelPendingHandoffRecovery,
+  discardDeliveredPendingHandoff,
+  getChatGptNewChatPath,
+  handoffTemporaryChat,
   isTemporaryChat,
   markHandoffPageActive,
   markHandoffPageUnloading,
   resumePendingHandoff,
 } from './handoff';
+import type { HandoffDelivery } from './handoffPlan';
+import { discardPendingHandoff } from './pendingHandoff';
 import {
   CHATGPT_HANDOFF_CANCEL_EXPIRY_MESSAGE,
   CHATGPT_HANDOFF_GET_TAB_ID_MESSAGE,
   CHATGPT_HANDOFF_SCHEDULE_EXPIRY_MESSAGE,
+  PENDING_HANDOFF_KEY,
+  PENDING_HANDOFF_TAB_KEY,
 } from './storage';
 
 const storageState = vi.hoisted(() => new Map<string, unknown>());

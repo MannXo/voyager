@@ -41,19 +41,33 @@ vi.mock('@/pages/content/export/adapter/platformAdapters', () => ({
   resolveExportAdapter: mocks.resolveAdapter,
 }));
 
-vi.mock('./handoff', () => ({
+vi.mock('./selectors', () => ({
   CHATGPT_COMPOSER_SELECTOR: '#prompt-textarea',
   CHATGPT_NEW_CHAT_SELECTOR:
     'a[data-testid="create-new-chat-button"], a[href="/"], a[href^="/u/"][href$="/"]',
   CHATGPT_SEND_CONTROL_SELECTOR: '[data-testid="send-button"]',
   CHATGPT_TEMP_TOGGLE_SELECTOR: '[data-testid="temporary-chat-toggle"]',
+}));
+
+vi.mock('./handoffPlan', () => ({
   buildHandoffBackup: mocks.buildBackup,
-  cancelPendingHandoffRecovery: mocks.cancelPendingRecovery,
-  discardPendingHandoff: mocks.discardPending,
   downloadHandoffBackup: mocks.downloadBackup,
-  handoffTemporaryChat: mocks.handoff,
+  planHandoff: mocks.plan,
+}));
+
+vi.mock('./composerDelivery', () => ({
   hasCurrentComposerAttachments: mocks.hasAttachments,
   isCurrentComposerAttachmentRemovalControl: mocks.isAttachmentRemovalControl,
+  readCurrentComposerDraft: mocks.readDraft,
+}));
+
+vi.mock('./pendingHandoff', () => ({
+  discardPendingHandoff: mocks.discardPending,
+}));
+
+vi.mock('./handoff', () => ({
+  cancelPendingHandoffRecovery: mocks.cancelPendingRecovery,
+  handoffTemporaryChat: mocks.handoff,
   isHandoffPageUnloading: () => mocks.unloading,
   isTemporaryChat: () => mocks.temporary,
   markHandoffPageUnloading: () => {
@@ -65,8 +79,6 @@ vi.mock('./handoff', () => ({
     mocks.markActive();
   },
   pendingAttachmentPreviewReady: mocks.pendingPreviewReady,
-  planHandoff: mocks.plan,
-  readCurrentComposerDraft: mocks.readDraft,
   resumePendingHandoff: mocks.resume,
 }));
 

@@ -24,26 +24,6 @@ import {
 import { CHATGPT_NEW_CHAT_SELECTOR, CHATGPT_TEMP_TOGGLE_SELECTOR } from './selectors';
 import { PENDING_HANDOFF_TTL_MS } from './storage';
 
-export {
-  buildHandoffBackup,
-  downloadHandoffBackup,
-  type HandoffDelivery,
-  planHandoff,
-} from './handoffPlan';
-export {
-  hasCurrentComposerAttachments,
-  isCurrentComposerAttachmentRemovalControl,
-  readCurrentComposerDraft,
-} from './composerDelivery';
-export { discardPendingHandoff } from './pendingHandoff';
-export { PENDING_HANDOFF_KEY, PENDING_HANDOFF_TAB_KEY } from './storage';
-export {
-  CHATGPT_COMPOSER_SELECTOR,
-  CHATGPT_NEW_CHAT_SELECTOR,
-  CHATGPT_SEND_CONTROL_SELECTOR,
-  CHATGPT_TEMP_TOGGLE_SELECTOR,
-} from './selectors';
-
 export type HandoffResult =
   | 'ready'
   | 'leave-failed'
