@@ -272,6 +272,12 @@ export class FolderRepository {
       try {
         loadedData = await this.storage.loadData(session.storageKey);
         if (!isCurrent()) return;
+        // A superseded resume read cannot reopen editing or prove failed edits still own storage.
+        if (!session.ready && session.externalWrites !== externalWrites) {
+          // Reuse read backoff so continuous external writes cannot cause an immediate reload loop.
+          this.scheduleReadRetry(session);
+          return;
+        }
         if (!loadedData && session.accountScope) {
           loadedData = await this.migrateLegacyFolderDataToScopedStorage(session, version);
           if (!isCurrent()) return;
@@ -281,10 +287,11 @@ export class FolderRepository {
         // data or a save of memory would overwrite it: show memory read-only, read again later.
         if (!isCurrent()) return;
         console.error(`${this.tag} Failed to read folder data; storage left untouched:`, error);
+        const firstReadFailure = !session.readFailed;
         session.readFailed = true;
         this.hooks.onChange('availability');
         // Report the first failure only, not each retry.
-        if (this.readRetryAttempt === 0) this.hooks.onRecovery('unreadable');
+        if (firstReadFailure) this.hooks.onRecovery('unreadable');
         if (!isExtensionContextInvalidatedError(error)) this.scheduleReadRetry(session);
         return;
       }

@@ -67,7 +67,7 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-async function ready(config: PlatformFolderConfig) {
+async function ready(config: PlatformFolderConfig, onRecovery = vi.fn()) {
   memory.values.local.set(config.storageKey, data('Initial'));
   repository = new FolderRepository(
     config,
@@ -76,7 +76,7 @@ async function ready(config: PlatformFolderConfig) {
       : new AIStudioFolderStorageAdapter(),
     {
       onChange: () => {},
-      onRecovery: () => {},
+      onRecovery,
       onExternalChange: () => {
         if (enabled) void repository.loadData();
       },
@@ -216,6 +216,97 @@ describe.each([
       );
     },
   );
+
+  it('does not retain a failed edit over a newer external write during the resume read', async () => {
+    const recovery = vi.fn();
+    await ready(config, recovery);
+    const set = memory.api.local.set.bind(memory.api.local);
+    const writes = vi.spyOn(memory.api.local, 'set').mockImplementation(async (items) => {
+      if (config.storageKey in items) throw new Error('Folder edit failed');
+      await set(items);
+    });
+    repository.data = data('Failed edit');
+    await expect(repository.saveData()).resolves.toBe(false);
+    writes.mockRestore();
+    enabled = false;
+    repository.suspend();
+
+    const get = memory.api.local.get.bind(memory.api.local);
+    const staleReads = Promise.withResolvers<void>();
+    const freshRead = Promise.withResolvers<void>();
+    let bucketReads = 0;
+    let failNextRead = false;
+    vi.spyOn(memory.api.local, 'get').mockImplementation(async (keys: unknown) => {
+      const captured = await get(keys as string);
+      if (keys === config.storageKey) {
+        bucketReads += 1;
+        if (failNextRead) {
+          failNextRead = false;
+          throw new Error('Resume reconciliation read failed');
+        }
+        if ((captured[config.storageKey] as FolderData).folders[0].name === 'Initial') {
+          await staleReads.promise;
+        } else await freshRead.promise;
+      }
+      return captured;
+    });
+    enabled = true;
+    await repository.refreshAccountScope();
+    const loading = repository.loadData();
+    await settle(30);
+    expect(bucketReads).toBeGreaterThan(0);
+    memory.external('local', config.storageKey, data('Restored elsewhere'));
+    await settle(30);
+    staleReads.resolve();
+    await loading;
+    await settle(30);
+    expect(repository.canEdit).toBe(false);
+    await expect(repository.saveData()).resolves.toBe(false);
+    expect(memory.values.local.get(config.storageKey)).toEqual(data('Restored elsewhere'));
+
+    failNextRead = true;
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(repository.canEdit).toBe(false);
+    expect(recovery).toHaveBeenCalledExactlyOnceWith('unreadable');
+    await vi.advanceTimersByTimeAsync(2_000);
+    freshRead.resolve();
+    await settle(60);
+    expect(repository.canEdit).toBe(true);
+    expect(repository.data).toEqual(data('Restored elsewhere'));
+    expect(memory.values.local.get(config.storageKey)).toEqual(data('Restored elsewhere'));
+  });
+
+  it('backs off superseded resume reads until writes stop, then enables editing', async () => {
+    await ready(config);
+    enabled = false;
+    repository.suspend();
+    const get = memory.api.local.get.bind(memory.api.local);
+    let bucketReads = 0;
+    let writesArriving = true;
+    vi.spyOn(memory.api.local, 'get').mockImplementation(async (keys: unknown) => {
+      const captured = await get(keys as string);
+      if (keys === config.storageKey) {
+        bucketReads += 1;
+        if (writesArriving) {
+          memory.external('local', config.storageKey, data(`External ${bucketReads}`));
+          await settle(10);
+        }
+      }
+      return captured;
+    });
+    await resume();
+    expect(repository.canEdit).toBe(false);
+    const initialReads = bucketReads;
+    await settle(100);
+    expect(bucketReads).toBe(initialReads);
+    await vi.advanceTimersByTimeAsync(7_000);
+    expect(bucketReads).toBe(initialReads + 3);
+    expect(repository.canEdit).toBe(false);
+    writesArriving = false;
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(repository.canEdit).toBe(true);
+    expect(repository.data).toEqual(data(`External ${bucketReads - 1}`));
+  });
 
   it.each(['rename', 'last-folder deletion'])(
     'recovers an unsaved %s after suspension instead of restoring an older backup',

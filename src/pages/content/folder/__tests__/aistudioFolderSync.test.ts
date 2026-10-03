@@ -340,6 +340,7 @@ describe('AI Studio folder sync across contexts', () => {
     'rebound while disabled',
     'waiting for its re-enable reload',
     'waiting for its re-enable reload after a disabled rebind',
+    're-enabled with a concurrent external write: Merge keeps folder A',
   ])(
     'popup Merge preserves stored folders when an empty AI Studio manager is %s',
     async (lifecycle) => {
@@ -356,17 +357,25 @@ describe('AI Studio folder sync across contexts', () => {
         emitStorageChange({ [StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED]: false }, 'sync');
         await vi.advanceTimersByTimeAsync(0);
       }
-      writeFromElsewhere({ [GLOBAL_KEY]: folderData('Local only') });
+      const concurrentWrite = lifecycle.startsWith('re-enabled');
+      const localName = concurrentWrite ? 'A' : 'Local only';
+      if (!concurrentWrite) writeFromElsewhere({ [GLOBAL_KEY]: folderData(localName) });
       await vi.advanceTimersByTimeAsync(0);
       expect(manager.data).toEqual({ folders: [], folderContents: {} });
       const heldRead = Promise.withResolvers<void>();
       const startedRead = Promise.withResolvers<void>();
-      const waitingForReload = lifecycle.startsWith('waiting');
+      const staleReads = Promise.withResolvers<void>();
+      const waitingForReload = lifecycle.startsWith('waiting') || concurrentWrite;
       if (waitingForReload) {
         const read = mockBrowser.storage.local.get.getMockImplementation()!;
         mockBrowser.storage.local.get.mockImplementation(async (keys: unknown) => {
           if (keys === GLOBAL_KEY) {
+            const captured = await read(keys);
             startedRead.resolve();
+            if (concurrentWrite && !(captured[GLOBAL_KEY] as FolderData).folders.length) {
+              await staleReads.promise;
+              return captured;
+            }
             await heldRead.promise;
           }
           return read(keys);
@@ -375,6 +384,11 @@ describe('AI Studio folder sync across contexts', () => {
         emitStorageChange({ geminiFolderEnabled: true }, 'sync');
         await vi.advanceTimersByTimeAsync(0);
         await startedRead.promise;
+        if (concurrentWrite) {
+          writeFromElsewhere({ [GLOBAL_KEY]: folderData(localName) });
+          staleReads.resolve();
+          await vi.advanceTimersByTimeAsync(1_000);
+        }
       }
 
       type Receiver = Parameters<typeof chrome.runtime.onMessage.addListener>[0];
@@ -411,11 +425,12 @@ describe('AI Studio folder sync across contexts', () => {
         const download = await transfer.prepareDownload();
         await download.restore({ folders: { data: folderData('Cloud') } }, 'merge', false);
         expect((local[GLOBAL_KEY] as FolderData).folders.map((folder) => folder.name)).toEqual([
-          'Local only',
+          localName,
           'Cloud',
         ]);
         expect(responses).toEqual([{ ok: false }]);
       } finally {
+        staleReads.resolve();
         heldRead.resolve();
         await act(async () => root.unmount());
       }
@@ -424,7 +439,7 @@ describe('AI Studio folder sync across contexts', () => {
         emitStorageChange({ geminiFolderEnabled: true }, 'sync');
       }
       await vi.advanceTimersByTimeAsync(0);
-      expect(panelText()).toContain('Local only');
+      expect(panelText()).toContain(localName);
       expect(panelText()).toContain('Cloud');
       tree.startRootFolder();
       const input = nameInput()!;
