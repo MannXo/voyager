@@ -17,7 +17,6 @@
     "src/pages/content/echarts/__tests__/echarts.test.ts": 1649,
     "src/pages/content/echarts/index.ts": 1439,
     "src/pages/content/export/index.ts": 2843,
-    "src/pages/content/fork/index.ts": 1398,
     "src/pages/content/prompt/__tests__/slashPrompt.test.ts": 1868,
     "src/pages/content/timeline/TimelineView.ts": 1046,
     "src/pages/content/wavedrom/index.ts": 1075,

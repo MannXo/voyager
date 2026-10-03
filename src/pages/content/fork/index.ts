@@ -10,35 +10,33 @@ import browser from 'webextension-polyfill';
 
 import { StorageKeys } from '@/core/types/common';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
-import { generateUniqueId } from '@/core/utils/hash';
 
 import { getTranslationSync } from '../../../utils/i18n';
 import { historyTimestampStore } from '../timestamp/historyTimestamps';
 import { setInputText } from '../utils/inputHelper';
 import { ForkNodesService } from './ForkNodesService';
-import { buildBranchDisplayNodes, resolveForkPlan } from './branching';
+import { buildBranchDisplayNodes } from './branching';
 import { collectForkChatPairs } from './chatPairs';
-import { composeForkInputWithContext } from './forkContext';
+import { createForkControls } from './forkControls';
+import {
+  PENDING_FORK_KEY,
+  type PendingForkData,
+  type PendingForkMode,
+  createForkLauncher,
+} from './forkLaunch';
 import type { ForkNode } from './forkTypes';
-import { type ForkExtractedTurn, buildForkMarkdown } from './markdown';
 import { getLegacyTurnIndex, makeTurnId, normalizeTurnId } from './turnId';
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const STYLE_ID = 'gemini-voyager-fork-style';
-const FORK_BTN_CLASS = 'gv-fork-btn';
-const FORK_CONFIRM_CLASS = 'gv-fork-confirm';
 const FORK_INDICATOR_CLASS = 'gv-fork-indicator';
 const FORK_INDICATOR_GROUP_CLASS = 'gv-fork-indicator-group';
 const FORK_INDICATOR_ITEM_CLASS = 'gv-fork-indicator-item';
 const FORK_INDICATOR_DELETE_CLASS = 'gv-fork-indicator-delete';
 const FORK_MANUAL_UPLOAD_HINT_CLASS = 'gv-fork-manual-upload-hint';
 const FORK_MANUAL_UPLOAD_TIMER_CLASS = 'gv-fork-manual-upload-timer';
-const PENDING_FORK_KEY = 'gvPendingFork';
-
-const FORK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>`;
 
 const OBSERVER_DEBOUNCE_MS = 500;
 const CONVERSATION_VERIFY_TIMEOUT_MS = 4000;
@@ -49,287 +47,6 @@ const conversationExistenceCache = new Map<string, { exists: boolean; checkedAt:
 // ============================================================================
 // Styles
 // ============================================================================
-
-function injectStyles(): void {
-  if (document.getElementById(STYLE_ID)) return;
-  const style = document.createElement('style');
-  style.id = STYLE_ID;
-  style.textContent = `
-    .${FORK_BTN_CLASS} {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 4px 8px;
-      background: transparent;
-      color: var(--gv-fork-btn-color, #5f6368);
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-      font-family: 'Google Sans', Roboto, Arial, sans-serif;
-      opacity: 0;
-      visibility: hidden;
-      pointer-events: none;
-      transition: opacity 0.15s, transform 0.15s, background-color 0.15s;
-      position: absolute;
-      top: 9px;
-      right: calc(100% + 8px);
-      z-index: 1;
-      white-space: nowrap;
-      height: 22px;
-      box-sizing: border-box;
-    }
-    .${FORK_BTN_CLASS}:hover {
-      opacity: 1;
-      background-color: var(--gv-fork-btn-hover-bg, rgba(0, 0, 0, 0.06));
-    }
-    .${FORK_BTN_CLASS} svg {
-      width: 14px;
-      height: 14px;
-      flex-shrink: 0;
-    }
-
-    /* Reveal on hover/focus without affecting message layout */
-    .user-query-bubble-with-background:hover .${FORK_BTN_CLASS},
-    .user-query-container:hover .${FORK_BTN_CLASS},
-    user-query:hover .${FORK_BTN_CLASS},
-    user-query-content:hover .${FORK_BTN_CLASS},
-    .user-query-bubble-with-background:focus-within .${FORK_BTN_CLASS},
-    .user-query-container:focus-within .${FORK_BTN_CLASS},
-    user-query:focus-within .${FORK_BTN_CLASS},
-    user-query-content:focus-within .${FORK_BTN_CLASS},
-    .${FORK_BTN_CLASS}:hover,
-    .${FORK_BTN_CLASS}:focus-visible {
-      opacity: 1;
-      visibility: visible;
-      pointer-events: auto;
-    }
-
-    html[dir="rtl"] .${FORK_BTN_CLASS},
-    body[dir="rtl"] .${FORK_BTN_CLASS},
-    body.gv-rtl .${FORK_BTN_CLASS} {
-      right: auto;
-      left: calc(100% + 8px);
-    }
-
-    /* Confirmation dialog */
-    .${FORK_CONFIRM_CLASS} {
-      z-index: 9999;
-      background: var(--gv-fork-confirm-bg, #fff);
-      color: var(--gv-fork-confirm-color, #202124);
-      border: 1px solid var(--gv-fork-confirm-border, rgba(0, 0, 0, 0.12));
-      border-radius: 8px;
-      padding: 12px;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-      white-space: nowrap;
-      font-size: 13px;
-      font-family: 'Google Sans', Roboto, Arial, sans-serif;
-    }
-    .${FORK_CONFIRM_CLASS} p {
-      margin: 0 0 8px 0;
-    }
-    .${FORK_CONFIRM_CLASS} .gv-fork-actions {
-      display: flex;
-      gap: 8px;
-      justify-content: flex-end;
-    }
-    .${FORK_CONFIRM_CLASS} button {
-      padding: 4px 12px;
-      border-radius: 4px;
-      border: 1px solid var(--gv-fork-confirm-border, rgba(0, 0, 0, 0.12));
-      cursor: pointer;
-      font-size: 12px;
-      font-family: 'Google Sans', Roboto, Arial, sans-serif;
-      background: transparent;
-      color: inherit;
-    }
-    .${FORK_CONFIRM_CLASS} button.gv-fork-primary {
-      background: var(--gv-fork-primary-bg, #1a73e8);
-      color: #fff;
-      border-color: transparent;
-    }
-    .${FORK_CONFIRM_CLASS} button.gv-fork-primary:hover {
-      background: var(--gv-fork-primary-hover-bg, #1765cc);
-    }
-    .${FORK_CONFIRM_CLASS} button.gv-fork-secondary {
-      background: var(--gv-fork-secondary-bg, rgba(26, 115, 232, 0.08));
-      color: var(--gv-fork-secondary-color, #1a73e8);
-      border-color: var(--gv-fork-secondary-border, rgba(26, 115, 232, 0.22));
-    }
-    .${FORK_CONFIRM_CLASS} button.gv-fork-secondary:hover {
-      background: var(--gv-fork-secondary-hover-bg, rgba(26, 115, 232, 0.14));
-    }
-
-    .${FORK_MANUAL_UPLOAD_HINT_CLASS} {
-      position: fixed;
-      right: 20px;
-      bottom: 20px;
-      z-index: 9999;
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      max-width: 340px;
-      padding: 12px 14px;
-      border: 1px solid var(--gv-fork-confirm-border, rgba(0, 0, 0, 0.12));
-      border-radius: 8px;
-      background: var(--gv-fork-confirm-bg, #fff);
-      color: var(--gv-fork-confirm-color, #202124);
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
-      font-size: 13px;
-      line-height: 1.4;
-      font-family: 'Google Sans', Roboto, Arial, sans-serif;
-    }
-    .${FORK_MANUAL_UPLOAD_HINT_CLASS} span {
-      flex: 1;
-      min-width: 0;
-    }
-    .${FORK_MANUAL_UPLOAD_TIMER_CLASS} {
-      display: block;
-      margin-top: 6px;
-      color: var(--gv-fork-secondary-color, #1a73e8);
-      font-size: 14px;
-      font-weight: 600;
-      font-variant-numeric: tabular-nums;
-      letter-spacing: 0;
-    }
-    .${FORK_MANUAL_UPLOAD_HINT_CLASS} button {
-      flex: 0 0 auto;
-      width: 20px;
-      height: 20px;
-      padding: 0;
-      border: none;
-      border-radius: 50%;
-      background: transparent;
-      color: inherit;
-      cursor: pointer;
-      font-size: 16px;
-      line-height: 20px;
-    }
-
-    /* Fork branch indicator group */
-    .${FORK_INDICATOR_GROUP_CLASS} {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      margin-left: 8px;
-      vertical-align: middle;
-    }
-    .${FORK_INDICATOR_ITEM_CLASS} {
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .${FORK_INDICATOR_CLASS} {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 22px;
-      height: 22px;
-      padding: 0 6px;
-      background: var(--gv-fork-indicator-bg, rgba(26, 115, 232, 0.06));
-      color: var(--gv-fork-indicator-color, #1a73e8);
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-      font-weight: 600;
-      font-family: 'Google Sans', Roboto, Arial, sans-serif;
-      border: 1px solid var(--gv-fork-indicator-border, rgba(26, 115, 232, 0.28));
-      transition: background-color 0.15s, color 0.15s, border-color 0.15s;
-    }
-    .${FORK_INDICATOR_CLASS}:hover {
-      background: var(--gv-fork-indicator-hover-bg, rgba(26, 115, 232, 0.16));
-    }
-    .${FORK_INDICATOR_CLASS}.gv-current {
-      background: var(--gv-fork-indicator-current-bg, #1a73e8);
-      color: var(--gv-fork-indicator-current-color, #fff);
-      border-color: var(--gv-fork-indicator-current-bg, #1a73e8);
-      cursor: default;
-    }
-    .${FORK_INDICATOR_DELETE_CLASS} {
-      position: absolute;
-      top: -5px;
-      right: -5px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 14px;
-      height: 14px;
-      padding: 0;
-      border-radius: 50%;
-      border: 1px solid transparent;
-      background: #ea4335;
-      color: #fff;
-      cursor: pointer;
-      font-size: 10px;
-      font-weight: 700;
-      line-height: 1;
-      font-family: 'Google Sans', Roboto, Arial, sans-serif;
-      opacity: 0;
-      pointer-events: none;
-      transform: scale(0.8);
-      transition: opacity 0.15s, transform 0.15s;
-    }
-    .${FORK_INDICATOR_ITEM_CLASS}:hover .${FORK_INDICATOR_DELETE_CLASS},
-    .${FORK_INDICATOR_ITEM_CLASS}:focus-within .${FORK_INDICATOR_DELETE_CLASS} {
-      opacity: 1;
-      pointer-events: auto;
-      transform: scale(1);
-    }
-    .${FORK_INDICATOR_DELETE_CLASS}:disabled {
-      opacity: 0.6;
-      cursor: default;
-      pointer-events: none;
-    }
-
-    /* Dark mode */
-    html[dark] .${FORK_BTN_CLASS},
-    body.dark-theme .${FORK_BTN_CLASS} {
-      --gv-fork-btn-color: #9aa0a6;
-      --gv-fork-btn-hover-bg: rgba(255, 255, 255, 0.08);
-    }
-    html[dark] .${FORK_CONFIRM_CLASS},
-    body.dark-theme .${FORK_CONFIRM_CLASS},
-    html[dark] .${FORK_MANUAL_UPLOAD_HINT_CLASS},
-    body.dark-theme .${FORK_MANUAL_UPLOAD_HINT_CLASS} {
-      --gv-fork-confirm-bg: #292a2d;
-      --gv-fork-confirm-color: #e8eaed;
-      --gv-fork-confirm-border: rgba(255, 255, 255, 0.12);
-    }
-    html[dark] .${FORK_CONFIRM_CLASS} button.gv-fork-primary,
-    body.dark-theme .${FORK_CONFIRM_CLASS} button.gv-fork-primary {
-      --gv-fork-primary-bg: #8ab4f8;
-      color: #202124;
-    }
-    html[dark] .${FORK_CONFIRM_CLASS} button.gv-fork-primary:hover,
-    body.dark-theme .${FORK_CONFIRM_CLASS} button.gv-fork-primary:hover {
-      --gv-fork-primary-hover-bg: #aecbfa;
-    }
-    html[dark] .${FORK_CONFIRM_CLASS} button.gv-fork-secondary,
-    body.dark-theme .${FORK_CONFIRM_CLASS} button.gv-fork-secondary {
-      --gv-fork-secondary-bg: rgba(138, 180, 248, 0.12);
-      --gv-fork-secondary-color: #8ab4f8;
-      --gv-fork-secondary-border: rgba(138, 180, 248, 0.28);
-      --gv-fork-secondary-hover-bg: rgba(138, 180, 248, 0.2);
-    }
-    html[dark] .${FORK_INDICATOR_CLASS},
-    body.dark-theme .${FORK_INDICATOR_CLASS} {
-      --gv-fork-indicator-bg: rgba(138, 180, 248, 0.12);
-      --gv-fork-indicator-color: #8ab4f8;
-      --gv-fork-indicator-border: rgba(138, 180, 248, 0.28);
-      --gv-fork-indicator-hover-bg: rgba(138, 180, 248, 0.2);
-      --gv-fork-indicator-current-bg: #8ab4f8;
-      --gv-fork-indicator-current-color: #202124;
-    }
-    html[dark] .${FORK_INDICATOR_DELETE_CLASS},
-    body.dark-theme .${FORK_INDICATOR_DELETE_CLASS} {
-      background: #f28b82;
-      color: #202124;
-    }
-  `;
-  document.head.appendChild(style);
-}
 
 // ============================================================================
 // Helpers
@@ -348,11 +65,6 @@ function resolveCurrentConversationTurnId(turnId: string): string | null {
   return historyTimestampStore.resolveCanonicalTurnId(conversationId, turnId);
 }
 
-function isSameCurrentConversationTurn(left: string, right: string): boolean {
-  const resolvedLeft = resolveCurrentConversationTurnId(left);
-  return resolvedLeft !== null && resolvedLeft === resolveCurrentConversationTurnId(right);
-}
-
 function getNewConversationUrlForCurrentAccount(): string {
   const accountPrefix = window.location.pathname.match(/^\/u\/\d+(?=\/)/)?.[0] || '';
   return `${window.location.origin}${accountPrefix}/app`;
@@ -368,36 +80,6 @@ function getConversationTitle(): string {
     if (link?.textContent?.trim()) return link.textContent.trim();
   }
   return document.title || 'Untitled';
-}
-
-function sanitizeFilenamePart(value: string): string {
-  const cleaned = value
-    .trim()
-    // oxlint-disable-next-line no-control-regex -- control characters are illegal in filenames and must be matched to be stripped
-    .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-')
-    .replace(/\s+/g, ' ')
-    .slice(0, 80)
-    .replace(/^\.+$/, '');
-  return cleaned || 'fork';
-}
-
-function buildForkMarkdownFilename(title: string): string {
-  return `gemini-voyager-fork-${sanitizeFilenamePart(title)}-${Date.now()}.md`;
-}
-
-function downloadMarkdownFile(content: string, filename: string): void {
-  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-
-  setTimeout(() => {
-    anchor.remove();
-    URL.revokeObjectURL(url);
-  }, 100);
 }
 
 function formatTranslation(template: string, values: Record<string, string>): string {
@@ -421,23 +103,6 @@ function resolveUserMessageHost(userEl: HTMLElement): HTMLElement {
     userEl.querySelector<HTMLElement>('user-query-content .user-query-bubble-with-background') ||
     userEl.querySelector<HTMLElement>('.user-query-bubble-container');
   return preferred || userEl;
-}
-
-function findUserCopyButtonAnchor(userEl: HTMLElement): HTMLElement | null {
-  const copyButton =
-    userEl.querySelector<HTMLElement>('button[data-test-id="copy-button"]') ||
-    userEl
-      .querySelector<HTMLElement>(
-        'button mat-icon[fonticon="content_copy"], button mat-icon[data-mat-icon-name="content_copy"]',
-      )
-      ?.closest<HTMLElement>('button');
-
-  if (!copyButton) return null;
-  return copyButton.parentElement || copyButton;
-}
-
-function resolveForkButtonHost(userEl: HTMLElement): HTMLElement {
-  return findUserCopyButtonAnchor(userEl) || resolveUserMessageHost(userEl);
 }
 
 function extractConversationIdFromHref(href: string): string | null {
@@ -495,26 +160,6 @@ function collectSidebarConversationIds(): Set<string> {
     if (id) ids.add(id);
   });
   return ids;
-}
-
-async function getPreferredLanguage(): Promise<string | undefined> {
-  try {
-    const syncResult = await browser.storage.sync.get(StorageKeys.LANGUAGE);
-    const syncLanguage = syncResult?.[StorageKeys.LANGUAGE];
-    if (typeof syncLanguage === 'string' && syncLanguage.trim()) return syncLanguage;
-  } catch {
-    // Ignore sync storage failures.
-  }
-
-  try {
-    const localResult = await browser.storage.local.get(StorageKeys.LANGUAGE);
-    const localLanguage = localResult?.[StorageKeys.LANGUAGE];
-    if (typeof localLanguage === 'string' && localLanguage.trim()) return localLanguage;
-  } catch {
-    // Ignore local storage failures.
-  }
-
-  return undefined;
 }
 
 async function checkConversationExists(
@@ -601,31 +246,6 @@ function hasOrDedupForkIndicatorGroup(hostEl: HTMLElement): boolean {
   return true;
 }
 
-/**
- * Extract conversation content up to and including the given user turn index.
- *
- * Step 1: Extract turns 0..N with both user and assistant content when available.
- * Step 2: Remove the last assistant response to let users continue from the last user turn.
- */
-function extractConversationUpToTurn(userTurnIndex: number, sourceTurnId: string): string {
-  const pairs = collectForkChatPairs();
-  if (pairs.length === 0) return '';
-
-  const sourceIndex = pairs.findIndex((pair) =>
-    isSameCurrentConversationTurn(pair.turnId, sourceTurnId),
-  );
-  const targetIndex = sourceIndex >= 0 ? sourceIndex : userTurnIndex;
-  const turns: ForkExtractedTurn[] = [];
-  for (let i = 0; i <= targetIndex && i < pairs.length; i++) {
-    turns.push({
-      user: pairs[i].user || '',
-      assistant: pairs[i].assistant || '',
-    });
-  }
-
-  return buildForkMarkdown(getConversationTitle(), turns, true);
-}
-
 // ============================================================================
 // Fork Button Injection
 // ============================================================================
@@ -635,20 +255,6 @@ let observerDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let storageRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 let manualUploadHintTimer: ReturnType<typeof setTimeout> | null = null;
 let manualUploadCountdownTimer: ReturnType<typeof setInterval> | null = null;
-let activeConfirm: HTMLElement | null = null;
-
-function dismissConfirm(): void {
-  if (activeConfirm) {
-    activeConfirm.remove();
-    activeConfirm = null;
-  }
-}
-
-function onDocumentClick(e: MouseEvent): void {
-  if (activeConfirm && !activeConfirm.contains(e.target as Node)) {
-    dismissConfirm();
-  }
-}
 
 function scheduleForkIndicatorRefresh(): void {
   if (storageRefreshTimer) clearTimeout(storageRefreshTimer);
@@ -669,209 +275,6 @@ function clearManualUploadHint(): void {
     manualUploadCountdownTimer = null;
   }
   document.querySelectorAll(`.${FORK_MANUAL_UPLOAD_HINT_CLASS}`).forEach((el) => el.remove());
-}
-
-function injectForkButtons(): void {
-  const pairs = collectForkChatPairs();
-
-  pairs.forEach((pair, index) => {
-    const userEl = pair.userElement;
-    ensureTurnId(userEl, index);
-    const hostEl = resolveForkButtonHost(userEl);
-
-    const existingButton = userEl.querySelector<HTMLElement>(`.${FORK_BTN_CLASS}`);
-    if (existingButton) {
-      hostEl.style.position = hostEl.style.position || 'relative';
-      if (existingButton.parentElement !== hostEl) {
-        hostEl.appendChild(existingButton);
-      }
-      return;
-    }
-
-    const btn = document.createElement('button');
-    btn.className = FORK_BTN_CLASS;
-    btn.title = getTranslationSync('forkConversation');
-    btn.innerHTML = `${FORK_ICON}<span>${getTranslationSync('forkConversation')}</span>`;
-
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      showForkConfirmation(btn, userEl, index);
-    });
-
-    // Add at the end of the user message container
-    hostEl.style.position = hostEl.style.position || 'relative';
-    hostEl.appendChild(btn);
-  });
-}
-
-function showForkConfirmation(btn: HTMLElement, userEl: HTMLElement, turnIndex: number): void {
-  dismissConfirm();
-
-  const confirm = document.createElement('div');
-  confirm.className = FORK_CONFIRM_CLASS;
-  confirm.innerHTML = `
-    <p>${getTranslationSync('forkConfirm')}</p>
-    <div class="gv-fork-actions">
-      <button class="gv-fork-cancel">${getTranslationSync('forkCancel')}</button>
-      <button class="gv-fork-secondary">${getTranslationSync('forkMarkdownBtn')}</button>
-      <button class="gv-fork-primary">${getTranslationSync('forkConfirmBtn')}</button>
-    </div>
-  `;
-
-  const cancelBtn = confirm.querySelector('.gv-fork-cancel')!;
-  const markdownBtn = confirm.querySelector('.gv-fork-secondary')!;
-  const confirmBtn = confirm.querySelector('.gv-fork-primary')!;
-
-  cancelBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    dismissConfirm();
-  });
-  confirmBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    dismissConfirm();
-    void executeFork(userEl, turnIndex, 'paste');
-  });
-  markdownBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    dismissConfirm();
-    void executeFork(userEl, turnIndex, 'fileUpload');
-  });
-
-  // Prevent clicks inside the dialog from bubbling to parent handlers
-  confirm.addEventListener('click', (e) => e.stopPropagation());
-
-  // Position near the fork button using fixed positioning
-  const btnRect = btn.getBoundingClientRect();
-  confirm.style.position = 'fixed';
-  confirm.style.top = `${btnRect.top - 4}px`;
-  confirm.style.left = `${btnRect.right}px`;
-  confirm.style.transform = 'translateY(-100%)';
-
-  document.body.appendChild(confirm);
-  activeConfirm = confirm;
-}
-
-type PendingForkMode = 'paste' | 'fileUpload';
-
-async function executeFork(
-  userEl: HTMLElement,
-  turnIndex: number,
-  mode: PendingForkMode,
-): Promise<void> {
-  const conversationId = extractConversationIdFromUrl();
-  if (!conversationId) {
-    console.warn('[Fork] No conversation ID found');
-    return;
-  }
-
-  const turnId = ensureTurnId(userEl, turnIndex);
-  if (getLegacyTurnIndex(turnId) !== null) {
-    console.warn('[Fork] Stable turn identity is not available yet');
-    return;
-  }
-  const markdown = extractConversationUpToTurn(turnIndex, turnId);
-  if (!markdown.trim()) {
-    console.warn('[Fork] No content extracted');
-    return;
-  }
-
-  // Open new window IMMEDIATELY to preserve user gesture context.
-  // Firefox and Safari block window.open() that follows async operations.
-  const newWindow = window.open(getNewConversationUrlForCurrentAccount(), '_blank');
-  if (!newWindow) {
-    console.warn('[Fork] Failed to open new window (popup blocked?)');
-    return;
-  }
-
-  // Async work: resolve language and fork group (safe now, window already opened)
-  const preferredLanguage = await getPreferredLanguage();
-  const markdownWithContext = composeForkInputWithContext(markdown, preferredLanguage);
-  const markdownFilename =
-    mode === 'fileUpload' ? buildForkMarkdownFilename(getConversationTitle()) : undefined;
-
-  let forkGroupId = generateUniqueId('fork');
-  let sourceForkIndex = 0;
-  let nextForkIndex = 1;
-
-  try {
-    const conversationNodes = await ForkNodesService.getForConversation(conversationId);
-    const candidateGroupIds = Array.from(
-      new Set(
-        conversationNodes
-          .filter((node) => isSameCurrentConversationTurn(node.turnId, turnId))
-          .map((node) => node.forkGroupId),
-      ),
-    );
-
-    const groups: Record<string, ForkNode[]> = {};
-    for (const groupId of candidateGroupIds) {
-      groups[groupId] = await ForkNodesService.getGroup(groupId);
-    }
-
-    const plan = resolveForkPlan(
-      conversationId,
-      turnId,
-      conversationNodes,
-      groups,
-      () => generateUniqueId('fork'),
-      resolveCurrentConversationTurnId,
-    );
-
-    forkGroupId = plan.forkGroupId;
-    sourceForkIndex = plan.sourceForkIndex;
-    nextForkIndex = plan.nextForkIndex;
-  } catch (error) {
-    if (!isExtensionContextInvalidatedError(error)) {
-      console.error('[Fork] Failed to resolve fork group, using default:', error);
-    }
-  }
-
-  // Store pending fork data in extension storage (cross-tab accessible).
-  // sessionStorage is per-tab and its copy semantics with window.open() vary by browser.
-  const pendingFork: PendingForkData = {
-    sourceConversationId: conversationId,
-    sourceTurnId: turnId,
-    sourceUrl: window.location.href,
-    sourceTitle: getConversationTitle(),
-    forkGroupId,
-    sourceForkIndex,
-    nextForkIndex,
-    markdown: markdownWithContext,
-    mode,
-    filename: markdownFilename,
-    createdAt: Date.now(),
-  };
-
-  try {
-    await browser.storage.local.set({ [PENDING_FORK_KEY]: pendingFork });
-    if (mode === 'fileUpload' && markdownFilename) {
-      downloadMarkdownFile(markdownWithContext, markdownFilename);
-    }
-  } catch (e) {
-    console.error('[Fork] Failed to save pending fork:', e);
-  }
-}
-
-// ============================================================================
-// Pending Fork Handling (New Conversation)
-// ============================================================================
-
-interface PendingForkData {
-  sourceConversationId: string;
-  sourceTurnId: string;
-  sourceUrl: string;
-  sourceTitle: string;
-  forkGroupId: string;
-  sourceForkIndex: number;
-  nextForkIndex: number;
-  markdown: string;
-  mode: PendingForkMode;
-  filename?: string;
-  createdAt?: number;
 }
 
 const PENDING_FORK_PASTE_STALE_MS = 60000;
@@ -1293,14 +696,7 @@ async function injectForkIndicators(): Promise<void> {
 // Language Update
 // ============================================================================
 
-function updateForkButtonTexts(): void {
-  const buttons = document.querySelectorAll<HTMLElement>(`.${FORK_BTN_CLASS}`);
-  buttons.forEach((btn) => {
-    btn.title = getTranslationSync('forkConversation');
-    const span = btn.querySelector('span');
-    if (span) span.textContent = getTranslationSync('forkConversation');
-  });
-
+function updateForkIndicatorTexts(): void {
   // Update indicator titles (sequence numbers stay the same, language labels change)
   const indicators = document.querySelectorAll<HTMLElement>(`.${FORK_INDICATOR_CLASS}`);
   indicators.forEach((ind) => {
@@ -1324,14 +720,25 @@ function updateForkButtonTexts(): void {
 // ============================================================================
 
 export function startFork(): () => void {
-  injectStyles();
+  const executeFork = createForkLauncher({
+    getConversationId: extractConversationIdFromUrl,
+    getConversationTitle,
+    getNewConversationUrl: getNewConversationUrlForCurrentAccount,
+    ensureTurnId,
+    resolveTurnId: resolveCurrentConversationTurnId,
+  });
+  const controls = createForkControls({
+    ensureTurnId,
+    resolveUserMessageHost,
+    onFork: executeFork,
+  });
 
   // Check for pending fork data (new conversation paste)
   checkAndHandlePendingFork();
 
   // Inject fork buttons and indicators
   const setup = () => {
-    injectForkButtons();
+    controls.inject();
     void injectForkIndicators();
   };
 
@@ -1342,7 +749,7 @@ export function startFork(): () => void {
   observer = new MutationObserver(() => {
     if (observerDebounceTimer) clearTimeout(observerDebounceTimer);
     observerDebounceTimer = setTimeout(() => {
-      injectForkButtons();
+      controls.inject();
       void injectForkIndicators();
     }, OBSERVER_DEBOUNCE_MS);
   });
@@ -1352,16 +759,14 @@ export function startFork(): () => void {
     subtree: true,
   });
 
-  // Dismiss confirm dialog on click outside
-  document.addEventListener('click', onDocumentClick);
-
   // Language change listener
   const onStorageChanged = (
     changes: Record<string, browser.Storage.StorageChange>,
     areaName: string,
   ) => {
     if ((areaName === 'sync' || areaName === 'local') && changes[StorageKeys.LANGUAGE]) {
-      updateForkButtonTexts();
+      controls.updateLanguage();
+      updateForkIndicatorTexts();
     }
     if (areaName === 'local' && changes[StorageKeys.FORK_NODES]) {
       scheduleForkIndicatorRefresh();
@@ -1384,15 +789,11 @@ export function startFork(): () => void {
       storageRefreshTimer = null;
     }
     clearManualUploadHint();
-    dismissConfirm();
-    document.removeEventListener('click', onDocumentClick);
+    controls.stop();
     browser.storage.onChanged.removeListener(onStorageChanged);
 
     // Remove injected elements
-    document.querySelectorAll(`.${FORK_BTN_CLASS}`).forEach((el) => el.remove());
     document.querySelectorAll(`.${FORK_INDICATOR_CLASS}`).forEach((el) => el.remove());
     document.querySelectorAll(`.${FORK_INDICATOR_GROUP_CLASS}`).forEach((el) => el.remove());
-    const style = document.getElementById(STYLE_ID);
-    if (style) style.remove();
   };
 }
