@@ -154,8 +154,13 @@ function watchOwnedKeys(
 /** A one-shot alarm: MV3 may terminate an idle worker before a 60-second `setTimeout` fires. */
 function alarmTimer(name: string): BundleRecoveryOptions['setTimer'] {
   let fire: (() => void) | null = null;
+  // Recovery retries at start, so an alarm left by an earlier worker would only wake one again.
+  void chrome.alarms.clear(name);
   chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === name) fire?.();
+    if (alarm.name !== name || !fire) return;
+    const run = fire;
+    fire = null;
+    run();
   });
   return (run, ms) => {
     fire = run;

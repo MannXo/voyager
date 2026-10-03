@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFaultyStorage } from '@/features/folder/owner/__tests__/faultyStorage';
+import {
+  type FaultyStorage,
+  createFaultyStorage,
+} from '@/features/folder/owner/__tests__/faultyStorage';
 import { folder, folderData } from '@/features/folder/owner/__tests__/ownerHarness';
 import { type FolderAuthority, FOLDER_WRITE_AUTHORITY } from '@/features/folder/owner/authority';
 import { AUTHORITY_FENCE_KEY } from '@/features/folder/owner/authorityFence';
@@ -68,8 +71,36 @@ describe('folder owner message handler', () => {
   });
 });
 
+const RETRY_ALARM = 'gv-folder-owner-bundle-retry';
+/** Alarms the browser holds; a one-shot alarm is gone once it fires. */
+const alarms = new Set<string>();
+
+function fireAlarm(name: string) {
+  alarms.delete(name);
+  for (const [listener] of vi.mocked(chrome.alarms.onAlarm.addListener).mock.calls) {
+    listener({ name, scheduledTime: Date.now() });
+  }
+}
+
+/** Backs `chrome.storage.local` with `storage`. */
+function routeLocalStorage(storage: FaultyStorage) {
+  vi.mocked(chrome.storage.local.get).mockImplementation(async (keys: unknown) =>
+    keys === null
+      ? storage.area.getAll()
+      : storage.area.get(Array.isArray(keys) ? keys : [String(keys)]),
+  );
+  vi.mocked(chrome.storage.local.set).mockImplementation((items) => storage.area.set(items));
+}
+
+function emitLocalChange(changes: Record<string, chrome.storage.StorageChange>) {
+  for (const [listener] of vi.mocked(chrome.storage.onChanged.addListener).mock.calls) {
+    listener(changes, 'local');
+  }
+}
+
 describe('startFolderOwner', () => {
   beforeEach(() => {
+    alarms.clear();
     vi.stubGlobal('chrome', {
       ...chrome,
       runtime: { ...chrome.runtime, getManifest: () => ({ version: '1.9.0' }) },
@@ -79,8 +110,12 @@ describe('startFolderOwner', () => {
     vi.mocked(chrome.runtime.onMessage.addListener).mockClear();
     vi.mocked(chrome.storage.onChanged.addListener).mockClear();
     vi.mocked(chrome.alarms.onAlarm.addListener).mockClear();
-    vi.mocked(chrome.alarms.create).mockReset().mockResolvedValue(undefined);
-    vi.mocked(chrome.alarms.clear).mockReset().mockResolvedValue(undefined);
+    vi.mocked(chrome.alarms.create)
+      .mockReset()
+      .mockImplementation((name) => void alarms.add(String(name)));
+    vi.mocked(chrome.alarms.clear)
+      .mockReset()
+      .mockImplementation((name) => void alarms.delete(String(name)));
   });
   afterEach(() => {
     backgroundWriteQueue.setPrelude(null);
@@ -136,49 +171,44 @@ describe('startFolderOwner', () => {
     });
   });
 
+  /** An owner worker whose open bundle is stuck on a failing K write, with its retry alarm armed. */
+  async function stuckBundleWorker() {
+    const storage = createFaultyStorage({
+      gvFolderData: 'prev',
+      cache: 'cache',
+      [BUNDLE_INTENT_KEY]: {
+        v: 1,
+        txId: 'tx',
+        status: 'open',
+        site: 'gemini',
+        clientId: 'c',
+        seq: 1,
+        at: 0,
+        keys: {
+          gvFolderData: { prevHash: await hashValue('prev'), nextHash: await hashValue('next') },
+        },
+        values: { gvFolderData: 'next' },
+      },
+    });
+    storage.failWhen((op, keys) => op === 'set' && keys.includes('gvFolderData'));
+    routeLocalStorage(storage);
+    startFolderOwner(GEMINI_OWNER);
+    await vi.waitFor(() => expect(alarms).toEqual(new Set([RETRY_ALARM])));
+    expect(storage.read(BUNDLE_INTENT_KEY)).toMatchObject({ status: 'open' });
+    storage.failWhen(null);
+    return storage;
+  }
+
   it.each(['the retry alarm', 'a storage event'] as const)(
     'R3.6: finishes a blocked bundle when %s wakes the worker',
     async (signal) => {
-      const storage = createFaultyStorage({
-        gvFolderData: 'prev',
-        cache: 'cache',
-        [BUNDLE_INTENT_KEY]: {
-          v: 1,
-          txId: 'tx',
-          status: 'open',
-          site: 'gemini',
-          clientId: 'c',
-          seq: 1,
-          at: 0,
-          keys: {
-            gvFolderData: { prevHash: await hashValue('prev'), nextHash: await hashValue('next') },
-          },
-          values: { gvFolderData: 'next' },
-        },
-      });
-      storage.failWhen((op, keys) => op === 'set' && keys.includes('gvFolderData'));
-      vi.mocked(chrome.storage.local.get).mockImplementation(async (keys: unknown) =>
-        keys === null
-          ? storage.area.getAll()
-          : storage.area.get(Array.isArray(keys) ? keys : [String(keys)]),
-      );
-      vi.mocked(chrome.storage.local.set).mockImplementation((items) => storage.area.set(items));
-      startFolderOwner(GEMINI_OWNER);
-      await vi.waitFor(() =>
-        expect(chrome.alarms.create).toHaveBeenCalledWith('gv-folder-owner-bundle-retry', {
-          delayInMinutes: 1,
-        }),
-      );
-      expect(storage.read(BUNDLE_INTENT_KEY)).toMatchObject({ status: 'open' });
-      const onAlarm = vi.mocked(chrome.alarms.onAlarm.addListener).mock.calls[0][0];
-      storage.failWhen(null);
+      const storage = await stuckBundleWorker();
 
       if (signal === 'the retry alarm') {
-        onAlarm({ name: 'gv-folder-owner-bundle-retry', scheduledTime: Date.now() });
+        fireAlarm(RETRY_ALARM);
       } else {
         await storage.area.remove(['cache']);
-        const onChanged = vi.mocked(chrome.storage.onChanged.addListener).mock.calls[0][0];
-        onChanged({ cache: { oldValue: 'cache' } }, 'local');
+        emitLocalChange({ cache: { oldValue: 'cache' } });
       }
       await vi.waitFor(() =>
         expect(storage.read(BUNDLE_INTENT_KEY)).toMatchObject({ status: 'closed' }),
@@ -186,42 +216,49 @@ describe('startFolderOwner', () => {
 
       expect(storage.read('gvFolderData')).toBe('next');
       expect(chrome.alarms.create).toHaveBeenCalledTimes(1);
-      if (signal === 'a storage event') {
-        await vi.waitFor(() =>
-          expect(chrome.alarms.clear).toHaveBeenCalledExactlyOnceWith(
-            'gv-folder-owner-bundle-retry',
-          ),
-        );
-        onAlarm({ name: 'gv-folder-owner-bundle-retry', scheduledTime: Date.now() });
-        expect(chrome.alarms.create).toHaveBeenCalledTimes(1);
-      }
+      await vi.waitFor(() => expect(alarms).toEqual(new Set()));
     },
   );
+
+  it('runs no second recovery when a retry alarm that already fired is delivered again', async () => {
+    const storage = await stuckBundleWorker();
+    fireAlarm(RETRY_ALARM);
+    await vi.waitFor(() =>
+      expect(storage.read(BUNDLE_INTENT_KEY)).toMatchObject({ status: 'closed' }),
+    );
+    await backgroundWriteQueue(async () => undefined, []);
+    const calls = storage.calls();
+
+    fireAlarm(RETRY_ALARM);
+    await backgroundWriteQueue(async () => undefined, []);
+
+    expect(storage.calls()).toBe(calls);
+  });
+
+  it('drops the retry alarm an earlier worker left once a fresh worker finds nothing stuck', async () => {
+    alarms.add(RETRY_ALARM);
+    routeLocalStorage(createFaultyStorage());
+
+    startFolderOwner(GEMINI_OWNER);
+    await backgroundWriteQueue(async () => undefined, []);
+
+    await vi.waitFor(() => expect(alarms).toEqual(new Set()));
+  });
 
   it('retries a failed startup fence after cleanup instead of permanently blocking owner turns', async () => {
     const data = folderData([folder('F', 'Keep')]);
     const storage = createFaultyStorage({ gvFolderData: data, cache: 'cache' });
     storage.failWhen((op, keys) => op === 'set' && keys.includes(AUTHORITY_FENCE_KEY));
-    vi.mocked(chrome.storage.local.get).mockImplementation(async (keys: unknown) =>
-      keys === null
-        ? storage.area.getAll()
-        : storage.area.get(Array.isArray(keys) ? keys : [String(keys)]),
-    );
-    vi.mocked(chrome.storage.local.set).mockImplementation((items) => storage.area.set(items));
+    routeLocalStorage(storage);
     const owner = startFolderOwner(GEMINI_OWNER);
-    await vi.waitFor(() =>
-      expect(chrome.alarms.create).toHaveBeenCalledWith('gv-folder-owner-bundle-retry', {
-        delayInMinutes: 1,
-      }),
-    );
+    await vi.waitFor(() => expect(alarms).toEqual(new Set([RETRY_ALARM])));
     expect(chrome.storage.local.get).not.toHaveBeenCalled();
     expect(storage.read('gvFolderData')).toEqual(data);
     expect(storage.read(AUTHORITY_FENCE_KEY)).toBeUndefined();
 
     storage.failWhen(null);
     await storage.area.remove(['cache']);
-    const onChanged = vi.mocked(chrome.storage.onChanged.addListener).mock.calls[0][0];
-    onChanged({ cache: { oldValue: 'cache' } }, 'local');
+    emitLocalChange({ cache: { oldValue: 'cache' } });
     await expect(owner.snapshot({ key: 'gvFolderData', clientId: 'c' })).resolves.toMatchObject({
       kind: 'ready',
       data,
@@ -234,8 +271,6 @@ describe('startFolderOwner', () => {
         .mocked(chrome.storage.local.set)
         .mock.calls.filter(([items]) => AUTHORITY_FENCE_KEY in items),
     ).toHaveLength(2);
-    await vi.waitFor(() =>
-      expect(chrome.alarms.clear).toHaveBeenCalledExactlyOnceWith('gv-folder-owner-bundle-retry'),
-    );
+    await vi.waitFor(() => expect(alarms).toEqual(new Set()));
   });
 });
