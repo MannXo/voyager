@@ -1,0 +1,40 @@
+# Export ownership
+
+Start with the owner of the behavior being changed. `index.ts` is the composition root: it
+resolves the platform adapter once per page, creates the collector and the runner, and mounts the
+entry points (persistent toolbar, conversation/response menus, logo dropdown, copy-as-image). File
+writing (JSON/Markdown/PDF/image) lives in `src/features/export/`.
+
+| Change                                                                              | Owner                                                                  |
+| ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Platform selectors, titles, lazy-history policy, ChatGPT selection turns            | `adapter/`                                                             |
+| Read turns and selectable messages from the page, Canvas snapshots, message ids     | `conversationCollector.ts`                                             |
+| One export run: preload clicks, reload resume, final export, active-operation abort | `exportRun.ts` (+ `pendingExportState.ts`, `topNodePreload.ts`)        |
+| Selection mode: checkboxes, bar, role filters, lazy-load refresh, Cancel/Escape     | `exportSelectionSession.ts`                                            |
+| Progress pill and centring floating UI over the conversation                        | `exportOverlayUi.ts`                                                   |
+| Generated-UI iframe screenshots and their permission prompt                         | `generatedUiScreenshots.ts`                                            |
+| Export item in Gemini conversation / sidebar / response menus                       | `conversationMenuExportObserver.ts` (+ `conversationMenuInjection.ts`) |
+| Opening a sidebar conversation before exporting it                                  | `sidebarConversationNavigation.ts`                                     |
+| Copy a single response as an image (button, width menu, Safari fallbacks)           | `responseCopyImageAction.ts`                                           |
+| Logo dropdown button (old Gemini layout) and its re-creation after re-renders       | `logoExportButton.ts`                                                  |
+| Always-visible toolbar (lr26 Gemini, ChatGPT and other plugin hosts)                | `persistentExportToolbar.ts`, `exportEntryGate.ts`                     |
+| Dictionaries, language reads and the `t()` used by every export surface             | `exportLocale.ts`                                                      |
+
+Each owner takes its dependencies explicitly (adapter, collector, translator, callbacks) and keeps
+its listeners, observers and timers beside the code that installs them. Page-wide observers
+(menu watcher, copy-image buttons) are singletons that stop on `beforeunload`. The runner is the only
+owner of the active export operation: a new run aborts the previous one and dismisses its
+selection UI.
+
+Keep these less obvious boundaries intact:
+
+- Gemini's preload click can reload the page. `exportRun.ts` persists the run in sessionStorage
+  before clicking; `startExportButton` resumes it on load. Do not move that persist after the click.
+- `generatedUiScreenshots.ensureGeneratedUiScreenshotPermission()` must run while the user gesture
+  is still valid: before the run in the dialog, and before `takeSelection()` in selection mode.
+- Selection UI is removed (`takeSelection()`) before screenshots so it is not captured.
+- Opening a sidebar conversation uses the native link click; the `location.assign` fallback is the
+  only full navigation and is pre-existing.
+
+Owner tests exercise DOM behavior through each module's interface: `exportRun.test.ts` covers a run
+end to end with a fake adapter and collector, `exportSelectionSession.test.ts` the selection UI.
