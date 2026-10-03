@@ -769,6 +769,7 @@ const restoreNativeCopyButton = (nativeCopyElement: HTMLElement): boolean => {
   return true;
 };
 
+// Invalid or reclassified source must use the same teardown as disable, or stale diagrams survive.
 function teardownWaveDromWrapper(wrapper: HTMLElement): void {
   closeActiveModal?.();
   const codeBlockHost = wrapper.querySelector<HTMLElement>(':scope > code-block');
@@ -781,9 +782,8 @@ function teardownWaveDromWrapper(wrapper: HTMLElement): void {
     wrapper.querySelector<HTMLElement>('.gv-wavedrom-toggle .buttons') ??
     wrapper.querySelector<HTMLElement>('.gv-wavedrom-toggle .copy-button');
   if (nativeCopyBtn && !restoreNativeCopyButton(nativeCopyBtn)) {
-    // A wrapper can survive an extension hot reload while the module-level
-    // WeakMap cannot. Preserve the control even when its old sibling position
-    // is no longer knowable.
+    // Hot reload can preserve the wrapper but lose its WeakMap placement;
+    // keep the copy control even when its old position is unknown.
     (codeBlockHost.querySelector('.code-block-decoration') ?? codeBlockHost).appendChild(
       nativeCopyBtn,
     );
