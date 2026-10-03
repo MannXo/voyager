@@ -223,6 +223,7 @@ function metricDisplayLabel(metric: ClaudeUsageMetric): string {
   return metric.label === 'All' ? 'Week' : metric.label;
 }
 
+// API and settings DOM can omit resets supplied by message_limit; keep them in the shared snapshot.
 function withFallbackCountdowns(
   next: ClaudeUsageSnapshot,
   fallback: ClaudeUsageSnapshot | null = snapshot,
@@ -469,6 +470,7 @@ function openClaudeUsage(event: MouseEvent): void {
     new HashChangeEvent('hashchange', { oldURL: previous, newURL: location.href }),
   );
 
+  // Claude sometimes mounts usage only on load; reload the same chat only if the hash did not open it.
   if (!hasClaudeUsageContent()) reloadPage();
 }
 

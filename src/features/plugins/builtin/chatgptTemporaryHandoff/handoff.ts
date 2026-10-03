@@ -174,6 +174,7 @@ function randomFilenameNonce(): string {
   }
 }
 
+// Recovery trusts the filename, so another handoff must never reuse an earlier attachment preview.
 export function createHandoffFilename(now = new Date(), nonce = randomFilenameNonce()): string {
   const timestamp = now
     .toISOString()

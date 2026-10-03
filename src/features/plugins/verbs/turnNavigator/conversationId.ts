@@ -15,7 +15,7 @@ interface ConversationIdConfig {
   readonly turnItemSelector?: string;
 }
 
-/** `<siteId>:conv:<id>` from the site's route pattern, else a hash of the path. */
+/** Site prefixes isolate stars while preserving historical `claude:conv:<id>` keys. */
 export function buildConversationId(
   config: ConversationIdConfig,
   input: string = location.href,

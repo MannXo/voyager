@@ -80,6 +80,7 @@ export class NavigatorStars {
     const conversationId = this.sources.starId();
     if (!force && conversationId === this.requestedFor) return this.read;
     this.requestedFor = conversationId;
+    // A delayed read must not replace the current route's stars or revive a disposed plugin.
     const isCurrent = this.snapshots.begin(
       () => this.sources.alive() && this.sources.starId() === conversationId,
     );

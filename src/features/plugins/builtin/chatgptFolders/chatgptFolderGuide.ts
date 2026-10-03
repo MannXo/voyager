@@ -198,6 +198,7 @@ export class ChatGptFolderGuide {
         dismissLabel: t('coachmarkDismiss'),
         closeLabel: t('coachmarkClose'),
         placement: 'top',
+        // Plugin sites do not set Gemini's body.gv-rtl class.
         rtl: detectRTL(),
         signal: controller.signal,
       });
