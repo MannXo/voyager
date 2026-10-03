@@ -76,6 +76,14 @@ describe('watermarkRemover download toasts', () => {
     await startWatermarkRemover();
     const button = document.createElement('button');
     document.body.appendChild(button);
+    vi.spyOn(button, 'getBoundingClientRect').mockReturnValue({
+      left: 100,
+      top: 200,
+      right: 140,
+      bottom: 240,
+      width: 40,
+      height: 40,
+    } as DOMRect);
     button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     const bridge = document.getElementById('gv-watermark-bridge') as HTMLElement;
     const send = async (type: string) => {
@@ -95,7 +103,8 @@ describe('watermarkRemover download toasts', () => {
     const [result] = toastDriver.all();
     expect(toastDriver.all()).toHaveLength(1);
     expect(result).toMatchObject({ message: '正在下载', tone: 'success', pending: false });
-    expect(result.element.parentElement!.className).toBe('gv-toast-anchored');
+    // Beside the button: the anchored container carries viewport coordinates.
+    expect(result.element.parentElement!.style.left).toBe('154px');
     vi.advanceTimersByTime(2500);
     expect(toastDriver.all()).toEqual([]);
   });
