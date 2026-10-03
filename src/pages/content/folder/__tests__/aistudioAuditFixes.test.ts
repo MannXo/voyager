@@ -4,10 +4,13 @@ import browser from 'webextension-polyfill';
 import { StorageKeys } from '@/core/types/common';
 import type { PromptItem } from '@/core/types/sync';
 
+import { FolderRepository } from '../FolderRepository';
 import { AIStudioFolderManager } from '../aistudio';
 import { applyHideArchivedRows } from '../aistudioLibraryTable';
 import { showAIStudioNotification } from '../aistudioNotifications';
 import { AIStudioTransfer, createSyncMessageListener, exportTimestamp } from '../aistudioTransfer';
+import { AISTUDIO_FOLDER_CONFIG } from '../platformFolderConfig';
+import { AIStudioFolderStorageAdapter } from '../storage/AIStudioFolderStorageAdapter';
 import type { FolderData } from '../types';
 
 vi.mock('webextension-polyfill', () => ({
@@ -154,11 +157,48 @@ describe('M12 — notification and export timestamp string integrity', () => {
 describe('H1 — runtime message listener response contract', () => {
   function syncListener(): MessageListener {
     return createSyncMessageListener({
+      canEdit: () => true,
       data: () => ({ folders: [], folderContents: {} }),
       accountScope: () => null,
       reload: async () => {},
     }) as unknown as MessageListener;
   }
+
+  it('does not publish an empty AI Studio snapshot before folders have loaded', async () => {
+    const repository = new FolderRepository(
+      AISTUDIO_FOLDER_CONFIG,
+      new AIStudioFolderStorageAdapter(),
+      {
+        onChange: () => {},
+        onRecovery: () => {},
+        onExternalChange: () => {},
+        onAccountReleased: () => {},
+        isEnabled: () => true,
+      },
+    );
+    const listener = createSyncMessageListener({
+      canEdit: () => repository.canEdit,
+      data: () => repository.data,
+      accountScope: () => repository.accountScope,
+      reload: () => repository.loadData(),
+    }) as unknown as MessageListener;
+    const sendResponse = vi.fn();
+    try {
+      listener({ type: 'gv.sync.requestData' }, {}, sendResponse);
+      expect(sendResponse).toHaveBeenLastCalledWith({ ok: false });
+      vi.mocked(browser.storage.sync.get).mockResolvedValue({});
+      vi.spyOn(chrome.storage.local, 'get').mockImplementation(async () => ({
+        [StorageKeys.FOLDER_DATA_AISTUDIO]: { folders: [], folderContents: {} },
+      }));
+      await repository.init();
+      listener({ type: 'gv.sync.requestData' }, {}, sendResponse);
+      expect(sendResponse).toHaveBeenLastCalledWith(
+        expect.objectContaining({ ok: true, data: { folders: [], folderContents: {} } }),
+      );
+    } finally {
+      repository.destroy();
+    }
+  });
 
   it('returns undefined for unknown messages so the sender promise settles', () => {
     const listener = syncListener();

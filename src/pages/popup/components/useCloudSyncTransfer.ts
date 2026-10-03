@@ -119,10 +119,11 @@ async function requestTabData<T>(
   timeout: number,
   platform?: SyncPlatform,
 ): Promise<T | undefined> {
+  const matchesPlatform = (candidate: chrome.tabs.Tab | undefined): boolean =>
+    !platform ||
+    (!!candidate?.url && getFolderPlatformForHost(new URL(candidate.url).hostname) === platform);
   const tab = await getTargetTab();
-  if (!tab?.id) return undefined;
-  if (platform && (!tab.url || getFolderPlatformForHost(new URL(tab.url).hostname) !== platform))
-    return undefined;
+  if (!tab?.id || !matchesPlatform(tab)) return undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const response = (await Promise.race([
@@ -134,12 +135,7 @@ async function requestTabData<T>(
     if (platform) {
       const current = await getTargetTab();
       // Options can outlive their source document; another platform cannot supply this bucket's base.
-      if (
-        current?.id !== tab.id ||
-        !current.url ||
-        getFolderPlatformForHost(new URL(current.url).hostname) !== platform
-      )
-        return undefined;
+      if (current?.id !== tab.id || !matchesPlatform(current)) return undefined;
     }
     return response;
   } finally {
@@ -253,7 +249,7 @@ async function readLocalSyncData(
     } | null>(getTargetTab, 'gv.sync.requestData', purpose === 'upload' ? 500 : 2000, platform);
     if (response?.ok && response.data) {
       folders = response.data;
-      hasLiveFolderSnapshot = !definition.syncsSharedData;
+      hasLiveFolderSnapshot = true;
       if (supportsAccountIsolation(platform) && response.accountScope) {
         accountScope = response.accountScope;
         folderStorageKey = buildScopedStorageKey(
@@ -276,12 +272,7 @@ async function readLocalSyncData(
     ]);
     const storedFolders = parseStoredFolderData(storageResult[folderStorageKey]);
     // A successful empty live snapshot may be an unsaved deletion, rather than missing data.
-    if (
-      !hasLiveFolderSnapshot &&
-      (!folders.folders || folders.folders.length === 0) &&
-      storedFolders
-    )
-      folders = storedFolders;
+    if (!hasLiveFolderSnapshot && storedFolders) folders = storedFolders;
     const storedPrompts = storageResult[StorageKeys.PROMPT_ITEMS];
     if (platform === 'gemini' && isPromptItemArray(storedPrompts)) prompts = storedPrompts;
     if (platform === 'gemini' && purpose === 'restore') {

@@ -69,6 +69,7 @@ export function formatRelativeTime(t: (key: string) => string, timestamp: number
 }
 
 export type SyncMessageHost = {
+  canEdit: () => boolean;
   data: () => FolderData;
   accountScope: () => AccountScope | null;
   /** Reloads folder data from storage and shows it. */
@@ -90,6 +91,11 @@ export function createSyncMessageListener(
   ): true | undefined => {
     const type = (message as { type?: unknown } | null)?.type;
     if (type === 'gv.sync.requestData') {
+      // An unresolved or unreadable session's empty data must not replace the popup's storage fallback.
+      if (!host.canEdit()) {
+        sendResponse({ ok: false });
+        return true;
+      }
       const accountScope = toSyncAccountScope(host.accountScope());
       sendResponse({ ok: true, data: host.data(), accountScope });
       return true;

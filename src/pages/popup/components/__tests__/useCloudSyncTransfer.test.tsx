@@ -70,7 +70,11 @@ describe('popup cloud sync transfer operations', () => {
       ...pageScope,
       emailHash: null,
     });
-    tabMessage.mockResolvedValue({ ok: true, context: { routeUserId: '1' }, data: emptyFolders });
+    tabMessage.mockImplementation(async (_tabId, message) =>
+      message.type === 'gv.account.getContext'
+        ? { ok: true, context: { routeUserId: '1' } }
+        : { ok: false },
+    );
     localGet.mockResolvedValue({});
     localSet.mockResolvedValue(undefined);
     vi.stubGlobal('chrome', {

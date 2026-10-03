@@ -182,6 +182,7 @@ export class AIStudioFolderManager {
     this.startAccountPolling();
     browser.runtime.onMessage.addListener(
       createSyncMessageListener({
+        canEdit: () => this.canEdit,
         data: () => this.data,
         accountScope: () => this.accountScope,
         reload: () => this.load().then(() => this.render()),

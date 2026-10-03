@@ -26,6 +26,11 @@ function toSyncAccountScope(scope: AccountScope | null): SyncAccountScope | unde
 
 function respondWithData(store: FolderStore, sendResponse: SendResponse): true {
   folderDebug('Received request for folder data from popup');
+  // An unresolved or unreadable session's empty data must not replace the popup's storage fallback.
+  if (!store.canEdit) {
+    sendResponse({ ok: false });
+    return true;
+  }
   sendResponse({
     ok: true,
     data: store.data,

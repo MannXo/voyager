@@ -114,7 +114,7 @@ function installChrome(tabUrl: string, download = downloadedData()) {
     if (message.type === 'gv.sync.download') return { ok: true, state, data: download };
     return { ok: true, state };
   });
-  const tabSendMessage = vi.fn(async (_id: number, message: Message) => {
+  const tabSendMessage = vi.fn(async (_id: number, message: Message): Promise<unknown> => {
     if (message.type === 'gv.sync.requestData') {
       return {
         ok: true,
@@ -244,6 +244,29 @@ describe('CloudSyncSettings platform routing', () => {
       expect(container.textContent).toContain(t.syncSuccess);
     },
   );
+
+  it('Merge does not resurrect stored Gemini folders after a successful empty live snapshot', async () => {
+    const empty = { folders: [], folderContents: {} };
+    const { local, sync, tabSendMessage } = installChrome(
+      'https://gemini.google.com/app',
+      downloadedData(empty),
+    );
+    sync[StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED_GEMINI] = false;
+    const beforeChatGPT = structuredClone(local[StorageKeys.FOLDER_DATA_CHATGPT]);
+    tabSendMessage.mockImplementation(async (_id, message) =>
+      message.type === 'gv.sync.requestData'
+        ? {
+            ok: true,
+            data: empty,
+          }
+        : undefined,
+    );
+    await mount();
+    await click(t.syncMerge);
+    expect(local[StorageKeys.FOLDER_DATA]).toEqual(empty);
+    expect(local[StorageKeys.FOLDER_DATA_CHATGPT]).toEqual(beforeChatGPT);
+    expect(container.textContent).toContain(t.syncSuccess);
+  });
 
   it.each(['before request', 'during request'] as const)(
     'Merge never uses Gemini folders after the source tab navigates %s',
