@@ -248,6 +248,26 @@ describe('startFolderOwner', () => {
     await vi.waitFor(() => expect(alarms).toEqual(new Set()));
   });
 
+  it('answers a folder request with a write failure instead of leaving it unanswered when the fence write fails', async () => {
+    const storage = createFaultyStorage();
+    storage.failWhen((op, keys) => op === 'set' && keys.includes(AUTHORITY_FENCE_KEY));
+    routeLocalStorage(storage);
+    startFolderOwner(GEMINI_OWNER);
+    const sendResponse = vi.fn();
+
+    for (const [listener] of vi.mocked(chrome.runtime.onMessage.addListener).mock.calls) {
+      listener(OPEN, GEMINI_TAB as chrome.runtime.MessageSender, sendResponse);
+    }
+
+    await vi.waitFor(() =>
+      expect(sendResponse).toHaveBeenCalledExactlyOnceWith({
+        kind: 'refused',
+        reason: 'write_failed',
+      }),
+    );
+    expect(storage.read(ownerMetaKey('gvFolderData'))).toBeUndefined();
+  });
+
   it('lets prompt-library turns commit while a failing fence write holds back owner writes', async () => {
     const storage = createFaultyStorage({ gvFolderData: folderData([folder('F', 'Keep')]) });
     storage.failWhen((op, keys) => op === 'set' && keys.includes(AUTHORITY_FENCE_KEY));

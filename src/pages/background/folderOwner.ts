@@ -66,7 +66,11 @@ export function handleFolderOwnerMessage(
     authority: deps.authority ?? FOLDER_WRITE_AUTHORITY,
   });
   if (!decision.ok) return Promise.resolve({ kind: 'refused', reason: decision.reason });
-  return dispatchFolderOwnerRequest(request, deps.core);
+  // Answer a turn the fence or bundle resolution rejected, or the client never retries.
+  return dispatchFolderOwnerRequest(request, deps.core).catch((error: unknown) => {
+    logger.warn('Folder owner turn failed', { error: String(error) });
+    return { kind: 'refused', reason: 'write_failed' };
+  });
 }
 
 export function startFolderOwner(authority: Authority = FOLDER_WRITE_AUTHORITY): FolderOwnerCore {
