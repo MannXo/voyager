@@ -10,7 +10,11 @@
  *   `[data-sidebar-project-container-id="chats"]` > `section` > `[role=list]`; each
  *   row a `[role=listitem]` keyed `data-sidebar-chatgpt-conversation-key`.
  * - Older history loads in pages of 10 rows appended to the same list; nothing
- *   unmounts. The row link is `draggable="false"` and no row is a drag source.
+ *   unmounts. The row link is `draggable="false"`.
+ * - (2026-10-03) Rows are dnd-kit draggables, which is how a chat is dragged into
+ *   a Project. That drag runs on pointer events. While it runs, dnd-kit cancels
+ *   any HTML5 `dragstart` on the window, and the sidebar scroll area gets
+ *   `pointer-events: none`. The fixture leaves dnd-kit out.
  * - "Chat actions" opens a Radix menu portaled under `body`, labelled by its trigger.
  * Project rows were not observable (the account had none); tests give a row a
  * Project route with `move`, which only changes its link.

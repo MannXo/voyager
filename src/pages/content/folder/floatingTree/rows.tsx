@@ -6,6 +6,7 @@ import { getFolderDepth } from '@/features/folder/model/folderData';
 
 import { getFolderColor, isDarkMode } from '../folderColors';
 import { IconButton, InlineForm } from './controls';
+import { DROP_FOLDER_ATTR, DROP_TARGET_CLASS } from './dropTargets';
 import type { FolderNode } from './projection';
 import {
   type DropPlacement,
@@ -18,7 +19,6 @@ import {
   t,
 } from './shared';
 
-const DROP_TARGET = cls('drop-target');
 const FOLDER_DRAGGING = cls('folder-header--dragging');
 /** Set on a row while a drop would land before or after it. */
 const DROP_POSITION = 'data-drop-position';
@@ -49,13 +49,15 @@ export function isPlainClick(e: MouseEvent): boolean {
 
 /**
  * Dragover, dragleave and drop handlers that file a conversation into
- * `folderId`. With `placementOf`, a drop beside the row carries its placement.
+ * `folderId`, and the marker `folderDropTargetAt` finds. With `placementOf`, a
+ * drop beside the row carries its placement.
  */
 export function dropHandlers(tree: TreeProps, folderId: string, placementOf?: PlacementOf) {
   const { actions } = tree;
   // Nested targets: the innermost one takes the drag, and its ancestors stay unlit.
   const nested = !!tree.site?.folderBodyDrop;
   return {
+    [DROP_FOLDER_ATTR]: folderId,
     // HTML5 quirk: `dataTransfer.getData(...)` returns "" during dragover for
     // security, so we can't read the payload here — we can only inspect the
     // MIME-type list via `dataTransfer.types`. If our payload type is present
@@ -69,16 +71,16 @@ export function dropHandlers(tree: TreeProps, folderId: string, placementOf?: Pl
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
       const placement = placementOf?.(e);
       showPlacement(e.currentTarget, placement);
-      e.currentTarget.classList.toggle(DROP_TARGET, !placement);
+      e.currentTarget.classList.toggle(DROP_TARGET_CLASS, !placement);
     },
     onDragLeave: (e: DropEvent) => {
       const into = e.relatedTarget;
       if (nested && into instanceof Node && e.currentTarget.contains(into)) return;
-      e.currentTarget.classList.remove(DROP_TARGET);
+      e.currentTarget.classList.remove(DROP_TARGET_CLASS);
       showPlacement(e.currentTarget, undefined);
     },
     onDrop: (e: DropEvent) => {
-      e.currentTarget.classList.remove(DROP_TARGET);
+      e.currentTarget.classList.remove(DROP_TARGET_CLASS);
       const placement = placementOf?.(e);
       showPlacement(e.currentTarget, undefined);
       if (nested) e.stopPropagation();

@@ -5,6 +5,7 @@ import type { ConversationSortMode } from '@/features/folder/model/folderData';
 
 import { clearOfPromptTrigger } from '../prompt/triggerClearance';
 import panelCss from './floatingPanel.css?raw';
+import { type FolderDropTarget, folderDropTargetAt } from './floatingTree/dropTargets';
 import { FLOATING_PANEL_CLASS, type TreeActions, t } from './floatingTree/shared';
 import { mountFolderTree } from './floatingTree/treeController';
 import { attachShadowSurface } from './shadowHost';
@@ -54,6 +55,8 @@ export type FloatingPanelHandle = {
   /** Shows `message` in the panel's status line until the next one or a few seconds pass. */
   flash: (message: string) => void;
   setDataReady: (ready: boolean) => void;
+  /** The folder drop target under a viewport point, for a drag driven by pointer events. */
+  dropTargetAt: (x: number, y: number) => FolderDropTarget | null;
   update: (data: FolderData, conversationSortMode?: ConversationSortMode) => void;
   /** Replaces account data and discards transient edits without changing panel geometry. */
   reset: (data: FolderData, conversationSortMode?: ConversationSortMode) => void;
@@ -476,6 +479,7 @@ export function mountFloatingPanel({
     element: panel,
     flash,
     setDataReady,
+    dropTargetAt: (x, y) => folderDropTargetAt(surface.root, x, y),
     reset: tree.reset,
     update: tree.update,
     destroy,

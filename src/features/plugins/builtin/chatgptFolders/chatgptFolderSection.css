@@ -26,6 +26,9 @@
   overflow: visible !important;
   font-family: inherit !important;
   font-size: 14px !important;
+  /* ChatGPT turns off pointer events on its sidebar scroll area while a row is
+     dragged; the row drag finds our folders by hit testing. */
+  pointer-events: auto !important;
 }
 
 .gv-chatgpt-folder-section__header {

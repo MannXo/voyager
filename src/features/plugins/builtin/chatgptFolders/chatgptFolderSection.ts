@@ -10,6 +10,10 @@ import type { FolderData } from '@/core/types/folder';
 import panelCss from '@/pages/content/folder/floatingPanel.css?raw';
 import { renderFolderTree } from '@/pages/content/folder/floatingTree/FolderTree';
 import {
+  type FolderDropTarget,
+  folderDropTargetAt,
+} from '@/pages/content/folder/floatingTree/dropTargets';
+import {
   type ContextMenuState,
   FLOATING_PANEL_CLASS,
   type InlineEditorState,
@@ -134,6 +138,11 @@ export class ChatGptFolderSection {
   /** True while the section's own folder menu or name field is open. */
   get busy(): boolean {
     return this.contextMenu !== null || this.inlineEditor !== null;
+  }
+
+  /** The folder drop target under a viewport point, for a drag driven by pointer events. */
+  dropTargetAt(x: number, y: number): FolderDropTarget | null {
+    return folderDropTargetAt(this.surface.root, x, y);
   }
 
   /** Shows `message` under the header until the next one or a few seconds pass. */

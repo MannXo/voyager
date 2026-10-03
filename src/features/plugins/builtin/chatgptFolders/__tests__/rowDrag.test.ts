@@ -2,8 +2,9 @@
 // @vitest-environment-options { "url": "https://chatgpt.com/" }
 /**
  * Dragging a row of ChatGPT's own sidebar onto a Voyager folder, against the
- * real store, section and panel. jsdom has no DragEvent or DataTransfer, so a
- * drag is an Event carrying the shared tree driver's fake transfer.
+ * real store, section and panel. The drag is the pointer gesture ChatGPT's own
+ * row drag runs on. jsdom has no layout, so `screen` stands in for the
+ * browser's hit testing (`elementsFromPoint`).
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -11,11 +12,7 @@ import { StorageKeys } from '@/core/types/common';
 import type { FolderData } from '@/core/types/folder';
 import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import { PluginScope } from '@/features/plugins/runtime/pluginScope';
-import {
-  type FakeTransfer,
-  fakeTransfer,
-  treeDriver,
-} from '@/pages/content/folder/floatingTree/__tests__/treeDriver';
+import { treeDriver } from '@/pages/content/folder/floatingTree/__tests__/treeDriver';
 import { initI18n } from '@/utils/i18n';
 
 import { activateChatGptFolders } from '../index';
@@ -63,11 +60,79 @@ const DATA: FolderData = {
   ],
   folderContents: { work: [], trips: [], [ROOT_CONVERSATIONS_ID]: [] },
 };
+const HIGHLIGHT = 'gv-floating-folder-panel__drop-target';
+
+type Point = { readonly x: number; readonly y: number };
+
+/**
+ * The browser's hit testing, for jsdom: `place` stacks elements (top first) at
+ * a point of their own, where `elementsFromPoint` finds each with its ancestors
+ * and hosts, under the row being dragged (dnd-kit carries it along under the
+ * pointer). Each root sees the stack retargeted to itself, as browsers do.
+ */
+function fakeScreen() {
+  const spots = new Map<string, readonly Element[]>();
+  let free = 100;
+  let carried: Element | null = null;
+
+  const withAncestors = (element: Element): Element[] => {
+    const chain: Element[] = [];
+    for (let node: Node | null = element; node;) {
+      if (node instanceof Element) chain.push(node);
+      node = node instanceof ShadowRoot ? node.host : node.parentNode;
+    }
+    return chain;
+  };
+  const stackAt = (x: number, y: number): Element[] => {
+    const hits = spots.get(`${x},${y}`) ?? [];
+    if (hits.length === 0) return [];
+    return [...(carried ? [carried] : []), ...hits.flatMap(withAncestors)];
+  };
+  const retarget = (element: Element, scope: Document | ShadowRoot): Element => {
+    let current = element;
+    for (let root = current.getRootNode(); root !== scope && root instanceof ShadowRoot;) {
+      current = root.host;
+      root = current.getRootNode();
+    }
+    return current;
+  };
+  function elementsFromPoint(this: Document | ShadowRoot, x: number, y: number): Element[] {
+    return [...new Set(stackAt(x, y).map((element) => retarget(element, this)))];
+  }
+  const prototypes = [Document.prototype, ShadowRoot.prototype];
+  const saved = prototypes.map((proto) =>
+    Object.getOwnPropertyDescriptor(proto, 'elementsFromPoint'),
+  );
+  for (const proto of prototypes) {
+    Object.defineProperty(proto, 'elementsFromPoint', {
+      value: elementsFromPoint,
+      configurable: true,
+    });
+  }
+
+  return {
+    place(elements: Element | readonly Element[], at: Point = { x: (free += 50), y: 300 }): Point {
+      spots.set(`${at.x},${at.y}`, elements instanceof Element ? [elements] : elements);
+      return at;
+    },
+    carry(element: Element | null): void {
+      carried = element;
+    },
+    restore(): void {
+      prototypes.forEach((proto, index) => {
+        const descriptor = saved[index];
+        if (descriptor) Object.defineProperty(proto, 'elementsFromPoint', descriptor);
+        else Reflect.deleteProperty(proto, 'elementsFromPoint');
+      });
+    },
+  };
+}
 
 let memory: MemoryStorage;
 let originalStorage: typeof chrome.storage;
 let scope: PluginScope;
 let sidebar: SidebarFixture;
+let screen: ReturnType<typeof fakeScreen>;
 
 beforeAll(async () => {
   memory = createMemoryStorage();
@@ -84,10 +149,12 @@ beforeEach(() => {
   memory.values.local.set(KEY, structuredClone(DATA));
   scope = new PluginScope();
   sidebar = mountSidebarFixture(ROWS);
+  screen = fakeScreen();
 });
 
 afterEach(async () => {
   await scope.dispose();
+  screen.restore();
   sidebar.destroy();
   document.body.replaceChildren();
   globalThis.chrome.storage = originalStorage;
@@ -112,28 +179,50 @@ async function activate() {
   return { view: treeDriver({ root, rootBucketId: ROOT_CONVERSATIONS_ID }), root };
 }
 
-function dragEvent(type: string, transfer: FakeTransfer): Event {
-  const event = new Event(type, { bubbles: true, cancelable: true, composed: true });
-  Object.defineProperty(event, 'dataTransfer', { value: transfer });
-  return event;
-}
-
 function link(id: string): HTMLAnchorElement {
   return sidebar.row(id).querySelector('a')!;
 }
 
-/** Presses a row's title and starts a drag, as the browser does; returns what the drag carries. */
-function dragSidebarRow(id: string): FakeTransfer {
-  const title = link(id).querySelector('[data-thread-title]')!;
-  title.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
-  const transfer = fakeTransfer();
-  // The link is the drag source: its title span is `draggable="false"`.
-  link(id).dispatchEvent(dragEvent('dragstart', transfer));
-  return transfer;
+const START: Point = { x: 20, y: 40 };
+
+function pointer(type: string, target: EventTarget, at: Point): PointerEvent {
+  const event = new PointerEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    button: 0,
+    isPrimary: true,
+    pointerId: 1,
+    clientX: at.x,
+    clientY: at.y,
+  });
+  target.dispatchEvent(event);
+  return event;
 }
 
-function endDrag(id: string, transfer: FakeTransfer): void {
-  link(id).dispatchEvent(dragEvent('dragend', transfer));
+/** Presses a row's title, as a drag of it starts. */
+function pressRow(id: string, at: Point = START): PointerEvent {
+  screen.carry(link(id));
+  return pointer('pointerdown', link(id).querySelector('[data-thread-title]')!, at);
+}
+
+// Sent to the pressed link: dnd-kit's dragged row and pointer capture keep the
+// events' target on the row wherever the pointer is.
+function moveTo(id: string, at: Point): void {
+  pointer('pointermove', link(id), { x: at.x - 30, y: at.y });
+  pointer('pointermove', link(id), at);
+}
+
+function releaseAt(id: string, at: Point): PointerEvent {
+  return pointer('pointerup', link(id), at);
+}
+
+/** Presses a row, drags it over `target` and lets go there. */
+function dragRowOnto(id: string, target: Element): void {
+  pressRow(id);
+  const at = screen.place(target);
+  moveTo(id, at);
+  releaseAt(id, at);
 }
 
 function stored(): FolderData {
@@ -150,22 +239,35 @@ function status(root: ShadowRoot): string {
 }
 
 describe('dragging a ChatGPT sidebar row onto a folder', () => {
-  it('files the row once into the sidebar section folder it is dropped on, as Move to folder does', async () => {
+  it('dragging a recents row onto a folder files it', async () => {
     const { view, root } = await activate();
 
-    const transfer = dragSidebarRow(TARGET.id);
-    expect(view.drop(view.folderRow('Trips'), transfer)).toBe(true);
-    endDrag(TARGET.id, transfer);
+    dragRowOnto(TARGET.id, view.folderNameElement('Trips'));
     await nextPass();
 
     expect(stored().folderContents.trips).toEqual([expect.objectContaining(FILED)]);
     expect(stored().folderContents.work).toEqual([]);
     expect(view.outline()).toEqual(['Work', 'Trips', `  · ${TARGET.title}`]);
     expect(status(root)).toBe('Added to folder.');
-    expect(link(TARGET.id).getAttribute('draggable')).toBe('false');
   });
 
-  it('writes nothing and says so when the row is dropped on the folder it is already in', async () => {
+  it('lights the folder under a dragged row, and only while it is there', async () => {
+    const { view } = await activate();
+    const work = screen.place(view.folderNameElement('Work'));
+    const trips = screen.place(view.folderNameElement('Trips'));
+
+    pressRow(TARGET.id);
+    moveTo(TARGET.id, work);
+    expect(view.folderRow('Work').classList.contains(HIGHLIGHT)).toBe(true);
+    moveTo(TARGET.id, trips);
+    expect(view.folderRow('Work').classList.contains(HIGHLIGHT)).toBe(false);
+    expect(view.folderRow('Trips').classList.contains(HIGHLIGHT)).toBe(true);
+    releaseAt(TARGET.id, trips);
+
+    expect(view.folderRow('Trips').classList.contains(HIGHLIGHT)).toBe(false);
+  });
+
+  it('writes nothing and says so when the row is dragged onto the folder it is already in', async () => {
     memory.values.local.set(KEY, {
       ...structuredClone(DATA),
       folderContents: { ...DATA.folderContents, trips: [{ ...FILED, addedAt: 1, sortIndex: 0 }] },
@@ -173,7 +275,7 @@ describe('dragging a ChatGPT sidebar row onto a folder', () => {
     const { view, root } = await activate();
     const before = folderWrites();
 
-    view.drop(view.folderRow('Trips'), dragSidebarRow(TARGET.id));
+    dragRowOnto(TARGET.id, view.folderNameElement('Trips'));
     await nextPass();
 
     expect(folderWrites()).toBe(before);
@@ -181,7 +283,7 @@ describe('dragging a ChatGPT sidebar row onto a folder', () => {
     expect(status(root)).toBe('Already in this folder.');
   });
 
-  it('files a row dropped on a folder in the floating panel', async () => {
+  it('dragging a recents row onto a floating panel folder files it', async () => {
     memory.values.local.set(StorageKeys.CHATGPT_FOLDER_PANEL, { open: true });
     await activate();
     const panel = treeDriver({
@@ -189,10 +291,150 @@ describe('dragging a ChatGPT sidebar row onto a folder', () => {
       rootBucketId: ROOT_CONVERSATIONS_ID,
     });
 
-    panel.drop(panel.folderRow('Work'), dragSidebarRow(TARGET.id));
+    dragRowOnto(TARGET.id, panel.folderNameElement('Work'));
     await nextPass();
 
     expect(stored().folderContents.work).toEqual([expect.objectContaining(FILED)]);
+  });
+
+  it('files nothing into a section folder the floating panel covers', async () => {
+    memory.values.local.set(StorageKeys.CHATGPT_FOLDER_PANEL, { open: true });
+    const { view } = await activate();
+    const panelTitle = shadowOf('.gv-floating-folder-panel').querySelector(
+      '.gv-floating-folder-panel__title',
+    )!;
+    const covered = screen.place([panelTitle, view.folderNameElement('Trips')]);
+    const before = folderWrites();
+
+    pressRow(TARGET.id);
+    moveTo(TARGET.id, covered);
+    expect(view.folderRow('Trips').classList.contains(HIGHLIGHT)).toBe(false);
+    releaseAt(TARGET.id, covered);
+    await nextPass();
+
+    expect(folderWrites()).toBe(before);
+  });
+
+  it('a click without movement files nothing and still opens the chat', async () => {
+    const { view } = await activate();
+    const before = folderWrites();
+    // A folder right where the press is, so only the missing movement keeps it out.
+    screen.place(view.folderNameElement('Trips'), START);
+
+    const down = pressRow(TARGET.id);
+    const up = releaseAt(TARGET.id, START);
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link(TARGET.id).dispatchEvent(click);
+    await nextPass();
+
+    expect(folderWrites()).toBe(before);
+    expect([down.defaultPrevented, up.defaultPrevented, click.defaultPrevented]).toEqual([
+      false,
+      false,
+      false,
+    ]);
+  });
+
+  it('a press that moves less than the drag threshold files nothing', async () => {
+    const { view } = await activate();
+    const before = folderWrites();
+    const nearby = screen.place(view.folderNameElement('Trips'), { x: START.x + 3, y: START.y });
+
+    pressRow(TARGET.id);
+    pointer('pointermove', link(TARGET.id), nearby);
+    releaseAt(TARGET.id, nearby);
+    await nextPass();
+
+    expect(folderWrites()).toBe(before);
+    expect(view.folderRow('Trips').classList.contains(HIGHLIGHT)).toBe(false);
+  });
+
+  it.each([
+    ['pointercancel', () => pointer('pointercancel', link(TARGET.id), START)],
+    [
+      'Escape',
+      () =>
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
+    ],
+    ['the window losing focus', () => window.dispatchEvent(new FocusEvent('blur'))],
+  ])('%s mid-drag files nothing', async (_cause, interrupt) => {
+    const { view } = await activate();
+    const before = folderWrites();
+    const trips = screen.place(view.folderNameElement('Trips'));
+
+    pressRow(TARGET.id);
+    moveTo(TARGET.id, trips);
+    interrupt();
+    expect(view.folderRow('Trips').classList.contains(HIGHLIGHT)).toBe(false);
+    releaseAt(TARGET.id, trips);
+    await nextPass();
+
+    expect(folderWrites()).toBe(before);
+  });
+
+  it('releasing a dragged row outside a folder files nothing', async () => {
+    const { view, root } = await activate();
+    const before = folderWrites();
+    const sectionHeader = screen.place(root.querySelector('.gv-chatgpt-folder-section__header')!);
+    const elsewhere = screen.place(document.body);
+
+    pressRow(TARGET.id);
+    moveTo(TARGET.id, screen.place(view.folderNameElement('Trips')));
+    moveTo(TARGET.id, sectionHeader);
+    expect(view.folderRow('Trips').classList.contains(HIGHLIGHT)).toBe(false);
+    releaseAt(TARGET.id, sectionHeader);
+    pressRow(TARGET.id);
+    moveTo(TARGET.id, elsewhere);
+    releaseAt(TARGET.id, elsewhere);
+    await nextPass();
+
+    expect(folderWrites()).toBe(before);
+  });
+
+  it('a conversation link outside the sidebar does not drag into folders', async () => {
+    const { view } = await activate();
+    const before = folderWrites();
+    const inChat = document.createElement('a');
+    inChat.href = `/c/${TARGET.id}`;
+    document.body.append(inChat);
+    const trips = screen.place(view.folderNameElement('Trips'));
+
+    pointer('pointerdown', inChat, START);
+    pointer('pointermove', inChat, trips);
+    pointer('pointerup', inChat, trips);
+    await nextPass();
+
+    expect(folderWrites()).toBe(before);
+  });
+
+  it("ChatGPT's own row drag still sees every pointer event, uncancelled", async () => {
+    const { view } = await activate();
+    const seen: string[] = [];
+    for (const type of ['pointerdown', 'pointermove', 'pointerup']) {
+      sidebar.sidebar.addEventListener(type, (event) => {
+        if (!event.defaultPrevented) seen.push(type);
+      });
+    }
+
+    dragRowOnto(TARGET.id, view.folderNameElement('Trips'));
+
+    expect(seen).toEqual(['pointerdown', 'pointermove', 'pointermove', 'pointerup']);
+  });
+
+  it('turning the plugin off mid-drag files nothing and clears the highlight', async () => {
+    const { view } = await activate();
+    const before = folderWrites();
+    const trips = screen.place(view.folderNameElement('Trips'));
+    pressRow(TARGET.id);
+    moveTo(TARGET.id, trips);
+    const lit = view.folderRow('Trips');
+
+    await scope.dispose();
+    releaseAt(TARGET.id, trips);
+    await nextPass();
+
+    expect(lit.classList.contains(HIGHLIGHT)).toBe(false);
+    expect(folderWrites()).toBe(before);
   });
 
   it('still moves a folder row dropped on another folder', async () => {
@@ -207,82 +449,5 @@ describe('dragging a ChatGPT sidebar row onto a folder', () => {
 
     expect(stored().folderContents.work).toEqual([]);
     expect(stored().folderContents.trips).toEqual([expect.objectContaining(FILED)]);
-  });
-
-  it.each([
-    ['a javascript: URL', { ...FILED, url: 'javascript:alert(1)' }],
-    [
-      'a Gemini conversation',
-      { conversationId: 'c_abc', url: 'https://gemini.google.com/app/abc' },
-    ],
-    ['a URL naming another conversation', { ...FILED, url: 'https://chatgpt.com/c/other-id' }],
-    ['a ChatGPT link on another site', { ...FILED, url: `https://evil.example/c/${TARGET.id}` }],
-  ])('files nothing for a dropped payload with %s', async (_kind, fields) => {
-    const { view } = await activate();
-    const before = folderWrites();
-    const payload = { type: 'conversation', title: 'Dropped', ...fields };
-
-    view.drop(
-      view.folderRow('Work'),
-      fakeTransfer({ 'application/json': JSON.stringify(payload) }),
-    );
-    await nextPass();
-
-    expect(folderWrites()).toBe(before);
-    expect(stored()).toEqual(DATA);
-  });
-
-  it('files nothing for a plain link dragged in from elsewhere', async () => {
-    const { view } = await activate();
-    const before = folderWrites();
-
-    view.drop(
-      view.folderRow('Work'),
-      fakeTransfer({ 'text/uri-list': `https://chatgpt.com/c/${TARGET.id}` }),
-    );
-    await nextPass();
-
-    expect(folderWrites()).toBe(before);
-  });
-
-  it('leaves conversation links outside the sidebar alone', async () => {
-    await activate();
-    const inChat = document.createElement('a');
-    inChat.href = `/c/${TARGET.id}`;
-    inChat.setAttribute('draggable', 'false');
-    document.body.append(inChat);
-
-    inChat.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
-    const transfer = fakeTransfer();
-    inChat.dispatchEvent(dragEvent('dragstart', transfer));
-
-    expect(inChat.getAttribute('draggable')).toBe('false');
-    expect(transfer.types).toEqual([]);
-  });
-
-  it.each(['pointerup', 'pointercancel'])(
-    'gives a row link back its draggable when a press ends in %s without a drag',
-    async (end) => {
-      await activate();
-      const row = link(TARGET.id);
-
-      row.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
-      expect(row.getAttribute('draggable')).toBe('true');
-      row.dispatchEvent(new PointerEvent(end, { bubbles: true, button: 0 }));
-
-      expect(row.getAttribute('draggable')).toBe('false');
-    },
-  );
-
-  it('stops making rows draggable and restores a pressed one when turned off', async () => {
-    await activate();
-    const pressed = link(TARGET.id);
-    pressed.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
-
-    await scope.dispose();
-
-    expect(pressed.getAttribute('draggable')).toBe('false');
-    expect(dragSidebarRow(ROWS[0].id).types).toEqual([]);
-    expect(link(ROWS[0].id).getAttribute('draggable')).toBe('false');
   });
 });

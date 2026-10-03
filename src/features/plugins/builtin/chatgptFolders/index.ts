@@ -13,10 +13,8 @@ import type { PluginSettings } from '@/features/plugins/types';
 import { createCommandTreeActions } from '@/pages/content/folder/commandTreeActions';
 import { mountFloatingFab, unmountFloatingFab } from '@/pages/content/folder/floatingModeFab';
 import { type FloatingPanelHandle, mountFloatingPanel } from '@/pages/content/folder/floatingPanel';
-import {
-  type TreeActions,
-  readConversationDragData,
-} from '@/pages/content/folder/floatingTree/shared';
+import type { FolderDropTarget } from '@/pages/content/folder/floatingTree/dropTargets';
+import type { TreeActions } from '@/pages/content/folder/floatingTree/shared';
 import { createFolderDialogs } from '@/pages/content/folder/folderDialogs';
 import { getTranslationSyncUnsafe as t, initI18n } from '@/utils/i18n';
 
@@ -28,7 +26,7 @@ import { ChatGptFolderSection } from './chatgptFolderSection';
 import { ChatGptHideFiled, HIDE_FILED_SETTING } from './chatgptHideFiled';
 import { ChatGptMoveMenu, MOVE_ENTRY_ATTR } from './chatgptMoveMenu';
 import { openChatGptConversation, readCurrentConversation } from './chatgptPage';
-import { type DroppedConversation, bindChatGptRowDrag, readSidebarRowDrop } from './chatgptRowDrag';
+import { type DroppedConversation, bindChatGptRowDrag } from './chatgptRowDrag';
 import { ChatGptSidebarWatcher } from './chatgptSidebarWatcher';
 import { ChatGptTitleSync } from './chatgptTitleSync';
 import { CHATGPT_FOLDER_CONFIG } from './config';
@@ -135,8 +133,22 @@ class ChatGptFoldersView {
     });
   }
 
+  /**
+   * The folder drop target under a viewport point. The panel floats over the
+   * sidebar, so the surface on top there answers; anything of ChatGPT's above
+   * it, such as the row its own drag carries along, is looked through.
+   */
+  dropTargetAt(x: number, y: number): FolderDropTarget | null {
+    const { panel, section } = this;
+    for (const element of document.elementsFromPoint(x, y)) {
+      if (element === panel?.element) return panel.dropTargetAt(x, y);
+      if (element === section?.element) return section.dropTargetAt(x, y);
+    }
+    return null;
+  }
+
   /** Files `conversation` into `folderId` and confirms the result in both trees. */
-  private file(folderId: string, conversation: DroppedConversation): void {
+  file(folderId: string, conversation: DroppedConversation): void {
     const { conversationId, title, url } = conversation;
     void this.commands
       .run({
@@ -215,29 +227,11 @@ class ChatGptFoldersView {
 
   /** What both the panel and the sidebar section do on a tree gesture. */
   private treeActions(): TreeActions {
-    const commandActions = createCommandTreeActions(this.commands);
     return {
-      ...commandActions,
+      ...createCommandTreeActions(this.commands),
       onNavigate: (conversation) => void openChatGptConversation(conversation),
       confirmConversationRemoval: this.dialogs.confirmConversationRemoval,
       onAddCurrentConversation: (folderId) => this.addCurrent(folderId),
-      // Takes every drop, so a folder's own rows still move as the tree moves them.
-      onDrop: (event, folderId) => {
-        const moved = readConversationDragData(event);
-        if (moved) {
-          if (moved.sourceFolderId !== folderId) {
-            commandActions.onMoveConversation?.(
-              moved.conversationId,
-              moved.sourceFolderId,
-              folderId,
-            );
-          }
-          return true;
-        }
-        const conversation = readSidebarRowDrop(event.dataTransfer);
-        if (conversation) this.file(folderId, conversation);
-        return !!conversation;
-      },
     };
   }
 
@@ -345,7 +339,11 @@ export async function activateChatGptFolders(
     busy: () => view.sectionBusy(),
   });
   scope.effect(() => () => moveMenu.cancel(), 'chatgpt-folders:move-menu');
-  bindChatGptRowDrag(scope, () => t('chatgptFoldersUntitled'));
+  bindChatGptRowDrag(scope, {
+    untitled: () => t('chatgptFoldersUntitled'),
+    dropTargetAt: (x, y) => view.dropTargetAt(x, y),
+    onDrop: (folderId, conversation) => view.file(folderId, conversation),
+  });
   const hideFiled = settings[HIDE_FILED_SETTING] === true ? new ChatGptHideFiled(scope) : null;
   sidebar.onChange((nav) => {
     view.placeSection(nav);
