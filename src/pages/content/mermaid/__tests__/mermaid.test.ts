@@ -2,18 +2,20 @@
    loadMermaid() failed, and letting that throw is how these tests report it. */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { openFullscreen } from '../fullscreen';
 import {
   _initMermaidForTest,
-  _openFullscreenForTest,
   _renderMermaidForTest,
   _resetMermaidLoader,
-  isGenericLanguageLabel,
-  isMermaidCode,
   loadMermaid,
-  normalizeMermaidCode,
-  normalizeWhitespace,
   resolveMermaidTheme,
 } from '../index';
+import {
+  isGenericLanguageLabel,
+  isMermaidCode,
+  normalizeMermaidCode,
+  normalizeWhitespace,
+} from '../source';
 
 // Mock the dynamic import of 'mermaid'
 vi.mock('mermaid', () => ({
@@ -127,7 +129,7 @@ describe('Mermaid dynamic loading', () => {
       vi.useFakeTimers();
       const removeSpy = vi.spyOn(document, 'removeEventListener');
 
-      _openFullscreenForTest('<svg width="100" height="100"><path d="M0 0" /></svg>');
+      openFullscreen('<svg width="100" height="100"><path d="M0 0" /></svg>');
       document
         .querySelector<HTMLButtonElement>('.gv-mermaid-modal-toolbar button:last-child')!
         .click();
