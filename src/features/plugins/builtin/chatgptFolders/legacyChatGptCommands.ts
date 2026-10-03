@@ -10,10 +10,12 @@ import {
   NOOP,
   type OpOf,
   type FolderEditBody,
+  type OrdinaryOpBody,
   failed,
   legacyOutcome,
 } from '@/features/folder/commands/folderCommands';
 import { cloneFolderData, ownBucket } from '@/features/folder/model/folderData';
+import { applyFolderOp } from '@/features/folder/owner/applyFolderOp';
 import { type ConversationSeed, rejected } from '@/features/folder/owner/folderOps';
 import { FOLDER_SITE_POLICIES } from '@/features/folder/owner/folderOwnerPolicy';
 
@@ -60,6 +62,16 @@ export function createLegacyChatGptCommands(store: ChatGptFolderStore): FolderCo
     if (differs === undefined)
       return store.ready ? rejected('folder_missing') : failed('read_only');
     return differs ? edit(toggle) : NOOP;
+  };
+
+  /** Runs a shared owner op on the current data and commits what it computed. */
+  const applyOp = (body: OrdinaryOpBody): EditOutcome => {
+    if (!store.ready) return failed('read_only');
+    const policy = FOLDER_SITE_POLICIES.chatgpt;
+    const { data, outcome } = applyFolderOp(store.data, body, policy, Date.now());
+    if (outcome.kind !== 'saved') return outcome;
+    store.apply(data);
+    return legacyOutcome(true);
   };
 
   const moveConversations = (ids: string[], from: string, target: string): EditOutcome => {
@@ -135,17 +147,9 @@ export function createLegacyChatGptCommands(store: ChatGptFolderStore): FolderCo
     reorderConversations: unsupported,
     removeConversationEverywhere: unsupported,
     renameConversation: unsupported,
-    restoreNativeTitle: ({ conversationId, nativeTitle }) => {
-      const editable = store.ready;
-      if (store.restoreNativeTitle(conversationId, nativeTitle)) return legacyOutcome(true);
-      return editable ? NOOP : failed('read_only');
-    },
+    restoreNativeTitle: (body) => applyOp(body),
     setConversationGem: unsupported,
-    markConversationOpened: ({ conversationId, at }) => {
-      const editable = store.ready;
-      if (store.markOpened(conversationId, at)) return legacyOutcome(true);
-      return editable ? NOOP : failed('read_only');
-    },
+    markConversationOpened: (body) => applyOp(body),
     setConversationActivity: unsupported,
   };
 

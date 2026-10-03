@@ -226,48 +226,12 @@ export class ChatGptFolderStore {
   }
 
   /**
-   * After ChatGPT's own rename: drops any title of the user's own on
-   * `conversationId`'s filings, so title sync follows ChatGPT's name again, and
-   * takes `nativeTitle` (the name before the rename) where it differs. Returns
-   * whether it saved.
+   * Commits `next`, a snapshot computed from `data` (a shared owner op's
+   * result). Returns whether it changed.
    */
-  restoreNativeTitle(conversationId: string, nativeTitle: string | null): boolean {
-    if (!this.ready) return false;
-    const title = nativeTitle?.trim() || null;
-    const stale = [...this.references()].filter(
-      (c) => c.conversationId === conversationId && (c.customTitle || (title && c.title !== title)),
-    );
-    if (stale.length === 0) return false;
-    const now = Date.now();
-    this.commit(() => {
-      for (const conversation of stale) {
-        delete conversation.customTitle;
-        if (title && conversation.title !== title) {
-          conversation.title = title;
-          conversation.updatedAt = now;
-        }
-      }
-    });
-    return true;
-  }
-
-  /**
-   * Stamps `lastOpenedAt` on every filing of `conversationId`, for the recent
-   * order. Returns whether it saved.
-   */
-  markOpened(conversationId: string, at: number): boolean {
-    if (!this.ready) return false;
-    const opened = [...this.references()].filter(
-      // Drops near-simultaneous marks and never moves the time back.
-      (c) => c.conversationId === conversationId && !(c.lastOpenedAt && at - c.lastOpenedAt < 1000),
-    );
-    if (opened.length === 0) return false;
-    this.commit(() => {
-      for (const conversation of opened) {
-        conversation.lastOpenedAt = at;
-        conversation.updatedAt = at;
-      }
-    });
+  apply(next: FolderData): boolean {
+    if (!this.ready || next === this.data) return false;
+    this.commit(() => (this.repository.data = next));
     return true;
   }
 
@@ -300,9 +264,7 @@ export class ChatGptFolderStore {
     });
   }
   private replaceIfChanged(next: FolderData): MoveOutcome {
-    if (next === this.data) return 'unchanged';
-    this.commit(() => (this.repository.data = next));
-    return 'moved';
+    return this.apply(next) ? 'moved' : 'unchanged';
   }
   private commit(mutate: () => void): void {
     if (!this.ready) return;
