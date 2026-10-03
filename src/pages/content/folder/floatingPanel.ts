@@ -216,6 +216,7 @@ export function mountFloatingPanel({
   onMoveConversation,
   onSetFolderColor,
   onAddCurrentConversation,
+  onDrop,
   onCloudUpload,
   onCloudSync,
   getCloudUploadTooltip,
@@ -424,6 +425,7 @@ export function mountFloatingPanel({
     onMoveConversation,
     onSetFolderColor,
     onAddCurrentConversation,
+    onDrop,
   };
   const tree = mountFolderTree({
     body,

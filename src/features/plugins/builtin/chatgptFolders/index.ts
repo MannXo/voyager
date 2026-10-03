@@ -1,9 +1,9 @@
 /**
  * ChatGPT folders on the shared folder core: a folder section in ChatGPT's
  * sidebar (introduced once by a guide), the shared floating panel, and "Move to
- * folder" in a row's menu. The store is the shared FolderRepository with
- * ChatGPT's own bucket. Everything this plugin creates is registered on its
- * PluginScope, so turning it off leaves nothing behind.
+ * folder" in a row's menu, or a row dragged onto a folder. The store is the
+ * shared FolderRepository with ChatGPT's own bucket. Everything this plugin
+ * creates is registered on its PluginScope, so turning it off leaves nothing behind.
  */
 import type { ConversationReference } from '@/core/types/folder';
 import type { EditOutcome, FolderCommands } from '@/features/folder/commands/folderCommands';
@@ -13,7 +13,10 @@ import type { PluginSettings } from '@/features/plugins/types';
 import { createCommandTreeActions } from '@/pages/content/folder/commandTreeActions';
 import { mountFloatingFab, unmountFloatingFab } from '@/pages/content/folder/floatingModeFab';
 import { type FloatingPanelHandle, mountFloatingPanel } from '@/pages/content/folder/floatingPanel';
-import type { TreeActions } from '@/pages/content/folder/floatingTree/shared';
+import {
+  type TreeActions,
+  readConversationDragData,
+} from '@/pages/content/folder/floatingTree/shared';
 import { createFolderDialogs } from '@/pages/content/folder/folderDialogs';
 import { getTranslationSyncUnsafe as t, initI18n } from '@/utils/i18n';
 
@@ -25,6 +28,7 @@ import { ChatGptFolderSection } from './chatgptFolderSection';
 import { ChatGptHideFiled, HIDE_FILED_SETTING } from './chatgptHideFiled';
 import { ChatGptMoveMenu, MOVE_ENTRY_ATTR } from './chatgptMoveMenu';
 import { openChatGptConversation, readCurrentConversation } from './chatgptPage';
+import { type DroppedConversation, bindChatGptRowDrag, readSidebarRowDrop } from './chatgptRowDrag';
 import { ChatGptSidebarWatcher } from './chatgptSidebarWatcher';
 import { ChatGptTitleSync } from './chatgptTitleSync';
 import { CHATGPT_FOLDER_CONFIG } from './config';
@@ -132,7 +136,7 @@ class ChatGptFoldersView {
   }
 
   /** Files `conversation` into `folderId` and confirms the result in both trees. */
-  private file(folderId: string, conversation: ConversationReference): void {
+  private file(folderId: string, conversation: DroppedConversation): void {
     const { conversationId, title, url } = conversation;
     void this.commands
       .run({
@@ -211,11 +215,29 @@ class ChatGptFoldersView {
 
   /** What both the panel and the sidebar section do on a tree gesture. */
   private treeActions(): TreeActions {
+    const commandActions = createCommandTreeActions(this.commands);
     return {
-      ...createCommandTreeActions(this.commands),
+      ...commandActions,
       onNavigate: (conversation) => void openChatGptConversation(conversation),
       confirmConversationRemoval: this.dialogs.confirmConversationRemoval,
       onAddCurrentConversation: (folderId) => this.addCurrent(folderId),
+      // Takes every drop, so a folder's own rows still move as the tree moves them.
+      onDrop: (event, folderId) => {
+        const moved = readConversationDragData(event);
+        if (moved) {
+          if (moved.sourceFolderId !== folderId) {
+            commandActions.onMoveConversation?.(
+              moved.conversationId,
+              moved.sourceFolderId,
+              folderId,
+            );
+          }
+          return true;
+        }
+        const conversation = readSidebarRowDrop(event.dataTransfer);
+        if (conversation) this.file(folderId, conversation);
+        return !!conversation;
+      },
     };
   }
 
@@ -323,6 +345,7 @@ export async function activateChatGptFolders(
     busy: () => view.sectionBusy(),
   });
   scope.effect(() => () => moveMenu.cancel(), 'chatgpt-folders:move-menu');
+  bindChatGptRowDrag(scope, () => t('chatgptFoldersUntitled'));
   const hideFiled = settings[HIDE_FILED_SETTING] === true ? new ChatGptHideFiled(scope) : null;
   sidebar.onChange((nav) => {
     view.placeSection(nav);

@@ -1,7 +1,7 @@
 /**
- * "Move to folder" in a sidebar row's "Chat actions" menu. ChatGPT's rows are
- * not HTML5 drag sources, so this menu entry is how a conversation gets from the
- * sidebar into a folder without opening it first.
+ * "Move to folder" in a sidebar row's "Chat actions" menu: with the row drag in
+ * `chatgptRowDrag.ts`, how a conversation gets from the sidebar into a folder
+ * without opening it first, and the way that needs no pointer.
  *
  * Observed live (2026-10-01): the menu is a Radix menu portaled under `body` and
  * labelled by the row's trigger, which reads `aria-expanded="true"` while it is
