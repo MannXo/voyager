@@ -3,67 +3,6 @@
 Read this file when changing watermark detection or removal, image downloads, full-size media, or
 native media handoffs.
 
-## Low-confidence watermark matches require isolated trial removal
-
-- **Trap:** A known Gemini watermark could fall just below trusted spatial and gradient thresholds.
-  The chooser returned the default anchor, but removal rejected the same untrusted signal without
-  testing whether reverse-alpha subtraction actually suppressed it.
-- **Rule:** If every anchor misses the trusted gate, trial each preset and snap offset independently
-  from the original pixels. Require both signals to decrease, combined suppression above `0.08`, and
-  severe undershoot below `0.1`. Restore pixels after every trial, then apply only the strongest
-  candidate once. Never let this path override a trusted candidate or its safety rollback.
-- **Guard:** `src/pages/content/watermarkRemover/__tests__/watermarkEngine.test.ts` covers
-  independent restored trials, snapped offsets, strongest-candidate selection, the `0.08` and `0.1`
-  gates, exactly one final pass, and trusted-path priority.
-
-## Full-size images may carry the downscaled V2 watermark
-
-- **Trap:** New Gemini 2816x1536 downloads retained a 48px watermark 96px from the right and bottom
-  edges even though Voyager already supported that watermark on preview-sized images.
-  `getWatermarkConfigOptions` offered the downscaled 48px May 2026 V2 preset only when an image
-  failed the legacy large-image size check. Full-size downloads therefore tried only the historical
-  96px anchor and the full-size 96px V2 anchor, so the actual watermark region was never inspected.
-- **Rule:** Offer the existing downscaled 48px V2 preset for large images as an additional
-  candidate. Preserve the historical anchor first and rely on the existing signal and removal-safety
-  checks to choose whether any candidate is applied. Derive its alpha map by averaging each 2x2
-  block of the native 96px V2 capture, matching the upstream OpenCV `INTER_AREA` shrink instead of
-  relying on the browser's implementation-dependent Canvas smoothing.
-- **Guard:** `src/pages/content/watermarkRemover/__tests__/watermarkEngine.test.ts`
-  (`offers old, full-size, and downscaled May 2026 anchors for 2816x1536 outputs`) pins the reported
-  48px anchor at `(2672, 1392)`, while
-  `area-downsamples the 96px V2 capture before using it as a 48px alpha map` protects the alpha
-  profile derivation.
-
-## Full-size V2 removal needs gradient-backed transition evidence
-
-- **Trap:** A subtle 96px V2 watermark on a bright diagonal background was detected at the correct
-  anchor, but the visually correct reverse-alpha result was rolled back. The reconstructed
-  background retained mild positive spatial correlation with the star template, leaving spatial
-  suppression at `0.177`, just below the default `0.2` reliability-transition gate even though
-  gradient correlation dropped from `0.167` to `0.052` without clipping or severe undershoot.
-- **Rule:** Keep the default safety gate unchanged. Only for the exact 96px May 2026 V2 preset,
-  accept the first transition out of reliable detection when spatial and gradient suppression
-  independently exceed narrow thresholds, the absolute residual correlations are below the
-  direct-match thresholds, and the trial introduces no new black or clipped pixels. Correlation sign
-  is deliberately ignored because a clean reconstruction can cross zero. Subsequent passes still use
-  the default gate.
-- **Guard:** `src/pages/content/watermarkRemover/__tests__/watermarkEngine.test.ts`
-  (`accepts the reported full-size V2 reliability transition without weakening the default gate` and
-  `rejects the supported transition when ...`).
-
-## Dark watermark restoration must distinguish clipping from severe undershoot
-
-- **Trap:** Valid white watermarks on dark backgrounds were left untouched even when the template
-  and anchor matched, because correct restoration produced many black or channel-clipped pixels. The
-  removal safety gate treated the number of newly black/clipped pixels as proof of damage. It could
-  not distinguish a correct reconstruction near zero from an over-strong alpha subtraction that fell
-  far below zero before clipping.
-- **Rule:** When the legacy near-black or clipping limits are exceeded, only roll back if at least
-  10% of watermark-region pixels have a raw reverse-alpha channel below `-5`.
-- **Guard:** `src/pages/content/watermarkRemover/__tests__/watermarkEngine.test.ts`
-  (`accepts clipped pixels that reconstruct a dark background without severe undershoot` and
-  `rejects a watermark-like pattern when trial removal would clip pixels`).
-
 ## Watermark toggles must reconfigure already-open Gemini tabs
 
 - **Trap:** Changing either watermark-removal toggle in the popup had no effect in an already-open
@@ -83,39 +22,6 @@ native media handoffs.
   bidirectional changes, engine reuse, lifecycle races, retry, reused image nodes, and
   preview/download isolation. `src/pages/background/__tests__/watermarkOpenTabs.test.ts` covers
   targeted open-tab injection and closed-tab failures.
-
-## Watermark download indicators must not wait for engine assets
-
-- **Trap:** The 🍌 indicator appeared noticeably after Gemini's download button, even though clicks
-  during that window already queued correctly for watermark processing. The download bridge was
-  installed before `WatermarkEngine.create()`, but both the initial indicator decoration and its DOM
-  observer were installed only after the engine finished loading all watermark image assets.
-- **Rule:** Decorate existing buttons and start the lightweight indicator observer before awaiting
-  engine initialization. When preview removal is enabled, disconnect that temporary observer before
-  the preview observer takes over so only one page-wide image observer remains active.
-- **Guard:** `src/pages/content/watermarkRemover/__tests__/engineRaceCondition.test.ts`
-  (`shows download indicators while WatermarkEngine.create is still pending`).
-
-## Native download health checks must not depend on watermark removal
-
-- **Trap:** Gemini could show a sharp preview but return a blurred or partly blank full-size PNG.
-  Voyager's click intent, MAIN-world bridge, and toasts ran only with watermark removal, so the
-  disabled path could not compare the files. Direct Canvas sampling of Gemini's
-  `googleusercontent.com` image was also tainted because the image lacked `crossorigin`, silently
-  removing the preview fingerprint.
-- **Rule:** Keep lightweight click intent and bridge listeners active independently of the two
-  removal toggles. When removal is off, return Gemini's original Promise and Response objects
-  unchanged, inspect only a clone, and warn only when a 32×32 preview/download fingerprint has a
-  severe mismatch. Never warn from the download alone: a legitimate image may intentionally contain
-  a large flat region. If direct preview sampling is tainted, fetch that exact preview URL through
-  the extension runtime and await its origin-clean fingerprint without delaying the synchronous
-  native download intent.
-- **Guard:** `src/pages/content/watermarkRemover/__tests__/fetchInterceptor.test.ts`,
-  `src/pages/content/watermarkRemover/__tests__/imageHealthDetector.test.ts`,
-  `src/pages/content/watermarkRemover/__tests__/downloadToasts.test.ts`, and
-  `src/pages/content/watermarkRemover/__tests__/corruptedDownloadDetection.test.ts` cover native
-  identity, healthy and damaged pairs, legitimate flat regions, disabled-path silence, and the
-  tainted-preview extension-fetch fallback.
 
 ## Safari full-size watermark downloads require a static page-world interceptor
 

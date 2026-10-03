@@ -137,6 +137,7 @@ export function getWatermarkConfigOptions(
   const legacyConfig = detectWatermarkConfig(imageWidth, imageHeight);
   const isLarge =
     imageWidth > LEGACY_LARGE_IMAGE_MIN_EDGE && imageHeight > LEGACY_LARGE_IMAGE_MIN_EDGE;
+  // Full-size downloads can still carry the downscaled 48px V2 watermark.
   const currentConfigs = isLarge
     ? [V2_LARGE_WATERMARK_CONFIG, V2_DOWNSCALED_LARGE_WATERMARK_CONFIG]
     : [createV2SmallWatermarkConfig(imageWidth, imageHeight), V2_DOWNSCALED_LARGE_WATERMARK_CONFIG];
