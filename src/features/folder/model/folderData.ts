@@ -56,8 +56,8 @@ export function isRootFolder(folder: Folder, folderIds: { has: (id: string) => b
  * every real root from reaching them: the first of each such group in stored
  * order. A repeated id counts by its first record. The tree shows each one at
  * the root with the rest of its group under it as stored, and removal cuts the
- * cycle at the same folder. Imports refuse cycles, but a Drive merge of two
- * moves or data stored before that check can still hold one.
+ * cycle at the same folder. Imports cut cycles without losing buckets; stored
+ * parents stay untouched, including cycles from Drive merges or older data.
  */
 export function findCycleRoots(folders: readonly Folder[]): Set<string> {
   const unique = new Map<string, Folder>();

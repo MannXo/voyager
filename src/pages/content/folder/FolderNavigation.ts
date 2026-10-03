@@ -279,6 +279,7 @@ export class FolderNavigation {
           }
         }, 300);
       };
+      // Missing or slow native links must still preserve the loaded Gemini session.
       const spaNavigate = () => {
         if (hexId) {
           this.options.onOpened(hexId);

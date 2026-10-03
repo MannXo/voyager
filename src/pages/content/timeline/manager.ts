@@ -113,6 +113,7 @@ export class TimelineManager {
   }
   private onStateChange(): void {
     if (this.destroyed) return;
+    // Syncing to the chat here would reset the user's manually scrolled rail after marker edits.
     this.view.updateTimelineGeometry();
     this.view.updateVirtualRangeAndRender();
     this.view.updateSlider();

@@ -390,6 +390,7 @@ export class FolderSidebarRuntime {
       return;
     }
     const now = Date.now();
+    // Gemini can remove the whole sidebar while rebuilding it; absence needs the same grace.
     this.anchorMissingSince ??= now;
     if (now - this.anchorMissingSince < ANCHOR_MISSING_GRACE_MS) return;
     this.reportMissingAnchor();

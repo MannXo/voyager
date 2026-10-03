@@ -94,14 +94,8 @@ function applyWidth(widthPercent: number) {
       box-sizing: border-box !important;
     }
 
-    /* Gemini 3.8 / luminous layout pins the thread to
-       --bard-chat-window-content-width-default (708px). Native rules read
-       max-width: var(...), so the slider has to own the variables (#955).
-       Gemini declares them as
-       \`.enable-luminous-content-width-update[_nghost-ng-cXXXXXXXX]\`, and that
-       Angular host attribute outranks a bare class selector, so without
-       !important the host keeps 708px and every descendant that is not one of
-       the hosts re-listed here inherits the narrow default. */
+    /* Gemini's Angular host selector outranks ours: both width variables need !important.
+       Grid-scoped child rules hardcode narrow widths too, so variables alone cannot widen turns. */
     chat-window,
     chat-window-content,
     .enable-luminous-content-width-update,
@@ -255,11 +249,8 @@ function applyWidth(widthPercent: number) {
       margin-right: auto !important;
     }
 
-    /* Widen the file-drop overlay with the input area (#887). Gemini pins it to
-       var(--bard-chat-window-max-width-default, 760px), which only matches the
-       native input width. The input-container prefix keeps this rule more
-       specific than editInputWidth's overlay rule, mirroring how the two
-       modules' input-area-v2 rules already resolve when both are enabled. */
+    /* Gemini pins the overlay to its native input width. Match the composer;
+       editInputWidth's html body prefix wins when both sliders are enabled. */
     input-container file-drop-indicator .overlay-container[data-filedrop-id="chat-window-input-container"] {
       max-width: ${widthValue} !important;
       width: min(100%, ${widthValue}) !important;

@@ -4,7 +4,8 @@
  * The host itself is in the page's tree, and any page rule that matches it
  * (`* {}`, `div {}`, a reset) beats a normal `:host` declaration whatever its
  * specificity. Host-only rules are therefore all `!important`, which reverses
- * that order; custom properties stay normal because no page rule sets them. */
+ * that order; custom properties stay normal because no page rule sets them.
+ * Keep left/top/width/height inline; important host geometry would block drag and resize. */
 /* ─── Floating folder panel ────────────────────────────────────────────── */
 :host {
   position: fixed !important;

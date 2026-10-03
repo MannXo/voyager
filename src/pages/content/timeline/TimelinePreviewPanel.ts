@@ -631,6 +631,7 @@ export class TimelinePreviewPanel {
     this.positionHoverBridge(barRect, left, top, panelWidth, panelHeight);
   }
 
+  // The visual gap must accept hover and clicks so slow crossings cannot close the panel.
   private positionHoverBridge(
     barRect: DOMRect,
     panelLeft: number,

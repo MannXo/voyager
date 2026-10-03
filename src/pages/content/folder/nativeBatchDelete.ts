@@ -7,6 +7,7 @@ const DELAY_BETWEEN_DELETIONS_MS = 500;
 
 export type NativeBatchDeleteContext = {
   conversationIds: readonly string[];
+  // Outer flags cannot cancel native waits; a late wait could click the next account's menu.
   signal: AbortSignal;
   /** False once the batch was cancelled, the account or route changed, or the page went away. */
   isCurrent: () => boolean;

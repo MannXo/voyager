@@ -103,6 +103,7 @@ export class ChatGptFolderSection {
       return;
     }
     if (this.element.parentElement === parent && this.element.nextElementSibling === anchor) {
+      // Reinserting here would wake our sidebar watcher forever.
       return;
     }
     parent.insertBefore(this.element, anchor);

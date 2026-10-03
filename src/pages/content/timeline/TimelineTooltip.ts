@@ -14,7 +14,7 @@ interface TimelineTooltipOptions {
   getContent(dot: DotElement): TimelineTooltipContent;
 }
 
-/** Owns the timeline preview surface, hover intent, and measured placement. */
+/** Owns preview placement and pending visibility work so hidden tooltips cannot revive. */
 export class TimelineTooltip {
   private element: HTMLElement | null;
   private measureEl: HTMLElement | null;

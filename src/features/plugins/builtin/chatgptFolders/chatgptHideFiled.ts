@@ -14,7 +14,7 @@ const ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 const HIDE_FILED_CSS = `${HISTORY_ROW}[${FILED_ROW_ATTRIBUTE}]:not([aria-current="page"]):not(:has([aria-current="page"])) { display: none !important; }`;
 
 /**
- * One constant rule, with membership checked only for mounted native rows.
+ * Keep CSS constant so style recalculation does not grow with every filed chat.
  * The existing sidebar watcher reconciles recycled rows and pagination.
  */
 export class ChatGptHideFiled {

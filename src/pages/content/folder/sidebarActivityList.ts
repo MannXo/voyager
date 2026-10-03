@@ -130,6 +130,7 @@ export class SidebarActivityList {
     }, null);
     if (nextExpiry === null || nextExpiry === undefined) return;
 
+    // Future imports can overflow setTimeout into a 1 ms loop; wake at the cap and recompute.
     const delay = Math.min(MAX_TIMEOUT_MS, Math.max(1, nextExpiry - Date.now() + 1));
     this.priorityRefreshTimer = window.setTimeout(() => {
       this.priorityRefreshTimer = null;

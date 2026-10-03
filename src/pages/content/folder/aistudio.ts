@@ -64,6 +64,8 @@ const RECOVERY_MESSAGES = {
 export class AIStudioFolderManager {
   /** Resolves against the bundled messages on every call, so it is right before `initI18n` settles. */
   private t: (key: string) => string = createTranslator();
+  // Missing keys render literally: keep them in every locale and fill placeholders explicitly.
+  // Function replacers keep dollar sequences in user and error text literal.
   private readonly translate = (key: string) => this.t(key);
   /** Owns sessions, load, recovery, serialized saves, drafts, echoes and scope retry. */
   private readonly repository = new FolderRepository(

@@ -39,7 +39,7 @@ const OVERLAY_SELECTOR = [
  */
 const NOT_OVERLAYS = `.gv-coach, .${FLOATING_PANEL_CLASS}`;
 
-/** Whether a menu or dialog is open on the page. Reads only. */
+/** CSS-hidden panels stay mounted; only visible overlays should block the guide. */
 export function hasOpenOverlay(doc: Document = document): boolean {
   for (const element of doc.querySelectorAll<HTMLElement>(OVERLAY_SELECTOR)) {
     if (element.closest(NOT_OVERLAYS)) continue;

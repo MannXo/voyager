@@ -169,8 +169,7 @@ describe('folder data traversal and removal', () => {
     expect(data.folders.map((item) => item.parentId)).toEqual(['b', 'a', null]);
   });
 
-  // Imports refuse parent cycles, but a Drive merge of two moves or data
-  // stored before that check can still hold one.
+  // Stored data can still hold parent cycles from Drive merges or older versions.
   it('removes a folder on a parent cycle without the folder the tree shows above it', () => {
     const data = freezeData({
       folders: [folder('a', 'b'), folder('b', 'a'), folder('c')],
