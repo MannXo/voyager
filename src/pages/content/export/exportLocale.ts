@@ -53,6 +53,38 @@ export async function loadExportDictionaries(): Promise<ExportDictionaries> {
   }
 }
 
+type StorageChangeListener = (
+  changes: Record<string, chrome.storage.StorageChange>,
+  area: string,
+) => void;
+
+interface StorageChangeEvents {
+  addListener(listener: StorageChangeListener): void;
+  removeListener(listener: StorageChangeListener): void;
+}
+
+/**
+ * The extension APIs. Firefox defines `chrome`/`browser` on the content-script
+ * global, which only inherits from the page `window`, so `window.chrome` is
+ * undefined there.
+ */
+function extensionGlobal() {
+  return globalThis as typeof globalThis & {
+    chrome?: {
+      storage?: {
+        sync?: { get: (key: string, cb: (r: unknown) => void) => void };
+        onChanged?: StorageChangeEvents;
+      };
+    };
+    browser?: {
+      storage?: {
+        sync?: { get: (key: string) => Promise<unknown> };
+        onChanged?: StorageChangeEvents;
+      };
+    };
+  };
+}
+
 /**
  * Read the user's language from sync storage (Chrome or Firefox API), falling
  * back to the browser language. Gives up on storage after 1 s so a hung
@@ -64,20 +96,11 @@ export async function readExportLanguage(): Promise<AppLanguage> {
     const stored = await Promise.race([
       new Promise<unknown>((resolve) => {
         try {
-          const win = window as Window & {
-            chrome?: {
-              storage?: {
-                sync?: { get: (key: string, cb: (r: unknown) => void) => void };
-              };
-            };
-            browser?: {
-              storage?: { sync?: { get: (key: string) => Promise<unknown> } };
-            };
-          };
-          if (win.chrome?.storage?.sync?.get) {
-            win.chrome.storage.sync.get(StorageKeys.LANGUAGE, resolve);
-          } else if (win.browser?.storage?.sync?.get) {
-            win.browser.storage.sync
+          const ext = extensionGlobal();
+          if (ext.chrome?.storage?.sync?.get) {
+            ext.chrome.storage.sync.get(StorageKeys.LANGUAGE, resolve);
+          } else if (ext.browser?.storage?.sync?.get) {
+            ext.browser.storage.sync
               .get(StorageKeys.LANGUAGE)
               .then(resolve)
               .catch(() => resolve({}));
@@ -109,24 +132,6 @@ export function languageFromStorageChanges(
   return typeof nextRaw === 'string' ? normalizeLanguage(nextRaw) : null;
 }
 
-type StorageChangeListener = (
-  changes: Record<string, chrome.storage.StorageChange>,
-  area: string,
-) => void;
-
-interface StorageChangeEvents {
-  addListener(listener: StorageChangeListener): void;
-  removeListener(listener: StorageChangeListener): void;
-}
-
-function storageChangeEvents(): StorageChangeEvents | undefined {
-  const win = window as Window & {
-    chrome?: { storage?: { onChanged?: StorageChangeEvents } };
-    browser?: { storage?: { onChanged?: StorageChangeEvents } };
-  };
-  return (win.chrome?.storage ?? win.browser?.storage)?.onChanged;
-}
-
 /**
  * Call `onChange` with the language the user switches to in sync storage.
  * Returns the stop.
@@ -137,7 +142,8 @@ export function watchExportLanguage(onChange: (lang: AppLanguage) => void): () =
     const next = languageFromStorageChanges(changes);
     if (next) onChange(next);
   };
-  const events = storageChangeEvents();
+  const ext = extensionGlobal();
+  const events = (ext.chrome?.storage ?? ext.browser?.storage)?.onChanged;
   try {
     events?.addListener(listener);
   } catch {}
