@@ -11560,21 +11560,6 @@ html[data-gv-scheme='light'] .gv-ph-panel {
   color: oklch(1 0 0);
 }
 
-.gv-ph-global-notice {
-  position: fixed;
-  top: 18px;
-  left: 50%;
-  z-index: 2147483647;
-  max-width: min(420px, calc(100vw - 32px));
-  padding: 9px 14px;
-  border-radius: 10px;
-  background: oklch(0.55 0.16 25 / 0.96);
-  box-shadow: 0 6px 24px oklch(0 0 0 / 0.25);
-  color: oklch(1 0 0);
-  font-size: 13px;
-  transform: translateX(-50%);
-}
-
 body.gv-rtl .gv-ph-trigger,
 body.gv-rtl .gv-ph-panel {
   right: auto;
@@ -11588,10 +11573,6 @@ body.gv-rtl .gv-ph-panel {
 @media (max-height: 440px) {
   .gv-ph-trigger {
     top: 12px;
-  }
-
-  .gv-ph-global-notice {
-    top: 66px;
   }
 
   .gv-ph-panel {

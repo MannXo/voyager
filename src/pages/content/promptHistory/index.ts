@@ -13,6 +13,7 @@ import { LoggerService } from '@/core/services/LoggerService';
 import { StorageKeys } from '@/core/types/common';
 import { askConfirm } from '@/core/ui/confirm';
 import { isVoyagerLayerEvent } from '@/core/ui/layer';
+import { createToaster } from '@/core/ui/toast/toaster';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
 import { getTranslationSync } from '@/utils/i18n';
 
@@ -65,7 +66,8 @@ let panelOpen = false;
 let panelCleanup: (() => void) | null = null;
 // Answers an open clear confirm with null when the panel closes or tears down.
 let confirmOwner: AbortController | null = null;
-let globalNoticeTimer: number | null = null;
+/** Storage failures while the panel is closed; with it open they go to its own notice line. */
+const notices = createToaster();
 let renderRevision = 0;
 const recentCaptures = new Map<string, number>();
 
@@ -156,18 +158,12 @@ function findFormPromptInput(form: HTMLFormElement): HTMLElement | null {
 }
 
 function showGlobalStorageError(): void {
-  let notice = document.querySelector<HTMLDivElement>('.gv-ph-global-notice');
-  if (!notice) {
-    notice = createEl('div', 'gv-ph-global-notice');
-    notice.setAttribute('role', 'alert');
-    document.body.appendChild(notice);
-  }
-  notice.textContent = getTranslationSync('promptHistoryStorageFailed');
-  if (globalNoticeTimer !== null) window.clearTimeout(globalNoticeTimer);
-  globalNoticeTimer = window.setTimeout(() => {
-    notice?.remove();
-    globalNoticeTimer = null;
-  }, 5000);
+  notices.show({
+    channel: 'storage-error',
+    message: getTranslationSync('promptHistoryStorageFailed'),
+    tone: 'error',
+    durationMs: 5000,
+  });
 }
 
 function reportStorageError(error: unknown): void {
@@ -630,9 +626,7 @@ function cleanup(): void {
     } catch {}
     storageListener = null;
   }
-  if (globalNoticeTimer !== null) window.clearTimeout(globalNoticeTimer);
-  globalNoticeTimer = null;
-  document.querySelector('.gv-ph-global-notice')?.remove();
+  notices.clear();
   ctrlEnterSendEnabled = false;
   enabledSettingRevision = 0;
   ctrlEnterSettingRevision = 0;
