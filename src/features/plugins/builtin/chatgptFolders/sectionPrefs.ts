@@ -10,7 +10,7 @@ export type ChatGptFolderSectionPrefs = {
   sortMode: ConversationSortMode;
 };
 
-export function parseSectionPrefs(value: unknown): ChatGptFolderSectionPrefs {
+function parseSectionPrefs(value: unknown): ChatGptFolderSectionPrefs {
   const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
   return { collapsed: raw.collapsed === true, sortMode: toSortMode(raw.sortMode) };
 }
