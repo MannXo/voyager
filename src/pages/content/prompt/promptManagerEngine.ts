@@ -47,12 +47,6 @@ export interface PromptManagerEngine {
 
 type StorageChanges = Record<string, chrome.storage.StorageChange>;
 
-const PANEL: NativeFeature = {
-  id: 'promptManager',
-  position: CleanupPositions.DestroyPromptManagerInstance,
-  start: async () => (await startPromptManager()).destroy,
-};
-
 const SLASH_TOGGLE: NativeFeatureToggle = {
   key: StorageKeys.SLASH_PROMPT_ENABLED,
   // A removed setting is the enabled default again.
@@ -116,6 +110,11 @@ export function createPromptManagerEngine(
   adapter: PromptSiteAdapter,
   cleanup: CleanupManager,
 ): PromptManagerEngine {
+  const panel: NativeFeature = {
+    id: 'promptManager',
+    position: CleanupPositions.DestroyPromptManagerInstance,
+    start: async () => (await startPromptManager(adapter)).destroy,
+  };
   const toggles: NativeFeatureToggleController[] = [];
   let chips: SentPromptChipsController | null = null;
   let listening = false;
@@ -172,12 +171,12 @@ export function createPromptManagerEngine(
     },
 
     async startPanel() {
-      await mountNativeFeature(cleanup, PANEL);
+      await mountNativeFeature(cleanup, panel);
     },
 
     async followCoverage(host) {
       const coverage = createNativeFeatureToggle(cleanup, {
-        ...PANEL,
+        ...panel,
         toggle: {
           key: StorageKeys.PROMPT_CUSTOM_WEBSITES,
           isEnabled: (value) => customWebsitesIncludeHost(value, host),

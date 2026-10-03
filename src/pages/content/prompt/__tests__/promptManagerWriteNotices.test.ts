@@ -7,6 +7,7 @@ import {
 } from '@/features/prompt/library/promptLibraryOwner';
 
 import { startPromptManager } from '../index';
+import { resolvePromptSiteAdapter } from '../resolvePromptSiteAdapter';
 
 vi.mock('webextension-polyfill', () => ({ default: globalThis.chrome }));
 
@@ -99,7 +100,7 @@ function useLibrary(
 }
 
 async function openPanel(): Promise<void> {
-  manager = await startPromptManager();
+  manager = await startPromptManager(resolvePromptSiteAdapter(location.href));
   document.querySelector<HTMLButtonElement>('#gv-pm-trigger')!.click();
   const notice = document.querySelector('.gv-pm-notice')!;
   observer = new MutationObserver(() => {
@@ -263,7 +264,7 @@ describe('Prompt Manager write notices', () => {
       return new Promise((resolve) => (finishRead = () => resolve(value)));
     }) as never);
 
-    const starting = startPromptManager();
+    const starting = startPromptManager(resolvePromptSiteAdapter(location.href));
     await vi.advanceTimersByTimeAsync(1);
     finishRead();
     manager = await starting;

@@ -12,15 +12,12 @@ import type { PromptItem } from '@/core/types/sync';
 import { isPromptTemplate } from '@/features/prompt/model/promptTemplate';
 import type { TranslationKey } from '@/utils/translations';
 
-import { insertTextIntoChatInput } from '../chatInput/index';
-import { expandInputCollapseIfNeeded } from '../inputCollapse/index';
 import {
   type TemplateFillHandle,
   highlightTemplateVariables,
   openTemplateFill,
 } from './PromptTemplateFill';
 import { extractPlainTitle } from './compactTitle';
-import { activatePromptText } from './promptClickAction';
 import type { PromptLibraryState } from './promptLibraryState';
 import { renderPromptMarkdown } from './promptMarkdownLoader';
 import { getPromptNameConflictIds } from './promptName';
@@ -64,6 +61,8 @@ export interface PromptListViewOptions {
   savedTags: string[];
   t: (key: TranslationKey) => string;
   setNotice: (text: string, kind: 'ok' | 'err') => void;
+  /** Puts a prompt into the page's composer; false when there is none. */
+  insert: (text: string) => boolean;
   getQuery: () => string;
   getTheme: () => string;
   onEdit: (item: PromptItem) => void;
@@ -81,6 +80,7 @@ export function createPromptListView({
   savedTags,
   t,
   setNotice,
+  insert,
   getQuery,
   getTheme,
   onEdit,
@@ -184,17 +184,13 @@ export function createPromptListView({
     });
   }
 
+  // Copying is also the fallback when insert-on-click finds no composer.
   function deliverPromptText(body: string, insertOnClick = settings.insertOnClick): void {
-    void activatePromptText(body, insertOnClick, {
-      copyText,
-      expandInputCollapseIfNeeded,
-      insertTextIntoChatInput,
-    }).then((result) => {
-      setNotice(
-        result === 'inserted' ? t('pm_inserted') || 'Inserted' : t('pm_copied') || 'Copied',
-        'ok',
-      );
-    });
+    if (insertOnClick && insert(body)) {
+      setNotice(t('pm_inserted') || 'Inserted', 'ok');
+      return;
+    }
+    void copyText(body).then(() => setNotice(t('pm_copied') || 'Copied', 'ok'));
   }
 
   // A prompt carrying `{{name}}` placeholders asks for their values first,

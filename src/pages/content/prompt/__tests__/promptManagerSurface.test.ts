@@ -4,6 +4,7 @@ import { StorageKeys } from '@/core/types/common';
 import type { PromptItem } from '@/core/types/sync';
 
 import { startPromptManager } from '../index';
+import { resolvePromptSiteAdapter } from '../resolvePromptSiteAdapter';
 
 vi.mock('webextension-polyfill', () => ({ default: globalThis.chrome }));
 
@@ -34,7 +35,7 @@ async function openManager(items: PromptItem[]): Promise<HTMLElement> {
   vi.mocked(chrome.storage.local.get).mockImplementation(
     storageGet({ [StorageKeys.PROMPT_ITEMS]: items }),
   );
-  manager = await startPromptManager();
+  manager = await startPromptManager(resolvePromptSiteAdapter(location.href));
   document.querySelector<HTMLButtonElement>('#gv-pm-trigger')!.click();
   return document.querySelector<HTMLElement>('#gv-pm-panel')!;
 }

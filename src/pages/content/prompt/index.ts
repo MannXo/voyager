@@ -24,6 +24,7 @@ import { promptStorageService } from '@/core/services/StorageService';
 import { StorageKeys } from '@/core/types/common';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
 import { migrateFromLocalStorage } from '@/core/utils/storageMigration';
+import type { PromptSiteAdapter } from '@/features/prompt/PromptSiteAdapter';
 import { createRuntimePromptLibraryClient } from '@/features/prompt/library/promptLibraryMessages';
 import { getCurrentLanguage, getTranslationSync, initI18n, setCachedLanguage } from '@/utils/i18n';
 import {
@@ -140,7 +141,9 @@ function renderSupportLinkLabel(link: HTMLAnchorElement, label: string): void {
   link.replaceChildren(createSponsorHeartIcon(), labelEl);
 }
 
-export async function startPromptManager(): Promise<{ destroy: () => void }> {
+export async function startPromptManager(
+  site: PromptSiteAdapter,
+): Promise<{ destroy: () => void }> {
   try {
     // Check if the prompt manager should be hidden & changelog badge state
     let pmHiddenByUser = false;
@@ -419,6 +422,7 @@ export async function startPromptManager(): Promise<{ destroy: () => void }> {
       savedTags,
       t: i18n.t,
       setNotice,
+      insert: site.insert,
       getQuery: () => searchInput.value || '',
       getTheme: () => panel.getAttribute('data-gv-theme') || '',
       onEdit: form.startEdit,

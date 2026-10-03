@@ -10,4 +10,6 @@
 export interface PromptSiteAdapter {
   /** Slash completion and sent-prompt chips run here. */
   readonly slash: boolean;
+  /** Puts `text` into the site's composer; false when there is none, and the caller copies instead. */
+  insert(text: string): boolean;
 }

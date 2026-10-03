@@ -4,6 +4,7 @@ import { StorageKeys } from '@/core/types/common';
 import type { TemplateLibrary } from '@/features/researchPack/services/templates';
 
 import { startPromptManager } from '../prompt/index';
+import { resolvePromptSiteAdapter } from '../prompt/resolvePromptSiteAdapter';
 import { packOf } from '../researchPack/__tests__/fixtures';
 import { type ResearchPackPanel, createResearchPackPanel } from '../researchPack/panel';
 
@@ -90,7 +91,7 @@ afterEach(() => {
 
 describe('Prompt Manager and Research Pack stacking', () => {
   it('closes the Prompt Manager when the Research Pack opens from the keyboard', async () => {
-    manager = await startPromptManager();
+    manager = await startPromptManager(resolvePromptSiteAdapter(location.href));
     document.querySelector<HTMLButtonElement>('#gv-pm-trigger')!.click();
     expect(promptPanelOpen()).toBe(true);
 
@@ -104,7 +105,7 @@ describe('Prompt Manager and Research Pack stacking', () => {
   });
 
   it('leaves the Research Pack open beneath a Prompt Manager opened after it', async () => {
-    manager = await startPromptManager();
+    manager = await startPromptManager(resolvePromptSiteAdapter(location.href));
     researchPack = mountResearchPack();
     document.querySelector<HTMLButtonElement>('.gv-rp-launcher')!.click();
 

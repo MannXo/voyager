@@ -33,7 +33,8 @@ vi.mock('@/utils/i18n', () => ({
   initI18n: mocks.initI18n,
 }));
 
-vi.mock('../../chatInput', () => ({
+vi.mock('../../chatInput', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../chatInput')>()),
   findChatInput: mocks.findChatInput,
 }));
 
