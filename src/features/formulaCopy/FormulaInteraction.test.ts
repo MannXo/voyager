@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { toastDriver } from '@/tests/toastDriver';
+
 import { setupFormulaCopyTestSuite } from './__tests__/formulaCopyTestHarness';
 
 describe('Formula copy interaction', () => {
@@ -45,7 +47,7 @@ describe('Formula copy interaction', () => {
 
       expect(writeMock).not.toHaveBeenCalled();
       expect(writeTextMock).not.toHaveBeenCalled();
-      expect(document.querySelector('.gv-copy-toast')).toBeNull();
+      expect(toastDriver.all()).toEqual([]);
       expect(pageClick).toHaveBeenCalledTimes(1);
       expect(clickEvent.defaultPrevented).toBe(false);
 

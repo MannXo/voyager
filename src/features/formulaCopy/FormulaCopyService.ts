@@ -8,6 +8,7 @@ import browser from 'webextension-polyfill';
 import { logger } from '@/core';
 import { StorageKeys } from '@/core/types/common';
 import type { ILogger } from '@/core/types/common';
+import { createToaster } from '@/core/ui/toast/toaster';
 import { getTranslationSyncUnsafe } from '@/utils/i18n';
 
 import { FormulaInteraction } from './FormulaInteraction';
@@ -29,7 +30,6 @@ export type FormulaCopyFormat = 'latex' | 'unicodemath' | 'no-dollar' | 'notion'
  */
 export interface FormulaCopyConfig {
   toastDuration?: number;
-  toastOffsetY?: number;
   maxTraversalDepth?: number;
   format?: FormulaCopyFormat;
   /** Test/embedding override; production defaults to Gemini host detection. */
@@ -72,15 +72,13 @@ export class FormulaCopyService {
   private formatPreferenceLoadGeneration = 0;
   private formatPreferenceChangeVersion = 0;
   private lifecycleGeneration = 0;
-  private copyToast: HTMLDivElement | null = null;
-  private copyToastHideTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly toaster = createToaster();
   private activeRootObserver: MutationObserver | null = null;
 
   private constructor(config: FormulaCopyConfig = {}) {
     this.logger = logger.createChild('FormulaCopy');
     this.config = {
       toastDuration: config.toastDuration ?? 2000,
-      toastOffsetY: config.toastOffsetY ?? 40,
       maxTraversalDepth: config.maxTraversalDepth ?? 10,
       observeGeminiArrows:
         config.observeGeminiArrows ??
@@ -220,7 +218,7 @@ export class FormulaCopyService {
     document.removeEventListener('click', this.handleClick, true);
     document.removeEventListener('mouseover', this.handleMouseOver, true);
     this.interaction.stop();
-    this.removeCopyToast();
+    this.toaster.clear();
     this.isInitialized = false;
     this.lifecycleGeneration += 1;
     this.logger.info('Formula copy service destroyed');
@@ -268,7 +266,7 @@ export class FormulaCopyService {
       this.logger,
     );
 
-    void this.copyFormula(text, html, event.clientX, event.clientY, this.lifecycleGeneration);
+    void this.copyFormula(text, html, this.lifecycleGeneration);
     event.stopPropagation();
   };
 
@@ -315,8 +313,6 @@ export class FormulaCopyService {
   private async copyFormula(
     text: string,
     html: string | undefined,
-    x: number,
-    y: number,
     lifecycleGeneration: number,
   ): Promise<void> {
     try {
@@ -324,72 +320,27 @@ export class FormulaCopyService {
       if (!this.isInitialized || lifecycleGeneration !== this.lifecycleGeneration) return;
 
       if (success) {
-        this.showToast(this.toastMessage('formula_copied'), x, y, true);
+        this.showToast(this.toastMessage('formula_copied'), true);
         this.logger.debug('Formula copied successfully', { length: text.length, hasHtml: !!html });
       } else {
-        this.showToast(this.toastMessage('formula_copy_failed'), x, y, false);
+        this.showToast(this.toastMessage('formula_copy_failed'), false);
         this.logger.error('Failed to copy formula');
       }
     } catch (error) {
       if (!this.isInitialized || lifecycleGeneration !== this.lifecycleGeneration) return;
-      this.showToast(this.toastMessage('formula_copy_failed'), x, y, false);
+      this.showToast(this.toastMessage('formula_copy_failed'), false);
       this.logger.error('Error copying formula', { error });
     }
   }
 
-  /**
-   * Show toast notification
-   */
-  private showToast(message: string, x: number, y: number, isSuccess: boolean): void {
-    if (!this.copyToast) {
-      this.copyToast = this.createCopyToast();
-    }
-
-    this.copyToast.textContent = message;
-    this.copyToast.style.left = `${x}px`;
-    this.copyToast.style.top = `${y - this.config.toastOffsetY}px`;
-
-    // Update toast style based on success/failure
-    if (isSuccess) {
-      this.copyToast.classList.remove('gv-copy-toast-error');
-      this.copyToast.classList.add('gv-copy-toast-success');
-    } else {
-      this.copyToast.classList.remove('gv-copy-toast-success');
-      this.copyToast.classList.add('gv-copy-toast-error');
-    }
-
-    this.copyToast.classList.add('gv-copy-toast-show');
-
-    if (this.copyToastHideTimer !== null) clearTimeout(this.copyToastHideTimer);
-    const toast = this.copyToast;
-    this.copyToastHideTimer = setTimeout(() => {
-      if (this.copyToast === toast) toast.classList.remove('gv-copy-toast-show');
-      this.copyToastHideTimer = null;
-    }, this.config.toastDuration);
-  }
-
-  /**
-   * Create toast element
-   */
-  private createCopyToast(): HTMLDivElement {
-    const toast = document.createElement('div');
-    toast.className = 'gv-copy-toast';
-    document.body.appendChild(toast);
-    return toast;
-  }
-
-  /**
-   * Remove toast element from DOM
-   */
-  private removeCopyToast(): void {
-    if (this.copyToastHideTimer !== null) {
-      clearTimeout(this.copyToastHideTimer);
-      this.copyToastHideTimer = null;
-    }
-    if (this.copyToast?.parentElement) {
-      this.copyToast.parentElement.removeChild(this.copyToast);
-      this.copyToast = null;
-    }
+  /** One channel: a quick second copy replaces the first note instead of stacking. */
+  private showToast(message: string, isSuccess: boolean): void {
+    this.toaster.show({
+      message,
+      tone: isSuccess ? 'success' : 'error',
+      channel: 'formula-copy',
+      durationMs: this.config.toastDuration,
+    });
   }
 
   /**

@@ -3,6 +3,7 @@ import './__tests__/formulaCopyTestHarness';
 import { describe, expect, it, vi } from 'vitest';
 import browser from 'webextension-polyfill';
 
+import { toastDriver } from '@/tests/toastDriver';
 import { setCachedLanguage } from '@/utils/i18n';
 
 import { FormulaCopyService } from './FormulaCopyService';
@@ -109,12 +110,12 @@ describe('Formula copy service', () => {
     mathElement.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(writeTextMock).toHaveBeenCalledWith('$$x^2$$');
-    expect(document.querySelector('.gv-copy-toast')).not.toBeNull();
+    expect(toastDriver.all()).toHaveLength(1);
     expect(pageClick).not.toHaveBeenCalled();
 
     context.service.destroy();
     writeTextMock.mockClear();
-    expect(document.querySelector('.gv-copy-toast')).toBeNull();
+    expect(toastDriver.all()).toEqual([]);
     expect(document.documentElement.classList.contains('gv-formula-copy-enabled')).toBe(false);
 
     const disabledClick = new MouseEvent('click', { bubbles: true, cancelable: true });
@@ -235,7 +236,7 @@ describe('Formula copy service', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(document.querySelector('.gv-copy-toast')).toBeNull();
+    expect(toastDriver.all()).toEqual([]);
   });
 
   it('does not let a pre-disable timer hide a toast created after re-enable', async () => {
@@ -249,7 +250,7 @@ describe('Formula copy service', () => {
       mathElement.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
       await Promise.resolve();
-      expect(document.querySelector('.gv-copy-toast-show')).not.toBeNull();
+      expect(toastDriver.all()).toHaveLength(1);
 
       context.service.destroy();
       vi.advanceTimersByTime(1000);
@@ -257,12 +258,12 @@ describe('Formula copy service', () => {
       mathElement.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
       await Promise.resolve();
-      expect(document.querySelector('.gv-copy-toast-show')).not.toBeNull();
+      expect(toastDriver.all()).toHaveLength(1);
 
       vi.advanceTimersByTime(1000);
-      expect(document.querySelector('.gv-copy-toast-show')).not.toBeNull();
+      expect(toastDriver.all()).toHaveLength(1);
       vi.advanceTimersByTime(1000);
-      expect(document.querySelector('.gv-copy-toast-show')).toBeNull();
+      expect(toastDriver.all()).toEqual([]);
     } finally {
       vi.useRealTimers();
     }
@@ -286,8 +287,9 @@ describe('Formula copy service', () => {
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const toast = document.querySelector('.gv-copy-toast');
-    expect(toast?.textContent).toBe('✓ 公式已复制');
+    expect(toastDriver.all().map(({ message, tone }) => [message, tone])).toEqual([
+      ['✓ 公式已复制', 'success'],
+    ]);
 
     setCachedLanguage('en');
   });
