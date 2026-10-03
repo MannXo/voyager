@@ -1,3 +1,5 @@
+import { useCallback } from 'react';
+
 import {
   accountIsolationService,
   buildScopedStorageKey,
@@ -179,7 +181,7 @@ async function resolvePageScope(
 }
 
 /** Capture the independently scoped folders, hierarchy and highlights before sync. */
-export async function resolveCloudSyncContext(
+async function resolveCloudSyncContext(
   platform: SyncPlatform,
   includeHighlights: boolean,
   getTargetTab: TargetTab,
@@ -269,19 +271,8 @@ async function readLocalSyncData(
   return { folders, prompts, timelineHierarchy, accountScope, folderStorageKey };
 }
 
-/** Preserve the popup payload; the background re-reads authoritative storage for upload. */
-export async function prepareCloudUpload(context: CloudSyncContext, getTargetTab: TargetTab) {
-  const local = await readLocalSyncData(context, getTargetTab, 'upload');
-  return {
-    ...context.payload,
-    accountScope: local.accountScope,
-    folders: local.folders,
-    prompts: local.prompts,
-  };
-}
-
 /** Merge/overwrite, apply the ordered restore, then notify the page only after success. */
-export async function restoreCloudDownload(
+async function restoreCloudDownload(
   context: CloudSyncContext,
   getTargetTab: TargetTab,
   data: CloudDownloadData,
@@ -338,4 +329,34 @@ export async function restoreCloudDownload(
     console.warn('[CloudSyncSettings] Could not notify content script:', error);
   }
   return { foldersMissing: !hasCloudFolderData, nameConflicts: promptMerge.nameConflicts };
+}
+
+/** Capture each operation's scope; the download's restore keeps that captured context. */
+export function useCloudSyncTransfer(
+  platform: SyncPlatform,
+  includeHighlights: boolean,
+  getTargetTab: TargetTab,
+) {
+  const prepareUpload = useCallback(async () => {
+    const context = await resolveCloudSyncContext(platform, includeHighlights, getTargetTab);
+    const local = await readLocalSyncData(context, getTargetTab, 'upload');
+    // The background re-reads authoritative storage; retain the popup message contract.
+    return {
+      ...context.payload,
+      accountScope: local.accountScope,
+      folders: local.folders,
+      prompts: local.prompts,
+    };
+  }, [platform, includeHighlights, getTargetTab]);
+
+  const prepareDownload = useCallback(async () => {
+    const context = await resolveCloudSyncContext(platform, includeHighlights, getTargetTab);
+    return {
+      payload: context.payload,
+      restore: (data: CloudDownloadData, mode: CloudRestoreMode, highlightsRestored: boolean) =>
+        restoreCloudDownload(context, getTargetTab, data, mode, highlightsRestored),
+    };
+  }, [platform, includeHighlights, getTargetTab]);
+
+  return { prepareUpload, prepareDownload };
 }

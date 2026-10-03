@@ -1,27 +1,13 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React from 'react';
 
-import { detectAccountPlatformFromUrl } from '@/core/services/AccountIsolationService';
-import { StorageKeys } from '@/core/types/common';
-import type { SyncMode, SyncPlatform, SyncProvider, SyncState } from '@/core/types/sync';
-import { DEFAULT_SYNC_STATE } from '@/core/types/sync';
-import { getVoyagerBuildTarget, isSafari } from '@/core/utils/browser';
-import { deleteSafariICloudBackup } from '@/core/utils/safariICloudSync';
-import { FOLDER_PLATFORMS } from '@/features/folder/platforms';
+import type { SyncPlatform } from '@/core/types/sync';
 
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent, CardTitle } from '../../../components/ui/card';
 import { Label } from '../../../components/ui/label';
 import { Switch } from '../../../components/ui/switch';
 import { useLanguage } from '../../../contexts/LanguageContext';
-import { cloudRestoreFailureText } from './cloudRestore';
-import {
-  type CloudDownloadData,
-  prepareCloudUpload,
-  resolveCloudSyncContext,
-  restoreCloudDownload,
-} from './cloudSyncData';
-
-type DownloadMode = 'merge' | 'overwrite';
+import { useCloudSyncSettings } from './useCloudSyncSettings';
 
 /**
  * CloudSyncSettings component for popup
@@ -43,335 +29,27 @@ const PLATFORM_LABEL_KEYS: Record<SyncPlatform, 'platformGemini' | 'platformAISt
 
 export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) {
   const { t } = useLanguage();
-  const supportsICloud = getVoyagerBuildTarget() === 'safari' || isSafari();
-
-  const [syncState, setSyncState] = useState<SyncState>(DEFAULT_SYNC_STATE);
-  const [statusMessage, setStatusMessage] = useState<{
-    text: string;
-    kind: 'ok' | 'warn' | 'err';
-  } | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [isDeletingICloudBackup, setIsDeletingICloudBackup] = useState(false);
-  const [downloadMode, setDownloadMode] = useState<DownloadMode | null>(null);
-  const [platform, setPlatform] = useState<SyncPlatform>('gemini');
-  // False on tabs without a folder bucket (ChatGPT, Claude, …): render nothing, sync nothing.
-  const [hasFolderPlatform, setHasFolderPlatform] = useState(true);
-  const [highlightSyncEnabled, setHighlightSyncEnabled] = useState(true);
-
-  const getTargetTab = useCallback(async (): Promise<chrome.tabs.Tab | undefined> => {
-    if (typeof sourceTabId === 'number') {
-      try {
-        return await chrome.tabs.get(sourceTabId);
-      } catch {}
-    }
-
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    return tab;
-  }, [sourceTabId]);
-
-  // Detect current platform from active tab URL
-  const detectPlatform = useCallback(async (): Promise<SyncPlatform | null> => {
-    try {
-      const tab = await getTargetTab();
-      return detectAccountPlatformFromUrl(tab?.url ?? null);
-    } catch (e) {
-      console.warn('[CloudSyncSettings] Failed to detect platform:', e);
-    }
-    return 'gemini';
-  }, [getTargetTab]);
-
-  // Fetch sync state and detect platform on mount
-  useEffect(() => {
-    const fetchState = async () => {
-      try {
-        const [response, highlightSetting] = await Promise.all([
-          chrome.runtime.sendMessage({ type: 'gv.sync.getState' }),
-          chrome.storage.local.get({ [StorageKeys.HIGHLIGHT_CLOUD_SYNC_ENABLED]: true }),
-        ]);
-        if (response?.ok && response.state) {
-          setSyncState(response.state);
-        }
-        setHighlightSyncEnabled(
-          highlightSetting[StorageKeys.HIGHLIGHT_CLOUD_SYNC_ENABLED] !== false,
-        );
-      } catch (error) {
-        console.error('[CloudSyncSettings] Failed to get sync state:', error);
-      }
-    };
-    const initPlatform = async () => {
-      const detected = await detectPlatform();
-      setHasFolderPlatform(detected !== null);
-      if (detected) setPlatform(detected);
-    };
-    fetchState();
-    initPlatform();
-  }, [detectPlatform]);
-
-  // Format timestamp for display
-  const formatLastSync = useCallback(
-    (timestamp: number | null): string => {
-      if (!timestamp) return t('neverSynced');
-      const date = new Date(timestamp);
-      const now = new Date();
-      const diffMs = now.getTime() - date.getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-      const diffHours = Math.floor(diffMs / 3600000);
-      const diffDays = Math.floor(diffMs / 86400000);
-
-      let timeStr: string;
-      if (diffMins < 1) {
-        timeStr = t('justNow');
-      } else if (diffMins < 60) {
-        timeStr = `${diffMins} ${t('minutesAgo')}`;
-      } else if (diffHours < 24) {
-        timeStr = `${diffHours} ${t('hoursAgo')}`;
-      } else if (diffDays === 1) {
-        timeStr = t('yesterday');
-      } else {
-        timeStr = date.toLocaleDateString();
-      }
-
-      return t('lastSynced').replace('{time}', timeStr);
-    },
-    [t],
-  );
-
-  // Format upload timestamp for display
-  const formatLastUpload = useCallback(
-    (timestamp: number | null): string => {
-      if (!timestamp) return t('neverUploaded') || 'Never uploaded';
-      const date = new Date(timestamp);
-      const now = new Date();
-      const diffMs = now.getTime() - date.getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-      const diffHours = Math.floor(diffMs / 3600000);
-      const diffDays = Math.floor(diffMs / 86400000);
-
-      let timeStr: string;
-      if (diffMins < 1) {
-        timeStr = t('justNow');
-      } else if (diffMins < 60) {
-        timeStr = `${diffMins} ${t('minutesAgo')}`;
-      } else if (diffHours < 24) {
-        timeStr = `${diffHours} ${t('hoursAgo')}`;
-      } else if (diffDays === 1) {
-        timeStr = t('yesterday');
-      } else {
-        timeStr = date.toLocaleDateString();
-      }
-
-      return (t('lastUploaded') || 'Uploaded {time}').replace('{time}', timeStr);
-    },
-    [t],
-  );
-
-  // Handle mode change
-  const handleModeChange = useCallback(async (mode: SyncMode) => {
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: 'gv.sync.setMode',
-        payload: { mode },
-      });
-      if (response?.ok && response.state) {
-        setSyncState(response.state);
-      }
-    } catch (error) {
-      console.error('[CloudSyncSettings] Failed to set sync mode:', error);
-    }
-  }, []);
-
-  const handleProviderChange = useCallback(async (provider: SyncProvider) => {
-    setStatusMessage(null);
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: 'gv.sync.setProvider',
-        payload: { provider },
-      });
-      if (response?.ok && response.state) {
-        setSyncState(response.state);
-      }
-    } catch (error) {
-      console.error('[CloudSyncSettings] Failed to set sync provider:', error);
-    }
-  }, []);
-
-  const handleHighlightSyncChange = useCallback(async (enabled: boolean) => {
-    setHighlightSyncEnabled(enabled);
-    try {
-      await chrome.storage.local.set({
-        [StorageKeys.HIGHLIGHT_CLOUD_SYNC_ENABLED]: enabled,
-      });
-    } catch (error) {
-      setHighlightSyncEnabled(!enabled);
-      console.error('[CloudSyncSettings] Failed to save highlight sync setting:', error);
-    }
-  }, []);
-
-  // Handle sign out
-  const handleSignOut = useCallback(async () => {
-    try {
-      const response = await chrome.runtime.sendMessage({ type: 'gv.sync.signOut' });
-      if (response?.ok && response.state) {
-        setSyncState(response.state);
-      }
-    } catch (error) {
-      console.error('[CloudSyncSettings] Sign out failed:', error);
-    }
-  }, []);
-
-  const handleDeleteICloudBackup = useCallback(async () => {
-    if (!window.confirm(t('syncDeleteICloudConfirm'))) return;
-
-    setStatusMessage(null);
-    setIsDeletingICloudBackup(true);
-    try {
-      const deleted = await deleteSafariICloudBackup();
-      setStatusMessage({
-        text: t('syncDeleteICloudSuccess').replace('{count}', String(deleted)),
-        kind: 'ok',
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setStatusMessage({
-        text: t('syncDeleteICloudFailed').replace('{error}', message),
-        kind: 'err',
-      });
-    } finally {
-      setIsDeletingICloudBackup(false);
-    }
-  }, [t]);
-
-  // Handle sync now (upload current data)
-  const handleSyncNow = useCallback(async () => {
-    setStatusMessage(null);
-    setIsUploading(true);
-
-    try {
-      const context = await resolveCloudSyncContext(platform, highlightSyncEnabled, getTargetTab);
-      const payload = await prepareCloudUpload(context, getTargetTab);
-
-      const response = (await chrome.runtime.sendMessage({
-        type: 'gv.sync.upload',
-        payload,
-      })) as
-        | {
-            ok?: boolean;
-            error?: string;
-            state?: SyncState;
-            highlights?: { synced?: boolean; skipped?: boolean };
-          }
-        | undefined;
-
-      if (response?.state) {
-        setSyncState(response.state);
-      }
-
-      if (response?.ok) {
-        setStatusMessage({
-          text: t(response.highlights?.skipped ? 'syncSuccessHighlightsSkipped' : 'syncSuccess'),
-          kind: response.highlights?.skipped ? 'warn' : 'ok',
-        });
-      } else {
-        throw new Error(response?.error || response?.state?.error || t('syncUploadFailed'));
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Sync failed';
-      console.error('[CloudSyncSettings] Sync failed:', error);
-      setStatusMessage({ text: t('syncError').replace('{error}', errorMessage), kind: 'err' });
-    } finally {
-      setIsUploading(false);
-    }
-  }, [getTargetTab, highlightSyncEnabled, platform, t]);
-
-  // Handle download from Drive (restore data) with merge as the default safe path.
-  const handleDownloadFromDrive = useCallback(
-    async (mode: DownloadMode = 'merge') => {
-      if (mode === 'overwrite' && !window.confirm(t('syncOverwriteConfirm'))) {
-        return;
-      }
-
-      setStatusMessage(null);
-      setIsDownloading(true);
-      setDownloadMode(mode);
-
-      try {
-        const context = await resolveCloudSyncContext(platform, highlightSyncEnabled, getTargetTab);
-
-        const response = (await chrome.runtime.sendMessage({
-          type: 'gv.sync.download',
-          payload: context.payload,
-        })) as
-          | {
-              ok?: boolean;
-              error?: string;
-              state?: SyncState;
-              highlights?: {
-                synced?: boolean;
-                skipped?: boolean;
-                count?: number;
-                empty?: boolean;
-              };
-              data?: CloudDownloadData | null;
-            }
-          | undefined;
-
-        if (response?.state) {
-          setSyncState(response.state);
-        }
-
-        if (!response?.ok) {
-          throw new Error(response?.error || response?.state?.error || t('syncDownloadFailed'));
-        }
-
-        if (!response.data) {
-          if (response.highlights?.synced) {
-            setStatusMessage({ text: t('syncSuccess'), kind: 'ok' });
-            return;
-          }
-          setStatusMessage({ text: t('syncNoData'), kind: 'err' });
-          setIsDownloading(false);
-          return;
-        }
-
-        const { foldersMissing, nameConflicts } = await restoreCloudDownload(
-          context,
-          getTargetTab,
-          response.data,
-          mode,
-          response.highlights?.synced === true,
-        );
-        setStatusMessage({
-          text:
-            nameConflicts > 0
-              ? t('promptNameConflictsDetected').replace('{count}', String(nameConflicts))
-              : t(
-                  foldersMissing
-                    ? 'syncSuccessFoldersMissing'
-                    : response.highlights?.skipped
-                      ? 'syncSuccessHighlightsSkipped'
-                      : 'syncSuccess',
-                ),
-          kind: foldersMissing || response.highlights?.skipped || nameConflicts > 0 ? 'warn' : 'ok',
-        });
-      } catch (error) {
-        console.error('[CloudSyncSettings] Download failed:', error);
-        setStatusMessage({ text: cloudRestoreFailureText(t, error), kind: 'err' });
-      } finally {
-        setIsDownloading(false);
-        setDownloadMode(null);
-      }
-    },
-    [getTargetTab, highlightSyncEnabled, platform, t],
-  );
-
-  // Clear status message after 3 seconds
-  useEffect(() => {
-    if (statusMessage) {
-      const timer = setTimeout(() => setStatusMessage(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [statusMessage]);
+  const {
+    syncState,
+    statusMessage,
+    supportsICloud,
+    hasFolderPlatform,
+    platform,
+    highlightSyncEnabled,
+    isUploading,
+    isDownloading,
+    isDeletingICloudBackup,
+    downloadMode,
+    lastUploadText,
+    lastSyncText,
+    handleModeChange,
+    handleProviderChange,
+    handleHighlightSyncChange,
+    handleSignOut,
+    handleDeleteICloudBackup,
+    handleSyncNow,
+    handleDownloadFromDrive,
+  } = useCloudSyncSettings(sourceTabId);
 
   if (!hasFolderPlatform) return null;
   return (
@@ -626,17 +304,13 @@ export function CloudSyncSettings({ sourceTabId }: CloudSyncSettingsProps = {}) 
                     <span aria-hidden="true" className="text-foreground/45">
                       ↑
                     </span>
-                    <span className="min-w-0 break-words">
-                      {formatLastUpload(syncState[FOLDER_PLATFORMS[platform].lastUploadTimeField])}
-                    </span>
+                    <span className="min-w-0 break-words">{lastUploadText}</span>
                   </p>
                   <p className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-1.5">
                     <span aria-hidden="true" className="text-foreground/45">
                       ↓
                     </span>
-                    <span className="min-w-0 break-words">
-                      {formatLastSync(syncState[FOLDER_PLATFORMS[platform].lastSyncTimeField])}
-                    </span>
+                    <span className="min-w-0 break-words">{lastSyncText}</span>
                   </p>
                 </div>
               </div>
