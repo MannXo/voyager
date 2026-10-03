@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { resolveExportAdapter } from '@/pages/content/export/adapter/platformAdapters';
 
-import { DOMContentExtractor } from '../DOMContentExtractor';
+import type { ChatTurn } from '../../types/export';
+import { createContentExtractor, extractTurnContent } from '../DOMContentExtractor';
 import { renderElementToImageBlob } from '../ImageRenderService';
 import { PDFPrintService } from '../PDFPrintService';
 import { resolveNativeSidebarTitle } from '../pdfPrintTitles';
@@ -11,7 +12,9 @@ vi.mock('../ImageRenderService', () => ({
   renderElementToImageBlob: vi.fn(async () => new Blob(['png'], { type: 'image/png' })),
 }));
 
-DOMContentExtractor.setExportAdapter(resolveExportAdapter());
+const extractor = createContentExtractor(resolveExportAdapter());
+const extracted = (turns: ChatTurn[]): ChatTurn[] =>
+  turns.map((turn) => extractTurnContent(turn, extractor));
 
 describe('PDFPrintService', () => {
   afterEach(() => {
@@ -128,7 +131,9 @@ describe('PDFPrintService', () => {
     `;
 
     await PDFPrintService.export(
-      [{ user: '', assistant: '', assistantElement, starred: false, omitEmptySections: true }],
+      extracted([
+        { user: '', assistant: '', assistantElement, starred: false, omitEmptySections: true },
+      ]),
       {
         url: 'https://chatgpt.com/c/x',
         exportedAt: new Date().toISOString(),
@@ -205,29 +210,6 @@ describe('PDFPrintService', () => {
     );
   });
 
-  it('reuses conversation print markup for document PDF content', async () => {
-    document.title = 'Original Title';
-    window.print = vi.fn();
-
-    await PDFPrintService.exportDocument({
-      title: 'Deep Research Report',
-      url: 'https://gemini.google.com/app/x',
-      exportedAt: new Date().toISOString(),
-      markdown: '# Markdown heading',
-      html: '<div class="markdown-main-panel"><h2>HTML heading</h2><p>HTML body</p></div>',
-    });
-
-    const turn = document.querySelector('.gv-print-turn');
-    const reportContainer = document.querySelector('.gv-print-report-content');
-    const coverTitle = document.querySelector('.gv-print-cover-title');
-    const turnText = document.querySelector('.gv-print-turn-text');
-    expect(turn).toBeTruthy();
-    expect(reportContainer).toBeNull();
-    expect(coverTitle?.textContent).toContain('Deep Research Report');
-    expect(turnText?.textContent).toContain('HTML heading');
-    expect(turnText?.textContent).not.toContain('Markdown heading');
-  });
-
   it('uses classed div containers instead of semantic print tags', async () => {
     window.print = vi.fn();
 
@@ -255,7 +237,7 @@ describe('PDFPrintService', () => {
     `;
 
     await PDFPrintService.export(
-      [{ user: '', assistant: 'Reviewed', starred: false, userElement }],
+      extracted([{ user: '', assistant: 'Reviewed', starred: false, userElement }]),
       {
         url: 'https://gemini.google.com/app/x',
         exportedAt: new Date().toISOString(),
@@ -300,7 +282,7 @@ describe('PDFPrintService', () => {
     `;
 
     await PDFPrintService.export(
-      [{ user: 'Diagram', assistant: '', starred: false, assistantElement }],
+      extracted([{ user: 'Diagram', assistant: '', starred: false, assistantElement }]),
       {
         url: 'https://gemini.google.com/app/x',
         exportedAt: new Date().toISOString(),
@@ -367,7 +349,7 @@ describe('PDFPrintService', () => {
     `;
 
     await PDFPrintService.export(
-      [{ user: 'Diagram', assistant: '', starred: false, assistantElement }],
+      extracted([{ user: 'Diagram', assistant: '', starred: false, assistantElement }]),
       {
         url: 'https://gemini.google.com/app/x',
         exportedAt: new Date().toISOString(),

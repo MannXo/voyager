@@ -20,7 +20,7 @@ import {
   userMessageId,
   userSelectionHost,
 } from './chatgptThread';
-import type { ExportSelectionOptions } from './type';
+import type { ChatGptReadOptions, ExportSelectionOptions } from './type';
 
 /**
  * Walk ChatGPT's virtualized thread from its first turn to its last and
@@ -64,7 +64,7 @@ export const DEFAULT_CHATGPT_CRAWL_TIMING: ChatGptCrawlTiming = {
   maxSteps: 5000,
 };
 
-export interface ChatGptCrawlOptions extends ExportSelectionOptions {
+export interface ChatGptCrawlOptions extends ChatGptReadOptions {
   readonly timing?: Partial<ChatGptCrawlTiming>;
   /** Called with the number of turns read so far, after each one. */
   readonly onProgress?: (turns: number) => void;
@@ -273,7 +273,7 @@ async function captureItem(context: CrawlContext, key: string): Promise<Captured
       // A bubble or reply still empty after the wait is blank in ChatGPT too.
       const messages: ChatGptThreadMessage[] = [];
       if (bubble && hasRenderedContent(bubble)) {
-        const content = extractUserMessage(item, bubble);
+        const content = extractUserMessage(item, bubble, options.extractor);
         if (!isEmptyContent(content)) {
           messages.push({
             id: userMessageId(key),
@@ -286,7 +286,7 @@ async function captureItem(context: CrawlContext, key: string): Promise<Captured
         }
       }
       if (reply && hasRenderedContent(reply)) {
-        const content = extractAssistantMessage(item, reply);
+        const content = extractAssistantMessage(item, reply, options.extractor);
         if (!isEmptyContent(content)) {
           messages.push({
             id: assistantMessageId(key),
@@ -405,7 +405,7 @@ function captureReaderPosition(context: CrawlContext): ScrollRestore {
  * position is restored either way.
  */
 export async function crawlChatGptThread(
-  options: ChatGptCrawlOptions = {},
+  options: ChatGptCrawlOptions,
 ): Promise<ChatGptThreadMessage[]> {
   assertActive(options);
   const timing = { ...DEFAULT_CHATGPT_CRAWL_TIMING, ...options.timing };

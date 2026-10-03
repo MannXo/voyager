@@ -15,14 +15,12 @@ describe('PDF print title resolution', () => {
     window.history.pushState({}, '', '/');
   });
 
-  it('keeps cover and conversation/document dialog fallbacks distinct', () => {
+  it('keeps cover and conversation dialog fallbacks distinct', () => {
     expect(resolvePDFPrintTitle(metadata, 'cover')).toBe('Untitled Conversation');
     expect(resolvePDFPrintTitle(metadata, 'conversation')).toBe('Gemini Conversation');
-    expect(resolvePDFPrintTitle(metadata, 'document')).toBe('Gemini Conversation');
     const titled = { ...metadata, title: '  Research  - Gemini  ', platform: 'web' };
     expect(resolvePDFPrintTitle(titled, 'cover')).toBe('Research');
     expect(resolvePDFPrintTitle(titled, 'conversation')).toBe('Research - web');
-    expect(resolvePDFPrintTitle(titled, 'document')).toBe('Research');
   });
 
   it('prefers metadata, then the selected folder title, then native sidebar and page titles', () => {
@@ -61,7 +59,7 @@ describe('PDF print title resolution', () => {
     expect(resolvePDFPrintTitle(titled, 'cover')).toBe('A title');
     expect(resolvePDFPrintTitle(titled, 'conversation')).toBe('A title - Model (Preview)+');
     expect(
-      resolvePDFPrintTitle({ ...metadata, title: 'CHATGPT', platform: 'ChatGPT' }, 'document'),
+      resolvePDFPrintTitle({ ...metadata, title: 'CHATGPT', platform: 'ChatGPT' }, 'conversation'),
     ).toBe('ChatGPT Conversation');
   });
 

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { DOMContentExtractor } from '../DOMContentExtractor';
+import { createContentExtractor } from '../DOMContentExtractor';
 import { domExtractorTestAdapter } from './domExtractorTestAdapter';
 
-DOMContentExtractor.setExportAdapter(domExtractorTestAdapter);
+const extractor = createContentExtractor(domExtractorTestAdapter);
 
 describe('exportRichText.inline', () => {
   it('preserves direct text around nested inline elements', () => {
@@ -14,7 +14,7 @@ describe('exportRichText.inline', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.text).toContain('Amount: **42** total');
     expect(extracted.html).toContain('Amount:');
@@ -34,7 +34,7 @@ describe('exportRichText.inline', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.text).toBe(expected);
   });
@@ -49,7 +49,7 @@ describe('exportRichText.inline', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.text).toBe('Hello, world.');
   });
@@ -64,7 +64,7 @@ describe('exportRichText.inline', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.text).toBe('First Second');
     expect(extracted.html).toContain('<span> </span>');

@@ -1,17 +1,17 @@
+/**
+ * Extracts rich message content from a host page, preserving formatting such
+ * as LaTeX formulas, code blocks and tables. Host-specific rules come from the
+ * dialect the extractor is created with.
+ */
 import { logger } from '@/core/services/LoggerService';
 
-/**
- * DOM Content Extractor
- * Extracts rich content from Gemini's DOM structure preserving formatting
- */
-import type { ExportPlatformAdapter } from '../../../pages/content/export/adapter/platformAdapters';
-import type { ExportAttachment } from '../types/export';
+import type { ChatTurn, ExportAttachment } from '../types/export';
 import {
   findExportCodeBlocks,
   extractExportCodeBlock,
-  extractCodeBlock,
   extractCodeFromCodeElement,
 } from './exportCodeBlocks';
+import type { ExportContentDialect, ExtractedContentFlags } from './exportContentDialect';
 import {
   shouldSkipElement,
   normalizeText,
@@ -32,16 +32,10 @@ export interface ExtractedContent {
   hasCode: boolean;
 }
 
-export interface ExtractedTurn {
-  user: ExtractedContent;
-  assistant: ExtractedContent;
-  starred: boolean;
+export interface ContentExtractor {
+  extractUserContent(element: HTMLElement): ExtractedContent;
+  extractAssistantContent(element: HTMLElement): ExtractedContent;
 }
-
-/**
- * Extracts structured content from Gemini's DOM
- * Preserves formatting including LaTeX formulas, code blocks, tables, etc.
- */
 
 /**
  * querySelector variant that skips elements nested inside model-thoughts / thoughts-container.
@@ -62,28 +56,8 @@ function queryOutsideThoughts<T extends Element = Element>(
   return null;
 }
 
-export class DOMContentExtractor {
-  private static exportAdapter: ExportPlatformAdapter;
-
-  /**
-   * Set the export adapter.
-   * @param adapter - The export adapter.
-   */
-  static setExportAdapter(adapter: ExportPlatformAdapter) {
-    this.exportAdapter = adapter;
-  }
-
-  /**
-   * Extract user query content.
-   */
-  static extractUserContent(element: HTMLElement): ExtractedContent {
-    return extractUserContent(element, this.exportAdapter);
-  }
-
-  /**
-   * Extract assistant response content with rich formatting
-   */
-  static extractAssistantContent(element: HTMLElement): ExtractedContent {
+export function createContentExtractor(dialect: ExportContentDialect): ContentExtractor {
+  function extractAssistantContent(element: HTMLElement): ExtractedContent {
     const result: ExtractedContent = {
       text: '',
       html: '',
@@ -132,13 +106,7 @@ export class DOMContentExtractor {
     const processedImageSrcs = new Set<string>();
 
     const markdownDiv = messageContent.querySelector('.markdown, .markdown-main-panel');
-    this.processNodes(
-      markdownDiv || messageContent,
-      htmlParts,
-      textParts,
-      result,
-      processedImageSrcs,
-    );
+    processNodes(markdownDiv || messageContent, htmlParts, textParts, result, processedImageSrcs);
 
     // Helper function to search in both light DOM and shadow DOM
     const searchAll = (root: Element, selector: string): Element[] => {
@@ -184,9 +152,9 @@ export class DOMContentExtractor {
       (messageContent.closest(
         'model-response, .model-response, .presented-response-container, .response-container, response-container',
       ) as HTMLElement | null) || messageContent;
-    this.processYouTubeCovers(leftoverRoot, htmlParts, textParts, result);
+    processYouTubeCovers(leftoverRoot, htmlParts, textParts, result);
     if (markdownDiv) {
-      this.exportAdapter.collectAssistantImages?.(
+      dialect.collectAssistantImages?.(
         leftoverRoot,
         htmlParts,
         textParts,
@@ -211,7 +179,7 @@ export class DOMContentExtractor {
       try {
         const plain =
           (fallbackContainer as HTMLElement).innerText || fallbackContainer.textContent || '';
-        combinedText = this.normalizeText(plain);
+        combinedText = normalizeText(plain);
       } catch {
         /* ignore */
       }
@@ -221,14 +189,11 @@ export class DOMContentExtractor {
     return result;
   }
 
-  /**
-   * Process DOM nodes recursively
-   */
-  private static processNodes(
+  function processNodes(
     container: Element | ShadowRoot,
     htmlParts: string[],
     textParts: string[],
-    flags: Pick<ExtractedContent, 'hasImages' | 'hasFormulas' | 'hasTables' | 'hasCode'>,
+    flags: ExtractedContentFlags,
     processedImageSrcs: Set<string> = new Set<string>(),
   ): void {
     const children = Array.from(container.children);
@@ -267,7 +232,7 @@ export class DOMContentExtractor {
     // Check for Shadow DOM
     const shadowRoot = container instanceof Element ? container.shadowRoot : null;
     if (shadowRoot) {
-      this.processNodes(shadowRoot, htmlParts, textParts, flags, processedImageSrcs);
+      processNodes(shadowRoot, htmlParts, textParts, flags, processedImageSrcs);
     }
 
     for (const child of children) {
@@ -279,7 +244,7 @@ export class DOMContentExtractor {
       }
 
       if (child.shadowRoot && child.children.length === 0) {
-        this.processNodes(child.shadowRoot, htmlParts, textParts, flags, processedImageSrcs);
+        processNodes(child.shadowRoot, htmlParts, textParts, flags, processedImageSrcs);
         continue;
       }
 
@@ -291,14 +256,14 @@ export class DOMContentExtractor {
         const contentText = contentEl?.textContent || '';
 
         htmlParts.push(
-          `<div class="gv-canvas-export-section"><h3>${this.escapeHtml(headingText)}</h3><pre style="white-space: pre-wrap;">${this.escapeHtml(contentText)}</pre></div>`,
+          `<div class="gv-canvas-export-section"><h3>${escapeHtml(headingText)}</h3><pre style="white-space: pre-wrap;">${escapeHtml(contentText)}</pre></div>`,
         );
         textParts.push(`\n### ${headingText}\n\n${contentText}\n`);
         continue;
       }
 
       // Extract formula
-      if (this.exportAdapter.extractFormula(child, flags, htmlParts, textParts, false)) {
+      if (dialect.extractFormula(child, flags, htmlParts, textParts, false)) {
         continue;
       }
 
@@ -317,14 +282,14 @@ export class DOMContentExtractor {
       }
 
       // Extract code block via the per-platform adapter
-      if (this.exportAdapter.extractCodeBlock(child, htmlParts, textParts, flags, tagName, false)) {
+      if (dialect.extractCodeBlock(child, htmlParts, textParts, flags, tagName, false)) {
         continue;
       }
 
       // Traverse containers that own export blocks instead of consuming only their first
       // descendant. This keeps prose, code, and Mermaid output in DOM order.
       if (tagName !== 'ul' && tagName !== 'ol' && exportCodeBlocks.length > 0) {
-        this.processNodes(child, htmlParts, textParts, flags);
+        processNodes(child, htmlParts, textParts, flags);
         continue;
       }
 
@@ -337,7 +302,7 @@ export class DOMContentExtractor {
         child.querySelector('table')
       ) {
         const elementToExtract = (tableBlock || child) as HTMLElement;
-        const tableContent = extractTable(elementToExtract, this.exportAdapter);
+        const tableContent = extractTable(elementToExtract, dialect);
         if (tableContent.hasFormulas) flags.hasFormulas = true;
         if (tableContent.text) {
           // Only add if table was successfully extracted
@@ -350,7 +315,7 @@ export class DOMContentExtractor {
 
       // Extract assistant image
       if (
-        this.exportAdapter.extractAssistantImage(
+        dialect.extractAssistantImage(
           child,
           htmlParts,
           textParts,
@@ -372,7 +337,7 @@ export class DOMContentExtractor {
 
       // Paragraph with possible inline formulas
       if (tagName === 'p') {
-        const processed = processInlineContent(child as HTMLElement, this.exportAdapter);
+        const processed = processInlineContent(child as HTMLElement, dialect);
         if (processed.hasFormulas) flags.hasFormulas = true;
         htmlParts.push(`<p>${processed.html}</p>`);
         textParts.push(`${processed.text}\n`);
@@ -381,7 +346,7 @@ export class DOMContentExtractor {
 
       // Headings
       if (/^h[1-6]$/.test(tagName)) {
-        const text = processInlineContent(child as HTMLElement, this.exportAdapter);
+        const text = processInlineContent(child as HTMLElement, dialect);
         const level = tagName[1];
         htmlParts.push(`<h${level}>${text.html}</h${level}>`);
         textParts.push(`\n${'#'.repeat(parseInt(level))} ${text.text}\n`);
@@ -390,7 +355,7 @@ export class DOMContentExtractor {
 
       // Lists
       if (tagName === 'ul' || tagName === 'ol') {
-        const listContent = extractList(child as HTMLElement, this.exportAdapter);
+        const listContent = extractList(child as HTMLElement, dialect);
         if (listContent.hasFormulas) flags.hasFormulas = true;
         if (listContent.hasCode) flags.hasCode = true;
         htmlParts.push(listContent.html);
@@ -401,7 +366,7 @@ export class DOMContentExtractor {
       if (tagName === 'blockquote') {
         const quoteHtml: string[] = [];
         const quoteText: string[] = [];
-        this.processNodes(child, quoteHtml, quoteText, flags, processedImageSrcs);
+        processNodes(child, quoteHtml, quoteText, flags, processedImageSrcs);
         htmlParts.push(`<blockquote>${quoteHtml.join('')}</blockquote>`);
         const markdown = quoteText
           .join('')
@@ -418,26 +383,26 @@ export class DOMContentExtractor {
       // (e.g. Claude's response containers) without needing a whitelist.
       if (child.children.length > 0) {
         const hasDirectText = Array.from(child.childNodes).some(
-          (node) => node.nodeType === Node.TEXT_NODE && this.normalizeText(node.textContent || ''),
+          (node) => node.nodeType === Node.TEXT_NODE && normalizeText(node.textContent || ''),
         );
         const onlyInlineChildren = Array.from(child.children).every((element) =>
           /^(?:A|B|CODE|EM|I|IMG|SPAN|STRONG|SUB|SUP)$/.test(element.tagName),
         );
         if (hasDirectText && onlyInlineChildren) {
-          const processed = processInlineContent(child as HTMLElement, this.exportAdapter);
+          const processed = processInlineContent(child as HTMLElement, dialect);
           if (processed.hasFormulas) flags.hasFormulas = true;
           appendInlineContent(processed);
         } else {
-          this.processNodes(child, htmlParts, textParts, flags, processedImageSrcs);
+          processNodes(child, htmlParts, textParts, flags, processedImageSrcs);
         }
         continue;
       }
 
       // Leaf element with no child elements: extract text content
       const rawText = child.textContent || '';
-      const text = this.normalizeText(rawText);
+      const text = normalizeText(rawText);
       appendInlineContent({
-        html: this.escapeHtml(text),
+        html: escapeHtml(text),
         text,
         hasFormulas: false,
         hasLeadingWhitespace: /^\s/.test(rawText),
@@ -446,95 +411,97 @@ export class DOMContentExtractor {
     }
   }
 
-  /**
-   * Extract YouTube video cover thumbnails as clickable cover images.
-   *
-   * Gemini renders a video as
-   *   `.attachment-container.youtube > … > youtube-block > single-video > … > img.thumbnail`
-   * plus an `<iframe>` player that can't be exported. The custom elements
-   * (youtube-block / single-video / default-player) stop processNodes' generic
-   * recursion, so the cover is otherwise dropped. Here we emit the cover image
-   * linked to the watch URL so it survives Markdown / PDF / image exports.
-   *
-   * Deduped across call sites via a `processedByGV` marker on the <img>.
-   * Returns true if at least one cover was emitted.
-   */
-  public static processYouTubeCovers(
-    scope: Element,
-    htmlParts: string[],
-    textParts: string[],
-    flags: Pick<ExtractedContent, 'hasImages' | 'hasFormulas' | 'hasTables' | 'hasCode'>,
-  ): boolean {
-    const thumbs = scope.querySelectorAll<HTMLImageElement>(
-      '.attachment-container.youtube img.thumbnail, youtube-block img.thumbnail, single-video img.thumbnail',
-    );
-    const videoIdFrom = (u: string | null | undefined): string => {
-      const m = (u || '').match(/(?:\/vi\/|[?&]v=|youtu\.be\/|embed\/)([\w-]{11})/);
-      return m ? m[1] : '';
-    };
-    let emitted = false;
-    for (const imgEl of Array.from(thumbs)) {
-      const marked = imgEl as Element & { processedByGV?: boolean };
-      if (marked.processedByGV) continue;
-      let src = imgEl.src || imgEl.getAttribute('src') || '';
-      if (!src || src === 'about:blank') continue;
-      marked.processedByGV = true;
+  return {
+    extractUserContent: (element) => extractUserContent(element, dialect),
+    extractAssistantContent,
+  };
+}
 
-      const card =
-        imgEl.closest('single-video, youtube-block, .attachment-container.youtube') ||
-        imgEl.parentElement ||
-        scope;
-      let videoId = videoIdFrom(src);
-      if (!videoId) {
-        const ref = card.querySelector('a[href*="youtu"], iframe[src*="youtube"]') as
-          | HTMLAnchorElement
-          | HTMLIFrameElement
-          | null;
-        videoId = videoIdFrom(
-          (ref as HTMLAnchorElement | null)?.href || (ref as HTMLIFrameElement | null)?.src,
-        );
-      }
-      // Prefer a stable cover URL when we know the id and the live src isn't a ytimg URL.
-      if (videoId && !/ytimg\.com|img\.youtube\.com/.test(src)) {
-        src = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-      }
-      const watchUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : '';
-      const titleRaw =
-        (imgEl.alt && imgEl.alt.trim()) ||
-        card.querySelector('.video-title, [class*="title"]')?.textContent?.trim() ||
-        'YouTube video';
-      const title = this.normalizeText(titleRaw);
+/**
+ * Extract YouTube video cover thumbnails as clickable cover images.
+ *
+ * Gemini renders a video as
+ *   `.attachment-container.youtube > … > youtube-block > single-video > … > img.thumbnail`
+ * plus an `<iframe>` player that can't be exported. The custom elements
+ * (youtube-block / single-video / default-player) stop processNodes' generic
+ * recursion, so the cover is otherwise dropped. Here we emit the cover image
+ * linked to the watch URL so it survives Markdown / PDF / image exports.
+ *
+ * Deduped across call sites via a `processedByGV` marker on the <img>.
+ * Returns true if at least one cover was emitted.
+ */
+export function processYouTubeCovers(
+  scope: Element,
+  htmlParts: string[],
+  textParts: string[],
+  flags: ExtractedContentFlags,
+): boolean {
+  const thumbs = scope.querySelectorAll<HTMLImageElement>(
+    '.attachment-container.youtube img.thumbnail, youtube-block img.thumbnail, single-video img.thumbnail',
+  );
+  const videoIdFrom = (u: string | null | undefined): string => {
+    const m = (u || '').match(/(?:\/vi\/|[?&]v=|youtu\.be\/|embed\/)([\w-]{11})/);
+    return m ? m[1] : '';
+  };
+  let emitted = false;
+  for (const imgEl of Array.from(thumbs)) {
+    const marked = imgEl as Element & { processedByGV?: boolean };
+    if (marked.processedByGV) continue;
+    let src = imgEl.src || imgEl.getAttribute('src') || '';
+    if (!src || src === 'about:blank') continue;
+    marked.processedByGV = true;
 
-      flags.hasImages = true;
-      const imgHtml = `<img src="${this.escapeHtmlAttribute(src)}" alt="${this.escapeHtmlAttribute(title)}" />`;
-      htmlParts.push(
-        watchUrl ? `<a href="${this.escapeHtmlAttribute(watchUrl)}">${imgHtml}</a>` : imgHtml,
+    const card =
+      imgEl.closest('single-video, youtube-block, .attachment-container.youtube') ||
+      imgEl.parentElement ||
+      scope;
+    let videoId = videoIdFrom(src);
+    if (!videoId) {
+      const ref = card.querySelector('a[href*="youtu"], iframe[src*="youtube"]') as
+        | HTMLAnchorElement
+        | HTMLIFrameElement
+        | null;
+      videoId = videoIdFrom(
+        (ref as HTMLAnchorElement | null)?.href || (ref as HTMLIFrameElement | null)?.src,
       );
-      const mdAlt = title.replace(/\]/g, '\\]');
-      textParts.push(
-        watchUrl ? `\n[![${mdAlt}](${src})](${watchUrl})\n` : `\n![${mdAlt}](${src})\n`,
-      );
-      emitted = true;
     }
-    return emitted;
-  }
+    // Prefer a stable cover URL when we know the id and the live src isn't a ytimg URL.
+    if (videoId && !/ytimg\.com|img\.youtube\.com/.test(src)) {
+      src = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+    }
+    const watchUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : '';
+    const titleRaw =
+      (imgEl.alt && imgEl.alt.trim()) ||
+      card.querySelector('.video-title, [class*="title"]')?.textContent?.trim() ||
+      'YouTube video';
+    const title = normalizeText(titleRaw);
 
-  public static extractCodeBlock(
-    element: HTMLElement,
-    languageOverride?: string,
-  ): { html: string; text: string } {
-    return extractCodeBlock(element, languageOverride);
+    flags.hasImages = true;
+    const imgHtml = `<img src="${escapeHtmlAttribute(src)}" alt="${escapeHtmlAttribute(title)}" />`;
+    htmlParts.push(
+      watchUrl ? `<a href="${escapeHtmlAttribute(watchUrl)}">${imgHtml}</a>` : imgHtml,
+    );
+    const mdAlt = title.replace(/\]/g, '\\]');
+    textParts.push(watchUrl ? `\n[![${mdAlt}](${src})](${watchUrl})\n` : `\n![${mdAlt}](${src})\n`);
+    emitted = true;
   }
+  return emitted;
+}
 
-  public static normalizeText(text: string): string {
-    return normalizeText(text);
-  }
-
-  public static escapeHtml(text: string): string {
-    return escapeHtml(text);
-  }
-
-  public static escapeHtmlAttribute(text: string): string {
-    return escapeHtmlAttribute(text);
-  }
+/**
+ * The turn with its rich content read from the page once, so every export
+ * format renders the same snapshot. Content captured earlier is kept.
+ */
+export function extractTurnContent(turn: ChatTurn, extractor: ContentExtractor): ChatTurn {
+  return {
+    ...turn,
+    userContent:
+      turn.userContent ??
+      (turn.userElement ? extractor.extractUserContent(turn.userElement) : undefined),
+    assistantContent:
+      turn.assistantContent ??
+      (turn.assistantElement
+        ? extractor.extractAssistantContent(turn.assistantElement)
+        : undefined),
+  };
 }

@@ -4,7 +4,10 @@
  * Runs only when the user clicks "Add to pack" on that answer: nothing here
  * observes or reads responses on its own.
  */
-import { DOMContentExtractor } from '@/features/export/services/DOMContentExtractor';
+import {
+  type ContentExtractor,
+  createContentExtractor,
+} from '@/features/export/services/DOMContentExtractor';
 import type { ResearchPackDraftItem } from '@/features/researchPack/services/types';
 
 import { resolveExportAdapter } from '../export/adapter/platformAdapters';
@@ -59,12 +62,12 @@ export function collectAnswerLinks(host: HTMLElement): Array<{ url: string; titl
   return links;
 }
 
-function readPrompt(host: HTMLElement): string {
+function readPrompt(host: HTMLElement, extractor: ContentExtractor): string {
   const container = host.closest('.conversation-container');
   const userQuery = container?.querySelector<HTMLElement>('user-query');
   if (!userQuery) return '';
   try {
-    const text = DOMContentExtractor.extractUserContent(userQuery).text;
+    const text = extractor.extractUserContent(userQuery).text;
     if (text.trim()) return text;
   } catch {
     // Fall through to the visible text.
@@ -72,9 +75,9 @@ function readPrompt(host: HTMLElement): string {
   return userQuery.textContent ?? '';
 }
 
-function readAnswerMarkdown(answer: HTMLElement): string {
+function readAnswerMarkdown(answer: HTMLElement, extractor: ContentExtractor): string {
   try {
-    const text = DOMContentExtractor.extractAssistantContent(answer).text;
+    const text = extractor.extractAssistantContent(answer).text;
     if (text.trim()) return text;
   } catch {
     // Fall through to the visible text.
@@ -88,16 +91,14 @@ function readAnswerMarkdown(answer: HTMLElement): string {
  */
 export function captureAnswer(host: HTMLElement, selectedText: string): ResearchPackDraftItem {
   const adapter = resolveExportAdapter();
-  // The extractor keeps its adapter in static state; set it for this site on
-  // every capture instead of relying on the export module having loaded.
-  DOMContentExtractor.setExportAdapter(adapter);
+  const extractor = createContentExtractor(adapter);
 
   const answer = resolveAnswerElement(host);
   const excerpt = selectedText.length > 0;
   return {
-    text: excerpt ? selectedText : readAnswerMarkdown(answer),
+    text: excerpt ? selectedText : readAnswerMarkdown(answer, extractor),
     excerpt,
-    prompt: readPrompt(host),
+    prompt: readPrompt(host, extractor),
     sourceTitle: adapter.extractConversationTitle(),
     sourceUrl: window.location.href,
     platform: adapter.site.id,

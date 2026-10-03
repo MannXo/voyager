@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { DOMContentExtractor } from '@/features/export/services/DOMContentExtractor';
+import {
+  type ContentExtractor,
+  createContentExtractor,
+} from '@/features/export/services/DOMContentExtractor';
+import type { ExportContentDialect } from '@/features/export/services/exportContentDialect';
+import { normalizeText } from '@/features/export/services/exportDomPolicy';
 
 import { makeTurns, mountThreadFixture } from '../adapter/__tests__/chatgptThreadFixture';
 import type { ChatGptCrawlTiming } from '../adapter/chatgptCrawl';
@@ -8,8 +13,9 @@ import {
   collectChatGptTurnContainers,
   resetChatGptThreadSnapshot,
 } from '../adapter/chatgptThreadExport';
-import type { ExportPlatformAdapter } from '../adapter/platformAdapters';
 import { prepareChatGptExportWithProgress } from '../chatgptCrawlProgress';
+
+let extractor: ContentExtractor;
 
 const FAST: Partial<ChatGptCrawlTiming> = {
   pollMs: 1,
@@ -27,14 +33,14 @@ beforeEach(() => {
   document.body.replaceChildren();
   resetChatGptThreadSnapshot();
   vi.spyOn(console, 'warn').mockImplementation(() => {});
-  DOMContentExtractor.setExportAdapter({
+  extractor = createContentExtractor({
     extractUserImage: (element: HTMLElement) => element.querySelectorAll('img'),
     extractUserText: (
       _lines: NodeListOf<HTMLElement>,
       textParts: string[],
       element: HTMLElement,
     ) => {
-      const text = DOMContentExtractor.normalizeText(element.textContent || '');
+      const text = normalizeText(element.textContent || '');
       if (text) textParts.push(text);
     },
     getUserAttachmentCandidates: () => [],
@@ -42,7 +48,7 @@ beforeEach(() => {
     extractFormula: () => undefined,
     extractCodeBlock: () => undefined,
     extractInlineFormula: () => undefined,
-  } as unknown as ExportPlatformAdapter);
+  } as unknown as ExportContentDialect);
 });
 
 afterEach(() => {
@@ -60,6 +66,7 @@ describe('prepareChatGptExportWithProgress', () => {
 
     await expect(
       prepareChatGptExportWithProgress({
+        extractor,
         timing: FAST,
         onProgress: () => {
           expect(exportPill.hidden).toBe(true);
@@ -85,7 +92,7 @@ describe('prepareChatGptExportWithProgress', () => {
     };
 
     await expect(
-      prepareChatGptExportWithProgress({ timing: FAST, onProgress }),
+      prepareChatGptExportWithProgress({ extractor, timing: FAST, onProgress }),
     ).rejects.toMatchObject({ name: 'AbortError' });
     await new Promise((resolve) => setTimeout(resolve, 10));
 
@@ -102,7 +109,12 @@ describe('prepareChatGptExportWithProgress', () => {
     };
 
     await expect(
-      prepareChatGptExportWithProgress({ signal: controller.signal, timing: FAST, onProgress }),
+      prepareChatGptExportWithProgress({
+        extractor,
+        signal: controller.signal,
+        timing: FAST,
+        onProgress,
+      }),
     ).rejects.toMatchObject({ name: 'AbortError' });
     expect(pill()).toBeNull();
   });
@@ -110,7 +122,7 @@ describe('prepareChatGptExportWithProgress', () => {
   it('shows nothing on the earlier DOM, which has no crawl', async () => {
     document.body.innerHTML = '<main><div data-turn-id-container="a"></div></main>';
 
-    await expect(prepareChatGptExportWithProgress({ timing: FAST })).resolves.toBeNull();
+    await expect(prepareChatGptExportWithProgress({ extractor, timing: FAST })).resolves.toBeNull();
     expect(pill()).toBeNull();
   });
 });

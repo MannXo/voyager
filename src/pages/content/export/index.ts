@@ -3,7 +3,6 @@ import { StorageKeys } from '@/core/types/common';
 import type { AppLanguage } from '@/utils/language';
 import type { TranslationKey } from '@/utils/translations';
 
-import { ConversationExportService } from '../../../features/export/services/ConversationExportService';
 import {
   getSavedImageExportWidth,
   saveImageExportWidth,
@@ -36,7 +35,6 @@ import { openSidebarConversationForExport } from './sidebarConversationNavigatio
 
 // Platform adapter — resolved once per page load
 const exportAdapter: ExportPlatformAdapter = resolveExportAdapter();
-ConversationExportService.setExportAdapter(exportAdapter);
 const collector = createConversationCollector(exportAdapter);
 const exportRunner = createExportRunner({ adapter: exportAdapter, collector });
 

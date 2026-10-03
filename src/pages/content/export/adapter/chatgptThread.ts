@@ -1,6 +1,6 @@
-import {
-  DOMContentExtractor,
-  type ExtractedContent,
+import type {
+  ContentExtractor,
+  ExtractedContent,
 } from '@/features/export/services/DOMContentExtractor';
 
 /**
@@ -239,7 +239,11 @@ function topLevelOnly(elements: Element[]): Element[] {
  * render beside it inside the prompt's block are copied in as well (that
  * placement is unverified live), never its action buttons.
  */
-export function extractUserMessage(item: Element, bubble: HTMLElement): ExtractedContent {
+export function extractUserMessage(
+  item: Element,
+  bubble: HTMLElement,
+  extractor: ContentExtractor,
+): ExtractedContent {
   const unit = userSelectionHost(item, bubble);
   const extras =
     unit === bubble
@@ -249,12 +253,12 @@ export function extractUserMessage(item: Element, bubble: HTMLElement): Extracte
             (element) => !bubble.contains(element) && !element.closest('button'),
           ),
         );
-  if (extras.length === 0) return DOMContentExtractor.extractUserContent(bubble);
+  if (extras.length === 0) return extractor.extractUserContent(bubble);
 
   const detached = document.createElement('div');
   extras.forEach((element) => detached.appendChild(element.cloneNode(true)));
   detached.appendChild(bubble.cloneNode(true));
-  return DOMContentExtractor.extractUserContent(detached);
+  return extractor.extractUserContent(detached);
 }
 
 function mergeExtractedContent(
@@ -277,8 +281,12 @@ function mergeExtractedContent(
  * item are appended as cloned images only, so their Edit/Share controls never
  * leak into the export (the earlier DOM did this; unverified on the current one).
  */
-export function extractAssistantMessage(item: Element, reply: HTMLElement): ExtractedContent {
-  const content = DOMContentExtractor.extractAssistantContent(reply);
+export function extractAssistantMessage(
+  item: Element,
+  reply: HTMLElement,
+  extractor: ContentExtractor,
+): ExtractedContent {
+  const content = extractor.extractAssistantContent(reply);
   const siblingImages = Array.from(
     item.querySelectorAll<HTMLImageElement>(`${IMAGEGEN_SELECTOR} img`),
   ).filter((image) => !reply.contains(image) && usableImageSource(image));
@@ -286,7 +294,7 @@ export function extractAssistantMessage(item: Element, reply: HTMLElement): Extr
 
   const imageRoot = document.createElement('div');
   siblingImages.forEach((image) => imageRoot.appendChild(image.cloneNode(true)));
-  return mergeExtractedContent(content, DOMContentExtractor.extractAssistantContent(imageRoot));
+  return mergeExtractedContent(content, extractor.extractAssistantContent(imageRoot));
 }
 
 function usableImageSource(image: HTMLImageElement): boolean {

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { DOMContentExtractor } from '../DOMContentExtractor';
+import { createContentExtractor } from '../DOMContentExtractor';
 import { domExtractorTestAdapter } from './domExtractorTestAdapter';
 
-DOMContentExtractor.setExportAdapter(domExtractorTestAdapter);
+const extractor = createContentExtractor(domExtractorTestAdapter);
 
 describe('DOMContentExtractor', () => {
   it('preserves blockquote structure in HTML and Markdown output', () => {
@@ -14,7 +14,7 @@ describe('DOMContentExtractor', () => {
       </div></message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.html).toContain('<blockquote>');
     expect(extracted.html).toContain('Quoted line one.');
@@ -29,7 +29,7 @@ describe('DOMContentExtractor', () => {
     const shadow = host?.attachShadow({ mode: 'open' });
     if (shadow) shadow.innerHTML = '<p>Shadow response text</p>';
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.text).toContain('Shadow response text');
     expect(extracted.html).toContain('<p>Shadow response text</p>');
@@ -44,7 +44,7 @@ describe('DOMContentExtractor', () => {
       </div></message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.text.split('repeated.png')).toHaveLength(2);
     expect(extracted.html.split('repeated.png')).toHaveLength(2);
@@ -72,7 +72,7 @@ describe('DOMContentExtractor', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.text).toContain('Hello');
     expect(extracted.text).toContain('World');
@@ -97,7 +97,7 @@ describe('DOMContentExtractor', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.hasImages).toBe(true);
     expect(extracted.text).toContain('Hello');
@@ -118,7 +118,7 @@ describe('DOMContentExtractor', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.text).not.toContain('about:blank');
     expect(extracted.html).not.toContain('about:blank');
@@ -142,7 +142,7 @@ describe('DOMContentExtractor', () => {
     generated.setAttribute('src', 'https://example.com/a"b.png');
     generated.setAttribute('alt', 'A "quoted" image');
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.html).toContain('src="https://example.com/a%22b.png"');
     expect(extracted.html).toContain('alt="A &quot;quoted&quot; image"');
@@ -181,7 +181,7 @@ describe('DOMContentExtractor', () => {
       const assistant = document.createElement('div');
       assistant.innerHTML = youtubeCard;
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       expect(extracted.hasImages).toBe(true);
       expect(extracted.text).toContain('Here is a relevant clip.');
@@ -194,7 +194,7 @@ describe('DOMContentExtractor', () => {
       const assistant = document.createElement('div');
       assistant.innerHTML = youtubeCard;
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       expect(extracted.html).toMatch(
         /<a href="https:\/\/www\.youtube\.com\/watch\?v=ttkd0t5qTD4"><img src="https:\/\/i\.ytimg\.com\/vi\/ttkd0t5qTD4\/hqdefault\.jpg" alt="Sample Video" \/><\/a>/,
@@ -205,7 +205,7 @@ describe('DOMContentExtractor', () => {
       const assistant = document.createElement('div');
       assistant.innerHTML = youtubeCard;
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       expect(extracted.text.split('hqdefault.jpg').length - 1).toBe(1);
     });
@@ -227,7 +227,7 @@ describe('DOMContentExtractor', () => {
         </message-content>
       `;
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       // Falls back to a stable hqdefault cover built from the embed id.
       expect(extracted.text).toContain(
@@ -251,7 +251,7 @@ describe('DOMContentExtractor', () => {
         </message-content>
       `;
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       expect(extracted.text).toContain('Here is my canvas doc:');
       expect(extracted.text).toContain('### 📄 Canvas Document: Doc Title');
@@ -279,7 +279,7 @@ describe('DOMContentExtractor', () => {
         </message-content>
       `;
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       expect(extracted.hasImages).toBe(true);
       expect(extracted.text).toContain(

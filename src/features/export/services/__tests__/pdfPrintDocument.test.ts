@@ -1,13 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { resolveExportAdapter } from '@/pages/content/export/adapter/platformAdapters';
-
 import { DEFAULT_EXPORT_SPEAKER_LABELS } from '../../types/export';
 import type { ExtractedContent } from '../DOMContentExtractor';
-import { DOMContentExtractor } from '../DOMContentExtractor';
-import { createPDFDocumentTurn, createPDFPrintContainer } from '../pdfPrintDocument';
-
-DOMContentExtractor.setExportAdapter(resolveExportAdapter());
+import { createPDFPrintContainer } from '../pdfPrintDocument';
 
 describe('PDF print document construction', () => {
   const metadata = {
@@ -65,31 +60,6 @@ describe('PDF print document construction', () => {
     expect(container.isConnected).toBe(false);
   });
 
-  it('falls back to live rich content when captured HTML is empty', () => {
-    const live = document.createElement('div');
-    live.innerHTML =
-      '<message-content><div class="markdown"><p>Live response</p></div></message-content>';
-    const container = createPDFPrintContainer(
-      [
-        {
-          user: '',
-          assistant: 'Plain response',
-          starred: false,
-          omitEmptySections: true,
-          assistantContent: { ...captured, html: '' },
-          assistantElement: live,
-        },
-      ],
-      metadata,
-      DEFAULT_EXPORT_SPEAKER_LABELS,
-    );
-    expect(container.querySelector('.gv-print-turn-user')).toBeNull();
-    expect(container.querySelector('.gv-print-turn-assistant p')?.textContent).toBe(
-      'Live response',
-    );
-    expect(container.textContent).not.toContain('Plain response');
-  });
-
   it('escapes plain text while preserving paragraphs, line breaks and turn order', () => {
     const container = createPDFPrintContainer(
       [
@@ -134,23 +104,4 @@ describe('PDF print document construction', () => {
     expect(container.querySelector('.gv-print-turn-user em')?.textContent).toBe('No content');
     expect(container.querySelector('.gv-print-turn-assistant')).toBeNull();
   });
-
-  it.each([
-    [
-      '<script>ignore</script><style>ignore</style><template>ignore</template><p> Body \r\n\n\nMore </p>',
-      'Markdown',
-      'Body\n\nMore',
-    ],
-    ['<style>ignore</style>', '  Markdown fallback  ', 'Markdown fallback'],
-    ['', '   ', 'No content'],
-  ])(
-    'derives document fallback text from HTML, then Markdown, then the empty label',
-    (html, markdown, expected) => {
-      const turn = createPDFDocumentTurn(html, markdown);
-      expect(turn.assistant).toBe(expected);
-      expect(turn.user).toBe('');
-      expect(turn.omitEmptySections).toBe(true);
-      expect(turn.assistantElement?.innerHTML).toBe(html.trim().replace(/\r\n/g, '\n'));
-    },
-  );
 });

@@ -1,10 +1,9 @@
-import type { ExportPlatformAdapter } from '@/pages/content/export/adapter/platformAdapters';
-
 import {
   findExportCodeBlocks,
   extractExportCodeBlock,
   serializeListHtml,
 } from './exportCodeBlocks';
+import type { ExportContentDialect } from './exportContentDialect';
 import {
   shouldSkipElement,
   stripExportArtifacts,
@@ -33,7 +32,7 @@ export interface ProcessedInlineContent {
 
 export function processInlineContent(
   element: HTMLElement,
-  adapter: Pick<ExportPlatformAdapter, 'extractInlineFormula'>,
+  adapter: Pick<ExportContentDialect, 'extractInlineFormula'>,
   forMarkdownTable = false,
 ): ProcessedInlineContent {
   let hasFormulas = false;
@@ -220,7 +219,7 @@ function serializeInlineCodeSpan(text: string, forMarkdownTable = false): string
 
 export function extractTable(
   element: HTMLElement,
-  adapter: Pick<ExportPlatformAdapter, 'extractInlineFormula'>,
+  adapter: Pick<ExportContentDialect, 'extractInlineFormula'>,
 ): {
   html: string;
   text: string;
@@ -275,7 +274,7 @@ export function extractTable(
 
 function serializeTableRows(
   rowCells: Element[][],
-  adapter: Pick<ExportPlatformAdapter, 'extractInlineFormula'>,
+  adapter: Pick<ExportContentDialect, 'extractInlineFormula'>,
 ): SerializedTable {
   let hasFormulas = false;
   const rows = rowCells.map((cells) =>
@@ -291,7 +290,7 @@ function serializeTableRows(
 
 function serializeTableCell(
   cell: HTMLElement,
-  adapter: Pick<ExportPlatformAdapter, 'extractInlineFormula'>,
+  adapter: Pick<ExportContentDialect, 'extractInlineFormula'>,
 ): SerializedTableCell {
   const processed = processInlineContent(cell, adapter, true);
 
@@ -315,7 +314,7 @@ function preserveLatexPipeCommandsInMarkdownTable(latex: string): string {
 
 export function extractList(
   element: HTMLElement,
-  adapter: Pick<ExportPlatformAdapter, 'extractInlineFormula'>,
+  adapter: Pick<ExportContentDialect, 'extractInlineFormula'>,
   depth: number = 0,
 ): { html: string; text: string; hasFormulas: boolean; hasCode: boolean } {
   const isOrdered = element.tagName === 'OL';

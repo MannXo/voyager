@@ -8,16 +8,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getAssistantTurnSelectors, getUserTurnSelectors } from '@/core/utils/selectors';
-import { DOMContentExtractor } from '@/features/export/services/DOMContentExtractor';
 import { geminiAdapter } from '@/features/plugins/sites/adapters/gemini';
 
 import { buildGeminiAdapter } from '../export/adapter/platform/gemini';
-import { resolveExportAdapter } from '../export/adapter/platformAdapters';
 import { collectForkChatPairs } from '../fork/chatPairs';
 import { collectHighlightTurns } from '../highlight/dom';
 import { TimelineTurns } from '../timeline/TimelineTurns';
-
-DOMContentExtractor.setExportAdapter(resolveExportAdapter());
 
 /** One element per user-turn shape Voyager has ever recognized on Gemini. */
 const USER_SHAPES: Record<string, string> = {

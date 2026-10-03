@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { DOMContentExtractor } from '@/features/export/services/DOMContentExtractor';
+import {
+  type ContentExtractor,
+  createContentExtractor,
+} from '@/features/export/services/DOMContentExtractor';
+import type { ExportContentDialect } from '@/features/export/services/exportContentDialect';
+import { normalizeText } from '@/features/export/services/exportDomPolicy';
 
 import { makeTurns, mountThreadFixture } from '../adapter/__tests__/chatgptThreadFixture';
 import type { ChatGptCrawlTiming } from '../adapter/chatgptCrawl';
@@ -11,6 +16,8 @@ import {
 import type { ExportPlatformAdapter } from '../adapter/platformAdapters';
 import { prepareChatGptExportWithProgress } from '../chatgptCrawlProgress';
 import { runPreparedExport } from '../preparedExport';
+
+let extractor: ContentExtractor;
 
 const FAST: Partial<ChatGptCrawlTiming> = {
   pollMs: 1,
@@ -44,7 +51,7 @@ function chatGptAdapter(
 ): Pick<ExportPlatformAdapter, 'prepareConversation'> {
   return {
     prepareConversation: (options) =>
-      prepareChatGptExportWithProgress({ ...options, timing: FAST, onProgress }),
+      prepareChatGptExportWithProgress({ extractor, ...options, timing: FAST, onProgress }),
   };
 }
 
@@ -54,14 +61,14 @@ beforeEach(() => {
   observing.clear();
   vi.stubGlobal('MutationObserver', TrackedMutationObserver);
   vi.spyOn(console, 'warn').mockImplementation(() => {});
-  DOMContentExtractor.setExportAdapter({
+  extractor = createContentExtractor({
     extractUserImage: (element: HTMLElement) => element.querySelectorAll('img'),
     extractUserText: (
       _lines: NodeListOf<HTMLElement>,
       textParts: string[],
       element: HTMLElement,
     ) => {
-      const text = DOMContentExtractor.normalizeText(element.textContent || '');
+      const text = normalizeText(element.textContent || '');
       if (text) textParts.push(text);
     },
     getUserAttachmentCandidates: () => [],
@@ -69,7 +76,7 @@ beforeEach(() => {
     extractFormula: () => undefined,
     extractCodeBlock: () => undefined,
     extractInlineFormula: () => undefined,
-  } as unknown as ExportPlatformAdapter);
+  } as unknown as ExportContentDialect);
 });
 
 afterEach(() => {
@@ -184,8 +191,8 @@ describe('runPreparedExport', () => {
 
   it('ignores a release from a preparation that a newer one replaced', async () => {
     mountThreadFixture({ turns: makeTurns(3) });
-    const older = await prepareChatGptExportWithProgress({ timing: FAST });
-    const newer = await prepareChatGptExportWithProgress({ timing: FAST });
+    const older = await prepareChatGptExportWithProgress({ extractor, timing: FAST });
+    const newer = await prepareChatGptExportWithProgress({ extractor, timing: FAST });
 
     older?.release();
     expect(collectChatGptTurnContainers()).toHaveLength(6);

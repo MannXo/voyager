@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { provideEChartsDataUrl } from '@/pages/content/echarts/exportBridge';
 
-import { DOMContentExtractor } from '../DOMContentExtractor';
+import { createContentExtractor } from '../DOMContentExtractor';
 import { domExtractorTestAdapter } from './domExtractorTestAdapter';
 
-DOMContentExtractor.setExportAdapter(domExtractorTestAdapter);
+const extractor = createContentExtractor(domExtractorTestAdapter);
 
 describe('exportCodeBlocks', () => {
   it('exports rendered Mermaid SVG in HTML while preserving Mermaid source in text', () => {
@@ -37,7 +37,7 @@ describe('exportCodeBlocks', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.hasCode).toBe(true);
     expect(extracted.html).toContain('class="gv-export-mermaid"');
@@ -63,7 +63,7 @@ describe('exportCodeBlocks', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.html).toContain('<pre><code class="language-mermaid">');
     expect(extracted.html).not.toContain('class="gv-export-mermaid"');
@@ -83,7 +83,7 @@ describe('exportCodeBlocks', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.html).toContain('<pre><code class="language-mermaid">');
     expect(extracted.html).not.toContain('class="gv-export-mermaid"');
@@ -105,7 +105,7 @@ describe('exportCodeBlocks', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.hasCode).toBe(true);
     expect(extracted.html).toContain('<pre><code class="language-mermaid">');
@@ -134,7 +134,7 @@ describe('exportCodeBlocks', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.html).toContain('class="gv-export-mermaid"');
     expect(extracted.html).toContain('<svg viewBox="0 0 120 80">');
@@ -166,7 +166,7 @@ describe('exportCodeBlocks', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.hasCode).toBe(true);
     expect(extracted.html).toContain('class="gv-export-wavedrom"');
@@ -196,7 +196,7 @@ describe('exportCodeBlocks', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.hasCode).toBe(true);
     expect(extracted.html).toContain('<pre><code class="language-wavedrom">');
@@ -226,7 +226,7 @@ describe('exportCodeBlocks', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.html).toContain('class="gv-export-mermaid"');
     expect(extracted.html).toContain('<svg viewBox="0 0 120 80">');
@@ -272,7 +272,7 @@ describe('exportCodeBlocks', () => {
         toJSON: () => ({}),
       });
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       expect(extracted.hasCode).toBe(true);
       expect(extracted.html).toContain('class="gv-export-echarts"');
@@ -327,7 +327,7 @@ describe('exportCodeBlocks', () => {
     const stopProviding = provideEChartsDataUrl(diagram, getComposite);
 
     try {
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       expect(getComposite).toHaveBeenCalledTimes(1);
       expect(canvasReadback).not.toHaveBeenCalled();
@@ -378,7 +378,7 @@ describe('exportCodeBlocks', () => {
     const stopProviding = provideEChartsDataUrl(diagram, getComposite, wrapper);
 
     try {
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       expect(getComposite).toHaveBeenCalledTimes(1);
       expect(canvasReadback).not.toHaveBeenCalled();
@@ -413,7 +413,7 @@ describe('exportCodeBlocks', () => {
     `;
 
     try {
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       expect(extracted.html).toContain('alt="A pie chart showing Cats &amp; Dogs"');
     } finally {
@@ -443,7 +443,7 @@ describe('exportCodeBlocks', () => {
         </message-content>
       `;
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       expect(extracted.html).toContain('src="data:image/png;base64,HIDDEN"');
       expect(extracted.html).toContain('width="400"');
@@ -469,7 +469,7 @@ describe('exportCodeBlocks', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.hasCode).toBe(true);
     expect(extracted.html).toContain('<pre><code class="language-echarts">');
@@ -501,7 +501,7 @@ describe('exportCodeBlocks', () => {
         </message-content>
       `;
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       expect(extracted.html).toContain('<pre><code class="language-echarts">');
       expect(extracted.html).not.toContain('class="gv-export-echarts"');

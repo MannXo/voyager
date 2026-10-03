@@ -4,6 +4,10 @@
 import { StorageKeys } from '@/core/types/common';
 import { ConversationExportService } from '@/features/export/services/ConversationExportService';
 import {
+  createContentExtractor,
+  extractTurnContent,
+} from '@/features/export/services/DOMContentExtractor';
+import {
   getSavedImageExportWidth,
   saveImageExportWidth,
 } from '@/features/export/services/ImageExportPreferenceService';
@@ -28,10 +32,6 @@ import { downloadMarkdown } from './download';
 import { extractThinkingPanels } from './extractor';
 import { formatToMarkdown } from './formatter';
 import { extractDeepResearchReportTitle, findDeepResearchReportRoot } from './reportExtractor';
-
-// Deep Research is a Gemini-only surface; reuse the Gemini export adapter's
-// formula extraction so PDF/Markdown/Image export can render $$ formulas.
-ConversationExportService.setExportAdapter(resolveExportAdapter());
 
 type Dictionaries = Record<AppLanguage, Record<string, string>>;
 const DOWNLOAD_BUTTON_CLASS = 'gv-deep-research-download';
@@ -382,15 +382,13 @@ function handleSaveReport(dict: Dictionaries, lang: AppLanguage): void {
       title: reportTitle,
     };
 
-    const turns: ExportChatTurn[] = [
-      {
-        user: '',
-        assistant: '',
-        starred: false,
-        omitEmptySections: true,
-        assistantElement: reportRoot,
-      },
-    ];
+    const reportTurn: ExportChatTurn = {
+      user: '',
+      assistant: '',
+      starred: false,
+      omitEmptySections: true,
+      assistantElement: reportRoot,
+    };
 
     const initialImageWidth = await getSavedImageExportWidth();
     const t = (key: TranslationKey) => dict[lang]?.[key] ?? dict.en?.[key] ?? key;
@@ -403,6 +401,10 @@ function handleSaveReport(dict: Dictionaries, lang: AppLanguage): void {
             await saveImageExportWidth(imageWidth);
           }
           const filename = buildReportFilename(format, reportTitle);
+          // Deep Research is a Gemini-only surface; the Gemini dialect renders its $$ formulas.
+          const turns = [
+            extractTurnContent(reportTurn, createContentExtractor(resolveExportAdapter())),
+          ];
           const resultPromise = ConversationExportService.export(turns, metadata, {
             format,
             filename,

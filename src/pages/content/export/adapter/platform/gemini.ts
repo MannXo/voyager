@@ -1,8 +1,7 @@
 import { getGeminiTurnSelectors } from '@/core/gemini/turnSelectors';
-import {
-  DOMContentExtractor,
-  type ExtractedContent,
-} from '@/features/export/services/DOMContentExtractor';
+import type { ExtractedContent } from '@/features/export/services/DOMContentExtractor';
+import { extractCodeBlock as readCodeBlock } from '@/features/export/services/exportCodeBlocks';
+import { normalizeText } from '@/features/export/services/exportDomPolicy';
 import type { SiteAdapter } from '@/features/plugins/types';
 
 import { resolveConversationRoot } from '../../conversationDom';
@@ -110,7 +109,7 @@ function extractUserImage(element: HTMLElement): NodeListOf<HTMLImageElement> {
 function extractUserText(textLines: NodeListOf<HTMLElement>, textParts: string[]): void {
   textLines.forEach((line) => {
     const raw = line.dataset?.userLatexOriginal ?? line.textContent ?? '';
-    const text = DOMContentExtractor.normalizeText(raw);
+    const text = normalizeText(raw);
     if (text) textParts.push(text);
   });
 }
@@ -160,7 +159,7 @@ function extractCodeBlock(
   // their parent here drops prose and sibling blocks around the first match.
   if (tagName !== 'code-block' && !child.classList.contains('code-block')) return;
 
-  const codeContent = DOMContentExtractor.extractCodeBlock(child as HTMLElement);
+  const codeContent = readCodeBlock(child as HTMLElement);
   if (codeContent.text) {
     flags.hasCode = true;
     htmlParts.push(codeContent.html);

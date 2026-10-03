@@ -2,10 +2,10 @@ import { Marked, marked } from 'marked';
 import markedKatex from 'marked-katex-extension';
 import { describe, expect, it } from 'vitest';
 
-import { DOMContentExtractor } from '../DOMContentExtractor';
+import { createContentExtractor } from '../DOMContentExtractor';
 import { domExtractorTestAdapter } from './domExtractorTestAdapter';
 
-DOMContentExtractor.setExportAdapter(domExtractorTestAdapter);
+const extractor = createContentExtractor(domExtractorTestAdapter);
 
 describe('exportRichText.tables', () => {
   it('escapes literal pipes in Markdown table cells', () => {
@@ -17,7 +17,7 @@ describe('exportRichText.tables', () => {
       </div></message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.text).toContain('| A \\| B | Either |');
     expect(extracted.html).toContain('A | B');
@@ -44,7 +44,7 @@ describe('exportRichText.tables', () => {
       `;
 
       const sourceRowCount = assistant.querySelectorAll('table tr').length;
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       expect(extracted.text).toContain('| 最后一行表格内容 |\n\n通过这三个例题的对比可以看出……');
 
@@ -113,7 +113,7 @@ describe('exportRichText.tables', () => {
         </message-content>
       `;
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       expect(extracted.hasTables).toBe(true);
       expect(extracted.hasFormulas).toBe(true);
@@ -166,7 +166,7 @@ describe('exportRichText.tables', () => {
         </message-content>
       `;
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       expect(extracted.hasTables).toBe(true);
       expect(extracted.hasFormulas).toBe(true);
@@ -200,7 +200,7 @@ describe('exportRichText.tables', () => {
         </message-content>
       `;
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       expect(extracted.text).toBe(['| Assessment |', '| --- |', '| **high** *risk* |'].join('\n'));
     });
@@ -229,7 +229,7 @@ describe('exportRichText.tables', () => {
         </message-content>
       `;
 
-        const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+        const extracted = extractor.extractAssistantContent(assistant);
 
         expect(extracted.text).toBe(['| Content |', '| --- |', `| ${expected} |`].join('\n'));
       },
@@ -245,7 +245,7 @@ describe('exportRichText.tables', () => {
         </message-content>
       `;
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       expect(extracted.text).toBe('Run `npm install`.');
       expect(extracted.html).toContain('Run <code>npm install</code>.');
@@ -272,7 +272,7 @@ describe('exportRichText.tables', () => {
         </message-content>
       `;
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
       const rendered = document.createElement('div');
       rendered.innerHTML = marked.parse(extracted.text) as string;
 
@@ -304,7 +304,7 @@ describe('exportRichText.tables', () => {
         </message-content>
       `;
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
       expect(extracted.text).toContain(`| ${expectedMarkdown} |`);
 
       const rendered = document.createElement('div');
@@ -340,7 +340,7 @@ describe('exportRichText.tables', () => {
           </message-content>
         `;
 
-        const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+        const extracted = extractor.extractAssistantContent(assistant);
         expect(extracted.text).toContain(`| ${expectedMarkdown} |`);
 
         const rendered = document.createElement('div');
@@ -370,7 +370,7 @@ describe('exportRichText.tables', () => {
           </message-content>
         `;
 
-        const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+        const extracted = extractor.extractAssistantContent(assistant);
         const rendered = document.createElement('div');
         rendered.innerHTML = marked.parse(extracted.text) as string;
 
@@ -401,7 +401,7 @@ describe('exportRichText.tables', () => {
         </message-content>
       `;
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       expect(extracted.text).toContain('| $P(A\\|B)$ | left \\| right | `a\\|b` |');
 
@@ -451,7 +451,7 @@ describe('exportRichText.tables', () => {
         </message-content>
       `;
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
       const parser = new Marked(
         markedKatex({
           throwOnError: false,
@@ -486,7 +486,7 @@ describe('exportRichText.tables', () => {
         </message-content>
       `;
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
       const parser = new Marked(
         markedKatex({
           throwOnError: false,
@@ -533,7 +533,7 @@ describe('exportRichText.tables', () => {
         </message-content>
       `;
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       expect(extracted.hasFormulas).toBe(true);
       expect(extracted.text).toContain('| **$\\theta$** | *value $\\alpha$* | `x` |');

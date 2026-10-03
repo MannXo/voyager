@@ -1,11 +1,16 @@
-import {
-  DOMContentExtractor,
-  type ExtractedContent,
+import type {
+  ContentExtractor,
+  ExtractedContent,
 } from '@/features/export/services/DOMContentExtractor';
 import type { ChatTurn } from '@/features/export/types/export';
 
 import { computeConversationFingerprint } from '../topNodePreload';
-import type { ChatGptTurnContainer, ChatGptTurnRole, ExportSelectionOptions } from './type';
+import type {
+  ChatGptReadOptions,
+  ChatGptTurnContainer,
+  ChatGptTurnRole,
+  ExportSelectionOptions,
+} from './type';
 
 // Export for ChatGPT's earlier thread DOM (`[data-turn-id-container]`). The
 // current `[data-turn-key]` thread goes through `chatgptThreadExport.ts`.
@@ -82,6 +87,7 @@ function mergeExtractedContent(
 function extractSiblingGeneratedImages(
   container: HTMLElement,
   assistantElement: HTMLElement,
+  extractor: ContentExtractor,
 ): ExtractedContent | null {
   const siblingImages = Array.from(
     container.querySelectorAll<HTMLImageElement>(`${IMAGEGEN_SELECTOR} img`),
@@ -93,7 +99,7 @@ function extractSiblingGeneratedImages(
   // controls such as Edit/Share cannot leak into the exported response.
   const imageRoot = document.createElement('div');
   siblingImages.forEach((image) => imageRoot.appendChild(image.cloneNode(true)));
-  return DOMContentExtractor.extractAssistantContent(imageRoot);
+  return extractor.extractAssistantContent(imageRoot);
 }
 
 /**
@@ -386,7 +392,7 @@ export async function resolveChatGptSelectionRoles(
  *
  * 1. look it up in a fresh container registry, preserving the conversation order;
  * 2. scroll it into view and wait for ChatGPT to mount and settle its content;
- * 3. immediately use DOMContentExtractor to persist rich text/HTML before the
+ * 3. immediately extract the message to persist rich text/HTML before the
  *    next scroll can cause ChatGPT to unload this message again;
  * 4. merge adjacent selected user and assistant messages into the existing
  *    platform-neutral ChatTurn shape consumed by all export formats.
@@ -397,8 +403,9 @@ export async function resolveChatGptSelectionRoles(
  */
 export async function buildChatGptTurnsForSelection(
   selectedContainerIds: ReadonlySet<string>,
-  options: ExportSelectionOptions = {},
+  options: ChatGptReadOptions,
 ): Promise<ChatTurn[]> {
+  const { extractor } = options;
   // querySelectorAll returns ChatGPT's retained virtual-list order. Filtering
   // this registry, rather than sorting visual coordinates, prevents image cards
   // and independently positioned DOM wrappers from changing export order.
@@ -431,7 +438,7 @@ export async function buildChatGptTurnsForSelection(
         const userElement = container.querySelector<HTMLElement>(USER_MESSAGE_SELECTOR);
         if (!userElement) throw new Error(`chatgpt_export_message_unavailable:${turn.id}`);
 
-        const userContent = DOMContentExtractor.extractUserContent(userElement);
+        const userContent = extractor.extractUserContent(userElement);
         if (!userContent.text && !userContent.html && userContent.attachments.length === 0) {
           throw new Error(`chatgpt_export_message_empty:${turn.id}`);
         }
@@ -453,8 +460,12 @@ export async function buildChatGptTurnsForSelection(
       if (role === 'assistant') {
         const assistantElement =
           container.querySelector<HTMLElement>(ASSISTANT_MESSAGE_SELECTOR) ?? container;
-        let assistantContent = DOMContentExtractor.extractAssistantContent(assistantElement);
-        const siblingImageContent = extractSiblingGeneratedImages(container, assistantElement);
+        let assistantContent = extractor.extractAssistantContent(assistantElement);
+        const siblingImageContent = extractSiblingGeneratedImages(
+          container,
+          assistantElement,
+          extractor,
+        );
         if (siblingImageContent) {
           assistantContent = mergeExtractedContent(assistantContent, siblingImageContent);
         }

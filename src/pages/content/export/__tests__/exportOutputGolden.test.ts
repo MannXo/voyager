@@ -8,7 +8,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildConversationIdFromUrl } from '@/core/utils/conversationIdentity';
 import { ConversationExportService } from '@/features/export/services/ConversationExportService';
-import { DOMContentExtractor } from '@/features/export/services/DOMContentExtractor';
+import {
+  createContentExtractor,
+  extractTurnContent,
+} from '@/features/export/services/DOMContentExtractor';
 import { createPDFPrintContainer } from '@/features/export/services/pdfPrintDocument';
 import type { ChatTurn, ConversationMetadata, ExportOptions } from '@/features/export/types/export';
 import { DEFAULT_EXPORT_SPEAKER_LABELS, ExportFormat } from '@/features/export/types/export';
@@ -154,7 +157,6 @@ function printedTurns(turns: ChatTurn[], metadata: ConversationMetadata): string
 
 describe('Gemini conversation export output', () => {
   function geminiTurns(): ChatTurn[] {
-    ConversationExportService.setExportAdapter(geminiExportAdapter);
     document.body.innerHTML = GEMINI_CONVERSATION;
     localStorage.setItem(
       `geminiTimelineStars:${buildConversationIdFromUrl(location.href)}`,
@@ -365,7 +367,6 @@ describe('Gemini conversation export output', () => {
         <div class="response-container"><message-content>second answer</message-content></div>
       </main>
     `;
-    ConversationExportService.setExportAdapter(geminiExportAdapter);
     const collector = createConversationCollector(geminiExportAdapter);
     const before = collector.collectSelectionMessages().map((message) => message.messageId);
 
@@ -379,7 +380,6 @@ describe('Gemini conversation export output', () => {
 
 describe('ChatGPT conversation export output', () => {
   async function chatgptTurns(): Promise<ChatTurn[]> {
-    DOMContentExtractor.setExportAdapter(chatgptExportAdapter);
     document.body.innerHTML = CHATGPT_CONVERSATION;
     const ids = new Set(['11111111-aaaa', '22222222-bbbb']);
     return await chatgptExportAdapter.buildTurnsForSelection!(ids);
@@ -481,20 +481,18 @@ describe('ChatGPT conversation export output', () => {
 
 describe('Deep Research report export output', () => {
   function reportTurns(): ChatTurn[] {
-    ConversationExportService.setExportAdapter(geminiExportAdapter);
     document.body.innerHTML = DEEP_RESEARCH_REPORT;
     const reportRoot = document.querySelector<HTMLElement>(
       'deep-research-immersive-panel > message-content > .markdown',
     )!;
-    return [
-      {
-        user: '',
-        assistant: '',
-        starred: false,
-        omitEmptySections: true,
-        assistantElement: reportRoot,
-      },
-    ];
+    const reportTurn: ChatTurn = {
+      user: '',
+      assistant: '',
+      starred: false,
+      omitEmptySections: true,
+      assistantElement: reportRoot,
+    };
+    return [extractTurnContent(reportTurn, createContentExtractor(geminiExportAdapter))];
   }
 
   const metadata: ConversationMetadata = {

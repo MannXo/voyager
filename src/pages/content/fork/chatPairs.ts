@@ -1,6 +1,7 @@
 import { getGeminiTurnSelectors } from '@/core/gemini/turnSelectors';
-import { DOMContentExtractor } from '@/features/export/services/DOMContentExtractor';
+import { createContentExtractor } from '@/features/export/services/DOMContentExtractor';
 
+import { resolveExportAdapter } from '../export/adapter/platformAdapters';
 import {
   filterOutDeepResearchImmersiveNodes,
   findFirstElementBetweenTurns,
@@ -110,6 +111,7 @@ export function collectForkChatPairs(): ForkChatPair[] {
   );
   const assistants = filterTopLevel(assistantNodesRaw);
 
+  const extractor = createContentExtractor(resolveExportAdapter());
   const pairs: ForkChatPair[] = [];
 
   for (let i = 0; i < users.length; i++) {
@@ -117,7 +119,7 @@ export function collectForkChatPairs(): ForkChatPair[] {
     const turnId = makeTurnId(userEl, i);
     userEl.dataset.turnId = turnId;
 
-    const userExtracted = DOMContentExtractor.extractUserContent(userEl).text;
+    const userExtracted = extractor.extractUserContent(userEl).text;
     const userText = userExtracted || normalizeText(userEl.innerText || userEl.textContent || '');
 
     let assistantHost = findFirstElementBetweenTurns(userEl, users[i + 1], assistants);
@@ -138,7 +140,7 @@ export function collectForkChatPairs(): ForkChatPair[] {
     let assistantText = '';
     if (assistantHost) {
       const assistantExportEl = pickAssistantExportElement(assistantHost);
-      const extracted = DOMContentExtractor.extractAssistantContent(assistantExportEl).text;
+      const extracted = extractor.extractAssistantContent(assistantExportEl).text;
       assistantText =
         extracted ||
         normalizeText(assistantExportEl.innerText || assistantExportEl.textContent || '');

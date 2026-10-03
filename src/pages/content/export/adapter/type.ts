@@ -1,3 +1,5 @@
+import type { ContentExtractor } from '@/features/export/services/DOMContentExtractor';
+
 export type ChatGptTurnRole = 'user' | 'assistant' | 'unknown';
 
 export interface ChatGptTurnContainer {
@@ -35,4 +37,9 @@ export interface ExportSelectionOptions {
 
   /** Route captured before collection; changing conversations invalidates the export. */
   readonly expectedUrl?: string;
+}
+
+/** A read of ChatGPT messages, extracted while each one is mounted. */
+export interface ChatGptReadOptions extends ExportSelectionOptions {
+  readonly extractor: ContentExtractor;
 }

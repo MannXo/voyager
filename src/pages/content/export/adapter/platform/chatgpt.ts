@@ -1,7 +1,9 @@
 import {
-  DOMContentExtractor,
   type ExtractedContent,
+  createContentExtractor,
 } from '@/features/export/services/DOMContentExtractor';
+import type { ExportContentDialect } from '@/features/export/services/exportContentDialect';
+import { escapeHtml, escapeHtmlAttribute } from '@/features/export/services/exportDomPolicy';
 import type { SiteAdapter } from '@/features/plugins/types';
 
 import { prepareChatGptExportWithProgress } from '../../chatgptCrawlProgress';
@@ -153,9 +155,7 @@ function extractAssistantImage(
     processedImageSrcs?.add(src);
     flags.hasImages = true;
     const alt = image.getAttribute('alt')?.trim() || 'Image';
-    htmlParts.push(
-      `<img src="${DOMContentExtractor.escapeHtmlAttribute(src)}" alt="${DOMContentExtractor.escapeHtmlAttribute(alt)}" />`,
-    );
+    htmlParts.push(`<img src="${escapeHtmlAttribute(src)}" alt="${escapeHtmlAttribute(alt)}" />`);
     textParts.push(`\n![${alt.replace(/\]/g, '\\]')}](${src})\n`);
   }
   return true;
@@ -178,7 +178,7 @@ export function chatgptExtractFormula(
 
   flags.hasFormulas = true;
   htmlParts.push(
-    `<div class="math-block" data-math="${DOMContentExtractor.escapeHtmlAttribute(latex)}">${child.outerHTML}</div>`,
+    `<div class="math-block" data-math="${escapeHtmlAttribute(latex)}">${child.outerHTML}</div>`,
   );
   textParts.push(`\n$$\n${latex}\n$$\n`);
   return true;
@@ -198,9 +198,7 @@ function extractCodeBlock(
   const language = className.match(/language-([a-z0-9]+)/i)?.[1] ?? '';
   if (code.trim()) {
     flags.hasCode = true;
-    htmlParts.push(
-      `<pre><code class="language-${language}">${DOMContentExtractor.escapeHtml(code)}</code></pre>`,
-    );
+    htmlParts.push(`<pre><code class="language-${language}">${escapeHtml(code)}</code></pre>`);
     textParts.push(`\n\`\`\`${language}\n${code}\n\`\`\`\n`);
     (child as Element & { processedByGV?: boolean }).processedByGV = true;
     if (codeElement !== child) {
@@ -227,14 +225,25 @@ export function chatgptExtractInlineFormula(
   const display =
     element.classList.contains('katex-display') || element.closest('.katex-display') != null;
   htmlParts.push(
-    `<span class="${display ? 'math-block' : 'math-inline'}" data-math="${DOMContentExtractor.escapeHtmlAttribute(latex)}">${element.outerHTML}</span>`,
+    `<span class="${display ? 'math-block' : 'math-inline'}" data-math="${escapeHtmlAttribute(latex)}">${element.outerHTML}</span>`,
   );
   textParts.push(display ? `\n$$\n${latex}\n$$\n` : `$${latex}$`);
   return true;
 }
 
 export function buildChatGptAdapter(site: SiteAdapter): ExportPlatformAdapter {
+  const dialect: ExportContentDialect = {
+    extractUserImage,
+    extractUserText: chatgptExtractUserText,
+    getUserAttachmentCandidates,
+    extractAssistantImage,
+    extractFormula: chatgptExtractFormula,
+    extractCodeBlock,
+    extractInlineFormula: chatgptExtractInlineFormula,
+  };
+  const extractor = createContentExtractor(dialect);
   return {
+    ...dialect,
     site,
     getUserSelectors: () => [site.selectors.userTurn],
     getAssistantSelectors: () => [site.selectors.assistantTurn],
@@ -243,16 +252,10 @@ export function buildChatGptAdapter(site: SiteAdapter): ExportPlatformAdapter {
     shouldPreloadHistory: () => false,
     isConversationPage: chatgptIsConversationPage,
     resolveConversationRoot: resolveRoot,
-    extractUserImage,
-    extractUserText: chatgptExtractUserText,
-    getUserAttachmentCandidates,
-    extractAssistantImage,
-    extractFormula: chatgptExtractFormula,
-    extractCodeBlock,
-    extractInlineFormula: chatgptExtractInlineFormula,
-    prepareConversation: (options) => prepareChatGptExportWithProgress(options),
+    prepareConversation: (options) => prepareChatGptExportWithProgress({ ...options, extractor }),
     collectTurnContainers: collectChatGptTurnContainers,
-    buildTurnsForSelection: buildChatGptExportTurns,
+    buildTurnsForSelection: (selectedIds, options) =>
+      buildChatGptExportTurns(selectedIds, { ...options, extractor }),
     resolveSelectionRoles: resolveChatGptExportRoles,
   };
 }

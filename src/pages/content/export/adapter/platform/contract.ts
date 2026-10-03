@@ -1,4 +1,4 @@
-import type { ExtractedContent } from '@/features/export/services/DOMContentExtractor';
+import type { ExportContentDialect } from '@/features/export/services/exportContentDialect';
 import type { ChatTurn } from '@/features/export/types/export';
 import type { SiteAdapter } from '@/features/plugins/types';
 
@@ -15,7 +15,7 @@ import type {
  * Platform modules translate host DOM into this contract. Shared export
  * services must not branch on a host name or depend on host-specific selectors.
  */
-export interface ExportPlatformAdapter {
+export interface ExportPlatformAdapter extends ExportContentDialect {
   readonly site: SiteAdapter;
 
   getUserSelectors: () => string[];
@@ -24,55 +24,6 @@ export interface ExportPlatformAdapter {
   extractConversationIdFromUrl: () => string | null;
   shouldPreloadHistory: () => boolean;
   resolveConversationRoot: (userSelectors: string[], doc: Document) => HTMLElement;
-  extractUserImage: (element: HTMLElement) => NodeListOf<HTMLImageElement>;
-  extractUserText: (
-    textLines: NodeListOf<HTMLElement>,
-    textParts: string[],
-    element: HTMLElement,
-  ) => void;
-  getUserAttachmentCandidates: (element: HTMLElement) => HTMLElement[] | undefined;
-  extractAssistantImage: (
-    child: Element,
-    htmlParts: string[],
-    textParts: string[],
-    flags: Pick<ExtractedContent, 'hasImages' | 'hasFormulas' | 'hasTables' | 'hasCode'>,
-    tagName?: string,
-    DEBUG?: boolean,
-    processedImageSrcs?: Set<string>,
-  ) => boolean | undefined;
-  /**
-   * Images rendered beside the markdown walk (search / generated attachments).
-   * Deduped via `processedImageSrcs`. Hosts inside `skipInside` were already
-   * visited in DOM order and must not be appended again.
-   */
-  collectAssistantImages?: (
-    root: Element,
-    htmlParts: string[],
-    textParts: string[],
-    flags: Pick<ExtractedContent, 'hasImages' | 'hasFormulas' | 'hasTables' | 'hasCode'>,
-    processedImageSrcs?: Set<string>,
-    skipInside?: Element | null,
-  ) => void;
-  extractFormula: (
-    child: Element,
-    flags: Pick<ExtractedContent, 'hasImages' | 'hasFormulas' | 'hasTables' | 'hasCode'>,
-    htmlParts: string[],
-    textParts: string[],
-    DEBUG: boolean,
-  ) => boolean | undefined;
-  extractCodeBlock: (
-    child: Element,
-    htmlParts: string[],
-    textParts: string[],
-    flags: Pick<ExtractedContent, 'hasImages' | 'hasFormulas' | 'hasTables' | 'hasCode'>,
-    tagName?: string,
-    DEBUG?: boolean,
-  ) => boolean | undefined;
-  extractInlineFormula: (
-    el: Element,
-    htmlParts: string[],
-    textParts: string[],
-  ) => boolean | undefined;
 
   /**
    * Whether this page can hold a conversation. Hosts whose chat UI shares the

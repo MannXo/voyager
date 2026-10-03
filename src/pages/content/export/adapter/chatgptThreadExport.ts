@@ -23,6 +23,7 @@ import {
 } from './chatgptThread';
 import { type ThreadVersionWatch, watchThreadVersions } from './chatgptThreadWatch';
 import type {
+  ChatGptReadOptions,
   ChatGptTurnContainer,
   ChatGptTurnRole,
   ConversationPreparation,
@@ -89,7 +90,7 @@ function isAbortError(error: unknown): boolean {
  * scroll restore, say) cannot clear the export that replaced it.
  */
 export async function prepareChatGptExport(
-  options: ChatGptCrawlOptions = {},
+  options: ChatGptCrawlOptions,
 ): Promise<ConversationPreparation | null> {
   resetChatGptThreadSnapshot();
   // The earlier DOM keeps its scroll-to-top preparation.
@@ -189,7 +190,7 @@ function crawledMessages(selectedIds: ReadonlySet<string>): readonly ChatGptThre
  */
 export async function buildChatGptExportTurns(
   selectedIds: ReadonlySet<string>,
-  options: ExportSelectionOptions = {},
+  options: ChatGptReadOptions,
 ): Promise<ChatTurn[]> {
   if (!snapshot) return buildChatGptTurnsForSelection(selectedIds, options);
   assertActive(options);
@@ -239,9 +240,7 @@ export async function resolveChatGptExportRoles(
  * crawl cannot prove it complete, when the last prompt has no reply yet, or
  * when the thread changed by the time the crawl returned.
  */
-export async function readChatGptThreadTurns(
-  options: ChatGptCrawlOptions = {},
-): Promise<ChatTurn[]> {
+export async function readChatGptThreadTurns(options: ChatGptCrawlOptions): Promise<ChatTurn[]> {
   const versions = watchThreadVersions();
   try {
     const messages = await crawlChatGptThread(options);

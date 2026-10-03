@@ -11,8 +11,13 @@ import {
   buildLegacyConversationIdFromUrl,
   buildRouteConversationIdFromUrl,
 } from '@/core/utils/conversationIdentity';
+import {
+  type ContentExtractor,
+  createContentExtractor,
+  extractTurnContent,
+} from '@/features/export/services/DOMContentExtractor';
+import type { CanvasDoc, ChatTurn as ExportChatTurn } from '@/features/export/types/export';
 
-import type { CanvasDoc, ChatTurn as ExportChatTurn } from '../../../features/export/types/export';
 import { isServerTurnId } from '../fork/turnId';
 import { historyTimestampStore } from '../timestamp/historyTimestamps';
 import type { ExportPlatformAdapter } from './adapter/platformAdapters';
@@ -238,8 +243,10 @@ function buildExportMessagesFromPairs(pairs: ChatTurn[]): ExportMessage[] {
   return out;
 }
 
+/** Turns read once from the page, after Canvas sections were appended to their responses. */
 function buildTurnsForSelectedMessages(
   selectedMessages: readonly ExportMessage[],
+  extractor: ContentExtractor,
 ): ExportChatTurn[] {
   const groupedTurns = groupSelectedMessagesByTurn(
     selectedMessages.filter(
@@ -262,10 +269,12 @@ function buildTurnsForSelectedMessages(
         turn.assistant.length > 0 ||
         !!turn.userElement ||
         !!turn.assistantElement,
-    );
+    )
+    .map((turn) => extractTurnContent(turn, extractor));
 }
 
 export function createConversationCollector(adapter: ExportPlatformAdapter): ConversationCollector {
+  const extractor = createContentExtractor(adapter);
   let cachedCanvasDocs: CanvasDoc[] | null = null;
 
   const conversationRoot = (): HTMLElement =>
@@ -425,7 +434,7 @@ export function createConversationCollector(adapter: ExportPlatformAdapter): Con
       const selectedMessages = selectionMessagesFromPairs(pairs).filter((message) =>
         selectedMessageIds.has(message.messageId),
       );
-      return buildTurnsForSelectedMessages(selectedMessages);
+      return buildTurnsForSelectedMessages(selectedMessages, extractor);
     },
     assistantMessageIdFor: (trigger) => {
       if (!trigger) return null;

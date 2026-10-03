@@ -1,7 +1,8 @@
 import type { ExportPlatformAdapter } from '@/pages/content/export/adapter/platformAdapters';
 import { resolveExportAdapter } from '@/pages/content/export/adapter/platformAdapters';
 
-import { DOMContentExtractor } from '../DOMContentExtractor';
+import { processYouTubeCovers } from '../DOMContentExtractor';
+import { escapeHtmlAttribute, normalizeText } from '../exportDomPolicy';
 
 export const domExtractorTestAdapter: ExportPlatformAdapter = {
   ...resolveExportAdapter(),
@@ -21,7 +22,7 @@ export const domExtractorTestAdapter: ExportPlatformAdapter = {
         '.attachment-container.youtube img.thumbnail, youtube-block img.thumbnail, single-video img.thumbnail',
       )
     ) {
-      return DOMContentExtractor.processYouTubeCovers(child, htmlParts, textParts, flags);
+      return processYouTubeCovers(child, htmlParts, textParts, flags);
     }
     if (tagName !== 'img') return undefined;
 
@@ -31,9 +32,7 @@ export const domExtractorTestAdapter: ExportPlatformAdapter = {
       processedImageSrcs?.add(src);
       const alt = image.getAttribute('alt')?.trim() || 'Image';
       flags.hasImages = true;
-      htmlParts.push(
-        `<img src="${DOMContentExtractor.escapeHtmlAttribute(src)}" alt="${DOMContentExtractor.escapeHtmlAttribute(alt)}" />`,
-      );
+      htmlParts.push(`<img src="${escapeHtmlAttribute(src)}" alt="${escapeHtmlAttribute(alt)}" />`);
       textParts.push(`\n![${alt.replace(/\]/g, '\\]')}](${src})\n`);
     }
     return true;
@@ -42,7 +41,7 @@ export const domExtractorTestAdapter: ExportPlatformAdapter = {
   extractCodeBlock: () => undefined,
   extractUserText: (textLines, textParts, element) => {
     textLines.forEach((line) => {
-      const text = DOMContentExtractor.normalizeText(line.textContent ?? '');
+      const text = normalizeText(line.textContent ?? '');
       if (text) textParts.push(text);
     });
     if (textParts.length === 0) {
@@ -50,7 +49,7 @@ export const domExtractorTestAdapter: ExportPlatformAdapter = {
       Array.from(contentOnly.querySelectorAll<HTMLElement>('[role="group"][aria-label]')).forEach(
         (candidate) => candidate.remove(),
       );
-      const fallback = DOMContentExtractor.normalizeText(contentOnly.textContent ?? '');
+      const fallback = normalizeText(contentOnly.textContent ?? '');
       if (fallback) textParts.push(fallback);
     }
   },

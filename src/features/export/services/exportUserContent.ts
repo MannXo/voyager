@@ -1,12 +1,11 @@
-import type { ExportPlatformAdapter } from '@/pages/content/export/adapter/platformAdapters';
-
 import type { ExportAttachment } from '../types/export';
 import type { ExtractedContent } from './DOMContentExtractor';
+import type { ExportContentDialect } from './exportContentDialect';
 import { normalizeText, escapeHtml, escapeHtmlAttribute } from './exportDomPolicy';
 
 export function extractUserContent(
   element: HTMLElement,
-  adapter: ExportPlatformAdapter,
+  adapter: ExportContentDialect,
 ): ExtractedContent {
   const result: ExtractedContent = {
     text: '',
@@ -76,7 +75,7 @@ export function extractUserContent(
 
 function extractUserAttachments(
   element: HTMLElement,
-  adapter: ExportPlatformAdapter,
+  adapter: ExportContentDialect,
 ): ExportAttachment[] {
   const candidates = adapter.getUserAttachmentCandidates(element);
   const attachments: ExportAttachment[] = [];

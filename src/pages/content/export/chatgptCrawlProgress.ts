@@ -75,7 +75,7 @@ function showCrawlProgress(t: Translate, onCancel: () => void): CrawlProgressPil
  * crawl, so it gets no pill.
  */
 export async function prepareChatGptExportWithProgress(
-  options: ChatGptCrawlOptions = {},
+  options: ChatGptCrawlOptions,
   t: Translate = getTranslationSync,
 ): Promise<ConversationPreparation | null> {
   if (!hasRenderedThread()) return prepareChatGptExport(options);

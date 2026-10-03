@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { DOMContentExtractor } from '../DOMContentExtractor';
+import { createContentExtractor } from '../DOMContentExtractor';
 import { domExtractorTestAdapter } from './domExtractorTestAdapter';
 
-DOMContentExtractor.setExportAdapter(domExtractorTestAdapter);
+const extractor = createContentExtractor(domExtractorTestAdapter);
 
 describe('exportRichText.lists', () => {
   it('preserves ordered-list starting numbers in Markdown', () => {
@@ -14,7 +14,7 @@ describe('exportRichText.lists', () => {
       </div></message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.text).toContain('22. First retained number');
     expect(extracted.text).toContain('23. Next retained number');
@@ -47,7 +47,7 @@ describe('exportRichText.lists', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.html).toContain('class="gv-export-wavedrom"');
     expect(extracted.html).toContain('<style>.s1{fill:#fff;stroke:#000}</style>');
@@ -81,7 +81,7 @@ describe('exportRichText.lists', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.hasCode).toBe(true);
     expect(extracted.html).toContain('<ul>');
@@ -134,7 +134,7 @@ describe('exportRichText.lists', () => {
         toJSON: () => ({}),
       });
 
-      const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+      const extracted = extractor.extractAssistantContent(assistant);
 
       expect(liveReadback).toHaveBeenCalledWith('image/png');
       expect(extracted.html).toContain('class="gv-export-echarts"');
@@ -168,7 +168,7 @@ describe('exportRichText.lists', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.hasCode).toBe(true);
     expect(extracted.html).toContain('<ul>');
@@ -196,7 +196,7 @@ describe('exportRichText.lists', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.hasCode).toBe(true);
     expect(extracted.text).toContain(
@@ -224,7 +224,7 @@ describe('exportRichText.lists', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.hasCode).toBe(true);
     expect(extracted.html).toContain('class="gv-export-mermaid"');
@@ -254,7 +254,7 @@ describe('exportRichText.lists', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.hasCode).toBe(true);
     expect(extracted.hasFormulas).toBe(true);
@@ -284,7 +284,7 @@ describe('exportRichText.lists', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.hasCode).toBe(true);
     expect(extracted.html).toContain('class="gv-export-mermaid"');
@@ -323,7 +323,7 @@ describe('exportRichText.lists', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.hasCode).toBe(true);
     expect(extracted.html).toContain('class="gv-export-mermaid"');
@@ -351,7 +351,7 @@ describe('exportRichText.lists', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.text).toContain('Item 1');
     expect(extracted.text).toContain('Item 2');
@@ -395,7 +395,7 @@ describe('exportRichText.lists', () => {
       </message-content>
     `;
 
-    const extracted = DOMContentExtractor.extractAssistantContent(assistant);
+    const extracted = extractor.extractAssistantContent(assistant);
 
     expect(extracted.hasFormulas).toBe(true);
     expect(extracted.text).toContain('$\\sqrt{ab} = \\sqrt{a}$');

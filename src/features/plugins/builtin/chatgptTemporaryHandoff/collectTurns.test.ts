@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { DOMContentExtractor } from '@/features/export/services/DOMContentExtractor';
+import { normalizeText } from '@/features/export/services/exportDomPolicy';
 import {
   makeTurns,
   mountThreadFixture,
@@ -24,7 +24,7 @@ beforeEach(() => {
       textParts: string[],
       element: HTMLElement,
     ) => {
-      const text = DOMContentExtractor.normalizeText(element.textContent || '');
+      const text = normalizeText(element.textContent || '');
       if (text) textParts.push(text);
     },
     getUserAttachmentCandidates: () => [],

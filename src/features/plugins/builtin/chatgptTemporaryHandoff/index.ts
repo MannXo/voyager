@@ -1,5 +1,5 @@
 import { logger } from '@/core/services/LoggerService';
-import { DOMContentExtractor } from '@/features/export/services/DOMContentExtractor';
+import { createContentExtractor } from '@/features/export/services/DOMContentExtractor';
 import type { ChatTurn } from '@/features/export/types/export';
 import { type Dispose, PluginScope } from '@/features/plugins/runtime/pluginScope';
 import type { PluginSettings } from '@/features/plugins/types';
@@ -86,9 +86,9 @@ export async function collectTemporaryChatTurns(
   signal: AbortSignal,
   expectedUrl = location.href,
 ): Promise<ChatTurn[]> {
-  DOMContentExtractor.setExportAdapter(resolveExportAdapter());
+  const extractor = createContentExtractor(resolveExportAdapter());
   // The current thread is virtualized: read it whole with the export's crawl.
-  if (hasRenderedThread()) return readChatGptThreadTurns({ signal, expectedUrl });
+  if (hasRenderedThread()) return readChatGptThreadTurns({ signal, expectedUrl, extractor });
   // Refuse incomplete or changed turns rather than hand off a partial or mixed conversation.
   const snapshot = chatgptCollectTurnContainers();
   if (isChatGptResponseGenerating() || snapshot.at(-1)?.role === 'user') {
@@ -97,7 +97,11 @@ export async function collectTemporaryChatTurns(
   const snapshotIds = snapshot.map(({ id }) => id);
   const selectedIds = new Set(snapshotIds);
   if (selectedIds.size === 0) return [];
-  const turns = await buildChatGptTurnsForSelection(selectedIds, { signal, expectedUrl });
+  const turns = await buildChatGptTurnsForSelection(selectedIds, {
+    signal,
+    expectedUrl,
+    extractor,
+  });
   const currentSnapshot = chatgptCollectTurnContainers();
   if (
     isChatGptResponseGenerating() ||

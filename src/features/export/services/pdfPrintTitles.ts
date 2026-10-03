@@ -3,14 +3,13 @@ import type { ConversationMetadata } from '../types/export';
 /** Resolve cover and print-dialog names without exposing the page-title lookup protocol. */
 export function resolvePDFPrintTitle(
   metadata: ConversationMetadata,
-  mode: 'cover' | 'conversation' | 'document',
+  mode: 'cover' | 'conversation',
 ): string {
   const platform = mode === 'cover' ? metadata.platform : metadata.platform || 'Gemini';
   const metadataTitle = normalizeConversationTitle(metadata.title, platform);
   const conversationTitle = normalizeConversationTitle(getConversationTitle(), platform);
 
   if (mode === 'cover') return metadataTitle || conversationTitle || 'Untitled Conversation';
-  if (mode === 'document') return metadataTitle || conversationTitle || `${platform} Conversation`;
 
   const base = metadataTitle || conversationTitle;
   if (!base) return `${platform} Conversation`;

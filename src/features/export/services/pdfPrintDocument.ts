@@ -1,23 +1,7 @@
 import type { ChatTurn, ConversationMetadata, ExportSpeakerLabels } from '../types/export';
-import { DOMContentExtractor } from './DOMContentExtractor';
 import { resolvePDFPrintTitle } from './pdfPrintTitles';
 
 export const PDF_PRINT_CONTAINER_ID = 'gv-pdf-print-container';
-
-/** Adapt document HTML and fallback text to the same turn rendering contract as conversations. */
-export function createPDFDocumentTurn(html: string, markdown: string): ChatTurn {
-  const htmlContainer = document.createElement('div');
-  htmlContainer.innerHTML = html.trim();
-  const fallbackFromHtml = extractPlainTextFromHtml(html);
-  const assistant = fallbackFromHtml || markdown.trim() || 'No content';
-  return {
-    user: '',
-    assistant,
-    starred: false,
-    omitEmptySections: true,
-    assistantElement: htmlContainer,
-  };
-}
 
 /**
  * Create HTML container for printing
@@ -40,23 +24,6 @@ export function createPDFPrintContainer(
       </div>
     `;
   return container;
-}
-
-function extractPlainTextFromHtml(html: string): string {
-  const trimmed = html.trim();
-  if (!trimmed) return '';
-  const container = document.createElement('div');
-  container.innerHTML = trimmed;
-  container.querySelectorAll('script, style, template').forEach((element) => element.remove());
-  return normalizeWhitespace(container.textContent || '');
-}
-
-function normalizeWhitespace(text: string): string {
-  return text
-    .replace(/\r/g, '')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
 }
 
 /**
@@ -101,20 +68,17 @@ function renderContent(turns: ChatTurn[], speakerLabels: ExportSpeakerLabels): s
 function renderTurn(turn: ChatTurn, index: number, speakerLabels: ExportSpeakerLabels): string {
   const starredClass = turn.starred ? 'gv-print-turn-starred' : '';
 
-  // Virtualized-platform content is captured before subsequent scrolling can
-  // unmount the original DOM subtree; use it before falling back to live DOM.
+  // A message read from the page that yielded no HTML prints as empty, not as
+  // its plain text; only turns that never had a page element use the text.
   const userContent =
     turn.userContent?.html ||
-    (turn.userElement
-      ? DOMContentExtractor.extractUserContent(turn.userElement).html || '<em>No content</em>'
-      : formatContent(turn.user) || '<em>No content</em>');
+    (turn.userElement ? '' : formatContent(turn.user)) ||
+    '<em>No content</em>';
 
   const assistantContent =
     turn.assistantContent?.html ||
-    (turn.assistantElement
-      ? DOMContentExtractor.extractAssistantContent(turn.assistantElement).html ||
-        '<em>No content</em>'
-      : formatContent(turn.assistant) || '<em>No content</em>');
+    (turn.assistantElement ? '' : formatContent(turn.assistant)) ||
+    '<em>No content</em>';
 
   if (!turn.omitEmptySections) {
     return `
@@ -137,9 +101,8 @@ function renderTurn(turn: ChatTurn, index: number, speakerLabels: ExportSpeakerL
     `;
   }
 
-  const hasUser = !!turn.userContent || !!turn.userElement || !!turn.user.trim();
-  const hasAssistant =
-    !!turn.assistantContent || !!turn.assistantElement || !!turn.assistant.trim();
+  const hasUser = !!turn.userContent || !!turn.user.trim();
+  const hasAssistant = !!turn.assistantContent || !!turn.assistant.trim();
 
   return `
       <div class="gv-print-turn ${starredClass}">

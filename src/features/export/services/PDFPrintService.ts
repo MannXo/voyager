@@ -19,11 +19,7 @@ import {
   mapWithConcurrency,
 } from './boundedImageFetch';
 import { isolateMermaidSvgImages, rasterizeMermaidSvgImages } from './mermaidSvgImage';
-import {
-  PDF_PRINT_CONTAINER_ID,
-  createPDFDocumentTurn,
-  createPDFPrintContainer,
-} from './pdfPrintDocument';
+import { PDF_PRINT_CONTAINER_ID, createPDFPrintContainer } from './pdfPrintDocument';
 import { PDF_PRINT_BODY_CLASS, PDF_PRINT_STYLES_ID, injectPDFPrintStyles } from './pdfPrintStyles';
 import { resolvePDFPrintTitle } from './pdfPrintTitles';
 
@@ -57,31 +53,15 @@ export class PDFPrintService {
     await this.exportInternal(
       turns,
       metadata,
-      false,
       options?.fontSize,
       options?.speakerLabels,
       options?.signal,
     );
   }
 
-  static async exportDocument(content: PrintableDocumentContent): Promise<void> {
-    const metadata: ConversationMetadata = {
-      url: content.url,
-      exportedAt: content.exportedAt,
-      count: 1,
-      title: content.title,
-      platform: 'web',
-    };
-
-    const turns = [createPDFDocumentTurn(content.html, content.markdown)];
-
-    await this.exportInternal(turns, metadata, true);
-  }
-
   private static async exportInternal(
     turns: ChatTurn[],
     metadata: ConversationMetadata,
-    preferMetadataTitle: boolean,
     fontSize?: number,
     speakerLabels: ExportSpeakerLabels = DEFAULT_EXPORT_SPEAKER_LABELS,
     signal?: AbortSignal,
@@ -112,10 +92,7 @@ export class PDFPrintService {
 
     // Keep print header/footer title aligned with conversation title in print dialog output.
     this.originalDocumentTitle = document.title;
-    const printDialogTitle = resolvePDFPrintTitle(
-      metadata,
-      preferMetadataTitle ? 'document' : 'conversation',
-    );
+    const printDialogTitle = resolvePDFPrintTitle(metadata, 'conversation');
     if (printDialogTitle) {
       document.title = printDialogTitle;
     }

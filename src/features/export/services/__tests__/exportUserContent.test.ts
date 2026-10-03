@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { DOMContentExtractor } from '../DOMContentExtractor';
+import { createContentExtractor } from '../DOMContentExtractor';
 import { domExtractorTestAdapter } from './domExtractorTestAdapter';
 
-DOMContentExtractor.setExportAdapter(domExtractorTestAdapter);
+const extractor = createContentExtractor(domExtractorTestAdapter);
 
 describe('exportUserContent', () => {
   it('exports non-image user uploads as filename placeholders', () => {
@@ -22,7 +22,7 @@ describe('exportUserContent', () => {
       <p class="query-text-line">Please review this file</p>
     `;
 
-    const extracted = DOMContentExtractor.extractUserContent(user);
+    const extracted = extractor.extractUserContent(user);
 
     expect(extracted.attachments).toEqual([{ name: 'Agent notes & review.pdf', type: 'pdf' }]);
     expect(extracted.text).toContain('📎 Agent notes & review.pdf');
@@ -49,7 +49,7 @@ describe('exportUserContent', () => {
       <div>请解释这个文件。</div>
     `;
 
-    const extracted = DOMContentExtractor.extractUserContent(user);
+    const extracted = extractor.extractUserContent(user);
 
     expect(extracted.attachments).toEqual([{ name: 'spring理解.md', type: 'md' }]);
     expect(extracted.text).toContain('📎 spring理解.md');
@@ -69,7 +69,7 @@ describe('exportUserContent', () => {
       </user-query-file-preview>
     `;
 
-    const extracted = DOMContentExtractor.extractUserContent(user);
+    const extracted = extractor.extractUserContent(user);
 
     expect(extracted.hasImages).toBe(true);
     expect(extracted.attachments).toEqual([]);
@@ -81,7 +81,7 @@ describe('exportUserContent', () => {
     const user = document.createElement('div');
     user.innerHTML = `<img class="preview-image" src="https://example.com/photo.png" alt="&quot; onload=&quot;alert(1)" />`;
 
-    const extracted = DOMContentExtractor.extractUserContent(user);
+    const extracted = extractor.extractUserContent(user);
 
     expect(extracted.html).toContain('alt="&quot; onload=&quot;alert(1)"');
     expect(extracted.html).not.toContain('alt="" onload=');
