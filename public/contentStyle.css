@@ -35,7 +35,9 @@
    CRITICAL: the overridable vars are NEVER declared in CSS. Anything below
    <html> redeclaring --gv-pm-brand would SHADOW the inline value for every
    Voyager surface inside it, so a custom colour would never reach it. Only the *-default vars are
-   theme-scoped; the effective accent is always var(--gv-pm-brand, …-default). */
+   theme-scoped; the effective accent is always var(--gv-pm-brand, …-default).
+   Solid fills use the full token, not a rebuilt hue that loses a custom accent.
+   Keep data-gv-theme rules token-driven too: that layer wins on the prompt panel. */
 :root {
   --gv-pm-brand-default: oklch(0.601 0.1 140);
   --gv-pm-brand-fg-default: #ffffff;

@@ -112,6 +112,7 @@ export class NativeDeleteTracker {
   }
 
   captureScope(): NativeDeleteScope {
+    // A delayed deletion must never remove data from an account opened after the click.
     return {
       storageKey: this.callbacks.getContext().storageKey,
       routeUserId: getNativeDeleteRouteUserId(),

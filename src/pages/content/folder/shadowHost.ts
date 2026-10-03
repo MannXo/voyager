@@ -73,7 +73,7 @@ export function attachShadowSurface(host: HTMLElement, css: string): ShadowSurfa
   };
 }
 
-/** Whether `event` passed through `node`, across shadow boundaries. */
+/** Read during dispatch: the path across shadow boundaries is empty afterwards. */
 export function eventPassedThrough(event: Event, node: Node): boolean {
   return event.composedPath().includes(node);
 }

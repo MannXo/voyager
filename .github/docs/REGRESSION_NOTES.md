@@ -21,12 +21,11 @@ details only when the introduction point changes how a maintainer should reason 
 
 ## Topics
 
-| Topic                                                               | Read when changing                                                                               |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| [Rendering and export](regressions/rendering-export.md)             | Mermaid, KaTeX, rendered previews, Quote Reply, or conversation exports.                         |
-| [Watermark and media](regressions/watermark-media.md)               | Watermark detection or removal, image downloads, full-size media, or native media handoffs.      |
-| [Gemini controls](regressions/gemini-controls.md)                   | Gemini scrolling, model or thinking controls, usage parsing, or generation traffic detection.    |
-| [Folders, timeline, and layout](regressions/folders-timeline-ui.md) | Folders, timeline navigation, sidebar behavior, chat width, drag and drop, or hover layout.      |
-| [Providers and plugins](regressions/providers-plugins.md)           | ChatGPT or Claude adapters, plugin lifecycles, temporary chat handoff, or prompt commands.       |
-| [Browser and release](regressions/browser-release.md)               | Browser support, extension permissions or messaging, Safari native behavior, or public assets.   |
-| [State, identity, and sync](regressions/state-identity-sync.md)     | Account or route identity, extension message lifetimes, storage mirrors, clear markers, or sync. |
+| Topic                                                           | Read when changing                                                                               |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| [Rendering and export](regressions/rendering-export.md)         | Mermaid, KaTeX, rendered previews, Quote Reply, or conversation exports.                         |
+| [Watermark and media](regressions/watermark-media.md)           | Watermark detection or removal, image downloads, full-size media, or native media handoffs.      |
+| [Gemini controls](regressions/gemini-controls.md)               | Gemini scrolling, model or thinking controls, usage parsing, or generation traffic detection.    |
+| [Providers and plugins](regressions/providers-plugins.md)       | ChatGPT or Claude adapters, plugin lifecycles, temporary chat handoff, or prompt commands.       |
+| [Browser and release](regressions/browser-release.md)           | Browser support, extension permissions or messaging, Safari native behavior, or public assets.   |
+| [State, identity, and sync](regressions/state-identity-sync.md) | Account or route identity, extension message lifetimes, storage mirrors, clear markers, or sync. |
