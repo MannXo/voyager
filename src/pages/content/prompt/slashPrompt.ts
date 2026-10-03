@@ -15,11 +15,10 @@ import { type PromptItem } from '@/core/types/sync';
 import { isPromptTemplate } from '@/features/prompt/model/promptTemplate';
 import { getTranslationSync } from '@/utils/i18n';
 
-import { findChatInput } from '../chatInput/index';
+import { CHAT_INPUT_SELECTOR, findChatInput } from '../chatInput/index';
 import { findClosestSendActionButton, isSendKeyboardEvent } from '../sendBehavior/sendButton';
 import { type TemplateFillHandle, openTemplateFill } from './PromptTemplateFill';
 import {
-  CHAT_INPUT_SELECTOR,
   type PromptQuery,
   TOKEN_CLASS,
   completeQuery,

@@ -13,11 +13,6 @@ import { type PromptItem } from '@/core/types/sync';
 export const TOKEN_CLASS = 'gv-pm-slash-token';
 export const TOKEN_SPACER = '\u00a0';
 
-export const CHAT_INPUT_SELECTOR =
-  '[data-testid="chat-input"][contenteditable="true"], #prompt-textarea[contenteditable="true"], ' +
-  'rich-textarea [contenteditable="true"], div[contenteditable="true"][role="textbox"], ' +
-  '.input-area textarea, textarea[placeholder*="Ask"], textarea';
-
 export interface PromptQuery {
   input: HTMLElement;
   query: string;

@@ -14,9 +14,8 @@
  */
 import { createPackageIcon } from '@/core/icons/promptManagerIcons';
 
-import { insertTextIntoChatInput } from '../chatInput/index';
+import { CHAT_INPUT_SELECTOR, insertTextIntoChatInput } from '../chatInput/index';
 import {
-  CHAT_INPUT_SELECTOR,
   type PromptQuery,
   TOKEN_CLASS,
   TOKEN_SPACER,
