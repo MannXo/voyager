@@ -1,11 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   findChatInput: vi.fn<() => HTMLElement | null>(),
   getTranslationSync: vi.fn((key: string) => key),
   hasSlashEligiblePrompts: vi.fn((items: unknown[]) => items.length > 0),
   initI18n: vi.fn(async () => undefined),
-  isGeminiSlashPromptSurface: vi.fn(() => true),
   promptStorageGet: vi.fn(),
   showCoachmark: vi.fn(async (_config: unknown) => 'dismissed'),
   storageGet: vi.fn(async (defaults?: Record<string, unknown>) => defaults ?? {}),
@@ -44,7 +43,6 @@ vi.mock('../../coachmark', () => ({
 
 vi.mock('../slashMatch', () => ({
   hasSlashEligiblePrompts: mocks.hasSlashEligiblePrompts,
-  isGeminiSlashPromptSurface: mocks.isGeminiSlashPromptSurface,
 }));
 
 interface CapturedCoachmarkConfig {
@@ -62,12 +60,16 @@ describe('slash prompt coachmark', () => {
     vi.resetModules();
     vi.clearAllMocks();
     document.body.innerHTML = '';
-    mocks.isGeminiSlashPromptSurface.mockReturnValue(true);
+    vi.stubGlobal('location', new URL('https://gemini.google.com/app'));
     mocks.storageGet.mockImplementation(
       async (defaults?: Record<string, unknown>) => defaults ?? {},
     );
     mocks.promptStorageGet.mockResolvedValue({ success: true, data: [] });
     mocks.hasSlashEligiblePrompts.mockImplementation((items: unknown[]) => items.length > 0);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('is eligible only when the setting is enabled and a usable Prompt exists', async () => {
@@ -131,11 +133,23 @@ describe('slash prompt coachmark', () => {
     await vi.waitFor(() => expect(mocks.showCoachmark).toHaveBeenCalled());
   });
 
-  it('skips outside Gemini without mounting or marking anything', async () => {
-    mocks.isGeminiSlashPromptSurface.mockReturnValue(false);
+  it.each(['https://aistudio.google.com/prompts/new_chat', 'https://chatgpt.com/c/abc'])(
+    'skips on %s without mounting or marking anything',
+    async (url) => {
+      vi.stubGlobal('location', new URL(url));
+      const { maybeShowSlashPromptCoachmark } = await import('../slashPromptCoachmark');
+
+      expect(await maybeShowSlashPromptCoachmark({ force: true })).toBe('skipped');
+      expect(mocks.showCoachmark).not.toHaveBeenCalled();
+    },
+  );
+
+  it('is shown on Gemini Enterprise as well', async () => {
+    vi.stubGlobal('location', new URL('https://business.gemini.google/app'));
     const { maybeShowSlashPromptCoachmark } = await import('../slashPromptCoachmark');
 
-    expect(await maybeShowSlashPromptCoachmark({ force: true })).toBe('skipped');
-    expect(mocks.showCoachmark).not.toHaveBeenCalled();
+    await maybeShowSlashPromptCoachmark({ force: true });
+
+    expect(mocks.showCoachmark).toHaveBeenCalledOnce();
   });
 });

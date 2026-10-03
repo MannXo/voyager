@@ -2,12 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { PromptItem } from '@/core/types/sync';
 
-import {
-  ghostSuffix,
-  hasSlashEligiblePrompts,
-  isGeminiSlashPromptSurface,
-  matchSlashPrompts,
-} from '../slashMatch';
+import { ghostSuffix, hasSlashEligiblePrompts, matchSlashPrompts } from '../slashMatch';
 
 const prompts: PromptItem[] = [
   {
@@ -83,16 +78,6 @@ describe('hasSlashEligiblePrompts', () => {
         { id: 'unique', name: 'Summarizer', text: 'Unique body', tags: [], createdAt: 5 },
       ]),
     ).toBe(true);
-  });
-});
-
-describe('isGeminiSlashPromptSurface', () => {
-  it('allows Gemini surfaces and rejects AI Studio and plugin platforms', () => {
-    expect(isGeminiSlashPromptSurface('https://gemini.google.com/app')).toBe(true);
-    expect(isGeminiSlashPromptSurface('https://business.gemini.google/app')).toBe(true);
-    expect(isGeminiSlashPromptSurface('https://aistudio.google.com/prompts/new_chat')).toBe(false);
-    expect(isGeminiSlashPromptSurface('https://chatgpt.com/c/abc')).toBe(false);
-    expect(isGeminiSlashPromptSurface('https://claude.ai/chat/abc')).toBe(false);
   });
 });
 

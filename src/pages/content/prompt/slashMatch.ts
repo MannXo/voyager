@@ -10,15 +10,6 @@ import { getPromptNameComparisonKey, getPromptNameConflictIds } from '@/core/uti
 
 const MAX_RESULTS = 8;
 
-export function isGeminiSlashPromptSurface(pageUrl = window.location.href): boolean {
-  try {
-    const hostname = new URL(pageUrl).hostname.toLowerCase();
-    return hostname === 'gemini.google.com' || hostname === 'business.gemini.google';
-  } catch {
-    return false;
-  }
-}
-
 export function isPromptItem(value: unknown): value is PromptItem {
   if (!value || typeof value !== 'object') return false;
   const item = value as Partial<PromptItem>;

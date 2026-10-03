@@ -1,14 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import { CleanupManager } from '@/core/utils/cleanupManager';
 
-import { startSentPromptChipsFeature } from '../sentPromptChipsFeature';
+import { createPromptManagerEngine } from '../promptManagerEngine';
+import { resolvePromptSiteAdapter } from '../resolvePromptSiteAdapter';
 
 vi.mock('webextension-polyfill', () => ({ default: globalThis.chrome }));
 
 const review = { id: 'review', name: 'Review', text: 'Review this change\nList every risk' };
 
-let stop: (() => void) | null = null;
+let cleanup: CleanupManager | null = null;
 let stored: unknown = [review];
 
 function mountSentTurn(lines: string[]): HTMLElement {
@@ -35,8 +37,8 @@ function emitLocalChange(changes: Record<string, unknown>): void {
 
 async function start(url: string): Promise<void> {
   vi.stubGlobal('location', new URL(url));
-  const chips = await startSentPromptChipsFeature({ pageUrl: url });
-  stop = chips.destroy;
+  cleanup = new CleanupManager();
+  await createPromptManagerEngine(resolvePromptSiteAdapter(url), cleanup).startComposerFeatures();
 }
 
 const chipOf = (bubble: HTMLElement) => bubble.querySelector('.gv-pm-sent-chip');
@@ -45,6 +47,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   document.body.innerHTML = '';
   stored = [review];
+  vi.mocked(chrome.storage.sync.get).mockResolvedValue({} as never);
   vi.mocked(chrome.storage.local.get).mockImplementation(((
     _keys: unknown,
     callback?: (items: Record<string, unknown>) => void,
@@ -56,8 +59,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  stop?.();
-  stop = null;
+  cleanup?.executeCleanups();
+  cleanup = null;
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
 });
