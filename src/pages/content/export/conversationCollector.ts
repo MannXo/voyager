@@ -6,6 +6,7 @@
  * Gemini's thinking panel and Deep Research immersive nodes, starred-turn
  * lookup, and appending Canvas document content to responses that reference it.
  */
+import { filterTopLevel } from '@/core/utils/array';
 import {
   buildConversationIdFromUrl,
   buildLegacyConversationIdFromUrl,
@@ -16,6 +17,7 @@ import {
   createContentExtractor,
   extractTurnContent,
 } from '@/features/export/services/DOMContentExtractor';
+import { queryOutsideThoughts } from '@/features/export/services/exportDomPolicy';
 import type { CanvasDoc, ChatTurn as ExportChatTurn } from '@/features/export/types/export';
 
 import { isServerTurnId } from '../fork/turnId';
@@ -24,7 +26,8 @@ import type { ExportPlatformAdapter } from './adapter/platformAdapters';
 import { assistantHasCanvasDoc, extractAllCanvasDocs, isAnyCanvasOpen } from './canvasDocExtractor';
 import {
   filterOutDeepResearchImmersiveNodes,
-  findFirstElementBetweenTurns,
+  findAssistantForTurn,
+  pickAssistantExportElement,
 } from './conversationDom';
 import { resolveUniqueExportTurnIds } from './selectionIds';
 import { groupSelectedMessagesByTurn } from './selectionUtils';
@@ -88,44 +91,6 @@ function normalizeText(text: string | null): string {
   } catch {
     return '';
   }
-}
-
-/**
- * querySelector variant that skips elements nested inside model-thoughts / thoughts-container.
- * When the user expands Gemini's "thinking" section, a second `message-content` element
- * appears *before* the real response in DOM order.  A plain `querySelector` would match
- * the thinking panel first, causing exports to grab the wrong content.
- */
-function queryOutsideThoughts<T extends Element = Element>(
-  root: Element,
-  selector: string,
-): T | null {
-  const candidates = root.querySelectorAll<T>(selector);
-  for (const el of Array.from(candidates)) {
-    if (!el.closest('model-thoughts, .thoughts-container, .thoughts-content')) {
-      return el;
-    }
-  }
-  return null;
-}
-
-function filterTopLevel(elements: Element[]): HTMLElement[] {
-  const arr = elements.map((e) => e as HTMLElement);
-  const out: HTMLElement[] = [];
-  for (let i = 0; i < arr.length; i++) {
-    const el = arr[i];
-    let isDescendant = false;
-    for (let j = 0; j < arr.length; j++) {
-      if (i === j) continue;
-      const other = arr[j];
-      if (other.contains(el)) {
-        isDescendant = true;
-        break;
-      }
-    }
-    if (!isDescendant) out.push(el);
-  }
-  return out;
 }
 
 function readStarredSet(conversationId: string): Set<string> {
@@ -318,25 +283,14 @@ export function createConversationCollector(adapter: ExportPlatformAdapter): Con
     for (let i = 0; i < users.length; i++) {
       const uEl = users[i] as HTMLElement;
       const uText = normalizeText(uEl.innerText || uEl.textContent || '');
-      let aText = '';
-      let aEl = findFirstElementBetweenTurns(uEl, users[i + 1], assistants);
-
-      if (aEl) {
-        aText = extractAssistantText(aEl);
-      } else {
-        // Fallback: search next siblings up to a small window
-        let sib: HTMLElement | null = uEl;
-        for (let step = 0; step < 8 && sib; step++) {
-          sib = sib.nextElementSibling as HTMLElement | null;
-          if (!sib) break;
-          if (sib.matches(userSelectors.join(','))) break;
-          if (sib.matches(assistantSelectors.join(','))) {
-            aEl = sib;
-            aText = extractAssistantText(sib);
-            break;
-          }
-        }
-      }
+      const aEl = findAssistantForTurn(
+        uEl,
+        users[i + 1],
+        assistants,
+        userSelectors.join(','),
+        assistantSelectors.join(','),
+      );
+      const aText = aEl ? extractAssistantText(aEl) : '';
       const turnId = uniqueTurnIds[i];
       const turnIdAliases =
         turnId && nativeConversationId && isServerTurnId(turnId)
@@ -346,21 +300,7 @@ export function createConversationCollector(adapter: ExportPlatformAdapter): Con
             : [];
       const starred = turnIdAliases.some((alias) => starredSet.has(alias));
       if (uText || aText) {
-        // Prefer a richer assistant container for downstream rich extraction
-        let finalAssistantEl: HTMLElement | undefined = undefined;
-        if (aEl) {
-          const pick =
-            queryOutsideThoughts<HTMLElement>(aEl, 'message-content') ||
-            queryOutsideThoughts<HTMLElement>(aEl, '.markdown, .markdown-main-panel') ||
-            (aEl.closest('.presented-response-container') as HTMLElement | null) ||
-            queryOutsideThoughts<HTMLElement>(
-              aEl,
-              '.presented-response-container, .response-content',
-            ) ||
-            queryOutsideThoughts<HTMLElement>(aEl, 'response-element') ||
-            aEl;
-          finalAssistantEl = pick || undefined;
-        }
+        const finalAssistantEl = aEl ? pickAssistantExportElement(aEl) : undefined;
         pairs.push({
           turnId,
           user: uText,

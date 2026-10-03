@@ -17,6 +17,7 @@ import {
   normalizeText,
   escapeHtml,
   escapeHtmlAttribute,
+  queryOutsideThoughts,
 } from './exportDomPolicy';
 import { processInlineContent, extractTable, extractList } from './exportRichText';
 import type { ProcessedInlineContent } from './exportRichText';
@@ -35,25 +36,6 @@ export interface ExtractedContent {
 export interface ContentExtractor {
   extractUserContent(element: HTMLElement): ExtractedContent;
   extractAssistantContent(element: HTMLElement): ExtractedContent;
-}
-
-/**
- * querySelector variant that skips elements nested inside model-thoughts / thoughts-container.
- * When the user expands Gemini's "thinking" section, a second `message-content` element
- * appears *before* the real response in DOM order.  A plain `querySelector` would match
- * the thinking panel first, causing exports to grab the wrong content.
- */
-function queryOutsideThoughts<T extends Element = Element>(
-  root: Element,
-  selector: string,
-): T | null {
-  const candidates = root.querySelectorAll<T>(selector);
-  for (const el of Array.from(candidates)) {
-    if (!el.closest('model-thoughts, .thoughts-container, .thoughts-content')) {
-      return el;
-    }
-  }
-  return null;
 }
 
 export function createContentExtractor(dialect: ExportContentDialect): ContentExtractor {

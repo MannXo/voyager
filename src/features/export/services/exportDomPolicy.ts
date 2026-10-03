@@ -87,6 +87,23 @@ export function stripExportArtifacts(root: HTMLElement): void {
   });
 }
 
+/**
+ * querySelector that skips matches inside Gemini's thinking panel. An expanded
+ * panel renders its own `message-content` before the real response.
+ */
+export function queryOutsideThoughts<T extends Element = Element>(
+  root: Element,
+  selector: string,
+): T | null {
+  const candidates = root.querySelectorAll<T>(selector);
+  for (const el of Array.from(candidates)) {
+    if (!el.closest('model-thoughts, .thoughts-container, .thoughts-content')) {
+      return el;
+    }
+  }
+  return null;
+}
+
 export function normalizeText(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }

@@ -1,10 +1,13 @@
-import { getGeminiTurnSelectors } from '@/core/gemini/turnSelectors';
 import type { ExtractedContent } from '@/features/export/services/DOMContentExtractor';
 import { extractCodeBlock as readCodeBlock } from '@/features/export/services/exportCodeBlocks';
 import { normalizeText } from '@/features/export/services/exportDomPolicy';
 import type { SiteAdapter } from '@/features/plugins/types';
 
-import { resolveConversationRoot } from '../../conversationDom';
+import {
+  geminiAssistantTurnSelectors,
+  geminiUserTurnSelectors,
+  resolveConversationRoot,
+} from '../../conversationDom';
 import type { ExportPlatformAdapter } from './contract';
 import { collectGeminiAssistantImages, extractGeminiAssistantImage } from './geminiImages';
 
@@ -187,27 +190,8 @@ function extractInlineFormula(
 export function buildGeminiAdapter(site: SiteAdapter): ExportPlatformAdapter {
   return {
     site,
-    getUserSelectors() {
-      const configured = (() => {
-        try {
-          return (
-            localStorage.getItem('geminiTimelineUserTurnSelector') ||
-            localStorage.getItem('geminiTimelineUserTurnSelectorAuto') ||
-            ''
-          );
-        } catch {
-          return '';
-        }
-      })();
-      const defaults = getGeminiTurnSelectors('turn.user');
-      return configured
-        ? [configured, ...defaults.filter((item) => item !== configured)]
-        : defaults;
-    },
-    getAssistantSelectors: () => [
-      ...getGeminiTurnSelectors('turn.assistant'),
-      ...getGeminiTurnSelectors('turn.assistantFallback'),
-    ],
+    getUserSelectors: geminiUserTurnSelectors,
+    getAssistantSelectors: geminiAssistantTurnSelectors,
     extractConversationTitle,
     extractConversationIdFromUrl: extractConversationId,
     shouldPreloadHistory: () => true,
