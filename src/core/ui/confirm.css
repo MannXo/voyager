@@ -27,7 +27,17 @@
   background: var(--gv-ui-surface, oklch(0.995 0.002 250));
   color: var(--gv-ui-text, oklch(0.14 0.004 285));
   box-shadow: var(--gv-ui-shadow, 0 6px 20px oklch(0 0 0 / 0.16));
-  font-family: var(--gv-ui-font, 'Google Sans', Roboto, system-ui, sans-serif);
+  font-family: var(
+    --gv-ui-font,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif
+  );
   font-size: 13px;
   line-height: 1.4;
   animation: gv-confirm-in var(--gv-ui-motion, 160ms) var(--gv-ui-ease, ease-out);

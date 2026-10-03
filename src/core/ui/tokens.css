@@ -3,6 +3,8 @@
  * the page's `data-gv-scheme` and `body.gv-rtl` onto the host, so the tokens key
  * off `:host(...)`: page selectors cannot reach a shadow tree. The values are the
  * oklch surfaces the prompt panel, timeline tooltip and research pack already use.
+ * The font is pinned like the prompt panel's and the timeline tooltip's: the
+ * host's own font ('Google Sans' on Gemini) would make Voyager differ per site.
  * The accent is inherited from `<html>` (`--gv-pm-brand`, set inline per site), and
  * every token here names a literal fallback so a page without contentStyle.css
  * still paints the layer. */
@@ -21,7 +23,8 @@
   --gv-ui-info: #94a3b8;
   --gv-ui-pending: #0ea5e9;
   --gv-ui-focus-ring: var(--gv-pm-brand, var(--gv-pm-brand-default, oklch(0.601 0.1 140)));
-  --gv-ui-font: 'Google Sans', Roboto, system-ui, sans-serif;
+  --gv-ui-font:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --gv-ui-motion: 160ms;
   --gv-ui-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   /* The one stacking value for every body-level layer. Layers share it, so the
