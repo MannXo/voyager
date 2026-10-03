@@ -23,6 +23,7 @@ import { DEFAULT_CONVERSATION_ICON, getGemIcon } from './gemConfig';
 import { getCurrentHexIdFromLocation } from './nativeConversationIds';
 import { attachShadowSurface } from './shadowHost';
 import { type SidebarDropContext, acceptsSidebarDrag, dropOnSidebar } from './sidebarDrops';
+import { searchAndSortOptions } from './sidebarFilter';
 import type { ConversationReference, Folder } from './types';
 
 export const SIDEBAR_TREE_HOST_CLASS = 'gv-folder-tree-host';
@@ -258,12 +259,8 @@ function siteOptions(options: SidebarTreeOptions, view: SidebarTreeView): TreeSi
     folderMenuButton: { labelKey: 'folder_settings' },
     folderBodyDrop: true,
     folderDrag: true,
-    // Positions mean nothing in a filtered list or in recent order.
-    reorder: view.searching
-      ? undefined
-      : { folders: true, conversations: view.sortMode === 'manual' },
+    ...searchAndSortOptions(view.searching, view.sortMode),
     filter: view.filter,
-    expandAll: view.searching,
     isActiveConversation: activeConversation(options).isActive,
     isConversationSelected: (conversation, bucketId) =>
       selection.isFolderConversationSelected(conversation.conversationId, bucketId),
@@ -272,7 +269,6 @@ function siteOptions(options: SidebarTreeOptions, view: SidebarTreeView): TreeSi
       conversation.isGem && conversation.gemId
         ? getGemIcon(conversation.gemId)
         : DEFAULT_CONVERSATION_ICON,
-    emptyLabelKey: view.searching ? 'folder_search_empty' : 'folder_empty',
     folderToggleDelayMs: FOLDER_TOGGLE_DELAY_MS,
   };
 }

@@ -98,7 +98,7 @@ function mountAIStudio(data: FolderData, actions: TreeActions, options: MountOpt
 }
 
 function mountChatGpt(data: FolderData, actions: TreeActions): MountedTree {
-  const section = new ChatGptFolderSection(data, ROOT_CONVERSATIONS_ID, actions);
+  const section = new ChatGptFolderSection({ data, rootBucketId: ROOT_CONVERSATIONS_ID, actions });
   document.body.appendChild(section.element);
   const root = section.element.shadowRoot;
   if (!root) throw new Error('the ChatGPT section has no shadow root');

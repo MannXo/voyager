@@ -5,11 +5,6 @@
  * storage: what each gesture writes to the stored `FolderData`, and that view
  * gestures write nothing. Pinned before the shared tree's internals move to
  * open-source packages; DOM access goes through the shared tree driver.
- *
- * Unlike the floating panel and AI Studio, the section renders the tree
- * without its controller. Known differences, not pinned as tests: Escape does
- * not close its folder menu, the menu is not moved into the viewport, and it
- * cannot be opened from the keyboard.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 

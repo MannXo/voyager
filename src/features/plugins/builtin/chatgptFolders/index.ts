@@ -50,6 +50,7 @@ import { CHATGPT_FOLDER_CONFIG } from './config';
 import { BOOKMARK_ADD_PATH, DOWNLOAD_PATH, UPLOAD_PATH } from './icons';
 import { createLegacyChatGptCommands } from './legacyChatGptCommands';
 import { type ChatGptFolderPanelPrefs, loadPanelPrefs, savePanelPrefs } from './panelPrefs';
+import { type ChatGptFolderSectionPrefs, loadSectionPrefs, saveSectionPrefs } from './sectionPrefs';
 import { chatgptFolderExportFilename, exportChatGptFolders } from './transfer';
 
 const HINT_KEYS = ['chatgptFoldersHint', 'floatingPanelGestureHint'];
@@ -74,6 +75,8 @@ class ChatGptFoldersView {
   private section: ChatGptFolderSection | null = null;
   private picker: FolderPickerHandle | null = null;
   private fabShown = false;
+  /** The conversation last recorded as opened, so each open is recorded once. */
+  private openedConversationId: string | null = null;
   // Gemini's removal confirm; it closes with the panel.
   private readonly dialogs = createFolderDialogs();
 
@@ -82,6 +85,7 @@ class ChatGptFoldersView {
     private readonly store: ChatGptFolderStore,
     private readonly commands: FolderCommands,
     private readonly prefs: ChatGptFolderPanelPrefs,
+    private sectionPrefs: ChatGptFolderSectionPrefs,
   ) {}
 
   start(): void {
@@ -95,17 +99,22 @@ class ChatGptFoldersView {
         commands: this.commands,
         rootBucketId,
         feedback: { showNotification: (message) => this.flashTree(message) },
-        sortMode: () => 'manual',
+        sortMode: () => this.section?.sortMode ?? this.sectionPrefs.sortMode,
       };
-      const section = new ChatGptFolderSection(
-        this.store.data,
+      const section = new ChatGptFolderSection({
+        data: this.store.data,
         rootBucketId,
-        {
+        actions: {
           ...this.treeActions(),
           onDrop: (e, folderId, placement) => dropOnSidebar(drops, e, folderId, placement),
           acceptsDrag: acceptsSidebarDrag,
         },
-        [
+        prefs: this.sectionPrefs,
+        onPrefsChange: (prefs) => {
+          this.sectionPrefs = prefs;
+          void saveSectionPrefs(prefs);
+        },
+        headerActions: [
           {
             modifier: 'add-current',
             labelKey: 'chatgptFoldersAddCurrent',
@@ -125,7 +134,7 @@ class ChatGptFoldersView {
             onClick: () => this.exportFolders(),
           },
         ],
-      );
+      });
       section.setDataReady(this.store.ready);
       // The heading files at the root, as Gemini's does: tree drags, and ChatGPT's row drags.
       section.header.setAttribute(DROP_FOLDER_ATTR, rootBucketId);
@@ -159,11 +168,20 @@ class ChatGptFoldersView {
    * page has open; called after every sidebar change, a route change included.
    */
   placeSection(sidebar: HTMLElement | null): void {
+    const openId = readChatGptConversation(location.href)?.conversationId ?? null;
     this.section?.place(sidebar);
-    this.section?.setActiveConversation(
-      readChatGptConversation(location.href)?.conversationId ?? null,
-    );
+    this.section?.setActiveConversation(openId);
     this.showFloatingEntry(!this.section?.element.isConnected);
+    this.recordOpened(openId);
+  }
+
+  /** Records when a filed conversation was opened, for the recent order, as Gemini does. */
+  private recordOpened(conversationId: string | null): void {
+    // Before the folders load, the open is recorded once they have.
+    if (conversationId === this.openedConversationId || !this.store.ready) return;
+    this.openedConversationId = conversationId;
+    if (!conversationId) return;
+    void this.commands.run({ kind: 'markConversationOpened', conversationId, at: Date.now() });
   }
 
   /**
@@ -398,10 +416,10 @@ export async function activateChatGptFolders(
   if (scope.isDisposed) return;
   const store = new ChatGptFolderStore();
   scope.child(store, 'chatgpt-folders:store');
-  const prefs = await loadPanelPrefs();
+  const [prefs, sectionPrefs] = await Promise.all([loadPanelPrefs(), loadSectionPrefs()]);
   if (scope.isDisposed) return;
   const commands = createLegacyChatGptCommands(store);
-  const view = new ChatGptFoldersView(scope, store, commands, prefs);
+  const view = new ChatGptFoldersView(scope, store, commands, prefs, sectionPrefs);
   view.start();
   const sidebar = new ChatGptSidebarWatcher(scope);
   const moveMenu = new ChatGptMoveMenu({

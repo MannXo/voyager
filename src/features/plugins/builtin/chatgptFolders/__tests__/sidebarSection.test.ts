@@ -239,7 +239,9 @@ describe('ChatGPT folder section in the sidebar', () => {
       '[class*="icon-button--create"]',
     )!;
     create.click();
-    const input = section().shadowRoot!.querySelector<HTMLInputElement>('input')!;
+    const input = section().shadowRoot!.querySelector<HTMLInputElement>(
+      '.gv-floating-folder-panel__inline-input',
+    )!;
     input.value = 'Ideas';
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await settle(20);

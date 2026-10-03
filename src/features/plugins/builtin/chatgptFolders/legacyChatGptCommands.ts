@@ -141,7 +141,11 @@ export function createLegacyChatGptCommands(store: ChatGptFolderStore): FolderCo
     renameConversation: unsupported,
     restoreNativeTitle: unsupported,
     setConversationGem: unsupported,
-    markConversationOpened: unsupported,
+    markConversationOpened: ({ conversationId, at }) => {
+      const editable = store.ready;
+      if (store.markOpened(conversationId, at)) return legacyOutcome(true);
+      return editable ? NOOP : failed('read_only');
+    },
     setConversationActivity: unsupported,
   };
 

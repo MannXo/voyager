@@ -20,12 +20,7 @@ import {
 } from './nativeConversationTitles';
 import { SidebarActivityList } from './sidebarActivityList';
 import { type SidebarDropContext, bindRootDropZone } from './sidebarDrops';
-import {
-  type FolderSearchCriteria,
-  createSidebarFilter,
-  normalizeFolderSearchText,
-  parseFolderSearchCriteria,
-} from './sidebarFilter';
+import { type FolderSearchCriteria, createSidebarFilter, searchCriteriaOf } from './sidebarFilter';
 import {
   applyCollapsedState,
   applyUserFilterButtonState,
@@ -355,9 +350,7 @@ export class FolderSidebarView {
   }
 
   private searchCriteria(): FolderSearchCriteria | null {
-    if (!this.prefs.folderSearchEnabled) return null;
-    if (normalizeFolderSearchText(this.searchQuery).length === 0) return null;
-    return parseFolderSearchCriteria(this.searchQuery);
+    return this.prefs.folderSearchEnabled ? searchCriteriaOf(this.searchQuery) : null;
   }
 
   private createFolder(): void {

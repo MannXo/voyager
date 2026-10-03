@@ -156,9 +156,114 @@
   opacity: 0.4;
 }
 
-/* "Create folder" stays; the rest appear while the heading is in use. */
-.gv-chatgpt-folder-section__header:not(:hover, :focus-within) .gv-chatgpt-folder-section__reveal {
+/* "Create folder" and a recent order that is on stay; the rest appear while
+ * the heading is in use. */
+.gv-chatgpt-folder-section__header:not(:hover, :focus-within)
+  .gv-chatgpt-folder-section__reveal:not([aria-pressed='true']) {
   opacity: 0;
+}
+
+.gv-chatgpt-folder-section__actions .gv-floating-folder-panel__icon-button[aria-pressed='true'] {
+  background: var(--gv-floating-folder-panel__surface-active);
+  color: var(--gv-floating-folder-panel__text);
+}
+
+/* The heading collapses the section, as ChatGPT's own section headings do: its
+ * chevron shows while the heading is in use, or while the section is collapsed. */
+.gv-chatgpt-folder-section__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.gv-chatgpt-folder-section__toggle span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gv-chatgpt-folder-section__toggle svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  opacity: 0;
+}
+
+.gv-chatgpt-folder-section__header:is(:hover, :focus-within) .gv-chatgpt-folder-section__toggle svg,
+.gv-chatgpt-folder-section__toggle[aria-expanded='false'] svg {
+  opacity: 1;
+}
+
+.gv-chatgpt-folder-section__toggle:focus-visible {
+  outline: 2px solid var(--gv-floating-folder-panel__outline);
+  outline-offset: 2px;
+}
+
+/* ─── Search: a field on the rows' column, in ChatGPT's row shape ──────── */
+.gv-folder-search {
+  position: relative;
+  padding: 0 6px 4px;
+}
+
+.gv-folder-search-input {
+  width: 100%;
+  height: 32px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid var(--gv-floating-folder-panel__outline);
+  border-radius: var(--gv-chatgpt-folder-section__row-radius);
+  background: transparent;
+  color: var(--gv-floating-folder-panel__text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  outline: none;
+}
+
+.gv-folder-search-input::placeholder {
+  color: var(--gv-chatgpt-folder-section__heading);
+  opacity: 1;
+}
+
+.gv-folder-search-input:focus {
+  border-color: var(--gv-floating-folder-panel__accent);
+}
+
+.gv-folder-search-folder-mode .gv-folder-search-input {
+  padding-inline-end: 92px;
+}
+
+/* "Folders" while the query starts with `f:`. */
+.gv-folder-search-mode-badge {
+  position: absolute;
+  top: 7px;
+  inset-inline-end: 14px;
+  max-width: 72px;
+  overflow: hidden;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--gv-floating-folder-panel__surface-active);
+  color: var(--gv-floating-folder-panel__text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.gv-folder-search-mode-badge[hidden] {
+  display: none;
 }
 
 /* "Added to …" after Move to folder: a quiet line under the header, on the

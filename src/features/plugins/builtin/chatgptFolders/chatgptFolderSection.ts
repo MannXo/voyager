@@ -1,4 +1,9 @@
-import { createPlusIcon } from '@/core/icons/folderIcons';
+import {
+  createChevronDownIcon,
+  createChevronRightIcon,
+  createClockArrowDownIcon,
+  createPlusIcon,
+} from '@/core/icons/folderIcons';
 /**
  * The folder tree as a section of ChatGPT's own sidebar, just above Recents. It
  * reuses the floating panel's tree and sheet inside its own shadow host. ChatGPT
@@ -8,6 +13,8 @@ import { createPlusIcon } from '@/core/icons/folderIcons';
  * floating panel's button instead.
  */
 import type { FolderData } from '@/core/types/folder';
+import type { ConversationSortMode } from '@/features/folder/model/folderData';
+import { hasSeenCoachmark } from '@/pages/content/coachmark';
 import panelCss from '@/pages/content/folder/floatingPanel.css?raw';
 import {
   type FolderDropTarget,
@@ -24,11 +31,20 @@ import {
   mountFolderTree,
 } from '@/pages/content/folder/floatingTree/treeController';
 import { type ShadowSurface, attachShadowSurface } from '@/pages/content/folder/shadowHost';
+import {
+  type FolderSearchCriteria,
+  createSidebarFilter,
+  searchAndSortOptions,
+  searchCriteriaOf,
+} from '@/pages/content/folder/sidebarFilter';
+import { FOLDER_ONLY_SEARCH_HINT_ID } from '@/pages/content/folder/sidebarPrefs';
+import { type FolderSearchBox, createFolderSearch } from '@/pages/content/folder/sidebarSearch';
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
 import sectionCss from './chatgptFolderSection.css?raw';
 import { readChatGptConversation } from './chatgptIdentity';
 import { findHistoryAnchor } from './chatgptSidebarDom';
+import type { ChatGptFolderSectionPrefs } from './sectionPrefs';
 
 export const FOLDER_SECTION_CLASS = 'gv-chatgpt-folder-section';
 
@@ -47,9 +63,7 @@ const SITE: TreeSiteOptions = {
   folderMenuButton: { labelKey: 'folder_settings' },
   folderBodyDrop: true,
   folderDrag: true,
-  reorder: { folders: true, conversations: true },
   conversationHref: (conversation) => readChatGptConversation(conversation.url)?.url ?? '',
-  emptyLabelKey: 'folder_empty',
   folderToggleDelayMs: FOLDER_TOGGLE_DELAY_MS,
 };
 
@@ -59,6 +73,16 @@ export type SectionHeaderAction = {
   labelKey: string;
   icon: () => SVGElement;
   onClick: () => void;
+};
+
+export type ChatGptFolderSectionOptions = {
+  data: FolderData;
+  rootBucketId: string;
+  actions: TreeActions;
+  headerActions?: readonly SectionHeaderAction[];
+  prefs?: ChatGptFolderSectionPrefs;
+  /** The section was collapsed or its conversation order changed. */
+  onPrefsChange?: (prefs: ChatGptFolderSectionPrefs) => void;
 };
 
 function headerButton(modifier: string, labelKey: string, icon: SVGElement): HTMLButtonElement {
@@ -77,18 +101,34 @@ export class ChatGptFolderSection {
   readonly header: HTMLElement;
   private readonly surface: ShadowSurface;
   private readonly body: HTMLElement;
+  /** The search box and the tree, hidden while the section is collapsed. */
+  private readonly content: HTMLElement;
+  private readonly collapseToggle: HTMLButtonElement;
+  private readonly sortToggle: HTMLButtonElement;
+  private readonly search: FolderSearchBox;
   private readonly headerButtons: HTMLButtonElement[];
   private readonly status: HTMLElement;
   private readonly tree: FolderTreeController;
+  private readonly onPrefsChange: (prefs: ChatGptFolderSectionPrefs) => void;
   private statusTimer: ReturnType<typeof setTimeout> | null = null;
   private activeConversationId: string | null = null;
+  private data: FolderData;
+  private prefs: ChatGptFolderSectionPrefs;
+  private searchQuery = '';
+  private searchHintSeen = false;
+  private filter: TreeSiteOptions['filter'];
 
-  constructor(
-    data: FolderData,
-    rootBucketId: string,
-    actions: TreeActions,
-    headerActions: readonly SectionHeaderAction[] = [],
-  ) {
+  constructor({
+    data,
+    rootBucketId,
+    actions,
+    headerActions = [],
+    prefs = { collapsed: false, sortMode: 'manual' },
+    onPrefsChange = () => {},
+  }: ChatGptFolderSectionOptions) {
+    this.data = data;
+    this.prefs = { ...prefs };
+    this.onPrefsChange = onPrefsChange;
     this.element = document.createElement('div');
     this.element.className = FOLDER_SECTION_CLASS;
     this.element.setAttribute('role', 'region');
@@ -99,9 +139,27 @@ export class ChatGptFolderSection {
     header.className = `${FOLDER_SECTION_CLASS}__header`;
     const title = document.createElement('h2');
     title.className = `${FOLDER_SECTION_CLASS}__title`;
-    title.textContent = t('floatingPanelTitle');
+    // ChatGPT's own sections collapse from their heading; its name stays the button's name.
+    this.collapseToggle = document.createElement('button');
+    this.collapseToggle.type = 'button';
+    this.collapseToggle.className = `${FOLDER_SECTION_CLASS}__toggle`;
+    this.collapseToggle.addEventListener('click', (event) => {
+      event.stopPropagation();
+      this.setPrefs({ collapsed: !this.prefs.collapsed });
+    });
+    title.append(this.collapseToggle);
     const toolbar = document.createElement('div');
     toolbar.className = `${FOLDER_SECTION_CLASS}__actions`;
+    this.sortToggle = headerButton(
+      'sort',
+      'folder_sort_recent',
+      createClockArrowDownIcon(SECTION_ICON_SIZE),
+    );
+    this.sortToggle.classList.add(`${FOLDER_SECTION_CLASS}__reveal`);
+    this.sortToggle.addEventListener('click', (event) => {
+      event.stopPropagation();
+      this.setPrefs({ sortMode: this.prefs.sortMode === 'recent' ? 'manual' : 'recent' });
+    });
     this.headerButtons = headerActions.map((action) => {
       const button = headerButton(action.modifier, action.labelKey, action.icon());
       button.classList.add(`${FOLDER_SECTION_CLASS}__reveal`);
@@ -118,23 +176,40 @@ export class ChatGptFolderSection {
     );
     createButton.addEventListener('click', (event) => {
       event.stopPropagation();
+      if (this.prefs.collapsed) this.setPrefs({ collapsed: false });
       this.tree.apply({ inlineEditor: { mode: 'create', parentId: null }, contextMenu: null });
     });
     this.headerButtons.push(createButton);
-    toolbar.append(...this.headerButtons);
+    toolbar.append(this.sortToggle, ...this.headerButtons);
     header.append(title, toolbar);
-
-    this.body = document.createElement('div');
-    this.body.className = `${FLOATING_PANEL_CLASS}__body`;
 
     this.status = document.createElement('div');
     this.status.className = `${FLOATING_PANEL_CLASS}__status`;
     this.status.setAttribute('role', 'status');
     this.status.hidden = true;
 
+    this.search = createFolderSearch({
+      query: () => this.searchQuery,
+      setQuery: (query) => (this.searchQuery = query),
+      folderOnly: () => this.searchCriteria()?.mode === 'folder',
+      hintSeen: () => this.searchHintSeen,
+      markHintSeen: () => (this.searchHintSeen = true),
+      onSearch: () => this.applySearch(),
+    });
+    void hasSeenCoachmark(FOLDER_ONLY_SEARCH_HINT_ID).then((seen) => {
+      this.searchHintSeen ||= seen;
+      this.search.refreshLanguage();
+    });
+
+    this.body = document.createElement('div');
+    this.body.className = `${FLOATING_PANEL_CLASS}__body`;
+    this.content = document.createElement('div');
+    this.content.className = `${FOLDER_SECTION_CLASS}__content`;
+    this.content.append(this.search.element, this.body);
+
     const css = `${panelCss}\n${sectionCss}`;
     this.surface = attachShadowSurface(this.element, css);
-    this.surface.root.append(header, this.status, this.body);
+    this.surface.root.append(header, this.status, this.content);
 
     // The sidebar scrolls and clips, so the folder menu renders in a body-level layer.
     this.tree = mountFolderTree({
@@ -143,11 +218,17 @@ export class ChatGptFolderSection {
       focusRoot: this.surface.root,
       data,
       rootBucketId,
-      conversationSortMode: 'manual',
+      conversationSortMode: this.prefs.sortMode,
       actions,
-      site: SITE,
+      site: this.site(),
       popoverLayer: { css },
     });
+    this.showPrefs();
+  }
+
+  /** The conversation order the tree shows, for drops that place by position. */
+  get sortMode(): ConversationSortMode {
+    return this.prefs.sortMode;
   }
 
   /**
@@ -173,6 +254,7 @@ export class ChatGptFolderSection {
   }
 
   update(data: FolderData): void {
+    this.data = data;
     this.tree.update(data);
   }
 
@@ -180,7 +262,7 @@ export class ChatGptFolderSection {
   setActiveConversation(conversationId: string | null): void {
     if (conversationId === this.activeConversationId) return;
     this.activeConversationId = conversationId;
-    this.tree.setSite({ ...SITE, activeConversationId: conversationId });
+    this.tree.setSite(this.site());
   }
 
   setDataReady(ready: boolean): void {
@@ -209,9 +291,60 @@ export class ChatGptFolderSection {
 
   destroy(): void {
     this.clearStatus();
+    this.search.cancel();
     this.tree.destroy();
     this.surface.disconnect();
     this.element.remove();
+  }
+
+  private site(): TreeSiteOptions {
+    return {
+      ...SITE,
+      ...searchAndSortOptions(this.searchCriteria() !== null, this.prefs.sortMode),
+      filter: this.filter,
+      activeConversationId: this.activeConversationId,
+    };
+  }
+
+  private searchCriteria(): FolderSearchCriteria | null {
+    return searchCriteriaOf(this.searchQuery);
+  }
+
+  /** Filters the tree by the search box once typing pauses. */
+  private applySearch(): void {
+    const search = this.searchCriteria();
+    this.filter = search
+      ? createSidebarFilter({ search, currentUserOnly: false }, () => this.data)
+      : undefined;
+    this.tree.setSite(this.site());
+  }
+
+  private setPrefs(change: Partial<ChatGptFolderSectionPrefs>): void {
+    const sortChanged = change.sortMode !== undefined && change.sortMode !== this.prefs.sortMode;
+    this.prefs = { ...this.prefs, ...change };
+    this.showPrefs();
+    if (sortChanged) {
+      this.tree.setSite(this.site());
+      this.tree.update(this.data, this.prefs.sortMode);
+    }
+    this.onPrefsChange({ ...this.prefs });
+  }
+
+  private showPrefs(): void {
+    const { collapsed, sortMode } = this.prefs;
+    this.content.hidden = collapsed;
+    const toggle = this.collapseToggle;
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+    toggle.title = t(collapsed ? 'pm_expand' : 'pm_collapse');
+    const label = document.createElement('span');
+    label.textContent = t('floatingPanelTitle');
+    toggle.replaceChildren(
+      label,
+      collapsed ? createChevronRightIcon(16) : createChevronDownIcon(16),
+    );
+    const recent = sortMode === 'recent';
+    this.sortToggle.setAttribute('aria-pressed', String(recent));
+    this.sortToggle.title = `${t('folder_sort')}: ${t(recent ? 'folder_sort_recent' : 'folder_sort_manual')}`;
   }
 
   private clearStatus(): void {

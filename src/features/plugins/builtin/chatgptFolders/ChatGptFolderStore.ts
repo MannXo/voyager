@@ -230,6 +230,26 @@ export class ChatGptFolderStore {
     return true;
   }
 
+  /**
+   * Stamps `lastOpenedAt` on every filing of `conversationId`, for the recent
+   * order. Returns whether it saved.
+   */
+  markOpened(conversationId: string, at: number): boolean {
+    if (!this.ready) return false;
+    const opened = [...this.references()].filter(
+      // Drops near-simultaneous marks and never moves the time back.
+      (c) => c.conversationId === conversationId && !(c.lastOpenedAt && at - c.lastOpenedAt < 1000),
+    );
+    if (opened.length === 0) return false;
+    this.commit(() => {
+      for (const conversation of opened) {
+        conversation.lastOpenedAt = at;
+        conversation.updatedAt = at;
+      }
+    });
+    return true;
+  }
+
   /** Persists a whole new snapshot (an import); edits are closed until it settles. */
   replaceData(data: FolderData): Promise<boolean> {
     return this.repository.replaceData(data);

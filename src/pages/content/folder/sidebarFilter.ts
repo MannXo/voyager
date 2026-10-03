@@ -1,7 +1,7 @@
-import { ownBucket } from '@/features/folder/model/folderData';
+import { type ConversationSortMode, ownBucket } from '@/features/folder/model/folderData';
 import type { FolderLayout } from '@/features/folder/model/folderIndex';
 
-import type { TreeFilter } from './floatingTree/shared';
+import type { TreeFilter, TreeSiteOptions } from './floatingTree/shared';
 import type { ConversationReference, Folder, FolderData } from './types';
 
 export type FolderSearchMode = 'all' | 'folder';
@@ -23,6 +23,27 @@ export function parseFolderSearchCriteria(value: string): FolderSearchCriteria {
   return folderOnlyMatch
     ? { mode: 'folder', query: folderOnlyMatch[1] ?? '' }
     : { mode: 'all', query: normalized };
+}
+
+/** The search a box's text asks for, or `null` when it is blank. */
+export function searchCriteriaOf(query: string): FolderSearchCriteria | null {
+  if (normalizeFolderSearchText(query).length === 0) return null;
+  return parseFolderSearchCriteria(query);
+}
+
+/**
+ * What a sidebar tree allows while searched or sorted: positions mean nothing
+ * in a filtered list or in recent order, and a search opens every folder.
+ */
+export function searchAndSortOptions(
+  searching: boolean,
+  sortMode: ConversationSortMode,
+): Pick<TreeSiteOptions, 'reorder' | 'expandAll' | 'emptyLabelKey'> {
+  return {
+    reorder: searching ? undefined : { folders: true, conversations: sortMode === 'manual' },
+    expandAll: searching,
+    emptyLabelKey: searching ? 'folder_search_empty' : 'folder_empty',
+  };
 }
 
 function routeUserId(pathname: string): string | null {

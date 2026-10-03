@@ -9,6 +9,13 @@ export const CHEVRON_RIGHT_ICON_NODE = [
   ['path', { d: 'm9 18 6-6-6-6', key: 'mthhwq' }],
 ] satisfies IconNode;
 
+const CLOCK_ARROW_DOWN_ICON_NODE = [
+  ['path', { d: 'M12 6v6l2 1', key: '19cm8n' }],
+  ['path', { d: 'M12.337 21.994a10 10 0 1 1 9.588-8.767', key: '28moa' }],
+  ['path', { d: 'm14 18 4 4 4-4', key: '1waygx' }],
+  ['path', { d: 'M18 14v8', key: 'irew45' }],
+] satisfies IconNode;
+
 const CLOUD_ICON_NODE = [
   ['path', { d: 'M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z', key: 'p7xjir' }],
 ] satisfies IconNode;
@@ -93,6 +100,10 @@ export function createChevronDownIcon(size = 16): SVGSVGElement {
 
 export function createChevronRightIcon(size = 16): SVGSVGElement {
   return createLucideIcon('chevron-right', CHEVRON_RIGHT_ICON_NODE, size);
+}
+
+export function createClockArrowDownIcon(size = 16): SVGSVGElement {
+  return createLucideIcon('clock-arrow-down', CLOCK_ARROW_DOWN_ICON_NODE, size);
 }
 
 export function createCloudIcon(size = 16): SVGSVGElement {

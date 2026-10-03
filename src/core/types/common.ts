@@ -46,6 +46,8 @@ export const StorageKeys = {
   FOLDER_DATA_CHATGPT: 'gvFolderDataChatGPT',
   // ChatGPT folder panel geometry and open state on this device.
   CHATGPT_FOLDER_PANEL: 'gvChatGptFolderPanel',
+  // The ChatGPT sidebar folder section's collapse and conversation order on this device.
+  CHATGPT_FOLDER_SECTION: 'gvChatGptFolderSection',
   FOLDER_ENABLED: 'geminiFolderEnabled',
   FOLDER_HIDE_ARCHIVED_CONVERSATIONS: 'geminiFolderHideArchivedConversations',
   FOLDER_HIDE_ARCHIVED_NUDGE_SHOWN: 'geminiFolderHideArchivedNudgeShown',

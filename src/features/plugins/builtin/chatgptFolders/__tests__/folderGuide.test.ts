@@ -230,15 +230,15 @@ describe('ChatGPT folders sidebar guide', () => {
     await nextPass();
     sidebar.rerenderList();
     await nextPass();
-    expect(root.querySelector('input')).not.toBeNull();
+    expect(root.querySelector('.gv-floating-folder-panel__inline-input')).not.toBeNull();
     expect(bubble()).toBeNull();
 
     root
-      .querySelector('input')!
+      .querySelector<HTMLInputElement>('.gv-floating-folder-panel__inline-input')!
       .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     sidebar.rerenderList();
     await nextPass();
-    expect(root.querySelector('input')).toBeNull();
+    expect(root.querySelector('.gv-floating-folder-panel__inline-input')).toBeNull();
     expect(bubble()).not.toBeNull();
   });
 

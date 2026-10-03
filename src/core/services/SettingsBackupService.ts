@@ -186,6 +186,11 @@ export const NON_SETTINGS_BACKUP_POLICIES = {
     disposition: 'device-local',
     reason: 'Viewport coordinates and panel state should not be restored across different screens.',
   },
+  [StorageKeys.CHATGPT_FOLDER_SECTION]: {
+    storage: 'local',
+    disposition: 'device-local',
+    reason: 'ChatGPT folder section collapse and order are local UI state, as on Gemini.',
+  },
   [StorageKeys.FOLDER_FLOATING_NUDGE_SHOWN]: {
     storage: 'sync',
     disposition: 'deprecated',
