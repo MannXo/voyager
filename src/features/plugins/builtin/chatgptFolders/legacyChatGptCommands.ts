@@ -18,7 +18,7 @@ import { type ConversationSeed, rejected } from '@/features/folder/owner/folderO
 import { FOLDER_SITE_POLICIES } from '@/features/folder/owner/folderOwnerPolicy';
 
 import type { AddOutcome, ChatGptFolderStore, MoveOutcome } from './ChatGptFolderStore';
-import { CHATGPT_CONVERSATION_ID_PREFIX } from './chatgptIdentity';
+import { bareConversationId } from './chatgptIdentity';
 import { CHATGPT_FOLDER_CONFIG } from './config';
 import { importChatGptFolders } from './transfer';
 
@@ -45,10 +45,6 @@ const recordOf = (seed: ConversationSeed): ConversationReference => ({
   ...seed,
   addedAt: Date.now(),
 });
-const bareId = (id: string) =>
-  id.startsWith(CHATGPT_CONVERSATION_ID_PREFIX)
-    ? id.slice(CHATGPT_CONVERSATION_ID_PREFIX.length)
-    : id;
 
 export function createLegacyChatGptCommands(store: ChatGptFolderStore): FolderCommands {
   const folderOf = (id: string) => store.data.folders.find((folder) => folder.id === id);
@@ -124,7 +120,7 @@ export function createLegacyChatGptCommands(store: ChatGptFolderStore): FolderCo
       );
     },
     syncNativeTitles: ({ entries }) => {
-      const titles = new Map(entries.map((e) => [bareId(e.conversationId), e.title]));
+      const titles = new Map(entries.map((e) => [bareConversationId(e.conversationId), e.title]));
       const editable = store.ready;
       if (store.applyNativeTitles(titles)) return legacyOutcome(true);
       return editable ? NOOP : failed('read_only');
@@ -139,7 +135,11 @@ export function createLegacyChatGptCommands(store: ChatGptFolderStore): FolderCo
     reorderConversations: unsupported,
     removeConversationEverywhere: unsupported,
     renameConversation: unsupported,
-    restoreNativeTitle: unsupported,
+    restoreNativeTitle: ({ conversationId, nativeTitle }) => {
+      const editable = store.ready;
+      if (store.restoreNativeTitle(conversationId, nativeTitle)) return legacyOutcome(true);
+      return editable ? NOOP : failed('read_only');
+    },
     setConversationGem: unsupported,
     markConversationOpened: ({ conversationId, at }) => {
       const editable = store.ready;

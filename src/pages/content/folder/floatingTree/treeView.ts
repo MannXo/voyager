@@ -1,7 +1,7 @@
 import type { ItemInstance } from '@headless-tree/core';
 
 import { ROOT_ITEM_KEY, type TreeNode, type TreeProjection, folderKey } from './projection';
-import { type TreeProps, cls } from './shared';
+import { type TreeProps, cls, isFolderMenu } from './shared';
 import { type TreeEngine, type TreeEngineHost, createTreeEngine } from './treeEngine';
 import { type RowVirtualizer, VIRTUALIZE_AFTER_ROWS, createRowVirtualizer } from './virtualRows';
 
@@ -118,7 +118,9 @@ function pinnedKeys(tree: TreeProps, engine: TreeEngine, pendingFocus: string | 
   if (editor?.mode === 'create') {
     keys.push(editor.parentId === null ? 'create:root' : `create:${folderKey(editor.parentId)}`);
   }
-  if (tree.contextMenu) keys.push(folderKey(tree.contextMenu.folderId));
+  if (tree.contextMenu && isFolderMenu(tree.contextMenu)) {
+    keys.push(folderKey(tree.contextMenu.folderId));
+  }
   return keys;
 }
 

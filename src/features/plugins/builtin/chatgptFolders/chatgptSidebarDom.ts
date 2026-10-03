@@ -13,6 +13,7 @@ const HISTORY_CONTAINER_SELECTOR = '[data-sidebar-project-container-id="chats"]'
 const HISTORY_DROP_TARGET_SELECTOR = '[data-chatgpt-project-conversation-drop-target]';
 const ROW_SELECTOR = '[role="listitem"]';
 const ROW_LINK_SELECTOR = 'a[href]';
+const MENU_ITEM_SELECTOR = '[role="menuitem"]';
 
 export interface SidebarConversation {
   readonly id: string;
@@ -68,6 +69,42 @@ export function readSidebarTitle(row: SidebarConversation): string {
 /** The row element (the hover target with its buttons) that holds `link`. */
 export function sidebarRowOf(link: Element): HTMLElement | null {
   return link.closest<HTMLElement>(ROW_SELECTOR);
+}
+
+/** Conversation `id`'s row in Recents or a Project, or `null` while none is rendered. */
+export function findSidebarRow(
+  sidebar: ParentNode | null,
+  id: string,
+): { readonly row: HTMLElement; readonly conversation: SidebarConversation } | null {
+  for (const conversation of sidebar ? listSidebarConversations(sidebar) : []) {
+    const row = conversation.id === id ? sidebarRowOf(conversation.link) : null;
+    if (row) return { row, conversation };
+  }
+  return null;
+}
+
+/** The open menu Radix labels by `trigger`, wherever it is portaled. */
+export function findMenuOf(trigger: Element, doc: Document = document): HTMLElement | null {
+  // Radix ids (`radix-:r1a:`) need escaping in a selector; compare instead.
+  return (
+    [...doc.querySelectorAll<HTMLElement>('[role="menu"][aria-labelledby]')].find(
+      (menu) => menu.getAttribute('aria-labelledby') === trigger.id,
+    ) ?? null
+  );
+}
+
+/** Closes a Radix menu with the Escape it listens for, which returns focus to its trigger. */
+export function closeMenu(menu: HTMLElement): void {
+  menu.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+  );
+}
+
+/** `menu`'s own items, in order, leaving out those of a submenu inside it. */
+export function menuItemsOf(menu: HTMLElement): HTMLElement[] {
+  return [...menu.querySelectorAll<HTMLElement>(MENU_ITEM_SELECTOR)].filter(
+    (item) => item.closest('[role="menu"]') === menu,
+  );
 }
 
 /**

@@ -36,11 +36,9 @@ export type InlineEditorState =
   | { mode: 'create'; parentId: string | null }
   | { mode: 'rename'; folderId: string };
 
-export type ContextMenuState = {
-  folderId: string;
+type MenuPlacement = {
   x: number;
   y: number;
-  confirmingDelete: boolean;
   /**
    * The size of the control the menu opened from, whose bottom-start corner is
    * `x`, `y`. The menu aligns to it and flips above it. A pointer opens at a point.
@@ -49,6 +47,17 @@ export type ContextMenuState = {
   /** Opened from the keyboard: the menu takes focus and returns it on close. */
   fromKeyboard?: boolean;
 };
+
+export type FolderMenuState = MenuPlacement & { folderId: string; confirmingDelete: boolean };
+
+/** A filed conversation's menu, which offers `onRenameConversation`. */
+export type ConversationMenuState = MenuPlacement & { conversation: ConversationReference };
+
+export type ContextMenuState = FolderMenuState | ConversationMenuState;
+
+export function isFolderMenu(menu: ContextMenuState): menu is FolderMenuState {
+  return 'folderId' in menu;
+}
 
 /** The drag type a folder row adds to its payload, so targets can tell a folder drag at dragover. */
 export const FOLDER_DRAG_TYPE = 'application/x-gv-folder';

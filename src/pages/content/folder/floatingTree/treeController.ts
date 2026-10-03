@@ -14,6 +14,7 @@ import {
   type TreeProps,
   type TreeSiteOptions,
   cls,
+  isFolderMenu,
 } from './shared';
 
 export type FolderTreeOptions = {
@@ -50,6 +51,15 @@ export type FolderTreeController = {
   /** Unmounts the tree and removes its document listener; the caller removes `body`. */
   destroy: () => void;
 };
+
+/** Whether the folder or filed conversation `menu` is for is still in `data`. */
+function menuTargetExists(data: FolderData, menu: ContextMenuState): boolean {
+  if (isFolderMenu(menu)) return data.folders.some((folder) => folder.id === menu.folderId);
+  const { conversationId } = menu.conversation;
+  return Object.values(data.folderContents).some((bucket) =>
+    bucket.some((conversation) => conversation.conversationId === conversationId),
+  );
+}
 
 /**
  * The view state a folder tree keeps between renders: the open inline editor,
@@ -163,7 +173,7 @@ export function mountFolderTree({
     render();
     if (change.contextMenu?.fromKeyboard) {
       (layer?.container ?? body).querySelector<HTMLElement>(`.${cls('menu-item')}`)?.focus();
-    } else if (closing?.fromKeyboard && focusIsLost()) {
+    } else if (closing && isFolderMenu(closing) && closing.fromKeyboard && focusIsLost()) {
       focusMenuButton(closing.folderId);
     }
   }
@@ -222,9 +232,7 @@ export function mountFolderTree({
           inlineEditor = null;
         }
       }
-      if (contextMenu && !next.folders.some((folder) => folder.id === contextMenu?.folderId)) {
-        contextMenu = null;
-      }
+      if (contextMenu && !menuTargetExists(next, contextMenu)) contextMenu = null;
       // A background update (storage sync, another tab) must not rebuild the
       // tree while the user is typing in an inline form — the rebuild would
       // recreate the form empty, losing their input. `currentData` is already

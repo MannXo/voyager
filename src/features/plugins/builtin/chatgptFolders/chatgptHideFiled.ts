@@ -10,8 +10,9 @@ export const FILED_ROW_ATTRIBUTE = 'data-gv-chatgpt-filed';
 const HISTORY_ROW = '[data-sidebar-project-container-id="chats"] [role="listitem"]';
 const ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
-// The current-page exception responds to navigation without waiting for a row pass.
-const HIDE_FILED_CSS = `${HISTORY_ROW}[${FILED_ROW_ATTRIBUTE}]:not([aria-current="page"]):not(:has([aria-current="page"])) { display: none !important; }`;
+// The current-page exception responds to navigation without waiting for a row
+// pass. A row holding focus (ChatGPT's own rename field) stays shown until it lets go.
+const HIDE_FILED_CSS = `${HISTORY_ROW}[${FILED_ROW_ATTRIBUTE}]:not([aria-current="page"]):not(:has([aria-current="page"])):not(:focus-within) { display: none !important; }`;
 
 /**
  * Keep CSS constant so style recalculation does not grow with every filed chat.
@@ -21,6 +22,7 @@ export class ChatGptHideFiled {
   private readonly style: HTMLStyleElement;
   private filed: ReadonlySet<string> = new Set();
   private marked = new Set<HTMLElement>();
+  private readonly revealed = new Set<string>();
 
   constructor(
     scope: PluginScope,
@@ -43,6 +45,30 @@ export class ChatGptHideFiled {
     this.filed = new Set([...ids].filter((id) => ID_PATTERN.test(id)));
   }
 
+  /**
+   * Shows filed chat `id`'s rows until the returned release, which marks them
+   * again; a row pass in between leaves them shown.
+   */
+  reveal(id: string): () => void {
+    this.revealed.add(id);
+    const lifted = [...this.marked].filter((row) =>
+      listSidebarConversations(row).some((conversation) => conversation.id === id),
+    );
+    for (const row of lifted) {
+      row.removeAttribute(FILED_ROW_ATTRIBUTE);
+      this.marked.delete(row);
+    }
+    return () => {
+      this.revealed.delete(id);
+      if (!this.filed.has(id)) return;
+      for (const row of lifted) {
+        if (!row.isConnected) continue;
+        row.setAttribute(FILED_ROW_ATTRIBUTE, '');
+        this.marked.add(row);
+      }
+    };
+  }
+
   sync(sidebar: HTMLElement | null): void {
     // Include cloned marks and tracked rows React has detached. A row pass only
     // sweeps the sidebar (marks elsewhere are inert); teardown sweeps the page.
@@ -52,7 +78,8 @@ export class ChatGptHideFiled {
     ]);
     this.marked = new Set();
     for (const row of sidebar?.querySelectorAll<HTMLElement>(HISTORY_ROW) ?? []) {
-      if (!listSidebarConversations(row).some(({ id }) => this.filed.has(id))) continue;
+      const ids = listSidebarConversations(row).map(({ id }) => id);
+      if (!ids.some((id) => this.filed.has(id) && !this.revealed.has(id))) continue;
       if (!row.hasAttribute(FILED_ROW_ATTRIBUTE)) row.setAttribute(FILED_ROW_ATTRIBUTE, '');
       this.marked.add(row);
       stale.delete(row);

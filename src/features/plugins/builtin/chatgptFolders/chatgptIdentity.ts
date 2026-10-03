@@ -11,6 +11,13 @@
 
 export const CHATGPT_CONVERSATION_ID_PREFIX = 'chatgpt:conv:';
 
+/** The route id inside a stored `chatgpt:conv:<id>`; any other id is returned as is. */
+export function bareConversationId(conversationId: string): string {
+  return conversationId.startsWith(CHATGPT_CONVERSATION_ID_PREFIX)
+    ? conversationId.slice(CHATGPT_CONVERSATION_ID_PREFIX.length)
+    : conversationId;
+}
+
 /** Hosts that serve ChatGPT conversations; `chat.openai.com` redirects to `chatgpt.com`. */
 export const CHATGPT_HOSTS: readonly string[] = ['chatgpt.com', 'chat.openai.com'];
 

@@ -14,12 +14,17 @@
 import type { ConversationReference } from '@/core/types/folder';
 
 import { CHATGPT_CONVERSATION_ID_PREFIX } from './chatgptIdentity';
-import { readMenuConversation, readSidebarTitle } from './chatgptSidebarDom';
+import {
+  closeMenu,
+  findMenuOf,
+  menuItemsOf,
+  readMenuConversation,
+  readSidebarTitle,
+} from './chatgptSidebarDom';
 
 export const MOVE_ENTRY_ATTR = 'data-gv-chatgpt-move-to-folder';
 
 const OPEN_TRIGGER_SELECTOR = 'button[aria-haspopup="menu"][aria-expanded="true"][id]';
-const ITEM_SELECTOR = '[role="menuitem"]';
 const FOLDER_ICON_PATH =
   'M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h240l80 80h320q33 0 56.5 23.5T880-640v400q0 33-23.5 56.5T800-160H160Zm0-80h640v-400H447l-80-80H160v480Zm0 0v-480 480Z';
 
@@ -98,9 +103,7 @@ function claim(event: KeyboardEvent): void {
  */
 function wireKeyboard(menu: HTMLElement, entry: HTMLElement, activate: () => void): void {
   const neighbour = (step: 1 | -1): HTMLElement | null => {
-    const items = [...menu.querySelectorAll<HTMLElement>(ITEM_SELECTOR)].filter(
-      (item) => item.closest('[role="menu"]') === menu && (item === entry || isEnabled(item)),
-    );
+    const items = menuItemsOf(menu).filter((item) => item === entry || isEnabled(item));
     return items[items.indexOf(entry) + step] ?? null;
   };
   entry.addEventListener('focus', () => entry.setAttribute('data-highlighted', ''));
@@ -121,12 +124,6 @@ function wireKeyboard(menu: HTMLElement, entry: HTMLElement, activate: () => voi
     claim(event);
     entry.focus();
   });
-}
-
-function closeMenu(menu: HTMLElement): void {
-  menu.dispatchEvent(
-    new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
-  );
 }
 
 export interface MoveMenuOptions {
@@ -164,10 +161,7 @@ export class ChatGptMoveMenu {
       this.waitingFor = null;
       return false;
     }
-    // Radix ids (`radix-:r1a:`) need escaping in a selector; compare instead.
-    const menu = [...this.doc.querySelectorAll<HTMLElement>('[role="menu"][aria-labelledby]')].find(
-      (candidate) => candidate.getAttribute('aria-labelledby') === trigger.id,
-    );
+    const menu = findMenuOf(trigger, this.doc);
     if (!menu) {
       if (this.waitingFor !== trigger) {
         this.waitingFor = trigger;
@@ -212,9 +206,7 @@ export class ChatGptMoveMenu {
   private inject(menu: HTMLElement, trigger: HTMLElement): void {
     const row = readMenuConversation(menu, this.doc);
     if (!row) return;
-    const items = [...menu.querySelectorAll<HTMLElement>(ITEM_SELECTOR)].filter(
-      (item) => item.closest('[role="menu"]') === menu,
-    );
+    const items = menuItemsOf(menu);
     const template = items.find((item) => !item.hasAttribute('aria-haspopup'));
     if (!template) return;
 

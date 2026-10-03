@@ -16,6 +16,11 @@
  *   any HTML5 `dragstart` on the window, and the sidebar scroll area gets
  *   `pointer-events: none`. The fixture leaves dnd-kit out.
  * - "Chat actions" opens a Radix menu portaled under `body`, labelled by its trigger.
+ *
+ * Modelled, not captured: the trigger opens its menu on a primary pointerdown
+ * (Radix's documented trigger), and Rename closes the menu and, a frame later,
+ * puts a focused name field in the row that saves on Enter or blur and cancels
+ * on Escape.
  * Project rows were not observable (the account had none); tests give a row a
  * Project route with `move`, which only changes its link.
  */
@@ -250,6 +255,8 @@ export interface SidebarFixture {
    * for that many frames, as Radix does while an exit animation runs.
    */
   openMenu(id: string, options?: { exitFrames?: number }): HTMLElement;
+  /** ChatGPT's own name field, while a row is being renamed. */
+  nameField(): HTMLInputElement | null;
   destroy(): void;
 }
 
@@ -332,6 +339,10 @@ export function mountSidebarFixture(rows: readonly FixtureRow[]): SidebarFixture
         },
         ...MENU_ITEMS.map((label) => (label ? menuItem(label) : el('div', {}, el('div')))),
       );
+      const close = (): void => {
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.setAttribute('data-state', 'closed');
+      };
       const portal = el(
         'div',
         {},
@@ -339,10 +350,14 @@ export function mountSidebarFixture(rows: readonly FixtureRow[]): SidebarFixture
       );
       // Radix (observed live): Escape unmounts the menu, then returns focus to
       // the trigger a task later.
+      menu.querySelector('[role="menuitem"]')!.addEventListener('click', () => {
+        close();
+        portal.remove();
+        requestAnimationFrame(() => startRename(id));
+      });
       menu.addEventListener('keydown', (event) => {
         if (event.key !== 'Escape') return;
-        trigger.setAttribute('aria-expanded', 'false');
-        trigger.setAttribute('data-state', 'closed');
+        close();
         const unmount = (framesLeft: number): void => {
           if (framesLeft > 0) {
             requestAnimationFrame(() => unmount(framesLeft - 1));
@@ -357,12 +372,44 @@ export function mountSidebarFixture(rows: readonly FixtureRow[]): SidebarFixture
       portals.push(portal);
       return menu;
     },
+    nameField: () => document.querySelector<HTMLInputElement>('input[data-gv-test-name-field]'),
     destroy() {
+      document.removeEventListener('pointerdown', onPointerDown, true);
       rail.remove();
       fixture.sidebar.remove();
       for (const portal of portals) portal.remove();
     },
   };
+  function startRename(id: string): void {
+    const row = fixture.row(id);
+    const field = el('input', {
+      type: 'text',
+      'data-gv-test-name-field': '',
+      value: row.querySelector('a')!.textContent ?? '',
+    }) as HTMLInputElement;
+    let done = false;
+    const finish = (save: boolean): void => {
+      if (done) return;
+      done = true;
+      field.remove();
+      if (save && field.value.trim()) fixture.rename(id, field.value.trim());
+    };
+    field.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === 'Escape') finish(event.key === 'Enter');
+    });
+    field.addEventListener('blur', () => finish(true));
+    row.querySelector('[role="group"]')!.append(field);
+    field.focus();
+  }
+  function onPointerDown(event: Event): void {
+    const trigger = (event.target as Element).closest?.('button[aria-haspopup="menu"]');
+    const key = trigger
+      ?.closest('[data-sidebar-chatgpt-conversation-key]')
+      ?.getAttribute('data-sidebar-chatgpt-conversation-key');
+    if (!key || !(event instanceof MouseEvent) || event.button !== 0) return;
+    fixture.openMenu(key.replace('chatgpt:conversation:', ''));
+  }
+  document.addEventListener('pointerdown', onPointerDown, true);
   document.body.append(rail, fixture.sidebar);
   return fixture;
 }

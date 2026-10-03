@@ -219,7 +219,16 @@ export class ChatGptFolderSection {
       data,
       rootBucketId,
       conversationSortMode: this.prefs.sortMode,
-      actions,
+      actions: actions.onRenameConversation
+        ? {
+            ...actions,
+            onConversationMenu: (e, conversation) =>
+              this.tree.apply({
+                inlineEditor: null,
+                contextMenu: { conversation, x: e.clientX, y: e.clientY },
+              }),
+          }
+        : actions,
       site: this.site(),
       popoverLayer: { css },
     });

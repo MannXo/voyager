@@ -17,19 +17,13 @@ import { AIStudioFolderStorageAdapter } from '@/pages/content/folder/storage/AIS
 import type { IFolderStorageAdapter } from '@/pages/content/folder/storage/FolderStorageAdapter';
 import type { ConversationReference, Folder, FolderData } from '@/pages/content/folder/types';
 
-import { CHATGPT_CONVERSATION_ID_PREFIX } from './chatgptIdentity';
+import { bareConversationId } from './chatgptIdentity';
 import { CHATGPT_FOLDER_CONFIG } from './config';
 
 /** What filing a conversation did. `missing`: the folder was deleted (say, in another tab). */
 export type AddOutcome = 'added' | 'present' | 'missing' | 'closed';
 /** What a drag move did. `missing`: what it moved or its target is gone. */
 export type MoveOutcome = 'moved' | 'unchanged' | 'missing' | 'closed';
-
-function bareId(conversationId: string): string {
-  return conversationId.startsWith(CHATGPT_CONVERSATION_ID_PREFIX)
-    ? conversationId.slice(CHATGPT_CONVERSATION_ID_PREFIX.length)
-    : conversationId;
-}
 
 /**
  * ChatGPT folder commands over the shared FolderRepository, which owns load,
@@ -187,7 +181,8 @@ export class ChatGptFolderStore {
   /** Bare ids of every filed conversation, for one pass over the sidebar. */
   filedIds(): Set<string> {
     const ids = new Set<string>();
-    for (const conversation of this.references()) ids.add(bareId(conversation.conversationId));
+    for (const conversation of this.references())
+      ids.add(bareConversationId(conversation.conversationId));
     return ids;
   }
   /**
@@ -202,7 +197,7 @@ export class ChatGptFolderStore {
     for (const bucketId of Object.keys(contents)) {
       for (const conversation of ownBucket(contents, bucketId) ?? []) {
         const key = `${bucketId}\u0000${conversation.conversationId}`;
-        filings.set(key, bareId(conversation.conversationId));
+        filings.set(key, bareConversationId(conversation.conversationId));
       }
     }
     return filings;
@@ -216,7 +211,7 @@ export class ChatGptFolderStore {
     if (!this.ready || titles.size === 0) return false;
     const changed = new Map<string, ConversationReference[]>();
     for (const conversation of this.references()) {
-      const title = titles.get(bareId(conversation.conversationId))?.trim();
+      const title = titles.get(bareConversationId(conversation.conversationId))?.trim();
       if (!title || conversation.customTitle || conversation.title === title) continue;
       const matches = changed.get(title);
       if (matches) matches.push(conversation);
@@ -226,6 +221,32 @@ export class ChatGptFolderStore {
     const now = Date.now();
     this.commit(() => {
       for (const [title, conversations] of changed) applyNativeTitle(conversations, title, now);
+    });
+    return true;
+  }
+
+  /**
+   * After ChatGPT's own rename: drops any title of the user's own on
+   * `conversationId`'s filings, so title sync follows ChatGPT's name again, and
+   * takes `nativeTitle` (the name before the rename) where it differs. Returns
+   * whether it saved.
+   */
+  restoreNativeTitle(conversationId: string, nativeTitle: string | null): boolean {
+    if (!this.ready) return false;
+    const title = nativeTitle?.trim() || null;
+    const stale = [...this.references()].filter(
+      (c) => c.conversationId === conversationId && (c.customTitle || (title && c.title !== title)),
+    );
+    if (stale.length === 0) return false;
+    const now = Date.now();
+    this.commit(() => {
+      for (const conversation of stale) {
+        delete conversation.customTitle;
+        if (title && conversation.title !== title) {
+          conversation.title = title;
+          conversation.updatedAt = now;
+        }
+      }
     });
     return true;
   }

@@ -40,10 +40,12 @@ import { ChatGptFolderGuide } from './chatgptFolderGuide';
 import { type FolderPickerHandle, openFolderPicker } from './chatgptFolderPicker';
 import { ChatGptFolderSection, SECTION_ICON_SIZE } from './chatgptFolderSection';
 import { ChatGptHideFiled, HIDE_FILED_SETTING } from './chatgptHideFiled';
-import { readChatGptConversation } from './chatgptIdentity';
+import { bareConversationId, readChatGptConversation } from './chatgptIdentity';
 import { ChatGptMoveMenu, MOVE_ENTRY_ATTR } from './chatgptMoveMenu';
+import { openNativeRename } from './chatgptNativeRename';
 import { openChatGptConversation, readCurrentConversation } from './chatgptPage';
 import { type DroppedConversation, bindChatGptRowDrag } from './chatgptRowDrag';
+import { findChatGptSidebar } from './chatgptSidebarDom';
 import { ChatGptSidebarWatcher } from './chatgptSidebarWatcher';
 import { ChatGptTitleSync } from './chatgptTitleSync';
 import { CHATGPT_FOLDER_CONFIG } from './config';
@@ -86,6 +88,7 @@ class ChatGptFoldersView {
     private readonly commands: FolderCommands,
     private readonly prefs: ChatGptFolderPanelPrefs,
     private sectionPrefs: ChatGptFolderSectionPrefs,
+    private readonly renameNative: (conversation: ConversationReference) => void,
   ) {}
 
   start(): void {
@@ -108,6 +111,8 @@ class ChatGptFoldersView {
           ...this.treeActions(),
           onDrop: (e, folderId, placement) => dropOnSidebar(drops, e, folderId, placement),
           acceptsDrag: acceptsSidebarDrag,
+          // The section sits in the sidebar, next to the row ChatGPT renames in.
+          onRenameConversation: this.renameNative,
         },
         prefs: this.sectionPrefs,
         onPrefsChange: (prefs) => {
@@ -419,7 +424,23 @@ export async function activateChatGptFolders(
   const [prefs, sectionPrefs] = await Promise.all([loadPanelPrefs(), loadSectionPrefs()]);
   if (scope.isDisposed) return;
   const commands = createLegacyChatGptCommands(store);
-  const view = new ChatGptFoldersView(scope, store, commands, prefs, sectionPrefs);
+  const hideFiled = settings[HIDE_FILED_SETTING] === true ? new ChatGptHideFiled(scope) : null;
+  const renameNative = async (conversation: ConversationReference): Promise<void> => {
+    const nativeTitle = await openNativeRename(bareConversationId(conversation.conversationId), {
+      sidebar: () => findChatGptSidebar(),
+      reveal: (id) => hideFiled?.reveal(id) ?? (() => {}),
+      active: () => !scope.isDisposed,
+    });
+    if (nativeTitle === null || scope.isDisposed) return;
+    await commands.run({
+      kind: 'restoreNativeTitle',
+      conversationId: conversation.conversationId,
+      nativeTitle,
+    });
+  };
+  const view = new ChatGptFoldersView(scope, store, commands, prefs, sectionPrefs, (c) => {
+    void renameNative(c);
+  });
   view.start();
   const sidebar = new ChatGptSidebarWatcher(scope);
   const moveMenu = new ChatGptMoveMenu({
@@ -440,7 +461,6 @@ export async function activateChatGptFolders(
     dropTargetAt: (x, y) => view.dropTargetAt(x, y),
     onDrop: (folderId, conversation) => view.file(folderId, conversation, 'outside-drop'),
   });
-  const hideFiled = settings[HIDE_FILED_SETTING] === true ? new ChatGptHideFiled(scope) : null;
   sidebar.onChange((nav) => {
     view.placeSection(nav);
     hideFiled?.sync(nav);

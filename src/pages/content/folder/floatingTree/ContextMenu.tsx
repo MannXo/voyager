@@ -7,7 +7,15 @@ import { getFolderDepth } from '@/features/folder/model/folderData';
 import { FOLDER_COLORS, getFolderColor, isDarkMode } from '../folderColors';
 import type { Folder } from '../types';
 import { positionMenu } from './menuPosition';
-import { type ContextMenuState, type TreeProps, canCreateChildAtDepth, cls, t } from './shared';
+import {
+  type ConversationMenuState,
+  type FolderMenuState,
+  type TreeProps,
+  canCreateChildAtDepth,
+  cls,
+  isFolderMenu,
+  t,
+} from './shared';
 
 type MenuButtonProps = {
   labelKey: string;
@@ -27,16 +35,42 @@ function MenuButton({ labelKey, extraClass, onClick }: MenuButtonProps) {
 const DANGER = cls('menu-item--danger');
 const CONFIRM_BUTTON = cls('confirm-button');
 
-/** Right-click menu for one folder: pin, subfolder, rename, color, delete. */
+/**
+ * Right-click menu for one folder (pin, subfolder, rename, color, delete), or
+ * for a filed conversation (rename).
+ */
 export function ContextMenu(tree: TreeProps) {
   const { contextMenu, data } = tree;
   if (!contextMenu) return null;
+  if (!isFolderMenu(contextMenu)) return <ConversationMenu tree={tree} menu={contextMenu} />;
   const folder = data.folders.find((candidate) => candidate.id === contextMenu.folderId);
   if (!folder) return null;
   return <FolderMenu tree={tree} menu={contextMenu} folder={folder} />;
 }
 
-type FolderMenuProps = { tree: TreeProps; menu: ContextMenuState; folder: Folder };
+function ConversationMenu({ tree, menu }: { tree: TreeProps; menu: ConversationMenuState }) {
+  const { actions, apply } = tree;
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => (ref.current ? positionMenu(ref.current, menu) : undefined), [menu]);
+  return (
+    <div
+      ref={ref}
+      class={cls('context-menu')}
+      style={{ left: `${menu.x}px`, top: `${menu.y}px` }}
+      role="menu"
+    >
+      <MenuButton
+        labelKey="folder_rename"
+        onClick={(e) => {
+          e.stopPropagation();
+          apply({ contextMenu: null }, () => actions.onRenameConversation?.(menu.conversation));
+        }}
+      />
+    </div>
+  );
+}
+
+type FolderMenuProps = { tree: TreeProps; menu: FolderMenuState; folder: Folder };
 
 function FolderMenu({ tree, menu: contextMenu, folder }: FolderMenuProps) {
   const { data, actions, apply } = tree;
