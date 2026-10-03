@@ -453,8 +453,8 @@ full-history first-parent Git source revision. Publishing the same commit ties i
 and rebuilding older source cannot make it newer. `generatedAt` remains a diagnostic
 publication timestamp. Production browser builds and catalog publication require full history;
 shallow checkouts fail clearly rather than stamping a truncated revision. Dev builds and Vitest
-stamp the bundle as 0, so any stamped remote adapter wins. Docs deployments publish catalogs
-only from main; manual branch deployments still build the docs. Source ordering assumes the
+stamp the bundle as 0, so any stamped remote adapter wins. Production Pages builds and deploys
+run only from main, publishing the docs and catalog together. Source ordering assumes the
 append-only main publication lineage; uncommitted production data carries HEAD’s revision. Cache reads do not rewrite or clear older entries, and plugin-list
 authority and kill-switch rules are unchanged. A newer `site.json` fix can still travel
 without an extension release.

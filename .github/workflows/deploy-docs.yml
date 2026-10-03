@@ -30,6 +30,7 @@ concurrency:
 
 jobs:
   build:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -54,8 +55,6 @@ jobs:
       # Writes docs/public/catalog/hosts/<host>.json; VitePress copies
       # docs/public/ to the dist root, so it publishes at /catalog/hosts/.
       - name: Build plugin catalog
-        # First-parent revisions are comparable only on the main publication lineage.
-        if: github.ref == 'refs/heads/main'
         run: bun run catalog:build
 
       - name: Build docs
@@ -70,6 +69,7 @@ jobs:
           path: docs/.vitepress/dist
 
   deploy:
+    if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     name: Deploy
