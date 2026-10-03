@@ -139,10 +139,7 @@ describe('Formula copy interaction', () => {
     wrapper.className = 'math-inline';
     document.body.appendChild(wrapper);
     context.service.initialize();
-    const refreshSpy = vi.spyOn(
-      context.service as unknown as { refreshArrowExclusions(root: ParentNode): void },
-      'refreshArrowExclusions',
-    );
+    const refreshSpy = vi.spyOn(wrapper, 'querySelectorAll');
 
     const firstArrow = document.createElement('span');
     firstArrow.setAttribute('data-math', '\\rightarrow');
@@ -151,8 +148,12 @@ describe('Formula copy interaction', () => {
     wrapper.append(firstArrow, secondArrow);
     await Promise.resolve();
 
-    expect(refreshSpy).toHaveBeenCalledTimes(1);
-    expect(refreshSpy).toHaveBeenCalledWith(wrapper);
+    expect(
+      refreshSpy.mock.calls.filter(([selector]) => selector === '.gv-formula-copy-ignored'),
+    ).toHaveLength(1);
+    expect(firstArrow.classList.contains('gv-formula-copy-ignored')).toBe(true);
+    expect(secondArrow.classList.contains('gv-formula-copy-ignored')).toBe(true);
+    expect(wrapper.classList.contains('gv-formula-copy-ignored')).toBe(true);
   });
 
   it('does not rescan a streaming root when a whole ignored response subtree is removed', async () => {
@@ -168,10 +169,7 @@ describe('Formula copy interaction', () => {
     document.body.appendChild(streamingRoot);
     context.service.initialize();
     expect(wrapper.classList.contains('gv-formula-copy-ignored')).toBe(true);
-    const refreshSpy = vi.spyOn(
-      context.service as unknown as { refreshArrowExclusions(root: ParentNode): void },
-      'refreshArrowExclusions',
-    );
+    const refreshSpy = vi.spyOn(streamingRoot, 'querySelectorAll');
 
     response.remove();
     await Promise.resolve();
