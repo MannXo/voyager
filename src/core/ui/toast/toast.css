@@ -166,6 +166,13 @@ button.gv-toast-body {
   white-space: pre-line;
 }
 
+/* `dir=auto` makes an English line in an RTL page LTR, so `start` would push it
+   to the left edge, away from the dot; align it with the toast instead. */
+:host([data-gv-rtl]) .gv-toast-title,
+:host([data-gv-rtl]) .gv-toast-message {
+  text-align: right;
+}
+
 .gv-toast-detail {
   margin-inline-start: 6px;
   font-weight: 600;

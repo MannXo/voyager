@@ -55,6 +55,11 @@
   overflow-wrap: anywhere;
 }
 
+/* `dir=auto` resolves an English message to LTR; keep it on the RTL start edge. */
+:host([data-gv-rtl]) .gv-confirm-message {
+  text-align: right;
+}
+
 .gv-confirm-actions {
   display: flex;
   flex-wrap: wrap;
