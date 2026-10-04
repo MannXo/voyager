@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
+import type { StarredMessage } from '@/features/savedLibrary/starTypes';
 
 import { TimelineState } from '../../TimelineState';
 import { createCatalogTimelineStoragePolicy } from './CatalogTimelineStorage';
@@ -9,6 +10,7 @@ import type { CatalogTimelineConfig } from './config';
 import { starConversationId, turnConversationId } from './conversationId';
 
 const states: TimelineState[] = [];
+const library = new Map<string, StarredMessage[]>();
 
 async function fixture(siteId: string) {
   const config: CatalogTimelineConfig = {
@@ -45,9 +47,26 @@ beforeEach(() => {
   history.replaceState({}, '', '/c/one');
   localStorage.clear();
   document.body.replaceChildren();
-  vi.spyOn(StarredMessagesService, 'getStarredMessagesForConversation').mockResolvedValue([]);
-  vi.spyOn(StarredMessagesService, 'addStarredMessage').mockResolvedValue();
-  vi.spyOn(StarredMessagesService, 'removeStarredMessage').mockResolvedValue();
+  library.clear();
+  vi.spyOn(StarredMessagesService, 'getStarredMessagesForConversation').mockImplementation(
+    async (conversationId) => library.get(conversationId) ?? [],
+  );
+  vi.spyOn(StarredMessagesService, 'addStarredMessage').mockImplementation(async (message) => {
+    library.set(message.conversationId, [
+      ...(library.get(message.conversationId) ?? []).filter(
+        (stored) => stored.turnId !== message.turnId,
+      ),
+      message,
+    ]);
+  });
+  vi.spyOn(StarredMessagesService, 'removeStarredMessage').mockImplementation(
+    async (conversationId, turnId) => {
+      library.set(
+        conversationId,
+        (library.get(conversationId) ?? []).filter((stored) => stored.turnId !== turnId),
+      );
+    },
+  );
 });
 
 afterEach(() => states.splice(0).forEach((state) => state.destroy()));

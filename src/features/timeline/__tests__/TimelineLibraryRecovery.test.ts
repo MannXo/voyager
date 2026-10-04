@@ -116,7 +116,7 @@ describe.each(['gemini', 'chatgpt', 'claude', 'deepseek'])('%s Library recovery'
     expect(localStorage.getItem(primary)).toBe(JSON.stringify([oldId]));
     healthy = true;
     await state.toggleStar(newId);
-    expect(readRequests).toHaveLength(3);
+    expect(readRequests).toHaveLength(4);
     expect(data.messages[conversationId].map((star) => star.turnId)).toEqual([oldId, newId]);
     expect(JSON.parse(localStorage.getItem(primary)!)).toEqual([oldId]);
     expect(state.markers.map((marker) => marker.starred)).toEqual([true, true]);

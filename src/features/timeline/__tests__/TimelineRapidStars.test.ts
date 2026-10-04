@@ -98,7 +98,7 @@ async function fixture(initiallyStarred: boolean, failFirst = false, delaySecond
       starred: false,
     },
   ]);
-  return { state, stored, writing, release, secondWriting, releaseSecond };
+  return { state, stored, store, handle, writing, release, secondWriting, releaseSecond };
 }
 
 it.each([
@@ -185,3 +185,69 @@ it('a delayed account lookup does not reverse two quick star presses', async () 
     (stored[StorageKeys.SAVED_LIBRARY_STARS] as StarredMessagesData).messages[conversationId],
   ).toBeUndefined();
 });
+
+it.each([
+  { initial: false, operation: 'add' },
+  { initial: true, operation: 'remove' },
+])(
+  'a delayed $operation reply does not undo a newer Library edit or reverse the next press',
+  async ({ initial, operation }) => {
+    const { state, stored, store, handle, writing, release } = await fixture(initial);
+    const requests: string[] = [];
+    let releaseReply!: () => void;
+    let replyWaiting!: () => void;
+    const persisted = new Promise<void>((resolve) => {
+      replyWaiting = resolve;
+    });
+    let held = false;
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation(((
+      request: { type: string },
+      reply: (response: unknown) => void,
+    ) => {
+      requests.push(request.type);
+      void handle(request)?.then(
+        (response) => {
+          if (!held && request.type === `gv.starred.${operation}`) {
+            held = true;
+            releaseReply = () => reply(response);
+            replyWaiting();
+          } else reply(response);
+        },
+        (error: Error) => reply({ ok: false, error: error.message }),
+      );
+    }) as typeof chrome.runtime.sendMessage);
+
+    const edit = state.toggleStar(turnId);
+    await writing;
+    release();
+    await persisted;
+    expect(state.markers[0].starred).toBe(!initial);
+    if (initial) {
+      await store.add({
+        turnId,
+        conversationId,
+        conversationUrl: location.href,
+        content: 'External choice',
+        starredAt: 2,
+      });
+    } else await store.remove(conversationId, turnId);
+    expect(state.markers[0].starred).toBe(initial);
+    releaseReply();
+    await edit;
+    expect(state.markers[0].starred).toBe(initial);
+    expect((await store.getForConversation(conversationId)).map((item) => item.turnId)).toEqual(
+      initial ? [turnId] : [],
+    );
+
+    await state.toggleStar(turnId);
+    expect(
+      requests.filter((type) => type === 'gv.starred.add' || type === 'gv.starred.remove'),
+    ).toEqual([`gv.starred.${operation}`, `gv.starred.${operation}`]);
+    expect(state.markers[0].starred).toBe(!initial);
+    const data = stored[StorageKeys.SAVED_LIBRARY_STARS] as StarredMessagesData;
+    expect(data.messages[conversationId]?.map((item) => item.turnId) ?? []).toEqual(
+      initial ? [] : [turnId],
+    );
+    expect(stored[StorageKeys.TIMELINE_STARRED_MESSAGES]).toEqual(data);
+  },
+);

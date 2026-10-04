@@ -234,17 +234,16 @@ export class TimelineState {
       (error: unknown) => ({ error }),
     );
 
-    // Each press reads the state only after the preceding press has written and applied its toggle.
+    // Each press reads the Library state after the preceding write and authoritative repaint.
     const operation = this.starWrites.then(async () => {
+      if (!this.isCurrent || !this.policy.canEdit(marker, id)) return;
+      if (!this.starHydration.ready) await this.readStars();
+      if (!this.isCurrent || !this.policy.canEdit(marker, id) || !this.starHydration.ready) return;
+      this.starHydration.changed();
+      const wasStarred = this.isMarkerStarred(id);
+      // Removing a stable turn also clears its verified positional aliases.
+      const storageIds = wasStarred ? this.getStarStorageIds(id) : [id];
       try {
-        if (!this.isCurrent || !this.policy.canEdit(marker, id)) return;
-        if (!this.starHydration.ready) await this.readStars();
-        if (!this.isCurrent || !this.policy.canEdit(marker, id) || !this.starHydration.ready)
-          return;
-        this.starHydration.changed();
-        const wasStarred = this.isMarkerStarred(id);
-        // Removing a stable turn also clears its verified positional aliases.
-        const storageIds = wasStarred ? this.getStarStorageIds(id) : [id];
         if (wasStarred) {
           await Promise.all(
             storageIds.map((storageId) =>
@@ -269,16 +268,14 @@ export class TimelineState {
           };
           await StarredMessagesService.addStarredMessage(message);
         }
-        if (!this.isCurrent) return;
-        if (wasStarred) storageIds.forEach((storageId) => this.starred.delete(storageId));
-        else this.starred.add(id);
-        this.refreshStars();
       } catch (error) {
-        if (!this.isCurrent) return;
-        // A failed write must repaint from the Library, including partially removed aliases.
-        this.starHydration.invalidate();
-        await this.readStars();
-        console.warn('[Timeline] Failed to change starred message:', error);
+        if (this.isCurrent) console.warn('[Timeline] Failed to change starred message:', error);
+      } finally {
+        if (this.isCurrent) {
+          // A delayed write reply cannot replay its old choice over a newer Library edit.
+          this.starHydration.invalidate();
+          await this.readStars();
+        }
       }
     });
     this.starWrites = operation.catch(() => {});

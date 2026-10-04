@@ -2,6 +2,7 @@ import '@/features/timeline/adapters/catalog/testSetup';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { hashString } from '@/core/utils/hash';
+import type { StarredMessage } from '@/features/savedLibrary/starTypes';
 import { buildTurnId } from '@/features/timeline/adapters/catalog/turnMerge';
 
 import { requireBundledSiteAdapter } from '../../catalog/sites';
@@ -50,6 +51,7 @@ vi.mock('@/pages/content/timeline/timelineStyleCoachmark', () => ({
 
 let standaloneScope: PluginScope | null = null;
 let standaloneHandle: PrimitiveHandle | null = null;
+const library = new Map<string, StarredMessage[]>();
 
 /** Exercise the same shipped manifest and resolved site data as PluginHost. */
 function startClaudeTimeline(settings: PluginSettings = {}): void {
@@ -124,9 +126,26 @@ describe('Claude timeline', () => {
     // Claude's thread container names the conversation every turn belongs to.
     document.body.setAttribute('data-conv-id', 'claude-123');
     history.replaceState({}, '', '/chat/claude-123');
-    getStarredMessagesForConversation.mockResolvedValue([]);
-    addStarredMessage.mockClear();
-    removeStarredMessage.mockClear();
+    library.clear();
+    getStarredMessagesForConversation
+      .mockReset()
+      .mockImplementation(async (conversationId: string) => library.get(conversationId) ?? []);
+    addStarredMessage.mockReset().mockImplementation(async (message: StarredMessage) => {
+      library.set(message.conversationId, [
+        ...(library.get(message.conversationId) ?? []).filter(
+          (stored) => stored.turnId !== message.turnId,
+        ),
+        message,
+      ]);
+    });
+    removeStarredMessage
+      .mockReset()
+      .mockImplementation(async (conversationId: string, turnId: string) => {
+        library.set(
+          conversationId,
+          (library.get(conversationId) ?? []).filter((stored) => stored.turnId !== turnId),
+        );
+      });
     requestPluginSetting.mockClear();
     showTimelineStyleCoachmark.mockClear();
     HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -483,7 +502,7 @@ describe('Claude timeline', () => {
 
   it('recognizes and unstars messages stored with the legacy index-based id', async () => {
     const legacyId = `c-0-${hashString('first prompt')}`;
-    getStarredMessagesForConversation.mockResolvedValue([
+    library.set('claude:conv:claude-123', [
       {
         turnId: legacyId,
         content: 'first prompt',
@@ -510,7 +529,7 @@ describe('Claude timeline', () => {
 
   it('removes a legacy star from the compact preview without navigating', async () => {
     const legacyId = `c-0-${hashString('compact legacy prompt')}`;
-    getStarredMessagesForConversation.mockResolvedValue([
+    library.set('claude:conv:claude-123', [
       {
         turnId: legacyId,
         content: 'compact legacy prompt',

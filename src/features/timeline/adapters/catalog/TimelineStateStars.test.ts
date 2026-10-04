@@ -34,6 +34,7 @@ let route: string;
 let ownership: CatalogTurnOwnership;
 let state: TimelineState;
 const states: TimelineState[] = [];
+const library = new Map<string, StarredMessage[]>();
 const init = () => state.init();
 
 /** The conversation a host that names it puts on the turn's container. */
@@ -101,7 +102,12 @@ function press(target: {
   return state.toggleStar(target.id);
 }
 
+function seedLibrary(messages: StarredMessage[]): void {
+  library.set(route, messages);
+}
+
 function synchronizeLibrary(messages: StarredMessage[]): void {
+  seedLibrary(messages);
   for (const [listener] of vi.mocked(chrome.storage.onChanged.addListener).mock.calls)
     listener(
       {
@@ -135,9 +141,26 @@ function deferRead(): (messages: StarredMessage[]) => void {
 beforeEach(() => {
   document.body.innerHTML = '';
   route = 'site:conv:b';
-  addStarredMessage.mockClear();
-  removeStarredMessage.mockClear();
-  getStarredMessagesForConversation.mockReset().mockResolvedValue([]);
+  library.clear();
+  addStarredMessage.mockReset().mockImplementation(async (message: StarredMessage) => {
+    library.set(message.conversationId, [
+      ...(library.get(message.conversationId) ?? []).filter(
+        (stored) => stored.turnId !== message.turnId,
+      ),
+      message,
+    ]);
+  });
+  removeStarredMessage
+    .mockReset()
+    .mockImplementation(async (conversationId: string, turnId: string) => {
+      library.set(
+        conversationId,
+        (library.get(conversationId) ?? []).filter((stored) => stored.turnId !== turnId),
+      );
+    });
+  getStarredMessagesForConversation
+    .mockReset()
+    .mockImplementation(async (conversationId: string) => library.get(conversationId) ?? []);
 });
 
 afterEach(() => states.splice(0).forEach((state) => state.destroy()));
@@ -300,7 +323,7 @@ describe('catalog Library star state', () => {
     const legacyKey = `geminiTimelineStars:${route}`;
     localStorage.setItem(primaryKey, '["c-same"]');
     localStorage.setItem(legacyKey, '["c-old"]');
-    getStarredMessagesForConversation.mockResolvedValueOnce([libraryStar('c-library')]);
+    seedLibrary([libraryStar('c-library')]);
     create();
     const element = insert();
     observe([seen(element)]);
@@ -321,7 +344,7 @@ describe('catalog Library star state', () => {
   it('reflects a Library removal without rewriting stale page arrays', async () => {
     const pageKey = `gvTimelineStars:site:${route}`;
     localStorage.setItem(pageKey, '["c-same"]');
-    getStarredMessagesForConversation.mockResolvedValueOnce([libraryStar('c-same')]);
+    seedLibrary([libraryStar('c-same')]);
     create();
     await init();
     expect(state.isMarkerStarred('c-same')).toBe(true);
@@ -344,7 +367,7 @@ describe('catalog Library star state', () => {
 
   it('ignores malformed or partial Chrome snapshots without clearing healthy Library stars', async () => {
     const star = libraryStar('c-same');
-    getStarredMessagesForConversation.mockResolvedValueOnce([star]);
+    seedLibrary([star]);
     create();
     await init();
     for (const value of [
@@ -385,7 +408,7 @@ describe('catalog Library star state', () => {
   });
 
   it('resolves historical hash aliases for every mounted copy and removes their stored records', async () => {
-    getStarredMessagesForConversation.mockResolvedValueOnce([libraryStar('c-0-same')]);
+    seedLibrary([libraryStar('c-0-same')]);
     create();
     const element = insert();
     const duplicate = insert();

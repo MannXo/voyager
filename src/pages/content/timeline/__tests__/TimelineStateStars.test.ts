@@ -126,10 +126,16 @@ describe('TimelineState stars in a partially mounted conversation', () => {
     }
   });
   it('removes every verified stored alias when un-starring', async () => {
-    const remove = vi.spyOn(StarredMessagesService, 'removeStarredMessage').mockResolvedValue();
+    const saved = [message('u-0', 'first prompt'), message(FIRST_ID, 'first prompt')];
+    const remove = vi
+      .spyOn(StarredMessagesService, 'removeStarredMessage')
+      .mockImplementation(async (_conversation, id) => {
+        const index = saved.findIndex((item) => item.turnId === id);
+        if (index !== -1) saved.splice(index, 1);
+      });
     const state = await setup(
       [marker(FIRST_ID, 'first prompt')],
-      [message('u-0', 'first prompt'), message(FIRST_ID, 'first prompt')],
+      saved,
       new Map([['u-0', FIRST_ID]]),
     );
     await state.toggleStar(FIRST_ID);
@@ -202,13 +208,16 @@ describe('TimelineState stars in a partially mounted conversation', () => {
   });
 
   it('a successful star addition applies after a Library snapshot arrives during its write', async () => {
-    const state = await setup([marker(FIRST_ID, 'saved')]);
+    const saved: StarredMessage[] = [];
+    const state = await setup([marker(FIRST_ID, 'saved')], saved);
     let complete!: () => void;
-    vi.spyOn(StarredMessagesService, 'addStarredMessage').mockReturnValue(
-      new Promise((resolve) => {
-        complete = resolve;
-      }),
-    );
+    const persistence = new Promise<void>((resolve) => {
+      complete = resolve;
+    });
+    vi.spyOn(StarredMessagesService, 'addStarredMessage').mockImplementation(async (item) => {
+      await persistence;
+      saved.push(item);
+    });
     const edit = state.toggleStar(FIRST_ID);
     await vi.waitFor(() => expect(StarredMessagesService.addStarredMessage).toHaveBeenCalled());
     const listeners = vi.mocked(chrome.storage.onChanged.addListener).mock.calls;
@@ -216,6 +225,7 @@ describe('TimelineState stars in a partially mounted conversation', () => {
     receive({ [StorageKeys.SAVED_LIBRARY_STARS]: { newValue: { messages: {} } } }, 'local');
     complete();
     await edit;
+    expect(saved.map((item) => item.turnId)).toEqual([FIRST_ID]);
     expect(state.markers[0].starred).toBe(true);
   });
 
