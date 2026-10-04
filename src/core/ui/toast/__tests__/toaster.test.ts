@@ -93,6 +93,16 @@ describe('createToaster', () => {
     expect(toastDriver.all()).toEqual([]);
   });
 
+  it('shows a channel toast again after the page dropped the host', () => {
+    const owner = toaster();
+    owner.show({ channel: 'status', message: 'First', durationMs: 5000 });
+    document.body.innerHTML = '';
+
+    owner.show({ channel: 'status', message: 'Second', durationMs: 5000 });
+
+    expect(toastDriver.messages()).toEqual(['Second']);
+  });
+
   it('updates in place and restarts the timer only when given a duration', () => {
     const owner = toaster();
     const handle = owner.show({ message: 'Downloading', pending: true, durationMs: 3000 });

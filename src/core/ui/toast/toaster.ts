@@ -198,9 +198,11 @@ export function createToaster(): Toaster {
   return {
     show(input) {
       if (destroyed) return closed;
-      const existing = input.channel
-        ? own().find((record) => record.input.channel === input.channel)
-        : undefined;
+      // Once the page dropped the host, its toasts are gone: open a fresh one.
+      const existing =
+        input.channel && layer?.mount.host.isConnected
+          ? own().find((record) => record.input.channel === input.channel)
+          : undefined;
       if (existing) {
         existing.input = input;
         existing.view.apply(input);
