@@ -18,6 +18,7 @@
         "icon-32.png",
         "icon-128.png",
         "mascot-logo.png",
+        "katex-config.js",
         "fetchInterceptor.js",
         "claude-usage-observer.js",
         "response-complete-observer.js",
