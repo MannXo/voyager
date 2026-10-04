@@ -6,9 +6,9 @@
  * the panel is never opened never fetches them. The loaded renderer is shared
  * by every render after that.
  */
-import 'katex/dist/katex.min.css';
 import type { marked as MarkedFn } from 'marked';
 
+import { ensureKatexStyles } from '@/core/utils/katexStyles';
 import { renderPromptHtmlAsText } from '@/features/prompt/model/promptMarkdown';
 
 interface MarkdownRenderer {
@@ -19,6 +19,7 @@ interface MarkdownRenderer {
 let rendererReady: Promise<MarkdownRenderer> | null = null;
 
 function loadRenderer(): Promise<MarkdownRenderer> {
+  ensureKatexStyles();
   if (!rendererReady) {
     rendererReady = (async () => {
       const [markedModule, katexModule, domPurifyModule] = await Promise.all([

@@ -26,6 +26,8 @@
         "conversation-history-observer.js",
         "prevent-auto-scroll.js",
         "assets/*.js",
+        "assets/katex*.css",
+        "assets/KaTeX_*",
         "assets/*.png"
       ],
       "matches": ["<all_urls>"]
