@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { buildConversationIdFromUrl } from '@/core/utils/conversationIdentity';
+import { createStarStore } from '@/features/savedLibrary/starStore';
+import { createStarredMessagesHandler } from '@/pages/background/starredMessages';
 import { toastDriver } from '@/tests/toastDriver';
 
 import type { ExportDictionaries } from '../exportLocale';
@@ -86,8 +89,27 @@ async function copyFirstResponseAsImage(): Promise<void> {
 
 describe('startResponseCopyImageActions', () => {
   const blob = new Blob(['png'], { type: 'image/png' });
+  let library: ReturnType<typeof createStarStore>;
 
   beforeEach(() => {
+    const stored: Record<string, unknown> = {};
+    library = createStarStore({
+      get: async () => structuredClone(stored),
+      set: async (items) => {
+        Object.assign(stored, structuredClone(items));
+      },
+    });
+    const handle = createStarredMessagesHandler(library);
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation(((
+      request: unknown,
+      reply?: (response: unknown) => void,
+    ) => {
+      const pending = handle(request) ?? Promise.resolve(undefined);
+      if (reply) {
+        void pending.then(reply, (error: Error) => reply({ ok: false, error: error.message }));
+      }
+      return pending;
+    }) as typeof chrome.runtime.sendMessage);
     renderResponse();
     mocks.renderResponseImageBlob.mockResolvedValue(blob);
   });
@@ -111,6 +133,29 @@ describe('startResponseCopyImageActions', () => {
     expect(toastDriver.all()).toMatchObject([
       { message: 'Response image copied', tone: 'success' },
     ]);
+  });
+
+  it('copies a Library-starred response as a starred image without the timeline or a page mirror', async () => {
+    const main = document.querySelector('main')!;
+    const turn = document.createElement('div');
+    turn.className = 'conversation-container';
+    turn.id = 'r_1111111111111111';
+    while (main.firstChild) turn.appendChild(main.firstChild);
+    main.appendChild(turn);
+    await library.add({
+      conversationId: buildConversationIdFromUrl(location.href),
+      conversationUrl: location.href,
+      turnId: 's-1111111111111111',
+      content: 'prompt',
+      starredAt: 1,
+    });
+    mocks.copyImageBlobToClipboard.mockResolvedValue(undefined);
+
+    await copyFirstResponseAsImage();
+
+    const [turns] = mocks.renderResponseImageBlob.mock.calls[0];
+    expect(turns).toMatchObject([{ user: '', assistant: 'answer', starred: true }]);
+    expect(toastDriver.messages()).toEqual(['Response image copied']);
   });
 
   it('downloads the image on Safari when neither clipboard path works', async () => {

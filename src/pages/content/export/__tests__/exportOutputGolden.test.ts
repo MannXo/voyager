@@ -18,6 +18,7 @@ import type { ChatTurn, ConversationMetadata, ExportOptions } from '@/features/e
 import { DEFAULT_EXPORT_SPEAKER_LABELS, ExportFormat } from '@/features/export/types/export';
 import { chatgptAdapter } from '@/features/plugins/sites/adapters/chatgpt';
 import { geminiAdapter } from '@/features/plugins/sites/adapters/gemini';
+import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
 
 import { collectForkChatPairs } from '../../fork/chatPairs';
 import { mountThreadFixture } from '../adapter/__tests__/chatgptThreadFixture';
@@ -27,6 +28,7 @@ import { buildChatGptAdapter } from '../adapter/platform/chatgpt';
 import { buildGeminiAdapter } from '../adapter/platform/gemini';
 import { createConversationCollector } from '../conversationCollector';
 import { createChatGptExportSite } from '../sites/chatgpt';
+import { createGeminiExportSite } from '../sites/gemini';
 
 const GEMINI_CONVERSATION = `
   <main>
@@ -161,16 +163,26 @@ function printedTurns(turns: ChatTurn[], metadata: ConversationMetadata): string
 }
 
 describe('Gemini conversation export output', () => {
-  function geminiTurns(): ChatTurn[] {
+  async function geminiTurns(): Promise<ChatTurn[]> {
     document.body.innerHTML = GEMINI_CONVERSATION;
-    localStorage.setItem(
-      `geminiTimelineStars:${buildConversationIdFromUrl(location.href)}`,
-      JSON.stringify(['s-aaaaaaaa01']),
-    );
-    const collector = createConversationCollector(geminiExportAdapter);
-    const ids = collector.collectSelectionMessages().map((message) => message.messageId);
+    const conversationId = buildConversationIdFromUrl(location.href);
+    vi.spyOn(StarredMessagesService, 'getAllStarredMessages').mockResolvedValue({
+      messages: {
+        [conversationId]: [
+          {
+            conversationId,
+            conversationUrl: location.href,
+            turnId: 's-aaaaaaaa01',
+            content: 'Explain the integral with an example',
+            starredAt: 1,
+          },
+        ],
+      },
+    });
+    const site = createGeminiExportSite(geminiExportAdapter);
+    const ids = site.turns.messages().map((message) => message.messageId);
     expect(ids).toEqual(['s-aaaaaaaa01:u', 's-aaaaaaaa01:a', 's-bbbbbbbb02:u', 's-bbbbbbbb02:a']);
-    return collector.turnsForMessageIds(new Set(ids));
+    return site.turns.build(new Set(ids), {});
   }
 
   const metadata: ConversationMetadata = {
@@ -182,7 +194,7 @@ describe('Gemini conversation export output', () => {
   };
 
   it('writes the chat JSON', async () => {
-    const json = await exportText(geminiTurns(), metadata, { format: ExportFormat.JSON });
+    const json = await exportText(await geminiTurns(), metadata, { format: ExportFormat.JSON });
     expect(json).toMatchInlineSnapshot(`
       "{
         "format": "gemini-voyager.chat.v1",
@@ -207,7 +219,9 @@ describe('Gemini conversation export output', () => {
   });
 
   it('writes the Markdown', async () => {
-    const markdown = await exportText(geminiTurns(), metadata, { format: ExportFormat.MARKDOWN });
+    const markdown = await exportText(await geminiTurns(), metadata, {
+      format: ExportFormat.MARKDOWN,
+    });
     expect(normalizeMarkdown(markdown)).toMatchInlineSnapshot(`
       "# Integral help
 
@@ -267,7 +281,7 @@ describe('Gemini conversation export output', () => {
   });
 
   it('writes the Markdown with prompts as turn headings', async () => {
-    const markdown = await exportText(geminiTurns(), metadata, {
+    const markdown = await exportText(await geminiTurns(), metadata, {
       format: ExportFormat.MARKDOWN,
       usePromptAsTurnHeading: true,
     });
@@ -320,8 +334,8 @@ describe('Gemini conversation export output', () => {
     `);
   });
 
-  it('prints the PDF turns', () => {
-    expect(printedTurns(geminiTurns(), metadata)).toMatchInlineSnapshot(`
+  it('prints the PDF turns', async () => {
+    expect(printedTurns(await geminiTurns(), metadata)).toMatchInlineSnapshot(`
       "
             <div class="gv-print-turn gv-print-turn-starred">
               <div class="gv-print-turn-header">

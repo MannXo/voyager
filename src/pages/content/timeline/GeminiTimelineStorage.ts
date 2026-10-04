@@ -5,8 +5,6 @@ import {
 import { StorageKeys } from '@/core/types/common';
 import {
   buildConversationIdFromUrl,
-  buildLegacyConversationIdFromUrl,
-  buildRouteConversationIdFromUrl,
   extractConversationIdFromUrl,
 } from '@/core/utils/conversationIdentity';
 import type { TimelineStoragePolicy } from '@/features/timeline/TimelineStoragePolicy';
@@ -41,20 +39,11 @@ export function createGeminiTimelineStoragePolicy(
       email: context.email,
     });
   };
-  const key = conversationId ? `geminiTimelineStars:${conversationId}` : null;
   return {
     conversationId,
     url,
     settingsPrefix: 'geminiTimeline',
     stars: {
-      key,
-      legacyKeys: [buildRouteConversationIdFromUrl(url), buildLegacyConversationIdFromUrl(url)]
-        .filter(Boolean)
-        .map((id) => `geminiTimelineStars:${id}`)
-        .filter((candidate) => candidate !== key),
-      copyLegacy: true,
-      source: 'library',
-      libraryMirror: true,
       matchLegacyConversations: true,
       resolveAccount: async () => (await resolveAccountScope())?.accountKey,
     },

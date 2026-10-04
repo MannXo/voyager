@@ -8,11 +8,6 @@ export interface TimelineStoragePolicy {
   readonly url: string;
   readonly settingsPrefix: string;
   readonly stars: {
-    readonly key: string | null;
-    readonly legacyKeys: readonly string[];
-    readonly copyLegacy: boolean;
-    readonly source: 'library' | 'local';
-    readonly libraryMirror: boolean;
     readonly matchLegacyConversations: boolean;
     readonly resolveAccount: () => Promise<string | undefined>;
   };

@@ -41,8 +41,8 @@ function installLibrary(messages: StarredMessage[]) {
 beforeEach(() => localStorage.clear());
 afterEach(() => vi.unstubAllGlobals());
 
-describe('Saved Library authoritative reads and mirrors', () => {
-  it('first Saved Library removal preserves unrelated historical and library stars while the timeline is off', async () => {
+describe('Saved Library authoritative reads', () => {
+  it('Library edits leave stale page arrays untouched without importing them', async () => {
     const library = installLibrary([star('A'), star('B'), star('library-only')]);
     const key = `gvTimelineStars:chatgpt:${conversationId}`;
     const legacyKey = `geminiTimelineStars:${conversationId}`;
@@ -51,7 +51,7 @@ describe('Saved Library authoritative reads and mirrors', () => {
 
     await StarredMessagesService.removeStarredMessage(conversationId, 'A');
 
-    expect(JSON.parse(localStorage.getItem(key)!)).toEqual(['B', 'legacy-only', 'library-only']);
+    expect(localStorage.getItem(key)).toBeNull();
     expect(localStorage.getItem(legacyKey)).toBe(legacy);
     expect(library.data().messages[conversationId].map((message) => message.turnId)).toEqual([
       'B',

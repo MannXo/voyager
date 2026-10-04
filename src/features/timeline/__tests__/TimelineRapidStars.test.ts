@@ -119,9 +119,7 @@ it.each([
     saved ? [turnId] : [],
   );
   expect(stored[StorageKeys.TIMELINE_STARRED_MESSAGES]).toEqual(primary);
-  expect(JSON.parse(localStorage.getItem(`geminiTimelineStars:${conversationId}`)!)).toEqual(
-    saved ? [turnId] : [],
-  );
+  expect(localStorage.getItem(`geminiTimelineStars:${conversationId}`)).toBeNull();
 });
 
 it('a failed first star write repaints from the Library and a later press works', async () => {

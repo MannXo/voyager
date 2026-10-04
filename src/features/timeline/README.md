@@ -6,34 +6,38 @@ hierarchy geometry, the rail,
 preview, tooltips, interactions, navigation and settings application. The same owners render Gemini,
 ChatGPT, Claude and DeepSeek.
 
-| Behavior                                                            | Owner                                           |
-| ------------------------------------------------------------------- | ----------------------------------------------- |
-| Rail composition, styles, preview and viewport synchronization      | `TimelineView`                                  |
-| Dot geometry, dense/virtual dots, ruler wave and runner             | `TimelineDotLayer`                              |
-| Slider scroll dragging and fade                                     | `TimelineSlider`                                |
-| Width/position restore, migration and dragging                      | `TimelineRailPlacement`                         |
-| Preview search, pinning and hover bridge                            | `TimelinePreviewPanel`, `TimelinePreviewPress`  |
-| Tooltip delay, content and visibility                               | `TimelineTooltip`                               |
-| Marker navigation, star long press and hierarchy menu               | `TimelineMarkerInteractions`                    |
-| Shortcuts, active turn and navigation cancellation                  | `TimelineNavigation`                            |
-| Virtualized turn homing, reversed scrollers and remembered geometry | `VirtualizedTimelineNavigation`, `scrollMotion` |
-| Stars, marker snapshot, aliases and storage synchronization         | `TimelineState`                                 |
-| Hierarchy edits and persistence                                     | `TimelineHierarchy`                             |
-| Store readiness, read settlement and snapshot ordering              | `TimelineHydration`                             |
-| Collapse layout                                                     | `TimelineHierarchyGeometry`                     |
+| Behavior                                                            | Owner                                               |
+| ------------------------------------------------------------------- | --------------------------------------------------- |
+| Rail composition, styles, preview and viewport synchronization      | `TimelineView`                                      |
+| Dot geometry, dense/virtual dots, ruler wave and runner             | `TimelineDotLayer`                                  |
+| Slider scroll dragging and fade                                     | `TimelineSlider`                                    |
+| Width/position restore, migration and dragging                      | `TimelineRailPlacement`                             |
+| Preview search, pinning and hover bridge                            | `TimelinePreviewPanel`, `TimelinePreviewPress`      |
+| Tooltip delay, content and visibility                               | `TimelineTooltip`                                   |
+| Marker navigation, star long press and hierarchy menu               | `TimelineMarkerInteractions`                        |
+| Shortcuts, active turn and navigation cancellation                  | `TimelineNavigation`                                |
+| Virtualized turn homing, reversed scrollers and remembered geometry | `VirtualizedTimelineNavigation`, `scrollMotion`     |
+| Marker snapshot, star display, aliases and Library hydration        | `TimelineState`                                     |
+| Persisted stars, migration, serialized writes and cloud merges      | [Saved Library store](../savedLibrary/starStore.ts) |
+| Hierarchy edits and persistence                                     | `TimelineHierarchy`                                 |
+| Store readiness, read settlement and snapshot ordering              | `TimelineHydration`                                 |
+| Collapse layout                                                     | `TimelineHierarchyGeometry`                         |
 
 The [Gemini adapter](../../pages/content/timeline/GeminiTimelineAdapter.ts) retains Gemini selector
 priority, stable identities and timestamps. Its small
-[storage policy](../../pages/content/timeline/GeminiTimelineStorage.ts) retains account scope,
-verified legacy aliases, exact keys and serialized formats. All sites use the same `TimelineState`
-and hierarchy owner.
+[storage policy](../../pages/content/timeline/GeminiTimelineStorage.ts) retains hierarchy account scope,
+legacy hierarchy keys and serialized formats, and verifies stored turn aliases. New Gemini stars
+can include an opaque account annotation captured at the press; this annotation does not filter
+Library reads. All sites use the same `TimelineState` and hierarchy owner.
 
 The [catalog adapter](adapters/catalog/CatalogTimelineAdapter.ts) receives semantic selectors from
 `site.json` and optional `turnNavigator` manifest parameters. It retains identity and ownership
 across virtualized DOM windows. Its [storage policy](adapters/catalog/CatalogTimelineStorage.ts)
-stores hierarchy and timeline-local stars under per-site keys; stars still mirror the Saved Library. Every edit requires evidence that the turn belongs to
-the current conversation. Catalog data currently exposes no account identity, so these sites have
-site/conversation scope; Gemini keeps its existing account scope.
+stores hierarchy under per-site keys. Stars for every site come from the Saved Library through its
+[client](../savedLibrary/StarredMessagesService.ts), whose requests use the background store as the
+single write owner. Every edit requires evidence that the turn belongs to the current conversation.
+Catalog data exposes no account identity, so catalog stars omit the optional account annotation.
+Old page star arrays are neither read, imported, written nor purged.
 
 Viewport replacement rebinds scroll and intersection observation while retaining conversation state.
 Path/query replacement destroys the engine and creates a fresh conversation adapter. Gemini's shared
@@ -41,10 +45,10 @@ history timestamp store has page lifetime: conversation teardown unsubscribes wi
 Plugin scope abort immediately destroys the engine before pending startup settles, so an old cleanup
 cannot remove a newly enabled rail.
 
-The first per-site star mirror seeds from its legacy key and a successful Saved Library read before
-applying an edit. Failed reads reject at the background/service boundary and leave persisted stars
-intact. `TimelineState` owns one `TimelineHydration` per store, sharing readiness, in-flight read
-settlement and snapshot ordering between Library stars and hierarchy. Failed attempts release the
+A star edit requires a successful Saved Library read or a complete external Library snapshot.
+Failed reads reject at the background/service boundary and leave persisted stars intact.
+`TimelineState` owns separate `TimelineHydration` instances for Library stars and hierarchy, applying
+the same readiness, in-flight read settlement and snapshot ordering rules independently. Failed attempts release the
 read; the next edit retries, and writes remain refused until hydration succeeds. A complete external
 snapshot for the resolved active scope also restores readiness and takes precedence over older
 pending reads. Hierarchy loads independently of Library stars. Level/collapse edits before or during

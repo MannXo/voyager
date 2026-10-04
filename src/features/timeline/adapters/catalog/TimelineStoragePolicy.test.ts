@@ -10,7 +10,7 @@ import { starConversationId, turnConversationId } from './conversationId';
 
 const states: TimelineState[] = [];
 
-async function fixture(siteId: string, mirror = true) {
+async function fixture(siteId: string) {
   const config: CatalogTimelineConfig = {
     siteId,
     siteLabel: siteId,
@@ -31,10 +31,7 @@ async function fixture(siteId: string, mirror = true) {
   ownership.recordInsertions([{ addedNodes: [element] } as unknown as MutationRecord]);
   ownership.observe([{ element, hash: 'turn' }]);
   const policy = createCatalogTimelineStoragePolicy(config, ownership);
-  const state = new TimelineState(vi.fn(), {
-    ...policy,
-    stars: { ...policy.stars, libraryMirror: mirror },
-  });
+  const state = new TimelineState(vi.fn(), policy);
   states.push(state);
   state.replaceMarkers([
     { id: 'c-turn', element, summary: 'Prompt', assistantSummary: '', baseN: 0, starred: false },
@@ -56,7 +53,7 @@ beforeEach(() => {
 afterEach(() => states.splice(0).forEach((state) => state.destroy()));
 
 describe.each(['chatgpt', 'claude', 'deepseek'])('%s shared timeline storage policy', (siteId) => {
-  it('writes the exact site keys and existing hierarchy format from the shared state', async () => {
+  it('keeps the site hierarchy format and saves stars through the Library', async () => {
     const state = await fixture(siteId);
     const conversationId = `${siteId}:conv:one`;
     const hierarchyKey = `gvTimelineHierarchy:${siteId}:${conversationId}`;
@@ -69,10 +66,13 @@ describe.each(['chatgpt', 'claude', 'deepseek'])('%s shared timeline storage pol
     state.hierarchy.toggleCollapse('c-turn');
     expect(localStorage.getItem(hierarchyKey)).toBe('{"levels":{},"collapsed":[]}');
     await state.toggleStar('c-turn');
-    expect(localStorage.getItem(`gvTimelineStars:${siteId}:${conversationId}`)).toBe('["c-turn"]');
     expect(StarredMessagesService.addStarredMessage).toHaveBeenCalledWith(
       expect.objectContaining({ conversationId, turnId: 'c-turn' }),
     );
+    expect(state.markers[0].starred).toBe(true);
+    expect(
+      vi.mocked(StarredMessagesService.addStarredMessage).mock.calls.at(-1)?.[0].account,
+    ).toBeUndefined();
   });
 
   it('refuses stars and hierarchy edits after its captured route is replaced', async () => {
@@ -94,17 +94,5 @@ describe.each(['chatgpt', 'claude', 'deepseek'])('%s shared timeline storage pol
     expect(localStorage.length).toBe(0);
     expect(StarredMessagesService.getStarredMessagesForConversation).not.toHaveBeenCalled();
     expect(StarredMessagesService.addStarredMessage).not.toHaveBeenCalled();
-  });
-
-  it('uses the same local star owner when Saved Library mirroring is off', async () => {
-    const state = await fixture(siteId, false);
-    await state.toggleStar('c-turn');
-    expect(state.markers[0].starred).toBe(true);
-    expect(localStorage.getItem(`gvTimelineStars:${siteId}:${siteId}:conv:one`)).toBe('["c-turn"]');
-    expect(StarredMessagesService.getStarredMessagesForConversation).not.toHaveBeenCalled();
-    expect(StarredMessagesService.addStarredMessage).not.toHaveBeenCalled();
-    await state.toggleStar('c-turn');
-    expect(state.markers[0].starred).toBe(false);
-    expect(StarredMessagesService.removeStarredMessage).not.toHaveBeenCalled();
   });
 });

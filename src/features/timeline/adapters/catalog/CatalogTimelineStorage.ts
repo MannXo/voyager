@@ -1,10 +1,6 @@
 import type { TimelineStoragePolicy } from '../../TimelineStoragePolicy';
 import { CatalogTurnOwnership } from './CatalogTurnOwnership';
-import {
-  catalogHierarchyStorageKey,
-  catalogStarsStorageKey,
-  type CatalogTimelineConfig,
-} from './config';
+import { catalogHierarchyStorageKey, type CatalogTimelineConfig } from './config';
 import { buildConversationId, starConversationId } from './conversationId';
 import { extractTurnHash } from './turnHash';
 
@@ -20,11 +16,6 @@ export function createCatalogTimelineStoragePolicy(
     url,
     settingsPrefix: `gvTimeline:${config.siteId}:`,
     stars: {
-      key: conversationId ? catalogStarsStorageKey(config.siteId, conversationId) : null,
-      legacyKeys: conversationId ? [`geminiTimelineStars:${conversationId}`] : [],
-      copyLegacy: false,
-      source: 'local',
-      libraryMirror: true,
       matchLegacyConversations: false,
       resolveAccount: async () => undefined,
     },

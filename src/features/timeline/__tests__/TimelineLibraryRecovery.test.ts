@@ -92,7 +92,10 @@ describe.each(['gemini', 'chatgpt', 'claude', 'deepseek'])('%s Library recovery'
       ownership.observe(elements.map((element, i) => ({ element, hash: i === 0 ? 'old' : 'new' })));
       policy = createCatalogTimelineStoragePolicy(config, ownership);
     }
-    const primary = policy.stars.key!;
+    const primary =
+      siteId === 'gemini'
+        ? `geminiTimelineStars:${conversationId}`
+        : `gvTimelineStars:${siteId}:${conversationId}`;
     localStorage.setItem(primary, JSON.stringify([oldId]));
     const state = new TimelineState(() => {}, policy);
     states.push(state);
@@ -115,7 +118,7 @@ describe.each(['gemini', 'chatgpt', 'claude', 'deepseek'])('%s Library recovery'
     await state.toggleStar(newId);
     expect(readRequests).toHaveLength(3);
     expect(data.messages[conversationId].map((star) => star.turnId)).toEqual([oldId, newId]);
-    expect(JSON.parse(localStorage.getItem(primary)!)).toEqual([oldId, newId]);
+    expect(JSON.parse(localStorage.getItem(primary)!)).toEqual([oldId]);
     expect(state.markers.map((marker) => marker.starred)).toEqual([true, true]);
   });
 });

@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
 import type { StarredMessage } from '@/features/savedLibrary/starTypes';
-import { eventBus } from '@/pages/content/timeline/EventBus';
 
 import { TimelineState } from '../../TimelineState';
 import type { TimelineStoragePolicy } from '../../TimelineStoragePolicy';
@@ -46,22 +45,16 @@ function stated(element: Element): string | null {
 function create(
   starId: () => string | null = () => route,
   turnConversation?: (element: Element) => string | null | undefined,
-  storageKey?: (id: string) => string,
 ): void {
   ownership = new CatalogTurnOwnership({ routeId: () => route, starId, turnConversation });
   ownership.begin();
   const capturedRoute = route;
   const capturedId = starId();
   const policy: TimelineStoragePolicy = {
-    conversationId: capturedId ?? route,
+    conversationId: capturedId ?? '',
     url: `https://site/c/${route.split(':').at(-1)}`,
     settingsPrefix: 'gvTimeline:site:',
     stars: {
-      key: capturedId && storageKey ? storageKey(capturedId) : null,
-      legacyKeys: capturedId ? [`geminiTimelineStars:${capturedId}`] : [],
-      copyLegacy: false,
-      source: 'local',
-      libraryMirror: true,
       matchLegacyConversations: false,
       resolveAccount: async () => undefined,
     },
@@ -289,140 +282,111 @@ describe('shared timeline star writes', () => {
   });
 });
 
-describe('catalog star primary storage', () => {
-  beforeEach(() => localStorage.clear());
-  const key = (id: string) => `gvTimelineStars:site:${id}`;
+function libraryStar(turnId: string): StarredMessage {
+  return {
+    turnId,
+    conversationId: route,
+    conversationUrl: 'https://site/c/b',
+    content: turnId,
+    starredAt: 1,
+  };
+}
 
-  it('reads a primary star even when the Saved Library mirror is missing it', async () => {
-    localStorage.setItem(key(route), JSON.stringify(['c-same']));
-    getStarredMessagesForConversation.mockResolvedValueOnce([]);
-    create(() => route, undefined, key);
+describe('catalog Library star state', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('uses Library stars and leaves ignored page arrays untouched during the first edit', async () => {
+    const primaryKey = `gvTimelineStars:site:${route}`;
+    const legacyKey = `geminiTimelineStars:${route}`;
+    localStorage.setItem(primaryKey, '["c-same"]');
+    localStorage.setItem(legacyKey, '["c-old"]');
+    getStarredMessagesForConversation.mockResolvedValueOnce([libraryStar('c-library')]);
+    create();
+    const element = insert();
+    observe([seen(element)]);
     await init();
-    expect(state.isMarkerStarred('c-same')).toBe(true);
+    expect(state.isMarkerStarred('c-library')).toBe(true);
+    expect(state.isMarkerStarred('c-same')).toBe(false);
+    expect(state.isMarkerStarred('c-old')).toBe(false);
+    await press({ ...turn, element });
+    expect(state.isMarkerStarred('c-library')).toBe(true);
+    expect(state.markers[0].starred).toBe(true);
+    expect(addStarredMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: route, turnId: 'c-same' }),
+    );
+    expect(localStorage.getItem(primaryKey)).toBe('["c-same"]');
+    expect(localStorage.getItem(legacyKey)).toBe('["c-old"]');
   });
 
-  it('does not resurrect a Saved Library removal from the primary ids', async () => {
-    localStorage.setItem(key(route), JSON.stringify(['c-same']));
-    create(() => route, undefined, key);
+  it('reflects a Library removal without rewriting stale page arrays', async () => {
+    const pageKey = `gvTimelineStars:site:${route}`;
+    localStorage.setItem(pageKey, '["c-same"]');
+    getStarredMessagesForConversation.mockResolvedValueOnce([libraryStar('c-same')]);
+    create();
     await init();
     expect(state.isMarkerStarred('c-same')).toBe(true);
     synchronizeLibrary([]);
     expect(state.isMarkerStarred('c-same')).toBe(false);
-    expect(JSON.parse(localStorage.getItem(key(route))!)).toEqual([]);
+    expect(localStorage.getItem(pageKey)).toBe('["c-same"]');
   });
 
-  it('retains historical site stars without rewriting Gemini-prefixed compatibility keys', async () => {
-    const legacyKey = `geminiTimelineStars:${route}`;
-    localStorage.setItem(legacyKey, JSON.stringify(['c-old']));
-    create(() => route, undefined, key);
-    await init();
-    expect(state.isMarkerStarred('c-old')).toBe(true);
-    expect(localStorage.getItem(key(route))).toBeNull();
-    expect(localStorage.getItem(legacyKey)).toBe(JSON.stringify(['c-old']));
-  });
-
-  it('retains historical and library-only stars when the first primary edit occurs', async () => {
-    const legacyKey = `geminiTimelineStars:${route}`;
-    localStorage.setItem(legacyKey, JSON.stringify(['c-old']));
-    getStarredMessagesForConversation.mockResolvedValueOnce([
-      {
-        turnId: 'c-library',
-        conversationId: route,
-        conversationUrl: 'https://site/c/b',
-        content: 'Library',
-        starredAt: 1,
-      },
-    ]);
-    create(() => route, undefined, key);
-    const element = insert();
-    observe([seen(element)]);
-    await init();
-    await press({ ...turn, element });
-    expect(JSON.parse(localStorage.getItem(key(route))!)).toEqual(['c-library', 'c-old', 'c-same']);
-    expect(localStorage.getItem(legacyKey)).toBe(JSON.stringify(['c-old']));
-  });
-
-  it('seeds the complete primary when an external star edit arrives during initial hydration', async () => {
-    const legacyKey = `geminiTimelineStars:${route}`;
-    localStorage.setItem(legacyKey, JSON.stringify(['c-old', 'c-removed']));
-    create(() => route, undefined, key);
+  it('keeps complete Library additions and removals ahead of a pending initial read', async () => {
+    create();
     const release = deferRead();
     const pending = init();
-    eventBus.emit('starred:added', { conversationId: route, turnId: 'c-new' });
-    eventBus.emit('starred:removed', { conversationId: route, turnId: 'c-removed' });
-    eventBus.emit('starred:removed', { conversationId: route, turnId: 'c-library-removed' });
-    expect(localStorage.getItem(key(route))).toBeNull();
-    release(
-      ['c-library', 'c-library-removed'].map((turnId) => ({
-        turnId,
-        conversationId: route,
-        conversationUrl: 'https://site/c/b',
-        content: turnId,
-        starredAt: 1,
-      })),
-    );
+    synchronizeLibrary([libraryStar('c-library'), libraryStar('c-new')]);
+    release([libraryStar('c-library'), libraryStar('c-removed')]);
     await pending;
-    expect(JSON.parse(localStorage.getItem(key(route))!)).toEqual(['c-library', 'c-old', 'c-new']);
-    expect(localStorage.getItem(legacyKey)).toBe('["c-old","c-removed"]');
+    expect(state.isMarkerStarred('c-library')).toBe(true);
+    expect(state.isMarkerStarred('c-new')).toBe(true);
+    expect(state.isMarkerStarred('c-removed')).toBe(false);
   });
 
-  it('ignores malformed Chrome library snapshots without overwriting a healthy primary', async () => {
-    localStorage.setItem(key(route), JSON.stringify(['c-same']));
-    create(() => route, undefined, key);
+  it('ignores malformed or partial Chrome snapshots without clearing healthy Library stars', async () => {
+    const star = libraryStar('c-same');
+    getStarredMessagesForConversation.mockResolvedValueOnce([star]);
+    create();
     await init();
     for (const value of [
       {},
       { messages: [] },
       { messages: { [route]: null } },
-      { messages: { [route]: [null] } },
+      { messages: { [route]: [star, null] } },
     ]) {
       for (const [listener] of vi.mocked(chrome.storage.onChanged.addListener).mock.calls)
         listener({ [StorageKeys.SAVED_LIBRARY_STARS]: { newValue: value } }, 'local');
-      expect(localStorage.getItem(key(route))).toBe('["c-same"]');
       expect(state.isMarkerStarred('c-same')).toBe(true);
     }
   });
 
-  it('preserves primary stars and refuses edits when the initial library read fails', async () => {
+  it('refuses star writes when the initial Library read and its retry both fail', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    localStorage.setItem(key(route), JSON.stringify(['c-same']));
     getStarredMessagesForConversation.mockRejectedValue(new Error('Message port closed'));
-    create(() => route, undefined, key);
+    create();
     const element = insert();
     observe([seen(element)]);
     await init();
     await press({ ...turn, element });
-    expect(state.markers[0].starred).toBe(true);
-    expect(localStorage.getItem(key(route))).toBe(JSON.stringify(['c-same']));
+    expect(state.markers[0].starred).toBe(false);
     expect(removeStarredMessage).not.toHaveBeenCalled();
     expect(addStarredMessage).not.toHaveBeenCalled();
   });
 
-  it('does not overwrite a newer library removal with the initial pending snapshot', async () => {
-    localStorage.setItem(key(route), JSON.stringify(['c-same']));
-    create(() => route, undefined, key);
+  it('does not overwrite a newer Library removal with the initial pending snapshot', async () => {
+    create();
     const element = insert();
     observe([seen(element)]);
     const release = deferRead();
     const pending = init();
     synchronizeLibrary([]);
-    release([
-      {
-        turnId: 'c-same',
-        conversationId: route,
-        conversationUrl: 'https://site/c/b',
-        content: 'Same prompt',
-        starredAt: 1,
-      },
-    ]);
+    release([libraryStar('c-same')]);
     await pending;
     expect(state.markers[0].starred).toBe(false);
-    expect(localStorage.getItem(key(route))).toBe('[]');
   });
 
   it('resolves historical hash aliases for every mounted copy and removes their stored records', async () => {
-    localStorage.setItem(key(route), JSON.stringify(['c-0-same']));
-    create(() => route, undefined, key);
+    getStarredMessagesForConversation.mockResolvedValueOnce([libraryStar('c-0-same')]);
+    create();
     const element = insert();
     const duplicate = insert();
     ownership.observe([seen(element), seen(duplicate)]);
@@ -449,18 +413,6 @@ describe('catalog star primary storage', () => {
     expect(state.resolveMarkerIdForStorageId('c-0-same')).toBe('c-same');
     await state.toggleStar('c-same~2');
     expect(removeStarredMessage).toHaveBeenCalledWith(route, 'c-0-same');
-    expect(localStorage.getItem(key(route))).toBe('[]');
-  });
-
-  it('stores new stars in the per-site key and mirrors their existing message format', async () => {
-    create(() => route, undefined, key);
-    const element = insert();
-    observe([seen(element)]);
-    await init();
-    await press({ ...turn, element });
-    expect(JSON.parse(localStorage.getItem(key(route))!)).toEqual(['c-same']);
-    expect(addStarredMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ turnId: 'c-same', conversationId: route }),
-    );
+    expect(state.markers.map((marker) => marker.starred)).toEqual([false, false]);
   });
 });

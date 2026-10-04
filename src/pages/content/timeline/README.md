@@ -4,22 +4,23 @@ Start with the owner of the behavior being changed. `manager.ts` creates a Gemin
 [shared timeline engine and view](../../../features/timeline/README.md). `GeminiTimelineAdapter.ts`
 owns selector discovery, turn collection, scroll viewport discovery and native health reporting.
 
-| Change                                                                              | Owner                           |
-| ----------------------------------------------------------------------------------- | ------------------------------- |
-| Find turns, stable IDs, prompt/response summaries                                   | `TimelineTurns.ts`              |
-| Marker snapshot, stars, verified legacy aliases and star persistence                | `TimelineState.ts`              |
-| Scoped hierarchy persistence and level/collapse edits                               | `TimelineHierarchy.ts`          |
-| Collapsed positions and hidden marker geometry                                      | `TimelineHierarchyGeometry.ts`  |
-| Dot/preview/shortcut navigation, active turn, scrolling and navigation cancellation | `TimelineNavigation.ts`         |
-| Rail composition, styling, preview, viewport sync and resize debounce               | `TimelineView.ts`               |
-| Marker measurements/geometry, virtual/dense dots, ruler wave and runner animation   | `TimelineDotLayer.ts`           |
-| Slider geometry, scroll dragging and hover fade                                     | `TimelineSlider.ts`             |
-| Persisted width/position restoration, migration, dragging and cached placement      | `TimelineRailPlacement.ts`      |
-| Preview list, search, pinning and compact hover bridge                              | `TimelinePreviewPanel.ts`       |
-| Preview long-press timing, cancellation and click suppression                       | `TimelinePreviewPress.ts`       |
-| Hover delay, tooltip content layout and visibility                                  | `TimelineTooltip.ts`            |
-| Marker clicks, long press and hierarchy menu                                        | `TimelineMarkerInteractions.ts` |
-| Timestamp opt-in, draft adoption, history matching and timestamp DOM                | `TimelineTimestamps.ts`         |
+| Change                                                                              | Owner                                                              |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Find turns, stable IDs, prompt/response summaries                                   | `TimelineTurns.ts`                                                 |
+| Marker snapshot, star display, Library hydration and verified legacy aliases        | `TimelineState.ts`                                                 |
+| Star persistence, migration, serialized writes and cloud merges                     | [Saved Library store](../../../features/savedLibrary/starStore.ts) |
+| Scoped hierarchy persistence and level/collapse edits                               | `TimelineHierarchy.ts`                                             |
+| Collapsed positions and hidden marker geometry                                      | `TimelineHierarchyGeometry.ts`                                     |
+| Dot/preview/shortcut navigation, active turn, scrolling and navigation cancellation | `TimelineNavigation.ts`                                            |
+| Rail composition, styling, preview, viewport sync and resize debounce               | `TimelineView.ts`                                                  |
+| Marker measurements/geometry, virtual/dense dots, ruler wave and runner animation   | `TimelineDotLayer.ts`                                              |
+| Slider geometry, scroll dragging and hover fade                                     | `TimelineSlider.ts`                                                |
+| Persisted width/position restoration, migration, dragging and cached placement      | `TimelineRailPlacement.ts`                                         |
+| Preview list, search, pinning and compact hover bridge                              | `TimelinePreviewPanel.ts`                                          |
+| Preview long-press timing, cancellation and click suppression                       | `TimelinePreviewPress.ts`                                          |
+| Hover delay, tooltip content layout and visibility                                  | `TimelineTooltip.ts`                                               |
+| Marker clicks, long press and hierarchy menu                                        | `TimelineMarkerInteractions.ts`                                    |
+| Timestamp opt-in, draft adoption, history matching and timestamp DOM                | `TimelineTimestamps.ts`                                            |
 
 `TimelineState` owns the marker snapshot and exposes its hierarchy owner directly. Its shared storage
 listener routes hierarchy changes after star changes; `TimelineHierarchy` owns the account context
@@ -56,7 +57,10 @@ with their owner instead of retaining private manager forwarding methods for old
 
 State, hierarchy, geometry, view, navigation and interaction owners in the table live in
 `src/features/timeline/`. Gemini supplies `GeminiTimelineStorage.ts`, turns and timestamps from this
-directory. Its serialized formats, localStorage compatibility keys and account isolation are unchanged.
+directory. Hierarchy serialized formats, legacy localStorage keys and account isolation remain
+unchanged. Every timeline reads and writes stars through the Saved Library client; the background
+store owns the neutral star snapshot and its v1 compatibility projection. Old page star arrays are
+left untouched and are never read or imported.
 
 ## Highlight integration
 

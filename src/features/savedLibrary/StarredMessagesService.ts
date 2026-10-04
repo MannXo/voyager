@@ -3,7 +3,6 @@
  * Uses message passing to background script to prevent race conditions
  */
 import { StorageKeys } from '@/core/types/common';
-import { eventBus } from '@/pages/content/timeline/EventBus';
 
 import { decodeStarredSnapshot, normalizeStarredMessages } from './starData';
 import type { StarredMessage, StarredMessagesData } from './starTypes';
@@ -37,10 +36,10 @@ export class StarredMessagesService {
     if (!change || typeof change !== 'object' || Array.isArray(change)) return undefined;
     if ('newValue' in change) {
       return change.newValue === undefined
-        ? { messages: {} }
+        ? normalizeStarredMessages(undefined)
         : decodeStarredSnapshot(change.newValue);
     }
-    return 'oldValue' in change ? { messages: {} } : undefined;
+    return 'oldValue' in change ? normalizeStarredMessages(undefined) : undefined;
   }
 
   /**
@@ -72,42 +71,11 @@ export class StarredMessagesService {
    * Add a starred message - delegated to background script
    */
   static async addStarredMessage(message: StarredMessage): Promise<void> {
-    const response = await this.sendMessage<{ ok: boolean; added: boolean }>(
-      'gv.starred.add',
-      message,
-    );
-
-    if (response.added) {
-      // Emit event for cross-component synchronization
-      eventBus.emit('starred:added', {
-        conversationId: message.conversationId,
-        turnId: message.turnId,
-      });
-
-      // Also update localStorage for backward compatibility
-      await this.updateLegacyStorage(message.conversationId, message.turnId, 'add');
-    }
+    await this.sendMessage('gv.starred.add', message);
   }
 
-  /**
-   * Remove a starred message - delegated to background script
-   */
   static async removeStarredMessage(conversationId: string, turnId: string): Promise<void> {
-    const response = await this.sendMessage<{ ok: boolean; removed: boolean }>(
-      'gv.starred.remove',
-      { conversationId, turnId },
-    );
-
-    if (response.removed) {
-      // Emit event for cross-component synchronization
-      eventBus.emit('starred:removed', {
-        conversationId,
-        turnId,
-      });
-
-      // Also update localStorage for backward compatibility
-      await this.updateLegacyStorage(conversationId, turnId, 'remove');
-    }
+    await this.sendMessage('gv.starred.remove', { conversationId, turnId });
   }
 
   static async mergeCloud(
@@ -119,59 +87,6 @@ export class StarredMessagesService {
       count: number;
     }>('gv.starred.mergeCloud', envelope);
     return { status: response.status, count: response.count };
-  }
-
-  /**
-   * Update legacy localStorage format for backward compatibility
-   * This ensures TimelineManager's storage event listener works
-   */
-  private static async updateLegacyStorage(
-    conversationId: string,
-    turnId: string,
-    action: 'add' | 'remove',
-  ): Promise<void> {
-    try {
-      // Catalog timelines use their own local keys; Gemini's legacy key remains unchanged.
-      const site = /^(claude|chatgpt|deepseek):/.exec(conversationId)?.[1];
-      const key = site
-        ? `gvTimelineStars:${site}:${conversationId}`
-        : `geminiTimelineStars:${conversationId}`;
-      const raw = localStorage.getItem(key);
-      let ids = this.readLocalStarIds(raw);
-      if (site && raw === null) {
-        // A first Saved Library edit must preserve stars saved before the catalog mirror existed.
-        const legacyIds = this.readLocalStarIds(
-          localStorage.getItem(`geminiTimelineStars:${conversationId}`),
-        );
-        const messages = await this.getStarredMessagesForConversation(conversationId);
-        const currentRaw = localStorage.getItem(key);
-        ids =
-          currentRaw === null
-            ? Array.from(new Set([...legacyIds, ...messages.map((message) => message.turnId)]))
-            : this.readLocalStarIds(currentRaw);
-      }
-
-      if (action === 'add') {
-        if (!ids.includes(turnId)) {
-          ids.push(turnId);
-        }
-      } else {
-        ids = ids.filter((id) => id !== turnId);
-      }
-
-      localStorage.setItem(key, JSON.stringify(ids));
-    } catch (error) {
-      console.warn('[StarredMessagesService] Failed to update legacy storage:', error);
-    }
-  }
-
-  private static readLocalStarIds(raw: string | null): string[] {
-    try {
-      const ids: unknown = JSON.parse(raw || '[]');
-      return Array.isArray(ids) ? (ids as string[]) : [];
-    } catch {
-      return [];
-    }
   }
 
   /**

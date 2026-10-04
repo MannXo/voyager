@@ -8,7 +8,6 @@ import type { TimelineMarker } from '@/features/timeline/types';
 import { createGeminiTimelineStoragePolicy } from '@/pages/content/timeline/GeminiTimelineStorage';
 
 import { HistoryTimestampStore } from '../../timestamp/historyTimestamps';
-import { eventBus } from '../EventBus';
 import { TimelineTurns } from '../TimelineTurns';
 
 const CONVERSATION_ID = 'gemini:conv:abc';
@@ -75,7 +74,6 @@ describe('TimelineState stars in a partially mounted conversation', () => {
       [message('u-0', 'please continue')],
     );
     expect(state.markers[0].starred).toBe(false);
-    expect(storedStars()).toEqual(['u-0']);
   });
   it('maps u-0 to its server turn even when only a later tail is mounted first', async () => {
     const state = await setup(
@@ -137,7 +135,6 @@ describe('TimelineState stars in a partially mounted conversation', () => {
     await state.toggleStar(FIRST_ID);
     expect(remove).toHaveBeenCalledWith(CONVERSATION_ID, 'u-0');
     expect(remove).toHaveBeenCalledWith(CONVERSATION_ID, FIRST_ID);
-    expect(storedStars()).toEqual([]);
     expect(state.markers[0].starred).toBe(false);
   });
   it('a failed timeline star removal repaints the saved star and a later press works', async () => {
@@ -153,7 +150,7 @@ describe('TimelineState stars in a partially mounted conversation', () => {
     });
     await state.toggleStar(FIRST_ID);
     expect(state.markers[0].starred).toBe(true);
-    expect(storedStars()).toEqual([FIRST_ID]);
+    expect(saved.map((item) => item.turnId)).toEqual([FIRST_ID]);
     await state.toggleStar(FIRST_ID);
     expect(state.markers[0].starred).toBe(false);
     expect(saved).toEqual([]);
@@ -172,7 +169,6 @@ describe('TimelineState stars in a partially mounted conversation', () => {
     });
     await state.toggleStar(FIRST_ID);
     expect(state.markers[0].starred).toBe(false);
-    expect(storedStars()).toEqual([]);
     await state.toggleStar(FIRST_ID);
     expect(state.markers[0].starred).toBe(true);
     expect(saved.map((item) => item.turnId)).toEqual([FIRST_ID]);
@@ -221,7 +217,6 @@ describe('TimelineState stars in a partially mounted conversation', () => {
     complete();
     await edit;
     expect(state.markers[0].starred).toBe(false);
-    expect(storedStars()).toEqual([]);
   });
 
   it('does not save a star from an unverified mounted positional id', async () => {
@@ -244,18 +239,29 @@ describe('TimelineState stars in a partially mounted conversation', () => {
       }),
     );
   });
-  it('shares same-page star changes only with the live conversation owner', async () => {
+  it('shares complete Library changes only with the live conversation owner', async () => {
+    const receive = (messages: StarredMessagesData['messages']) => {
+      for (const [listener] of vi.mocked(chrome.storage.onChanged.addListener).mock.calls)
+        listener({ [StorageKeys.SAVED_LIBRARY_STARS]: { newValue: { messages } } }, 'local');
+    };
     const previous = await setup([marker(FIRST_ID, 'first prompt')]);
-    eventBus.emit('starred:added', { conversationId: 'gemini:conv:other', turnId: FIRST_ID });
+    receive({
+      'gemini:conv:other': [
+        {
+          ...message(FIRST_ID, 'Other'),
+          conversationId: 'gemini:conv:other',
+          conversationUrl: 'https://gemini.google.com/app/other',
+        },
+      ],
+    });
     expect(previous.markers[0].starred).toBe(false);
-    eventBus.emit('starred:added', { conversationId: CONVERSATION_ID, turnId: FIRST_ID });
+    receive({ [CONVERSATION_ID]: [message(FIRST_ID, 'Saved')] });
     expect(previous.markers[0].starred).toBe(true);
-
     previous.destroy();
     const current = await setup([marker(FIRST_ID, 'first prompt')]);
-    eventBus.emit('starred:added', { conversationId: CONVERSATION_ID, turnId: FIRST_ID });
+    receive({ [CONVERSATION_ID]: [message(FIRST_ID, 'Saved')] });
     expect(current.markers[0].starred).toBe(true);
-    eventBus.emit('starred:removed', { conversationId: CONVERSATION_ID, turnId: FIRST_ID });
+    receive({});
     expect(current.markers[0].starred).toBe(false);
     expect(previous.markers[0].starred).toBe(true);
   });

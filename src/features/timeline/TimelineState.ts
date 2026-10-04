@@ -1,12 +1,7 @@
 import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
 import type { StarredMessage, StarredMessagesData } from '@/features/savedLibrary/starTypes';
-import { eventBus } from '@/pages/content/timeline/EventBus';
 import { findMatchingStarredMessages } from '@/pages/content/timeline/starredLookup';
 import { resolveStarredDisplay } from '@/pages/content/timeline/starredResolution';
-import {
-  safeLocalStorageGet,
-  safeLocalStorageSet,
-} from '@/pages/content/timeline/timelineLocalStorage';
 
 import { TimelineHierarchy } from './TimelineHierarchy';
 import { TimelineHydration } from './TimelineHydration';
@@ -23,18 +18,15 @@ export class TimelineState {
   private starred = new Set<string>();
   private starWrites: Promise<void> = Promise.resolve();
   private starSnapshotRevision = 0;
-  private pendingStarChoices = new Map<string, { turnId: string; starred: boolean }>();
+  private pendingStarChoices = new Map<string, { starred: boolean }>();
   private readonly starHydration = new TimelineHydration(() => this.isCurrent);
   private readonly hierarchyHydration = new TimelineHydration(() => this.isCurrent);
-  private localPrimaryPresent = false;
-  private pendingStarEdits = new Map<string, boolean>();
   private starDisplayOverride = new Map<string, boolean>();
   private starStorageIdsByMarkerId = new Map<string, string[]>();
   private onStorage: ((e: StorageEvent) => void) | null = null;
   private onChromeStorageChanged:
     | ((changes: Record<string, chrome.storage.StorageChange>, areaName: string) => void)
     | null = null;
-  private eventBusUnsubscribers: Array<() => void> = [];
   constructor(
     private readonly onChange: () => void,
     readonly policy: TimelineStoragePolicy,
@@ -63,8 +55,6 @@ export class TimelineState {
   private async initialize(): Promise<void> {
     if (!this.isCurrent) return;
     this.listen();
-    this.loadStars();
-    if (this.policy.stars.source === 'local') this.refreshStars();
     // Outline readiness is independent of an unrelated Saved Library request.
     const hierarchyRead = this.hierarchy.init();
     await Promise.all([hierarchyRead, this.readStars()]);
@@ -77,43 +67,25 @@ export class TimelineState {
     for (const marker of markers) marker.starred = this.isMarkerStarred(marker.id);
   }
   private listen(): void {
-    this.onStorage = (e: StorageEvent) => {
-      if (!this.isCurrent || !e || e.storageArea !== localStorage) return;
-      if (
-        'localKey' in this.policy.hierarchy &&
-        (e.key === null || e.key === this.policy.hierarchy.localKey)
-      ) {
-        this.hierarchy.loadLocalHierarchy();
-        this.onChange();
-      }
-      const expectedKey = this.getStarsStorageKey();
-      if (
-        !expectedKey ||
-        (e.key !== expectedKey && !(e.key === null && this.policy.stars.source === 'local'))
-      )
-        return;
-      let nextArr: unknown = [];
-      try {
-        nextArr = JSON.parse(e.newValue || '[]');
-      } catch {
-        if (!this.policy.stars.libraryMirror) return;
-        /* Invalid host data is an empty display snapshot, never Library hydration. */
-      }
-      const nextSet = new Set(Array.isArray(nextArr) ? nextArr.map(String) : []);
-      if (this.policy.stars.libraryMirror) {
-        this.starHydration.changed();
-        this.applyStarredIdSet(nextSet, false);
-      } else if (Array.isArray(nextArr) && nextArr.every((id) => typeof id === 'string')) {
-        this.starHydration.snapshot(() => this.applyStarredIdSet(nextSet, false));
-      }
-    };
-    window.addEventListener('storage', this.onStorage);
+    if ('localKey' in this.policy.hierarchy) {
+      this.onStorage = (event) => {
+        if (!this.isCurrent || event.storageArea !== localStorage) return;
+        if (
+          'localKey' in this.policy.hierarchy &&
+          (event.key === null || event.key === this.policy.hierarchy.localKey)
+        ) {
+          this.hierarchy.loadLocalHierarchy();
+          this.onChange();
+        }
+      };
+      window.addEventListener('storage', this.onStorage);
+    }
 
     if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
       this.onChromeStorageChanged = (changes, areaName) => {
         if (areaName === 'local' && this.isCurrent) {
           const starredData = StarredMessagesService.decodeStorageChange(areaName, changes);
-          if (starredData && this.policy.stars.libraryMirror) {
+          if (starredData) {
             this.applySharedStarredData(starredData);
           }
 
@@ -122,46 +94,6 @@ export class TimelineState {
       };
       chrome.storage.onChanged.addListener(this.onChromeStorageChanged);
     }
-
-    // Subscribe to EventBus for cross-component starred state synchronization
-    this.eventBusUnsubscribers.push(
-      eventBus.on('starred:removed', ({ conversationId, turnId }) => {
-        // Only handle events for current conversation
-        if (
-          !this.isCurrent ||
-          !this.policy.stars.libraryMirror ||
-          conversationId !== this.conversationId
-        )
-          return;
-
-        this.applyStarDelta(turnId, false);
-      }),
-    );
-
-    this.eventBusUnsubscribers.push(
-      eventBus.on('starred:added', ({ conversationId, turnId }) => {
-        // Only handle events for current conversation
-        if (
-          !this.isCurrent ||
-          !this.policy.stars.libraryMirror ||
-          conversationId !== this.conversationId
-        )
-          return;
-
-        this.applyStarDelta(turnId, true);
-      }),
-    );
-  }
-  private applyStarDelta(turnId: string, added: boolean): void {
-    const pending = !this.starHydration.ready;
-    // A partial EventBus delta cannot seed a complete primary before the legacy/library read settles.
-    if (pending) this.pendingStarEdits.set(turnId, added);
-    if (this.starred.has(turnId) === added) return;
-    if (!pending) this.starHydration.changed();
-    if (added) this.starred.add(turnId);
-    else this.starred.delete(turnId);
-    if (!pending) this.saveStars();
-    this.refreshStars();
   }
   destroy(): void {
     this.destroyed = true;
@@ -169,18 +101,6 @@ export class TimelineState {
     if (this.onStorage) window.removeEventListener('storage', this.onStorage);
     if (this.onChromeStorageChanged)
       chrome.storage.onChanged.removeListener(this.onChromeStorageChanged);
-    this.eventBusUnsubscribers.forEach((unsubscribe) => unsubscribe());
-    this.eventBusUnsubscribers = [];
-  }
-  private getStarsStorageKey(): string | null {
-    return this.policy.stars.key;
-  }
-  private areStarredSetsEqual(a: Set<string>, b: Set<string>): boolean {
-    if (a.size !== b.size) return false;
-    for (const value of a) {
-      if (!b.has(value)) return false;
-    }
-    return true;
   }
 
   /**
@@ -233,35 +153,17 @@ export class TimelineState {
     this.onChange();
   }
 
-  private applyStarredIdSet(nextSet: Set<string>, persistLocal = true): void {
-    if (this.areStarredSetsEqual(this.starred, nextSet)) {
-      this.refreshStars();
-      return;
-    }
-
+  private applyStarredIdSet(nextSet: Set<string>): void {
     this.starred = new Set(nextSet);
-
-    if (persistLocal) this.saveStars();
-
     this.refreshStars();
   }
 
-  private applySharedStarredData(value: unknown): void {
+  private applySharedStarredData(data: StarredMessagesData): void {
     if (!this.conversationId) return;
-    const data = value as StarredMessagesData;
-
-    // Use the same matching rules as syncStarredFromService (init path): stars
-    // may live under a legacy/route conversation-id key, and a direct-key-only
-    // lookup would wrongly clear this conversation's stars whenever a star
-    // changes in another conversation.
     this.starHydration.snapshot(() => {
       this.starSnapshotRevision += 1;
-      this.pendingStarEdits.clear();
-      const normalized: StarredMessagesData = { messages: data?.messages ?? {} };
-      const matched = this.matchLibrary(normalized);
-      const nextSet = new Set(matched.messages.map((message) => String(message.turnId)));
-
-      this.applyStarredIdSet(nextSet);
+      const matched = this.matchLibrary(data);
+      this.applyStarredIdSet(new Set(matched.messages.map((message) => message.turnId)));
     });
   }
 
@@ -279,11 +181,8 @@ export class TimelineState {
   private readStars(): Promise<void> {
     return this.starHydration.read((accept) => this.syncStarredFromService(accept));
   }
-  private async syncStarredFromService(
-    accept: (apply: () => void) => boolean,
-    forceLibrary = false,
-  ): Promise<void> {
-    if (!this.conversationId || !this.policy.stars.libraryMirror) {
+  private async syncStarredFromService(accept: (apply: () => void) => boolean): Promise<void> {
+    if (!this.conversationId) {
       accept(() => {});
       return;
     }
@@ -312,35 +211,12 @@ export class TimelineState {
           this.url,
         );
         if (!this.isCurrent) return;
-        if (reconciled.length > 0) {
-          messages = reconciled;
-        }
+        messages = reconciled;
       }
 
       accept(() => {
         this.starSnapshotRevision += 1;
-        const nextSet = new Set(messages.map((message) => String(message.turnId)));
-        if (!forceLibrary && this.policy.stars.source === 'local' && !this.localPrimaryPresent) {
-          // The first edit must retain both historical local IDs and the Saved Library mirror.
-          for (const id of this.starred) nextSet.add(id);
-        }
-        for (const [id, added] of this.pendingStarEdits) {
-          if (added) nextSet.add(id);
-          else nextSet.delete(id);
-        }
-        if (!forceLibrary && this.policy.stars.source === 'local' && !this.localPrimaryPresent) {
-          this.applyStarredIdSet(nextSet, false);
-        } else if (
-          forceLibrary ||
-          this.policy.stars.source === 'library' ||
-          !this.localStarsLoaded
-        ) {
-          this.applyStarredIdSet(nextSet);
-        }
-        if (this.pendingStarEdits.size > 0) {
-          this.pendingStarEdits.clear();
-          this.saveStars();
-        }
+        this.applyStarredIdSet(new Set(messages.map((message) => message.turnId)));
       });
     } catch (error) {
       console.warn('[Timeline] Failed to sync starred messages from shared storage:', error);
@@ -375,13 +251,12 @@ export class TimelineState {
     const storageIds = wasStarred ? this.getStarStorageIds(id) : [id];
 
     const canonical = this.policy.resolveMountedTurnId(id) ?? id;
-    const choice = { turnId: id, starred: !wasStarred };
+    const choice = { starred: !wasStarred };
     const snapshotRevision = this.starSnapshotRevision;
     this.pendingStarChoices.set(canonical, choice);
     // The next press must see this choice before the Library write settles.
     if (wasStarred) storageIds.forEach((storageId) => this.starred.delete(storageId));
     else this.starred.add(id);
-    this.saveStars();
     this.refreshStars();
 
     // Account lookups must not reorder rapid add/remove presses.
@@ -389,13 +264,13 @@ export class TimelineState {
       try {
         if (!this.isCurrent || !this.policy.canEdit(marker, id) || !this.starHydration.ready)
           return;
-        if (wasStarred && this.policy.stars.libraryMirror) {
+        if (wasStarred) {
           await Promise.all(
             storageIds.map((storageId) =>
               StarredMessagesService.removeStarredMessage(this.conversationId, storageId),
             ),
           );
-        } else if (!wasStarred && marker && this.policy.stars.libraryMirror) {
+        } else if (marker) {
           const result = await accountRead;
           if (!result) return;
           if ('error' in result) throw result.error;
@@ -423,7 +298,7 @@ export class TimelineState {
         ) {
           // Confirm a superseded optimistic choice from the owner, never replay it over a newer snapshot.
           this.starHydration.invalidate();
-          await this.starHydration.read((accept) => this.syncStarredFromService(accept, true));
+          await this.starHydration.read((accept) => this.syncStarredFromService(accept));
         }
       } catch (error) {
         if (!this.isCurrent) return;
@@ -431,13 +306,12 @@ export class TimelineState {
           this.pendingStarChoices.delete(canonical);
         // A failed write must repaint from the Library, including partially removed aliases.
         this.starHydration.invalidate();
-        await this.starHydration.read((accept) => this.syncStarredFromService(accept, true));
+        await this.starHydration.read((accept) => this.syncStarredFromService(accept));
         console.warn('[Timeline] Failed to change starred message:', error);
       } finally {
         if (this.pendingStarChoices.get(canonical) === choice)
           this.pendingStarChoices.delete(canonical);
         if (this.isCurrent) {
-          this.saveStars();
           this.refreshStars();
         }
       }
@@ -463,52 +337,6 @@ export class TimelineState {
       this.markers.find((marker) => this.policy.resolveMountedTurnId(marker.id) === canonical)
         ?.id ?? canonical
     );
-  }
-
-  private saveStars(): void {
-    if (!this.starHydration.ready) return;
-    const key = this.getStarsStorageKey();
-    if (!key) return;
-    const displayed = new Set(this.starred);
-    // Intermediate owner echoes cannot overwrite a later queued choice in the page mirror.
-    for (const [canonical, choice] of this.pendingStarChoices) {
-      for (const storedId of displayed) {
-        if (this.policy.resolveStoredTurnId(storedId) === canonical) displayed.delete(storedId);
-      }
-      if (choice.starred) displayed.add(choice.turnId);
-    }
-    safeLocalStorageSet(key, JSON.stringify(Array.from(displayed)));
-  }
-
-  private localStarsLoaded = false;
-  private loadStars(): void {
-    this.starred.clear();
-    const key = this.getStarsStorageKey();
-    if (!key) return;
-    let raw = safeLocalStorageGet(key);
-    this.localPrimaryPresent = raw !== null;
-    if (!raw) {
-      for (const fallbackKey of this.policy.stars.legacyKeys) {
-        raw = safeLocalStorageGet(fallbackKey);
-        if (raw) {
-          if (this.policy.stars.copyLegacy) safeLocalStorageSet(key, raw);
-          break;
-        }
-      }
-    }
-    if (!raw) return;
-    try {
-      const arr: unknown = JSON.parse(raw);
-      if (
-        Array.isArray(arr) &&
-        (this.policy.stars.source === 'library' || arr.every((id) => typeof id === 'string'))
-      ) {
-        this.localStarsLoaded = true;
-        arr.forEach((id: unknown) => this.starred.add(String(id)));
-      }
-    } catch (error) {
-      console.warn('[Timeline] Failed to parse starred messages:', error);
-    }
   }
 
   getStoredTurnIdAliases(turnId: string): string[] {

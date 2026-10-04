@@ -8,11 +8,6 @@
  */
 import { filterTopLevel } from '@/core/utils/array';
 import {
-  buildConversationIdFromUrl,
-  buildLegacyConversationIdFromUrl,
-  buildRouteConversationIdFromUrl,
-} from '@/core/utils/conversationIdentity';
-import {
   type ContentExtractor,
   createContentExtractor,
   extractTurnContent,
@@ -63,7 +58,10 @@ export interface ConversationCollector {
   /** Selectable messages for the current page, in reading order. */
   collectSelectionMessages(): ExportMessage[];
   /** Export turns for the given message ids, read fresh from the page. Empty turns are dropped. */
-  turnsForMessageIds(selectedMessageIds: ReadonlySet<string>): ExportChatTurn[];
+  turnsForMessageIds(
+    selectedMessageIds: ReadonlySet<string>,
+    starredIds?: ReadonlySet<string>,
+  ): ExportChatTurn[];
   /** Message id of the response that owns a response-menu trigger, or null. */
   assistantMessageIdFor(trigger: HTMLElement | null): string | null;
   /** First top-level user turn inside the conversation root. */
@@ -90,28 +88,6 @@ function normalizeText(text: string | null): string {
       .trim();
   } catch {
     return '';
-  }
-}
-
-function readStarredSet(conversationId: string): Set<string> {
-  try {
-    const candidateConversationIds = [
-      conversationId,
-      buildRouteConversationIdFromUrl(window.location.href),
-      buildLegacyConversationIdFromUrl(window.location.href),
-    ];
-
-    for (const candidateConversationId of candidateConversationIds) {
-      const raw = localStorage.getItem(`geminiTimelineStars:${candidateConversationId}`);
-      if (!raw) continue;
-      const arr = JSON.parse(raw);
-      if (!Array.isArray(arr)) continue;
-      return new Set(arr.map((x: unknown) => String(x)));
-    }
-
-    return new Set();
-  } catch {
-    return new Set();
   }
 }
 
@@ -256,7 +232,7 @@ export function createConversationCollector(adapter: ExportPlatformAdapter): Con
     return topLevel.length > 0 ? topLevel[0] : null;
   };
 
-  const collectChatPairs = (): ChatTurn[] => {
+  const collectChatPairs = (starredIds: ReadonlySet<string> = new Set()): ChatTurn[] => {
     const userSelectors = adapter.getUserSelectors();
     const root = adapter.resolveConversationRoot(userSelectors, document);
     const assistantSelectors = adapter.getAssistantSelectors();
@@ -274,9 +250,6 @@ export function createConversationCollector(adapter: ExportPlatformAdapter): Con
     );
     const assistants = filterTopLevel(assistantsAll);
 
-    const starredSet = readStarredSet(
-      adapter.extractConversationIdFromUrl() || buildConversationIdFromUrl(window.location.href),
-    );
     const nativeConversationId = geminiConversationIdFromLocation();
     const pairs: ChatTurn[] = [];
 
@@ -298,7 +271,7 @@ export function createConversationCollector(adapter: ExportPlatformAdapter): Con
           : turnId && isServerTurnId(turnId)
             ? [turnId]
             : [];
-      const starred = turnIdAliases.some((alias) => starredSet.has(alias));
+      const starred = turnIdAliases.some((alias) => starredIds.has(alias));
       if (uText || aText) {
         const finalAssistantEl = aEl ? pickAssistantExportElement(aEl) : undefined;
         pairs.push({
@@ -353,8 +326,8 @@ export function createConversationCollector(adapter: ExportPlatformAdapter): Con
   return {
     collectChatPairs,
     collectSelectionMessages: () => selectionMessagesFromPairs(collectChatPairs()),
-    turnsForMessageIds: (selectedMessageIds) => {
-      const pairs = collectChatPairs();
+    turnsForMessageIds: (selectedMessageIds, starredIds) => {
+      const pairs = collectChatPairs(starredIds);
       if (selectedMessageIds.size === 0) return [];
       const selectedMessages = selectionMessagesFromPairs(pairs).filter((message) =>
         selectedMessageIds.has(message.messageId),

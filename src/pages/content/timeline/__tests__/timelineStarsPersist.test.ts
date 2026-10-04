@@ -2,8 +2,8 @@
 // @vitest-environment-options { "url": "https://gemini.google.com/app" }
 /**
  * Characterization of starring turns from the Gemini timeline, end to end: the gesture on a dot,
- * what lands in storage (the Saved Library record kept by the background page and the legacy
- * per-conversation localStorage list), and how stored stars are painted back onto the right turn
+ * what lands in storage (the Saved Library and its v1 compatibility projection),
+ * and how stored stars are painted back onto the right turn
  * after a reload, a lazy load of older turns, or an id migration.
  */
 import { describe, expect, it, vi } from 'vitest';
@@ -31,6 +31,7 @@ const CONVERSATION_ID = 'gemini:conv:abc123';
 const CONVERSATION_URL = 'https://gemini.google.com/app/abc123';
 const LEGACY_STARS_KEY = `geminiTimelineStars:${CONVERSATION_ID}`;
 const SAVED_LIBRARY_KEY = 'geminiTimelineStarredMessages';
+const NEUTRAL_LIBRARY_KEY = 'gvSavedLibraryStars';
 
 const TURNS: GeminiTurn[] = [
   { prompt: 'Explain monads', serverId: 'aaaaaaaaaaaaaaaa' },
@@ -47,7 +48,7 @@ describe('starring a turn from the Gemini timeline', () => {
   const savedLibrary = () =>
     ext().read<SavedLibrary>('local', SAVED_LIBRARY_KEY)?.messages[CONVERSATION_ID] ?? [];
 
-  it('long-pressing a dot stars its turn in the rail, the Saved Library and the legacy list', async () => {
+  it('long-pressing a dot stars its turn in the rail and both Library projections', async () => {
     new GeminiPage(TURNS);
     await startTimelineOnPage();
 
@@ -57,7 +58,9 @@ describe('starring a turn from the Gemini timeline', () => {
     const dot = dotFor(SECOND.prompt);
     expect(starredDotLabels()).toEqual([SECOND.prompt]);
     expect(dot.getAttribute('aria-pressed')).toBe('true');
-    expect(legacyStars()).toEqual([turnIdOf(SECOND.serverId!)]);
+    expect(ext().read('local', NEUTRAL_LIBRARY_KEY)).toEqual(
+      ext().read('local', SAVED_LIBRARY_KEY),
+    );
     expect(savedLibrary()).toEqual([
       expect.objectContaining({
         turnId: turnIdOf(SECOND.serverId!),
@@ -66,6 +69,37 @@ describe('starring a turn from the Gemini timeline', () => {
         conversationUrl: CONVERSATION_URL,
         starredAt: expect.any(Number),
       }),
+    ]);
+  });
+
+  it('stale page arrays are ignored and left untouched while Library stars are authoritative', async () => {
+    const stale = JSON.stringify([turnIdOf(FIRST.serverId!)]);
+    localStorage.setItem(LEGACY_STARS_KEY, stale);
+    ext().seed('local', {
+      [SAVED_LIBRARY_KEY]: {
+        messages: {
+          [CONVERSATION_ID]: [
+            {
+              turnId: turnIdOf(SECOND.serverId!),
+              content: SECOND.prompt,
+              conversationId: CONVERSATION_ID,
+              conversationUrl: CONVERSATION_URL,
+              starredAt: 1,
+            },
+          ],
+        },
+      },
+    });
+    new GeminiPage(TURNS);
+    await startTimelineOnPage();
+    expect(starredDotLabels()).toEqual([SECOND.prompt]);
+    await longPress(dotFor(THIRD.prompt));
+    await settle();
+    expect(starredDotLabels()).toEqual([SECOND.prompt, THIRD.prompt]);
+    expect(localStorage.getItem(LEGACY_STARS_KEY)).toBe(stale);
+    expect(savedLibrary().map((item) => item.turnId)).toEqual([
+      turnIdOf(SECOND.serverId!),
+      turnIdOf(THIRD.serverId!),
     ]);
   });
 
@@ -94,7 +128,9 @@ describe('starring a turn from the Gemini timeline', () => {
 
     expect(starredDotLabels()).toEqual([]);
     expect(dotFor(SECOND.prompt).getAttribute('aria-pressed')).toBe('false');
-    expect(legacyStars()).toEqual([]);
+    expect(ext().read('local', NEUTRAL_LIBRARY_KEY)).toEqual(
+      ext().read('local', SAVED_LIBRARY_KEY),
+    );
     expect(savedLibrary()).toEqual([]);
   });
 
@@ -232,7 +268,6 @@ describe('stars stay attached to their turn (turn identity)', () => {
 
   /** A star saved by an older Voyager that numbered turns by position (`u-<index>`). */
   function seedPositionalStar(index: number, content: string): void {
-    localStorage.setItem(LEGACY_STARS_KEY, JSON.stringify([`u-${index}`]));
     ext().seed('local', {
       [SAVED_LIBRARY_KEY]: {
         messages: {
@@ -301,7 +336,6 @@ describe('stars stay attached to their turn (turn identity)', () => {
     await settle();
 
     expect(starredDotLabels()).toEqual([]);
-    expect(JSON.parse(localStorage.getItem(LEGACY_STARS_KEY) ?? '[]')).toEqual([]);
     expect(
       ext().read<SavedLibrary>('local', SAVED_LIBRARY_KEY)?.messages[CONVERSATION_ID] ?? [],
     ).toEqual([]);
