@@ -93,8 +93,7 @@ export class AIStudioFolderManager {
       },
       onAccountReleased: () => this.releaseAccountUi(),
       isEnabled: () => this.folderEnabled,
-      onSaveFailed: () =>
-        this.notify('Failed to save folder data. Changes may not be persisted.', 'error'),
+      onSaveFailed: () => this.notify(this.t('folder_save_error'), 'error'),
       // Membership decides which /library rows are archived, so every settled write re-syncs them.
       onPersistSettled: () => {
         this.applyHideArchived();

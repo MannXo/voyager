@@ -290,6 +290,27 @@ describe('AI Studio persistence characterization', () => {
       expect(localStorage.getItem(GLOBAL_KEY)).toBeNull();
     });
 
+    it.each([
+      { language: 'zh', message: '无法保存文件夹更改，请重试。' },
+      { language: 'ja', message: 'フォルダの変更を保存できませんでした。もう一度お試しください。' },
+    ])(
+      'a failed folder save shows a visible notice in $language',
+      async ({ language, message }) => {
+        sync[StorageKeys.LANGUAGE] = language;
+        local[GLOBAL_KEY] = folderData('Kept');
+        await mount();
+        mockBrowser.storage.local.set.mockRejectedValueOnce(new Error('quota'));
+
+        document.querySelector<HTMLButtonElement>('.gv-folder-add-btn')!.click();
+        const input = nameInput()!;
+        input.value = 'Unsaved folder';
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(toastDriver.all()).toMatchObject([{ message, tone: 'error' }]);
+      },
+    );
+
     it('reports a failed write once without retrying it', async () => {
       local[GLOBAL_KEY] = fixture();
       const manager = await mount();
@@ -299,7 +320,7 @@ describe('AI Studio persistence characterization', () => {
       await expect(manager.save()).resolves.toBe(false);
 
       expect(mockBrowser.storage.local.set.mock.calls.length - writesBefore).toBe(1);
-      expect(notificationText()).toContain('Failed to save folder data');
+      expect(notificationText()).toContain('Could not save folder changes');
       expect(bytes(local[GLOBAL_KEY])).toBe(bytes(fixture()));
     });
   });
@@ -694,7 +715,7 @@ describe('AI Studio persistence characterization', () => {
       const manager = await mount();
       mockBrowser.storage.local.set.mockRejectedValueOnce(new Error('quota'));
       await manager.save();
-      expect(toastDriver.find('Failed to save folder data')?.tone).toBe('error');
+      expect(toastDriver.find('Could not save folder changes')?.tone).toBe('error');
 
       emitStorageChange({ geminiFolderEnabled: { newValue: false } }, 'sync');
       await vi.advanceTimersByTimeAsync(0);
@@ -705,9 +726,7 @@ describe('AI Studio persistence characterization', () => {
       await vi.advanceTimersByTimeAsync(0);
       mockBrowser.storage.local.set.mockRejectedValueOnce(new Error('quota'));
       await manager.save();
-      expect(toastDriver.messages()).toEqual([
-        'Failed to save folder data. Changes may not be persisted.',
-      ]);
+      expect(toastDriver.messages()).toEqual(['Could not save folder changes. Please try again.']);
     });
   });
 });
