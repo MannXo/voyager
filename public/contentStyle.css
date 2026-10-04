@@ -4721,8 +4721,8 @@ html[data-gv-scheme='light'] .gv-color-picker-dialog {
   right: 0;
   bottom: 0;
   background: oklch(0 0 0 / 0.35);
-  /* One below the shared confirm and toast layers, so an import error shows over
-     the dialog that stays open for it, whichever was added to the page first. */
+  /* Modal level: above the floating panel (…45), below shared confirm and toast
+     (…47), so an import error shows over the dialog whichever mounted first. */
   z-index: 2147483646;
   display: flex;
   align-items: center;

@@ -10,7 +10,8 @@
   all: initial !important;
   position: fixed !important;
   inset: 0 !important;
-  z-index: 2147483647 !important;
+  /* A modal one below shared feedback, so a late import result still shows over it. */
+  z-index: 2147483646 !important;
   font-family: inherit !important;
 }
 

@@ -9,7 +9,8 @@
 /* ─── Floating folder panel ────────────────────────────────────────────── */
 :host {
   position: fixed !important;
-  z-index: 2147483646 !important;
+  /* Below modal folder dialogs (…46) and shared feedback (…47): a panel mounted later never covers either. */
+  z-index: 2147483645 !important;
   display: flex !important;
   flex-direction: column !important;
   background: #1f2025 !important;
