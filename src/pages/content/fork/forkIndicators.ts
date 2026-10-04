@@ -94,6 +94,7 @@ export function createForkIndicators({
     node: ForkNode,
     sidebarConversationIds: Set<string>,
   ): Promise<boolean> {
+    if (lifetime.signal.aborted) return true;
     const currentConversationId = getConversationId();
     if (currentConversationId && node.conversationId === currentConversationId) return true;
     if (sidebarConversationIds.has(node.conversationId)) {
@@ -121,6 +122,7 @@ export function createForkIndicators({
         credentials: 'include',
         signal: controller.signal,
       });
+      if (lifetime.signal.aborted) return true;
       const responseConversationId = extractConversationIdFromHref(response.url);
       const exists =
         response.ok && !!responseConversationId && node.conversationId === responseConversationId;
@@ -141,7 +143,9 @@ export function createForkIndicators({
     const cleaned: ForkNode[] = [];
 
     for (const node of groupNodes) {
+      if (lifetime.signal.aborted) return [];
       const exists = await checkConversationExists(node, sidebarConversationIds);
+      if (lifetime.signal.aborted) return [];
       if (exists) {
         cleaned.push(node);
         continue;
@@ -149,7 +153,9 @@ export function createForkIndicators({
 
       try {
         await ForkNodesService.removeForkNode(node.conversationId, node.turnId, node.forkGroupId);
+        if (lifetime.signal.aborted) return [];
       } catch (error) {
+        if (lifetime.signal.aborted) return [];
         if (!isExtensionContextInvalidatedError(error)) {
           console.error('[Fork] Failed to prune deleted fork node:', error);
         }
@@ -177,6 +183,7 @@ export function createForkIndicators({
   }
 
   function scheduleForkIndicatorRefresh(): void {
+    if (lifetime.signal.aborted) return;
     if (storageRefreshTimer) clearTimeout(storageRefreshTimer);
     storageRefreshTimer = setTimeout(() => {
       clearInjectedForkIndicators();
@@ -191,15 +198,19 @@ export function createForkIndicators({
   ): Promise<ForkNode[]> {
     const groupNodesList: ForkNode[][] = [];
     for (const forkGroupId of forkGroupIds) {
+      if (lifetime.signal.aborted) return [];
       try {
         const groupNodes = await ForkNodesService.getGroup(forkGroupId);
+        if (lifetime.signal.aborted) return [];
         if (groupNodes.length === 0) continue;
         const cleanedGroupNodes = await pruneDeletedNodesFromGroup(
           groupNodes,
           sidebarConversationIds,
         );
+        if (lifetime.signal.aborted) return [];
         if (cleanedGroupNodes.length > 0) groupNodesList.push(cleanedGroupNodes);
       } catch {
+        if (lifetime.signal.aborted) return [];
         // Ignore single group failure and continue rendering available groups.
       }
     }
@@ -249,18 +260,23 @@ export function createForkIndicators({
         signal: lifetime.signal,
       });
       // The page may have moved to another conversation while the confirm was open.
-      if (!confirmed || getConversationId() !== conversationAtAsk) return;
+      if (lifetime.signal.aborted || !confirmed || getConversationId() !== conversationAtAsk)
+        return;
 
       deleteBtn.disabled = true;
       try {
         await ForkNodesService.removeForkNode(node.conversationId, node.turnId, node.forkGroupId);
+        if (lifetime.signal.aborted) return;
       } catch (error) {
+        if (lifetime.signal.aborted) return;
         if (!isExtensionContextInvalidatedError(error)) {
           console.error('[Fork] Failed to delete fork branch data:', error);
         }
       } finally {
-        clearInjectedForkIndicators();
-        void injectForkIndicators();
+        if (!lifetime.signal.aborted) {
+          clearInjectedForkIndicators();
+          void injectForkIndicators();
+        }
       }
     });
     item.appendChild(deleteBtn);
@@ -268,13 +284,16 @@ export function createForkIndicators({
   }
 
   async function injectForkIndicators(): Promise<void> {
+    if (lifetime.signal.aborted) return;
     const conversationId = getConversationId();
     if (!conversationId) return;
 
     let forkNodes: ForkNode[];
     try {
       forkNodes = await ForkNodesService.getForConversation(conversationId);
+      if (lifetime.signal.aborted) return;
     } catch (error) {
+      if (lifetime.signal.aborted) return;
       if (!isExtensionContextInvalidatedError(error)) {
         console.error('[Fork] Failed to get fork nodes:', error);
       }
@@ -311,6 +330,7 @@ export function createForkIndicators({
       if (hasOrDedupForkIndicatorGroup(hostEl)) continue;
 
       const displayNodes = await loadDisplayNodes(forkGroupIds, sidebarConversationIds);
+      if (lifetime.signal.aborted) return;
       if (displayNodes.length < 2) continue;
 
       // Re-check after async group loading to avoid duplicate render in concurrent injections.
@@ -324,6 +344,8 @@ export function createForkIndicators({
         );
       });
 
+      // A stopped load must never mount buttons wired to its already-aborted confirm signal.
+      if (lifetime.signal.aborted) return;
       hostEl.style.position = hostEl.style.position || 'relative';
       hostEl.appendChild(group);
     }

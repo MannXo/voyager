@@ -99,6 +99,12 @@ describe('fork indicators', () => {
     } as Response);
     await indicators.inject();
     indicators.stop();
+    indicators = createForkIndicators({
+      getConversationId: () => source.conversationId,
+      resolveTurnId: (turnId) => turnId,
+      ensureTurnId: () => source.turnId,
+      resolveUserMessageHost: (element) => element,
+    });
     await indicators.inject();
     expect(fetch).toHaveBeenCalledOnce();
 
