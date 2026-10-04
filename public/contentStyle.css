@@ -4721,7 +4721,9 @@ html[data-gv-scheme='light'] .gv-color-picker-dialog {
   right: 0;
   bottom: 0;
   background: oklch(0 0 0 / 0.35);
-  z-index: 2147483647;
+  /* One below the shared confirm and toast layers, so an import error shows over
+     the dialog that stays open for it, whichever was added to the page first. */
+  z-index: 2147483646;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6029,42 +6031,6 @@ html[data-gv-scheme='dark'] .gv-folder-import-paste-area {
 html[data-gv-scheme='dark'] .gv-folder-import-paste-area:focus {
   border-color: oklch(0.7 0.16 var(--gv-pm-brand-h, var(--gv-pm-brand-h-default)) / 0.5);
   box-shadow: 0 0 0 3px oklch(0.7 0.16 var(--gv-pm-brand-h, var(--gv-pm-brand-h-default)) / 0.1);
-}
-
-/* Notification toast */
-.gv-notification {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  padding: 12px 20px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  color: white;
-  z-index: 2147483647;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-  opacity: 0;
-  transform: translateY(20px);
-  transition: all 0.3s ease;
-  max-width: 400px;
-  font-family: 'Google Sans', Roboto, Arial, sans-serif;
-}
-
-.gv-notification.show {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.gv-notification-success {
-  background: linear-gradient(135deg, #34a853 0%, #0d652d 100%);
-}
-
-.gv-notification-error {
-  background: linear-gradient(135deg, #ea4335 0%, #c5221f 100%);
-}
-
-.gv-notification-info {
-  background: linear-gradient(135deg, #1a73e8 0%, #1765cc 100%);
 }
 
 /* ==========================================================================
