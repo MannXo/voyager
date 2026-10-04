@@ -273,7 +273,6 @@ export class FolderRepository {
       this.drainPendingSave(session);
       return;
     }
-    // Accepted writes outrank a resumed read; bucket events defer reconciliation.
     if (session.saveInProgress || session.replacingData) {
       // Accepted writes must drain before a resumed read; their settlement triggers the reload.
       if (!session.ready) session.reconcilePending = true;
@@ -309,8 +308,7 @@ export class FolderRepository {
           if (!isCurrent()) return;
         }
       } catch (error) {
-        // The read itself failed, so storage may hold newer or real data. Recovery, empty
-        // data or a save of memory would overwrite it: show memory read-only, read again later.
+        // Unreadable storage may hold newer data: leave it untouched, show memory read-only and retry.
         if (!isCurrent()) return;
         console.error(`${this.tag} Failed to read folder data; storage left untouched:`, error);
         const firstReadFailure = !session.readFailed;
@@ -471,6 +469,11 @@ export class FolderRepository {
     await session.backup.ensureHydrated();
     if (this.dataSession !== session || session.loadVersion !== version || this.destroyed)
       return false;
+    // Hydration may outlast another tab's write; read again before restoring an older backup.
+    if (session.storageChangedDuringRead) {
+      this.scheduleReadRetry(session);
+      return false;
+    }
     const recovered = session.backup.recoverFromBackup();
     if (recovered && validateFolderData(recovered)) {
       this.data = this.config.normalize(recovered);
