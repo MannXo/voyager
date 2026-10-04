@@ -66,6 +66,7 @@ export class DataBackupService<T = unknown> {
   private draining: Promise<void> | null = null;
   /** Backup work recovery waits for: queued writes, unload copies and stale-copy removals. */
   private readonly inFlight = new Set<Promise<unknown>>();
+  private readonly localWrites = new Set<Promise<void>>();
   /** Bumped per write, so a superseded write neither lands late nor updates the cache. */
   private readonly slotVersions = new Map<string, number>();
 
@@ -73,6 +74,7 @@ export class DataBackupService<T = unknown> {
     private readonly namespace: string,
     private readonly validateData: (data: T) => boolean = () => true,
     private readonly canWrite: () => boolean = () => true,
+    private readonly writeGate?: <R>(operation: () => R | Promise<R>) => Promise<R>,
   ) {
     this.primaryKey = `gvBackup_${namespace}_primary`;
     this.emergencyKey = `gvBackup_${namespace}_emergency`;
@@ -82,12 +84,17 @@ export class DataBackupService<T = unknown> {
 
   /** Read durable slots before recovery, even when they cannot fit in localStorage. */
   async ensureHydrated(): Promise<void> {
-    await this.settlePendingWrites();
+    await this.finishPendingWrites();
     await this.hydrateFromDurableStore();
   }
 
+  /** Loads expose their primary page copy before returning, without waiting for durable mirrors. */
+  async finishLocalWrites(): Promise<void> {
+    await Promise.all(this.localWrites);
+  }
+
   /** Wait for backup writes in flight, but a hung write must not block recovery. */
-  private async settlePendingWrites(): Promise<void> {
+  async finishPendingWrites(): Promise<void> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<void>((resolve) => {
       timer = setTimeout(resolve, PENDING_WRITE_WAIT_MS);
@@ -114,12 +121,29 @@ export class DataBackupService<T = unknown> {
     return version;
   }
 
+  private isCurrent(key: string, version: number): boolean {
+    return (this.slotVersions.get(key) ?? 0) === version;
+  }
+
+  /** Ungated unload callers must issue their writes before the first await. */
+  private writeWhenAllowed<R>(operation: () => R | Promise<R>, refused: R): R | Promise<R> {
+    if (!this.canWrite()) return refused;
+    if (!this.writeGate) return operation();
+    return this.writeGate(() => (this.canWrite() ? operation() : refused)).catch((error) => {
+      if (!this.canWrite()) return refused;
+      throw error;
+    });
+  }
+
   /**
    * Queue a copy or removal for one slot. Queued writes run in order, so an
    * older copy never lands after a newer one.
    */
-  private queueExtensionWrite(key: string, value: string | null): Promise<boolean> {
-    const version = this.nextVersion(key);
+  private queueExtensionWrite(
+    key: string,
+    value: string | null,
+    version: number,
+  ): Promise<boolean> {
     const replaced = this.queuedWrites.get(key);
     this.queuedWrites.delete(key);
     return new Promise((resolve) => {
@@ -152,21 +176,27 @@ export class DataBackupService<T = unknown> {
    * sent before any await, so an unloading page still dispatches it.
    */
   private async putExtensionCopy(key: string, value: string, version: number): Promise<boolean> {
-    if (!this.canWrite()) return false;
-    const saved = await requestBudgetCopy(key, value);
+    const saved = await this.writeWhenAllowed(
+      () => (this.isCurrent(key, version) ? requestBudgetCopy(key, value) : false),
+      false,
+    );
     if (!saved) {
       console.warn(`[BackupService:${this.namespace}] Skipped ${key}: extension copy not admitted`);
       return false;
     }
-    if (this.slotVersions.get(key) === version) this.durableBackups.set(key, value);
+    if (this.isCurrent(key, version)) this.durableBackups.set(key, value);
     return true;
   }
 
   private async removeExtensionCopy(key: string, version: number): Promise<boolean> {
-    if (!this.canWrite()) return false;
     try {
-      await browser.storage.local.remove(key);
-      if (this.slotVersions.get(key) === version) this.durableBackups.delete(key);
+      const removed = await this.writeWhenAllowed(async () => {
+        if (!this.isCurrent(key, version)) return false;
+        await browser.storage.local.remove(key);
+        return true;
+      }, false);
+      if (!removed) return false;
+      if (this.isCurrent(key, version)) this.durableBackups.delete(key);
       return true;
     } catch (error) {
       console.warn(`[BackupService:${this.namespace}] Durable copy removal failed:`, error);
@@ -178,8 +208,7 @@ export class DataBackupService<T = unknown> {
    * Send a copy now, ahead of queued writes, which an unloading page cannot wait
    * for. The background admits it against the slot's bytes when it writes (F3).
    */
-  private writeExtensionCopyNow(key: string, value: string): Promise<boolean> {
-    const version = this.nextVersion(key);
+  private writeExtensionCopyNow(key: string, value: string, version: number): Promise<boolean> {
     const replaced = this.queuedWrites.get(key);
     this.queuedWrites.delete(key);
     const write = this.putExtensionCopy(key, value, version);
@@ -193,20 +222,39 @@ export class DataBackupService<T = unknown> {
    * copy is harmless: recovery takes the newest valid copy of each slot, and
    * another tab may have just written a newer one there.
    */
-  private async writeBackup(key: string, serialized: string, now = false): Promise<boolean> {
+  private async writeBackup(
+    key: string,
+    serialized: string,
+    version: number,
+    now = false,
+  ): Promise<boolean> {
     if (!this.canWrite()) return false;
     let localSaved = false;
     try {
       // setItem is atomic on failure: never remove the previous backup to make room.
-      localStorage.setItem(key, serialized);
-      localSaved = true;
+      const localWrite = this.writeWhenAllowed(() => {
+        // Authorization may finish out of order; an older snapshot never replaces a newer one.
+        if (!this.isCurrent(key, version)) return false;
+        localStorage.setItem(key, serialized);
+        return true;
+      }, false);
+      if (typeof localWrite !== 'boolean') {
+        const settled = localWrite.then(
+          () => {},
+          () => {},
+        );
+        this.localWrites.add(settled);
+        void settled.then(() => this.localWrites.delete(settled));
+      }
+      localSaved = typeof localWrite === 'boolean' ? localWrite : await localWrite;
     } catch (error) {
       console.warn(`[BackupService:${this.namespace}] Local backup write failed:`, error);
     }
+    if (!this.isCurrent(key, version) || !this.canWrite()) return localSaved;
     if (localSaved && !this.useDurableMirror) return true;
     const durableSaved = await (now
-      ? this.writeExtensionCopyNow(key, serialized)
-      : this.queueExtensionWrite(key, serialized));
+      ? this.writeExtensionCopyNow(key, serialized, version)
+      : this.queueExtensionWrite(key, serialized, version));
     return localSaved || durableSaved;
   }
 
@@ -218,8 +266,11 @@ export class DataBackupService<T = unknown> {
   private async hydrateFromDurableStore(): Promise<void> {
     try {
       const keys = [this.primaryKey, this.emergencyKey, this.beforeUnloadKey, this.metadataKey];
+      const versions = new Map(keys.map((key) => [key, this.slotVersions.get(key) ?? 0]));
       const stored = await browser.storage.local.get(keys);
       for (const key of keys) {
+        const version = versions.get(key)!;
+        if (!this.isCurrent(key, version)) continue;
         const value = stored[key];
         if (typeof value !== 'string') {
           this.durableBackups.delete(key);
@@ -228,9 +279,10 @@ export class DataBackupService<T = unknown> {
         this.durableBackups.set(key, value);
         if (!this.useDurableMirror || !this.canWrite()) continue;
         try {
-          if (localStorage.getItem(key) === null) {
-            localStorage.setItem(key, value);
-          }
+          await this.writeWhenAllowed(() => {
+            if (this.isCurrent(key, version) && localStorage.getItem(key) === null)
+              localStorage.setItem(key, value);
+          }, undefined);
         } catch {
           // localStorage unavailable in this context; nothing to restore into.
         }
@@ -244,11 +296,13 @@ export class DataBackupService<T = unknown> {
    * Create a primary backup (called after successful save)
    */
   async createPrimaryBackup(data: T): Promise<boolean> {
+    const version = this.nextVersion(this.primaryKey);
+    const metadataVersion = this.nextVersion(this.metadataKey);
     try {
       const backup = this.createBackupData(data);
       const serialized = JSON.stringify(backup);
-      if (!(await this.writeBackup(this.primaryKey, serialized))) return false;
-      this.updateMetadata('primary', backup.metadata);
+      if (!(await this.track(this.writeBackup(this.primaryKey, serialized, version)))) return false;
+      await this.track(this.updateMetadata('primary', backup.metadata, version, metadataVersion));
       console.log(`[BackupService:${this.namespace}] Primary backup created`);
       return true;
     } catch (error) {
@@ -261,10 +315,12 @@ export class DataBackupService<T = unknown> {
    * Create an emergency backup (called before save operation)
    */
   async createEmergencyBackup(data: T): Promise<boolean> {
+    const version = this.nextVersion(this.emergencyKey);
     try {
       const backup = this.createBackupData(data);
       const serialized = JSON.stringify(backup);
-      if (!(await this.writeBackup(this.emergencyKey, serialized))) return false;
+      if (!(await this.track(this.writeBackup(this.emergencyKey, serialized, version))))
+        return false;
       console.log(`[BackupService:${this.namespace}] Emergency backup created`);
       return true;
     } catch (error) {
@@ -277,10 +333,12 @@ export class DataBackupService<T = unknown> {
    * Create a beforeUnload backup (called when page is about to close)
    */
   private async createBeforeUnloadBackup(data: T): Promise<boolean> {
+    const version = this.nextVersion(this.beforeUnloadKey);
     try {
       const backup = this.createBackupData(data);
       const serialized = JSON.stringify(backup);
-      if (!(await this.writeBackup(this.beforeUnloadKey, serialized, true))) return false;
+      if (!(await this.track(this.writeBackup(this.beforeUnloadKey, serialized, version, true))))
+        return false;
       console.log(`[BackupService:${this.namespace}] BeforeUnload backup created`);
       return true;
     } catch (error) {
@@ -429,14 +487,32 @@ export class DataBackupService<T = unknown> {
   /**
    * Update metadata tracking
    */
-  private updateMetadata(type: string, metadata: BackupMetadata): void {
+  private async updateMetadata(
+    type: string,
+    metadata: BackupMetadata,
+    primaryVersion: number,
+    version: number,
+  ): Promise<void> {
     if (!this.canWrite()) return;
     try {
-      const allMetadata = this.getAllMetadata();
-      allMetadata[type] = metadata;
-      const serialized = JSON.stringify(allMetadata);
-      localStorage.setItem(this.metadataKey, serialized);
-      if (this.useDurableMirror) void this.queueExtensionWrite(this.metadataKey, serialized);
+      const metadataWrite = this.writeWhenAllowed(() => {
+        if (
+          !this.isCurrent(this.primaryKey, primaryVersion) ||
+          !this.isCurrent(this.metadataKey, version)
+        )
+          return null;
+        const allMetadata = this.getAllMetadata();
+        allMetadata[type] = metadata;
+        const value = JSON.stringify(allMetadata);
+        localStorage.setItem(this.metadataKey, value);
+        return value;
+      }, null);
+      const serialized =
+        metadataWrite === null || typeof metadataWrite === 'string'
+          ? metadataWrite
+          : await metadataWrite;
+      if (serialized !== null && this.useDurableMirror)
+        void this.queueExtensionWrite(this.metadataKey, serialized, version);
     } catch (error) {
       console.warn(`[BackupService:${this.namespace}] Failed to update metadata:`, error);
     }
@@ -460,18 +536,29 @@ export class DataBackupService<T = unknown> {
   clearAllBackups(): void {
     if (!this.canWrite()) return;
     try {
-      localStorage.removeItem(this.primaryKey);
-      localStorage.removeItem(this.emergencyKey);
-      localStorage.removeItem(this.beforeUnloadKey);
-      localStorage.removeItem(this.metadataKey);
-      this.durableBackups.clear();
       for (const key of [
         this.primaryKey,
         this.emergencyKey,
         this.beforeUnloadKey,
         this.metadataKey,
       ]) {
-        void this.queueExtensionWrite(key, null);
+        const version = this.nextVersion(key);
+        const removed = this.writeWhenAllowed(() => {
+          if (!this.isCurrent(key, version)) return false;
+          localStorage.removeItem(key);
+          this.durableBackups.delete(key);
+          return true;
+        }, false);
+        const queueRemoval = (saved: boolean) =>
+          saved ? this.queueExtensionWrite(key, null, version) : Promise.resolve(false);
+        const removal =
+          typeof removed === 'boolean' ? queueRemoval(removed) : removed.then(queueRemoval);
+        void this.track(
+          removal.catch((error) => {
+            console.error(`[BackupService:${this.namespace}] Failed to clear backup:`, error);
+            return false;
+          }),
+        );
       }
       console.log(`[BackupService:${this.namespace}] All backups cleared`);
     } catch (error) {

@@ -3,6 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FolderData } from '../../types';
 import { LocalStorageFolderAdapter } from '../FolderStorageAdapter';
 
+vi.mock('webextension-polyfill', () => ({
+  default: {
+    get storage() {
+      return chrome.storage;
+    },
+    get runtime() {
+      return chrome.runtime;
+    },
+  },
+}));
+
 const KEY = 'gvFolderData';
 const folderData: FolderData = {
   folders: [

@@ -10,6 +10,7 @@ import {
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
 import type { ImportResult } from '@/features/folder/types/import-export';
 
+import { createFolderWriter, type FolderWriter } from './storage/folderWriter';
 import type { FolderData } from './types';
 
 export type AIStudioImportFile =
@@ -44,7 +45,10 @@ export function readAIStudioImportFile(json: unknown): AIStudioImportFile {
  * is authoritative: missing legacy items may be deletions. Keep the sync bytes
  * untouched for recovery, including when an existing local bucket skips import.
  */
-export async function migrateAIStudioLegacySync(targetKey: string): Promise<void> {
+export async function migrateAIStudioLegacySync(
+  targetKey: string,
+  write: FolderWriter = createFolderWriter(),
+): Promise<void> {
   const markerKey = `${targetKey}:legacySyncImported`;
   const migrate = async () => {
     const local = await chrome.storage.local.get([targetKey, markerKey]);
@@ -56,11 +60,11 @@ export async function migrateAIStudioLegacySync(targetKey: string): Promise<void
       const latest = await chrome.storage.local.get([targetKey, markerKey]);
       if (latest[markerKey] === true) return;
       if (!validateFolderData(latest[targetKey])) {
-        await chrome.storage.local.set({ [targetKey]: sync[targetKey] });
+        await write(targetKey, () => chrome.storage.local.set({ [targetKey]: sync[targetKey] }));
       }
     }
     // Separate from the data write: never mark a failed import as complete.
-    await chrome.storage.local.set({ [markerKey]: true });
+    await write(targetKey, () => chrome.storage.local.set({ [markerKey]: true }));
   };
   // ponytail: Web Locks serialize per origin; cross-origin writers need a background owner.
   if (navigator.locks?.request) await navigator.locks.request(markerKey, migrate);

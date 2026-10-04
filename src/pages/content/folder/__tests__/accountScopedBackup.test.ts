@@ -163,8 +163,7 @@ function backupData(namespace: string, slot = 'primary'): FolderData | undefined
 
 async function makeHarness(platform: Platform, account: 'a' | 'b'): Promise<Harness> {
   selectAccount(platform, account);
-  // Gemini still runs its real init/load lifecycle, with UI disabled. AI Studio's
-  // UI initializer calls its real load, avoiding waits for the native sidebar.
+  // Both use real loads with native UI waits disabled.
   extensionSync.geminiFolderEnabled = platform === 'aistudio';
   const adapter = platform === 'gemini' ? storageAdapters.createFolderStorageAdapter() : null;
   if (adapter) vi.spyOn(storageAdapters, 'createFolderStorageAdapter').mockReturnValueOnce(adapter);
@@ -395,6 +394,7 @@ describe.each<Platform>(['gemini', 'aistudio'])('%s backup account ownership', (
     extensionLocal[aKeys.live] = privateData('a');
     const harness = await makeHarness(platform, 'a');
     window.dispatchEvent(new Event('beforeunload'));
+    await vi.waitFor(() => expect(backupData(aKeys.backup, 'beforeUnload')).toBeDefined());
     expect(backupData(aKeys.backup, 'beforeUnload')?.folders[0]?.name).toBe('Private a');
     await harness.switchTo('b');
     window.dispatchEvent(new Event('beforeunload'));
@@ -403,6 +403,7 @@ describe.each<Platform>(['gemini', 'aistudio'])('%s backup account ownership', (
     extensionLocal[bKeys.live] = privateData('b');
     await harness.load();
     window.dispatchEvent(new Event('beforeunload'));
+    await vi.waitFor(() => expect(backupData(bKeys.backup, 'beforeUnload')).toBeDefined());
     expect(backupData(bKeys.backup, 'beforeUnload')?.folders[0]?.name).toBe('Private b');
     expect(backupData(aKeys.backup, 'beforeUnload')?.folders[0]?.name).toBe('Private a');
   });
@@ -680,8 +681,7 @@ describe.each<Platform>(['gemini', 'aistudio'])('%s backup account ownership', (
     expect(extensionLocal[aKeys.live]).toBeUndefined();
     failing = false;
 
-    // Another tab of this account saves newer data, then storage turns corrupt
-    // before this tab reads it: the migrated copy is no edit and must not win.
+    // A failed migration is no edit: a newer backup from another tab must win recovery.
     const newer = privateData('a');
     newer.folders[0].name = 'Newer from another tab';
     new DataBackupService<FolderData>(aKeys.backup).createPrimaryBackup(newer);

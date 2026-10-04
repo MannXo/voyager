@@ -46,6 +46,7 @@ export class FolderDataSession {
     public accountScope: AccountScope | null,
     validateData: (data: unknown) => boolean,
     canWrite: () => boolean = () => true,
+    writeGate?: <T>(operation: () => T | Promise<T>) => Promise<T>,
   ) {
     // Global recovery slots have no account owner. Keep them compatible only
     // when isolation is off; never migrate or remove them during account setup.
@@ -53,6 +54,7 @@ export class FolderDataSession {
       accountScope ? buildScopedStorageKey(namespace, accountScope.accountKey) : namespace,
       validateData,
       canWrite,
+      writeGate,
     );
   }
 

@@ -7,7 +7,10 @@ import {
 } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 import { AUTHORITY_FENCE_KEY } from '@/features/folder/owner/authorityFence';
-import { LegacyFolderFence } from '@/features/folder/owner/legacyFolderFence';
+import {
+  LegacyFolderFence,
+  LegacyFolderWriteRefusedError,
+} from '@/features/folder/owner/legacyFolderFence';
 import { CHATGPT_FOLDER_CONFIG } from '@/features/plugins/builtin/chatgptFolders/config';
 
 import { FolderRepository } from './FolderRepository';
@@ -17,7 +20,6 @@ import {
   type PlatformFolderConfig,
 } from './platformFolderConfig';
 import { AIStudioFolderStorageAdapter } from './storage/AIStudioFolderStorageAdapter';
-import { FencedFolderStorageAdapter } from './storage/FencedFolderStorageAdapter';
 import {
   LocalStorageFolderAdapter,
   type IFolderStorageAdapter,
@@ -194,12 +196,19 @@ describe('legacy folder authority fence', () => {
       stored[marker] = false;
       stored[AUTHORITY_FENCE_KEY] = fence('chatgpt', authority);
       const guard = new LegacyFolderFence(key, () => {});
-      const adapter = new FencedFolderStorageAdapter(new AIStudioFolderStorageAdapter(), guard);
+      const adapter = new AIStudioFolderStorageAdapter();
+      adapter.setWriteGate((_key, operation) => guard.write(operation));
       const edited = { ...initial, folders: [{ ...initial.folders[0], name: 'Edited' }] };
-      await adapter.saveData(key, edited, { [marker]: true });
+      const save = adapter.saveData(key, edited, { [marker]: true });
+      if (authority === 'owner')
+        await expect(save).rejects.toBeInstanceOf(LegacyFolderWriteRefusedError);
+      else await save;
       expect(stored[key]).toEqual(authority === 'owner' ? initial : edited);
       expect(stored[marker]).toBe(authority !== 'owner');
-      await adapter.removeData(key);
+      const remove = adapter.removeData(key);
+      if (authority === 'owner')
+        await expect(remove).rejects.toBeInstanceOf(LegacyFolderWriteRefusedError);
+      else await remove;
       expect(stored[key]).toEqual(authority === 'owner' ? initial : undefined);
       guard.destroy();
     },
@@ -333,7 +342,7 @@ describe('legacy folder authority fence', () => {
     expect(repo.storageKey).toBe('');
     expect(repo.data).toEqual({ folders: [], folderContents: {} });
     vi.mocked(browser.storage.local.get).mockImplementation(get);
-    await vi.advanceTimersByTimeAsync(400);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(repo.canEdit).toBe(true);
     expect(repo.storageKey).toBe(secondKey);
     expect(repo.data.folders[0]?.name).toBe('Account B');
@@ -358,7 +367,7 @@ describe('legacy folder authority fence', () => {
     const repo = repository(GEMINI_FOLDER_CONFIG);
     await repo.init();
     expect(repo.canEdit).toBe(false);
-    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(3000);
     expect(repo.storageKey).toBe(scopedKey);
     expect(repo.data.folders[0]?.name).toBe('Account');
     expect(repo.canEdit).toBe(true);
@@ -570,6 +579,7 @@ describe('legacy folder authority fence', () => {
       JSON.parse(localStorage.getItem('gvBackup_chatgpt-folders_emergency')!).data.folders[0].name,
     ).toBe('Saved');
     window.dispatchEvent(new Event('beforeunload'));
+    await settle();
     expect(
       JSON.parse(localStorage.getItem('gvBackup_chatgpt-folders_beforeUnload')!).data.folders[0]
         .name,

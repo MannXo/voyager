@@ -175,7 +175,10 @@ export class AIStudioFolderManager {
     await initI18n();
     this.t = createTranslator();
     try {
-      await migrateAIStudioLegacySync(AISTUDIO_FOLDER_CONFIG.storageKey);
+      await migrateAIStudioLegacySync(
+        AISTUDIO_FOLDER_CONFIG.storageKey,
+        this.repository.writeFolder,
+      );
     } catch (error) {
       // The source and marker stay untouched on failure; normal loading continues.
       console.warn('[AIStudioFolderManager] Migration from sync to local failed:', error);

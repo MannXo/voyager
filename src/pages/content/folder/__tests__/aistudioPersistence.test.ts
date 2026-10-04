@@ -473,6 +473,7 @@ describe('AI Studio folder persistence', () => {
       expect(local[manager.activeStorageKey]).toEqual(original);
       expect.soft(manager.data).toEqual(original);
       window.dispatchEvent(new Event('beforeunload'));
+      await vi.waitFor(() => expect(backupData(manager, 'beforeUnload')).toEqual(original));
       for (const slot of ['primary', 'emergency', 'beforeUnload'] as const) {
         expect.soft(backupData(manager, slot)).toEqual(original);
       }
@@ -492,6 +493,12 @@ describe('AI Studio folder persistence', () => {
         .soft((local[manager.activeStorageKey] as FolderData).folders.map((folder) => folder.name))
         .toEqual(['Private a', 'After failed draft']);
       window.dispatchEvent(new Event('beforeunload'));
+      await vi.waitFor(() =>
+        expect(backupData(manager, 'beforeUnload').folders.map((folder) => folder.name)).toEqual([
+          'Private a',
+          'After failed draft',
+        ]),
+      );
       expect
         .soft(manager.data.folders.map((folder) => folder.name))
         .toEqual(['Private a', 'After failed draft']);
