@@ -55,6 +55,20 @@ export interface FolderSelectionOptions {
   onFolderSelectionChange(): void;
 }
 
+/**
+ * Voyager's own body-level layers: shadow surfaces (folder menus, pickers,
+ * panels) and the folder dialogs. A press in one belongs to the selection.
+ */
+const VOYAGER_LAYER_SELECTOR = [
+  '[data-gv-shadow-surface]',
+  '.gv-folder-menu',
+  '.gv-folder-confirm-dialog',
+  '.gv-folder-dialog-overlay',
+  '.gv-color-picker-dialog',
+  '.gv-notification',
+  '.gv-batch-delete-progress',
+].join(', ');
+
 const LONG_PRESS_MS = 500;
 const MAX_BATCH_DELETE_COUNT = 50;
 /** Delay before refreshing the page after a native batch delete. */
@@ -78,6 +92,7 @@ export class FolderSelection {
   /** The folder chat whose long press entered multi-select; its own release click is swallowed. */
   private longPressRow: { conversationId: string; folderId: string } | null = null;
   private outsideClickHandler: ((e: MouseEvent) => void) | null = null;
+  private escapeHandler: ((e: KeyboardEvent) => void) | null = null;
   private batchDeleteController: AbortController | null = null;
   private readonly timers = new Set<number>();
   private readonly dragImages = new Set<HTMLElement>();
@@ -323,6 +338,7 @@ export class FolderSelection {
 
     // Add click-outside listener to exit multi-select mode
     this.setupOutsideClickHandler();
+    this.setupEscapeHandler();
   }
 
   private exitMultiSelectMode(): void {
@@ -331,6 +347,7 @@ export class FolderSelection {
     this.multiSelectSource = null;
     this.multiSelectFolderId = null;
     this.removeOutsideClickHandler();
+    this.removeEscapeHandler();
     // First remove the selection styles, then clear the selection set
     this.updateConversationSelectionUI();
     this.clearSelection();
@@ -346,8 +363,10 @@ export class FolderSelection {
       !!target.closest('[data-test-id="overflow-container"]');
     const isInsideFolderContainer = this.options.runtime.panel?.contains(target);
     const isInsideMultiSelectHost = this.toolbar.containsFloating(target);
-    // Menus, dialogs and other overlays
-    const isOnOverlay = target.closest('.cdk-overlay-container, .mat-mdc-dialog-container');
+    // Menus, dialogs and other overlays, the page's and Voyager's
+    const isOnOverlay = target.closest(
+      `.cdk-overlay-container, .mat-mdc-dialog-container, ${VOYAGER_LAYER_SELECTOR}`,
+    );
     return !isInsideSidebar && !isInsideFolderContainer && !isInsideMultiSelectHost && !isOnOverlay;
   }
 
@@ -372,6 +391,24 @@ export class FolderSelection {
     if (this.outsideClickHandler) {
       document.removeEventListener('click', this.outsideClickHandler, true);
       this.outsideClickHandler = null;
+    }
+  }
+
+  private setupEscapeHandler(): void {
+    this.removeEscapeHandler();
+    const handler = (e: KeyboardEvent) => {
+      // A field or menu that took the Escape for itself keeps the selection.
+      if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
+      this.exitMultiSelectMode();
+    };
+    this.escapeHandler = handler;
+    document.addEventListener('keydown', handler);
+  }
+
+  private removeEscapeHandler(): void {
+    if (this.escapeHandler) {
+      document.removeEventListener('keydown', this.escapeHandler);
+      this.escapeHandler = null;
     }
   }
 

@@ -89,6 +89,16 @@ describe('FolderSelection toolbar lifetime', () => {
     expect(harness.adapter.saveData).not.toHaveBeenCalled();
   });
 
+  it('ends multi-select on Escape', async () => {
+    await selectFolderConversation();
+    const panel = harness.runtime.panel!;
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(panel.classList.contains('gv-multi-select-mode')).toBe(false);
+    expect(panel.querySelector('[data-selection-count="true"]')?.textContent).toBe('0 selected');
+  });
+
   it('releases an old toolbar drag on remount and binds the replacement toolbar', async () => {
     await selectFolderConversation();
     const oldToolbar = harness.runtime.panel!.querySelector<HTMLElement>(
