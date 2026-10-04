@@ -1206,6 +1206,10 @@
     "message": "取消星號標記",
     "description": "取消星號標記提示"
   },
+  "starredDeleteFailed": {
+    "message": "無法取消星號標記",
+    "description": "Error shown when a star cannot be removed"
+  },
   "justNow": {
     "message": "剛剛",
     "description": "剛剛時間標籤"

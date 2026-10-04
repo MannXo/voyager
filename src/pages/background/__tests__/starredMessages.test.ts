@@ -78,22 +78,20 @@ describe('starred messages owner', () => {
     expect(stored().messages.a).toHaveLength(3);
   });
 
-  it('absent cloud values do not read or write storage; malformed envelopes retain local bytes', async () => {
+  it('absent cloud values do not touch storage and unusable cloud data cannot remove local stars', async () => {
     const { store, area, stored } = setup({ messages: { a: [star('a', 'local')] } });
     for (const envelope of [undefined, null, false, 3, 'bad']) {
       await expect(store.mergeCloud(envelope)).resolves.toEqual({ status: 'absent', count: 0 });
     }
     expect(area.get).not.toHaveBeenCalled();
-    for (const envelope of [
-      {},
-      [],
-      { data: null },
-      { format: 'unsupported', data: { messages: {} } },
-      { data: { messages: { a: 3 } } },
-    ]) {
-      await expect(store.mergeCloud(envelope)).rejects.toThrow('Invalid starred messages');
-    }
     expect(area.set).not.toHaveBeenCalled();
+    await expect(
+      store.mergeCloud({ format: 'unsupported', data: { messages: {} } }),
+    ).rejects.toThrow('Invalid starred messages');
+    expect(area.set).not.toHaveBeenCalled();
+    for (const envelope of [{}, [], { data: null }, { data: { messages: { a: 3 } } }]) {
+      await expect(store.mergeCloud(envelope)).resolves.toEqual({ status: 'merged', count: 1 });
+    }
     expect(stored()).toEqual({ messages: { a: [star('a', 'local')] } });
     await expect(store.getAll()).resolves.toEqual(stored());
   });
@@ -206,13 +204,16 @@ describe('starred messages owner', () => {
     expect(stored()).toEqual({ messages: {} });
   });
 
-  it('malformed local buckets never become writable empty data and read failures release the queue', async () => {
-    const { handle, store, area } = setup({ messages: { broken: null } });
-    await expect(store.getAll()).rejects.toThrow('Invalid starred messages bucket');
-    await expect(handle(add(star('a', '1')))).rejects.toThrow('Invalid starred messages bucket');
-    expect(area.set).not.toHaveBeenCalled();
+  it('stored corruption preserves valid buckets and does not disable later edits or read retries', async () => {
+    const { handle, store, area, stored } = setup({
+      messages: { good: [star('good', 'old')], broken: null },
+    });
+    await expect(store.getAll()).resolves.toEqual({ messages: { good: [star('good', 'old')] } });
+    await expect(handle(add(star('good', 'new')))).resolves.toEqual({ ok: true, added: true });
+    expect(stored()).toEqual({ messages: { good: [star('good', 'old'), star('good', 'new')] } });
     area.get.mockRejectedValueOnce(new Error('unavailable'));
     await expect(handle({ type: 'gv.starred.getAll' })).rejects.toThrow('unavailable');
+    await expect(store.getAll()).resolves.toEqual(stored());
     expect(handle({ type: 'gv.fork.getAll' })).toBeNull();
     expect(handle(null)).toBeNull();
   });

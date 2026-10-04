@@ -38,8 +38,8 @@ export function createStarStore(area: StorageArea): StarStore {
     const neutral = values[StorageKeys.SAVED_LIBRARY_STARS];
     const legacy = values[StorageKeys.TIMELINE_STARRED_MESSAGES];
     const data = mergeStarredMessages(
-      neutral === undefined ? { messages: {} } : normalizeStarredMessages(neutral),
-      legacy === undefined ? { messages: {} } : normalizeStarredMessages(legacy),
+      normalizeStarredMessages(neutral),
+      normalizeStarredMessages(legacy),
     );
     const serialized = JSON.stringify(data);
     return {
@@ -66,9 +66,11 @@ export function createStarStore(area: StorageArea): StarStore {
           if (dirty) await write(data);
           return false;
         }
-        const normalized = normalizeStarredMessages({
-          messages: { [item.conversationId]: [item] },
-        }).messages[item.conversationId][0];
+        const incoming: Record<string, StarredMessage[]> = Object.create(null);
+        incoming[item.conversationId] = [item];
+        const normalized = normalizeStarredMessages({ messages: incoming }).messages[
+          item.conversationId
+        ][0];
         if (!normalized) throw new Error('Invalid starred message');
         data.messages[item.conversationId] = [
           ...bucket,
@@ -101,7 +103,7 @@ export function createStarStore(area: StorageArea): StarStore {
       serialize(async () => {
         const { data } = await read();
         const ids = Array.from(new Set([target, ...sources])).filter(Boolean);
-        let merged: StarredMessagesData = { messages: {} };
+        let merged = normalizeStarredMessages(undefined);
         for (const id of ids) {
           const bucket = (data.messages[id] || []).map((item) => ({
             ...item,
@@ -109,7 +111,9 @@ export function createStarStore(area: StorageArea): StarStore {
             conversationUrl: url || item.conversationUrl,
           }));
           // Later source buckets keep the existing reconciliation tie precedence.
-          merged = mergeStarredMessages({ messages: { [target]: bucket } }, merged);
+          const source: Record<string, StarredMessage[]> = Object.create(null);
+          source[target] = bucket;
+          merged = mergeStarredMessages({ messages: source }, merged);
         }
         const result = merged.messages[target] || [];
         if (result.length) data.messages[target] = result;
@@ -123,14 +127,10 @@ export function createStarStore(area: StorageArea): StarStore {
         if (envelope === null || typeof envelope !== 'object') {
           return { status: 'absent', count: 0 };
         }
-        if (
-          Array.isArray(envelope) ||
-          ('format' in envelope && envelope.format !== 'gemini-voyager.starred.v1') ||
-          !('data' in envelope)
-        ) {
+        if ('format' in envelope && envelope.format !== 'gemini-voyager.starred.v1') {
           throw new Error('Invalid starred messages envelope');
         }
-        const cloud = normalizeStarredMessages(envelope.data);
+        const cloud = normalizeStarredMessages('data' in envelope ? envelope.data : undefined);
         const data = mergeStarredMessages((await read()).data, cloud);
         await write(data);
         return {

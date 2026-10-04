@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 import { accountIsolationService } from '@/core/services/AccountIsolationService';
 import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
+import { makeRecord } from '@/pages/content/highlight/__tests__/fixtures';
 import { TRANSLATIONS } from '@/utils/translations';
 
 import { createSavedLibraryView } from '../savedLibraryView';
@@ -58,7 +59,7 @@ it('keeps a starred row after a failed removal and allows retry', async () => {
 
   button.click();
   await vi.waitFor(() => {
-    expect(notice.textContent).toBe(TRANSLATIONS.en.pm_starred_load_error);
+    expect(notice.textContent).toBe(TRANSLATIONS.en.starredDeleteFailed);
     expect(notice.dataset.kind).toBe('err');
   });
   expect(list.textContent).toContain('Saved answer');
@@ -69,4 +70,48 @@ it('keeps a starred row after a failed removal and allows retry', async () => {
   expect(notice.textContent).toBe(TRANSLATIONS.en.pm_deleted);
   expect(notice.dataset.kind).toBe('ok');
   expect(remove).toHaveBeenCalledWith('gemini:conv:saved', 's-aaaaaaaaaaaaaaaa');
+});
+
+it('keeps a highlight row and reports highlight removal failure when the request throws', async () => {
+  vi.spyOn(StarredMessagesService, 'getAllStarredMessagesSorted').mockResolvedValue([]);
+  vi.spyOn(accountIsolationService, 'resolveAccountScope').mockResolvedValue({
+    accountKey: 'opaque-account',
+    accountId: 1,
+    routeUserId: '1',
+    emailHash: null,
+  });
+  const highlight = makeRecord({
+    quote: { exact: 'Highlighted answer', prefix: '', suffix: '' },
+    position: { start: 0, end: 18 },
+    sourceTextHash: 'text-hash',
+  });
+  vi.mocked(chrome.runtime.sendMessage).mockImplementation((async (message: { type: string }) => {
+    if (message.type === 'gv.highlight.list') return { ok: true, records: [highlight] };
+    throw new Error('Highlight storage unavailable');
+  }) as typeof chrome.runtime.sendMessage);
+  const list = document.createElement('div');
+  const notice = document.createElement('p');
+  document.body.append(list, notice);
+  const view = createSavedLibraryView({
+    list,
+    t: (key) => TRANSLATIONS.en[key],
+    getQuery: () => '',
+    isActive: () => true,
+    setNotice: (text, kind) => {
+      notice.textContent = text;
+      notice.dataset.kind = kind;
+    },
+    beforeRender: () => {},
+    onBack: () => {},
+    rememberView: async () => {},
+    onNavigated: () => {},
+    highlightPlatform: 'gemini',
+  });
+  await view.load();
+  const button = list.querySelector<HTMLButtonElement>('.gv-pm-starred-remove')!;
+  button.click();
+  await vi.waitFor(() => expect(notice.textContent).toBe(TRANSLATIONS.en.highlightDeleteFailed));
+  expect(notice.dataset.kind).toBe('err');
+  expect(list.textContent).toContain('Highlighted answer');
+  expect(button.isConnected).toBe(true);
 });

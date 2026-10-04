@@ -325,7 +325,10 @@ export function createSavedLibraryView({
             : await removeStoredHighlight(item, highlightPlatform);
       } catch {
         // Keep the saved row until its removal has actually reached storage.
-        setNotice(t('pm_starred_load_error'), 'err');
+        setNotice(
+          t(item.kind === 'starred' ? 'starredDeleteFailed' : 'highlightDeleteFailed'),
+          'err',
+        );
         return;
       }
       if (!removed) {

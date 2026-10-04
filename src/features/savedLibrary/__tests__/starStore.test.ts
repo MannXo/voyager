@@ -122,20 +122,44 @@ describe('Saved Library dual projections', () => {
   });
 
   it.each([neutral, legacy])(
-    'a malformed %s copy refuses every write and preserves the valid sibling',
+    'a valid bucket beside corrupt data in %s remains readable and editable',
     async (brokenKey) => {
-      const initial = {
+      const { store, values } = setup({
         [neutral]: data(star('safe')),
         [legacy]: data(star('safe')),
-        [brokenKey]: { messages: { broken: null } },
-      };
-      const { store, values, area } = setup(initial);
-      await expect(store.add(star('new'))).rejects.toThrow('Invalid starred messages bucket');
-      await expect(store.getAll()).rejects.toThrow('Invalid starred messages bucket');
-      expect(values).toEqual(initial);
-      expect(area.set).not.toHaveBeenCalled();
+        [brokenKey]: { messages: { chat: [star('safe'), null, {}, 3], broken: null } },
+      });
+      await expect(store.getAll()).resolves.toEqual(data(star('safe')));
+      await expect(store.add(star('new'))).resolves.toBe(true);
+      expectProjections(values, data(star('safe'), star('new')));
     },
   );
+
+  it('prototype-like conversation IDs survive cloud merge, add, reconciliation and removal', async () => {
+    const { store, values } = setup();
+    const cloudStar = { ...star('cloud'), conversationId: '__proto__' };
+    const addedStar = { ...star('added'), conversationId: 'constructor' };
+    await expect(
+      store.mergeCloud(
+        JSON.parse(JSON.stringify({ data: { messages: { ['__proto__']: [cloudStar] } } })),
+      ),
+    ).resolves.toEqual({ status: 'merged', count: 1 });
+    await expect(store.add(addedStar)).resolves.toBe(true);
+    await expect(store.getForConversation('__proto__')).resolves.toEqual([cloudStar]);
+    await expect(store.getForConversation('constructor')).resolves.toEqual([addedStar]);
+    const restarted = createStarStore(setup(values).area);
+    await expect(restarted.getForConversation('__proto__')).resolves.toEqual([cloudStar]);
+    await expect(restarted.getForConversation('constructor')).resolves.toEqual([addedStar]);
+    await store.reconcile('constructor', ['__proto__']);
+    await expect(store.getForConversation('__proto__')).resolves.toEqual([]);
+    await expect(store.getForConversation('constructor')).resolves.toEqual([
+      addedStar,
+      { ...cloudStar, conversationId: 'constructor' },
+    ]);
+    await expect(store.remove('constructor', 'cloud')).resolves.toBe(true);
+    await expect(store.remove('__proto__', 'missing')).resolves.toBe(false);
+    expectProjections(values, { messages: { constructor: [addedStar] } });
+  });
 
   it('migration quota failure retains legacy bytes and a later queued read retries successfully', async () => {
     const expected = data(star('legacy'));

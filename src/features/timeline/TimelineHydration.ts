@@ -10,10 +10,6 @@ export class TimelineHydration {
     return this.isCurrent() && this.status === 'ready';
   }
 
-  get version(): number {
-    return this.revision;
-  }
-
   changed(): void {
     this.revision += 1;
   }

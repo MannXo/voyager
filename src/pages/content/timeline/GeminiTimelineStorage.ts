@@ -31,9 +31,9 @@ export function createGeminiTimelineStoragePolicy(
 ): TimelineStoragePolicy {
   const conversationId = buildConversationIdFromUrl(url);
   const nativeConversationId = extractConversationIdFromUrl(url);
-  // Account hints belong to this policy even if the page switches during a lookup.
-  const context = detectAccountContextFromDocument(url, document);
   const resolveAccountScope = async () => {
+    // Gemini may render or update its account header after the adapter mounts.
+    const context = detectAccountContextFromDocument(url, document);
     if (!context.routeUserId && !context.email) return null;
     return accountIsolationService.resolveAccountScope({
       pageUrl: url,

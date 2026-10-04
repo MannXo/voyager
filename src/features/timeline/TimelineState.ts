@@ -21,6 +21,9 @@ export class TimelineState {
   readonly markerMap = new Map<string, TimelineMarker>();
   private destroyed = false;
   private starred = new Set<string>();
+  private starWrites: Promise<void> = Promise.resolve();
+  private starSnapshotRevision = 0;
+  private pendingStarChoices = new Map<string, { turnId: string; starred: boolean }>();
   private readonly starHydration = new TimelineHydration(() => this.isCurrent);
   private readonly hierarchyHydration = new TimelineHydration(() => this.isCurrent);
   private localPrimaryPresent = false;
@@ -199,7 +202,9 @@ export class TimelineState {
       const canonical = this.policy.resolveMountedTurnId(marker.id);
       this.starDisplayOverride.set(
         marker.id,
-        (canonical && displayByMarkerId.get(canonical)) || false,
+        (canonical &&
+          (this.pendingStarChoices.get(canonical)?.starred ?? displayByMarkerId.get(canonical))) ||
+          false,
       );
       const storageIds = canonical ? storageIdsByMarkerId.get(canonical) : undefined;
       if (storageIds) this.starStorageIdsByMarkerId.set(marker.id, storageIds);
@@ -250,6 +255,7 @@ export class TimelineState {
     // lookup would wrongly clear this conversation's stars whenever a star
     // changes in another conversation.
     this.starHydration.snapshot(() => {
+      this.starSnapshotRevision += 1;
       this.pendingStarEdits.clear();
       const normalized: StarredMessagesData = { messages: data?.messages ?? {} };
       const matched = this.matchLibrary(normalized);
@@ -312,6 +318,7 @@ export class TimelineState {
       }
 
       accept(() => {
+        this.starSnapshotRevision += 1;
         const nextSet = new Set(messages.map((message) => String(message.turnId)));
         if (!forceLibrary && this.policy.stars.source === 'local' && !this.localPrimaryPresent) {
           // The first edit must retain both historical local IDs and the Saved Library mirror.
@@ -351,56 +358,92 @@ export class TimelineState {
     // A press captures its message before an initial read can yield to a route or DOM change.
     const summary = marker?.summary;
     const conversationTitle = this.policy.getConversationTitle(this.markers);
+    // Resolve from the header at the press, before hydration or queued writes can yield to another page.
+    const accountRead =
+      !this.starHydration.ready || !this.isMarkerStarred(id)
+        ? this.policy.stars.resolveAccount().then(
+            (account) => ({ account }),
+            (error: unknown) => ({ error }),
+          )
+        : null;
     if (!this.starHydration.ready) await this.readStars();
     if (!this.isCurrent || !this.policy.canEdit(marker, id) || !this.starHydration.ready) return;
     this.starHydration.changed();
-    let revision = this.starHydration.version;
     const wasStarred = this.isMarkerStarred(id);
     // A stable marker may represent both its current server-id record and an
     // older verified positional alias. Removing the star clears both records.
     const storageIds = wasStarred ? this.getStarStorageIds(id) : [id];
 
-    try {
-      if (wasStarred && this.policy.stars.libraryMirror) {
-        await Promise.all(
-          storageIds.map((storageId) =>
-            StarredMessagesService.removeStarredMessage(this.conversationId, storageId),
-          ),
-        );
-      } else if (!wasStarred && marker && this.policy.stars.libraryMirror) {
-        const account = await this.policy.stars.resolveAccount();
-        if (
-          !this.isCurrent ||
-          !this.policy.canEdit(marker, id) ||
-          !this.starHydration.ready ||
-          this.isMarkerStarred(id)
-        )
+    const canonical = this.policy.resolveMountedTurnId(id) ?? id;
+    const choice = { turnId: id, starred: !wasStarred };
+    const snapshotRevision = this.starSnapshotRevision;
+    this.pendingStarChoices.set(canonical, choice);
+    // The next press must see this choice before the Library write settles.
+    if (wasStarred) storageIds.forEach((storageId) => this.starred.delete(storageId));
+    else this.starred.add(id);
+    this.saveStars();
+    this.refreshStars();
+
+    // Account lookups must not reorder rapid add/remove presses.
+    const operation = this.starWrites.then(async () => {
+      try {
+        if (!this.isCurrent || !this.policy.canEdit(marker, id) || !this.starHydration.ready)
           return;
-        // An unrelated Library snapshot during account lookup cannot cancel this press.
-        revision = this.starHydration.version;
-        const message: StarredMessage = {
-          turnId: id,
-          content: summary ?? '',
-          conversationId: this.conversationId,
-          conversationUrl: this.url,
-          conversationTitle,
-          starredAt: Date.now(),
-          ...(account ? { account } : {}),
-        };
-        await StarredMessagesService.addStarredMessage(message);
+        if (wasStarred && this.policy.stars.libraryMirror) {
+          await Promise.all(
+            storageIds.map((storageId) =>
+              StarredMessagesService.removeStarredMessage(this.conversationId, storageId),
+            ),
+          );
+        } else if (!wasStarred && marker && this.policy.stars.libraryMirror) {
+          const result = await accountRead;
+          if (!result) return;
+          if ('error' in result) throw result.error;
+          const account = result.account;
+          if (!this.isCurrent || !this.policy.canEdit(marker, id) || !this.starHydration.ready)
+            return;
+          const message: StarredMessage = {
+            turnId: id,
+            content: summary ?? '',
+            conversationId: this.conversationId,
+            conversationUrl: this.url,
+            conversationTitle,
+            starredAt: Date.now(),
+            ...(account ? { account } : {}),
+          };
+          await StarredMessagesService.addStarredMessage(message);
+        }
+        const libraryStarred = Array.from(this.starred).some(
+          (storedId) => this.policy.resolveStoredTurnId(storedId) === canonical,
+        );
+        if (
+          this.pendingStarChoices.get(canonical) === choice &&
+          snapshotRevision !== this.starSnapshotRevision &&
+          libraryStarred !== choice.starred
+        ) {
+          // Confirm a superseded optimistic choice from the owner, never replay it over a newer snapshot.
+          this.starHydration.invalidate();
+          await this.starHydration.read((accept) => this.syncStarredFromService(accept, true));
+        }
+      } catch (error) {
+        if (!this.isCurrent) return;
+        if (this.pendingStarChoices.get(canonical) === choice)
+          this.pendingStarChoices.delete(canonical);
+        // A failed write must repaint from the Library, including partially removed aliases.
+        this.starHydration.invalidate();
+        await this.starHydration.read((accept) => this.syncStarredFromService(accept, true));
+        console.warn('[Timeline] Failed to change starred message:', error);
+      } finally {
+        if (this.pendingStarChoices.get(canonical) === choice)
+          this.pendingStarChoices.delete(canonical);
+        if (this.isCurrent) {
+          this.saveStars();
+          this.refreshStars();
+        }
       }
-      // A newer complete snapshot wins over a delayed local completion.
-      if (!this.isCurrent || revision !== this.starHydration.version) return;
-      if (wasStarred) storageIds.forEach((storageId) => this.starred.delete(storageId));
-      else this.starred.add(id);
-      this.saveStars();
-    } catch (error) {
-      if (!this.isCurrent) return;
-      // A failed write must repaint from the Library, including partially removed aliases.
-      this.starHydration.invalidate();
-      await this.starHydration.read((accept) => this.syncStarredFromService(accept, true));
-      console.warn('[Timeline] Failed to change starred message:', error);
-    }
+    });
+    this.starWrites = operation.catch(() => {});
+    await operation;
 
     if (this.isCurrent) this.refreshStars();
   }
@@ -426,7 +469,15 @@ export class TimelineState {
     if (!this.starHydration.ready) return;
     const key = this.getStarsStorageKey();
     if (!key) return;
-    safeLocalStorageSet(key, JSON.stringify(Array.from(this.starred)));
+    const displayed = new Set(this.starred);
+    // Intermediate owner echoes cannot overwrite a later queued choice in the page mirror.
+    for (const [canonical, choice] of this.pendingStarChoices) {
+      for (const storedId of displayed) {
+        if (this.policy.resolveStoredTurnId(storedId) === canonical) displayed.delete(storedId);
+      }
+      if (choice.starred) displayed.add(choice.turnId);
+    }
+    safeLocalStorageSet(key, JSON.stringify(Array.from(displayed)));
   }
 
   private localStarsLoaded = false;

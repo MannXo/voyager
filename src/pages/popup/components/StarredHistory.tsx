@@ -256,7 +256,7 @@ export function StarredHistory({ onClose, sourceTabId }: StarredHistoryProps) {
     } catch (deleteError) {
       console.error('[SavedLibrary] Failed to delete item:', deleteError);
       setTransferNotice({
-        text: item.kind === 'highlight' ? t('highlightDeleteFailed') : t('pm_starred_load_error'),
+        text: item.kind === 'highlight' ? t('highlightDeleteFailed') : t('starredDeleteFailed'),
         error: true,
       });
     }

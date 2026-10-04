@@ -1246,6 +1246,10 @@
     "message": "スターを外す",
     "description": "Remove from starred tooltip"
   },
+  "starredDeleteFailed": {
+    "message": "スターを外せませんでした",
+    "description": "Error shown when a star cannot be removed"
+  },
   "justNow": {
     "message": "たった今",
     "description": "Just now time label"

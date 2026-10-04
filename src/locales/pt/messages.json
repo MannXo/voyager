@@ -1246,6 +1246,10 @@
     "message": "Remover dos favoritos",
     "description": "Remove from starred tooltip"
   },
+  "starredDeleteFailed": {
+    "message": "Não foi possível remover dos favoritos",
+    "description": "Error shown when a star cannot be removed"
+  },
   "justNow": {
     "message": "Agora mesmo",
     "description": "Just now time label"

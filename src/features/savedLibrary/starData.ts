@@ -5,16 +5,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function normalizeStarredMessages(value: unknown): StarredMessagesData {
-  if (!isRecord(value) || !isRecord(value.messages)) {
-    throw new Error('Invalid starred messages data');
-  }
-  const messages: Record<string, StarredMessage[]> = {};
+  const messages: Record<string, StarredMessage[]> = Object.create(null);
+  if (!isRecord(value) || !isRecord(value.messages)) return { messages };
   for (const [conversationId, bucket] of Object.entries(value.messages)) {
-    if (!Array.isArray(bucket)) throw new Error('Invalid starred messages bucket');
+    if (!Array.isArray(bucket)) continue;
     const records: StarredMessage[] = [];
     for (const item of bucket) {
       if (!isRecord(item) || typeof item.turnId !== 'string' || !item.turnId) continue;
-      records.push({
+      const record: StarredMessage = {
         ...item,
         turnId: item.turnId,
         conversationId:
@@ -27,38 +25,31 @@ export function normalizeStarredMessages(value: unknown): StarredMessagesData {
           typeof item.starredAt === 'number' && Number.isFinite(item.starredAt)
             ? item.starredAt
             : 0,
-      });
+      };
+      if (typeof item.conversationTitle !== 'string') delete record.conversationTitle;
+      records.push(record);
     }
-    Object.defineProperty(messages, conversationId, {
-      value: records,
-      enumerable: true,
-      configurable: true,
-      writable: true,
-    });
+    messages[conversationId] = records;
   }
   return { messages };
 }
 
 export function decodeStarredSnapshot(value: unknown): StarredMessagesData | undefined {
-  try {
-    const data = normalizeStarredMessages(value);
-    const original = value as { messages: Record<string, unknown[]> };
-    // A partial notification cannot authorize hydration after the codec dropped invalid entries.
-    return Object.entries(data.messages).every(
-      ([id, bucket]) => original.messages[id].length === bucket.length,
-    )
-      ? data
-      : undefined;
-  } catch {
-    return undefined;
-  }
+  if (!isRecord(value) || !isRecord(value.messages)) return undefined;
+  const data = normalizeStarredMessages(value);
+  // A partial notification cannot authorize hydration after the codec dropped invalid entries.
+  return Object.entries(value.messages).every(
+    ([id, bucket]) => Array.isArray(bucket) && bucket.length === data.messages[id]?.length,
+  )
+    ? data
+    : undefined;
 }
 
 export function mergeStarredMessages(
   local: StarredMessagesData,
   cloud: StarredMessagesData,
 ): StarredMessagesData {
-  const messages: Record<string, StarredMessage[]> = {};
+  const messages: Record<string, StarredMessage[]> = Object.create(null);
   for (const id of new Set([...Object.keys(local.messages), ...Object.keys(cloud.messages)])) {
     const merged = new Map<string, StarredMessage>();
     for (const item of [...(cloud.messages[id] || []), ...(local.messages[id] || [])]) {
@@ -78,12 +69,7 @@ export function mergeStarredMessages(
       }
       merged.set(item.turnId, record);
     }
-    Object.defineProperty(messages, id, {
-      value: Array.from(merged.values()),
-      enumerable: true,
-      configurable: true,
-      writable: true,
-    });
+    messages[id] = Array.from(merged.values());
   }
   return { messages };
 }

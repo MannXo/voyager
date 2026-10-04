@@ -1246,6 +1246,10 @@
     "message": "Retirer",
     "description": "Remove from starred tooltip"
   },
+  "starredDeleteFailed": {
+    "message": "Impossible de retirer l’étoile",
+    "description": "Error shown when a star cannot be removed"
+  },
   "justNow": {
     "message": "À l'instant",
     "description": "Just now time label"

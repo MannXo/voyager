@@ -4,8 +4,10 @@ import { type Root, createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import { LanguageProvider } from '@/contexts/LanguageContext';
+import { accountIsolationService } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
+import { makeRecord } from '@/pages/content/highlight/__tests__/fixtures';
 import { TRANSLATIONS } from '@/utils/translations';
 
 import { StarredHistory } from '../StarredHistory';
@@ -137,7 +139,7 @@ it('keeps a starred row after a failed removal and allows retry', async () => {
   await act(async () => button.click());
   expect(container.textContent).toContain('Saved answer');
   expect(container.querySelector('[role="alert"]')?.textContent).toBe(
-    TRANSLATIONS.en.pm_starred_load_error,
+    TRANSLATIONS.en.starredDeleteFailed,
   );
   expect(button.isConnected).toBe(true);
 
@@ -145,4 +147,35 @@ it('keeps a starred row after a failed removal and allows retry', async () => {
   expect(container.textContent).not.toContain('Saved answer');
   expect(container.querySelector('[role="alert"]')).toBeNull();
   expect(remove).toHaveBeenCalledWith('claude:conv:saved', 'turn-one');
+});
+
+it('keeps a highlight row and reports highlight removal failure when the request throws', async () => {
+  pageUrl = 'https://gemini.google.com/u/1/app/current';
+  vi.spyOn(StarredMessagesService, 'getAllStarredMessagesSorted').mockResolvedValue([]);
+  vi.spyOn(accountIsolationService, 'resolveAccountScope').mockResolvedValue({
+    accountKey: 'opaque-account',
+    accountId: 1,
+    routeUserId: '1',
+    emailHash: null,
+  });
+  const highlight = makeRecord({
+    quote: { exact: 'Highlighted answer', prefix: '', suffix: '' },
+    position: { start: 0, end: 18 },
+    sourceTextHash: 'text-hash',
+  });
+  vi.mocked(chrome.runtime.sendMessage).mockImplementation((async (message: { type: string }) => {
+    if (message.type === 'gv.highlight.list') return { ok: true, records: [highlight] };
+    throw new Error('Highlight storage unavailable');
+  }) as typeof chrome.runtime.sendMessage);
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  await mount();
+  const button = container.querySelector<HTMLButtonElement>(
+    `button[aria-label="${TRANSLATIONS.en.pm_delete}"]`,
+  )!;
+  await act(async () => button.click());
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+    TRANSLATIONS.en.highlightDeleteFailed,
+  );
+  expect(container.textContent).toContain('Highlighted answer');
+  expect(button.isConnected).toBe(true);
 });

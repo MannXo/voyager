@@ -1246,6 +1246,10 @@
     "message": "取消星标",
     "description": "取消星标提示"
   },
+  "starredDeleteFailed": {
+    "message": "无法取消星标",
+    "description": "Error shown when a star cannot be removed"
+  },
   "justNow": {
     "message": "刚刚",
     "description": "刚刚时间标签"

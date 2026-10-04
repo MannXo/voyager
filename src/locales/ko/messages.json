@@ -1246,6 +1246,10 @@
     "message": "별표 제거",
     "description": "Remove from starred tooltip"
   },
+  "starredDeleteFailed": {
+    "message": "별표를 제거하지 못했습니다",
+    "description": "Error shown when a star cannot be removed"
+  },
   "justNow": {
     "message": "방금 전",
     "description": "Just now time label"

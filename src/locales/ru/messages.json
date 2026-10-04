@@ -1246,6 +1246,10 @@
     "message": "Убрать из избранного",
     "description": "Remove from starred tooltip"
   },
+  "starredDeleteFailed": {
+    "message": "Не удалось убрать из избранного",
+    "description": "Error shown when a star cannot be removed"
+  },
   "justNow": {
     "message": "Только что",
     "description": "Just now time label"

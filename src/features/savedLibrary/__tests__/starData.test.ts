@@ -25,6 +25,7 @@ describe('Saved Library star data', () => {
     {},
     { messages: [] },
     { messages: { chat: null } },
+    { messages: { chat: [star('valid')], broken: null } },
     { messages: { chat: [star('valid'), null] } },
     { messages: { chat: [{ content: 'missing id' }] } },
   ])('a malformed or partial snapshot cannot hydrate from recovered siblings: %j', (value) =>
@@ -50,9 +51,28 @@ describe('Saved Library star data', () => {
   });
 
   it.each([null, [], {}, { messages: [] }, { messages: { chat: null } }])(
-    'rejects unreadable roots and buckets rather than overwriting their bytes: %j',
-    (value) => expect(() => normalizeStarredMessages(value)).toThrow(),
+    'ignores shapes that cannot contain a star without preventing recovery: %j',
+    (value) => expect(normalizeStarredMessages(value)).toEqual({ messages: {} }),
   );
+
+  it('a corrupt title cannot make an identifiable star unusable to a Library renderer', () => {
+    const result = normalizeStarredMessages({
+      messages: {
+        chat: [
+          {
+            ...star('corrupt-title'),
+            conversationTitle: { bad: true },
+            opaqueField: { kept: true },
+          },
+          { ...star('valid-title'), conversationTitle: 'Saved title' },
+        ],
+      },
+    });
+    expect(result.messages.chat).toEqual([
+      { ...star('corrupt-title'), opaqueField: { kept: true } },
+      { ...star('valid-title'), conversationTitle: 'Saved title' },
+    ]);
+  });
 
   it('unions conversations and turns in first-seen order and never mutates either input', () => {
     const local = data(star('first'), star('shared', 2));
