@@ -16,11 +16,11 @@ import type { FolderDialogs } from './folderDialogs';
  */
 export function createFloatingTreeStoreActions(
   commands: FolderCommands,
-  dialogs: Pick<FolderDialogs, 'confirmConversationRemoval'>,
+  dialogs: Pick<FolderDialogs, 'confirmFolderRemoval' | 'confirmConversationRemoval'>,
 ): Omit<TreeActions, 'onNavigate'> {
   return {
     ...createCommandTreeActions(commands),
-    confirmConversationRemoval: (title, anchor, onConfirm) =>
-      dialogs.confirmConversationRemoval(title, anchor, onConfirm),
+    confirmFolderRemoval: dialogs.confirmFolderRemoval,
+    confirmConversationRemoval: dialogs.confirmConversationRemoval,
   };
 }

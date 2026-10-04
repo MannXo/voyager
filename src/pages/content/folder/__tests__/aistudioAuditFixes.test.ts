@@ -7,7 +7,6 @@ import type { PromptItem } from '@/core/types/sync';
 import { FolderRepository } from '../FolderRepository';
 import { AIStudioFolderManager } from '../aistudio';
 import { applyHideArchivedRows } from '../aistudioLibraryTable';
-import { showAIStudioNotification } from '../aistudioNotifications';
 import { AIStudioTransfer, createSyncMessageListener, exportTimestamp } from '../aistudioTransfer';
 import { AISTUDIO_FOLDER_CONFIG } from '../platformFolderConfig';
 import { AIStudioFolderStorageAdapter } from '../storage/AIStudioFolderStorageAdapter';
@@ -136,19 +135,7 @@ afterEach(() => {
   window.history.pushState({}, '', '/');
 });
 
-describe('M12 — notification and export timestamp string integrity', () => {
-  it('renders notification className with gv- prefix and no stray spaces', () => {
-    vi.useFakeTimers();
-    showAIStudioNotification('boom', 'warning');
-
-    const el = document.querySelector('.gv-notification') as HTMLElement | null;
-    expect(el).not.toBeNull();
-    expect(el?.className).toBe('gv-notification gv-notification-warning');
-    expect(el?.className).toMatch(/^gv-notification gv-notification-(info|warning|error)$/);
-    expect(el?.className).not.toMatch(/\s{2,}|^\s|\s$/);
-    expect(el?.textContent).toBe('[Gemini Voyager] boom');
-  });
-
+describe('M12 — export timestamp string integrity', () => {
   it('produces an export timestamp without embedded spaces', () => {
     expect(exportTimestamp()).toMatch(/^\d{8}-\d{6}$/);
   });

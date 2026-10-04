@@ -146,16 +146,23 @@ export function mountFolderTree({
       isExpanded,
       apply,
       site: currentSite,
+      folderHeader,
     };
     renderFolderTree(body, layer ? { ...tree, menuInLayer: true } : tree);
     if (layer) renderContextMenu(layer.container, tree);
   };
 
+  function folderHeader(folderId: string): HTMLElement | null {
+    return (
+      Array.from(body.querySelectorAll<HTMLElement>(`.${cls('folder-header')}`)).find(
+        (header) => header.dataset.folderId === folderId,
+      ) ?? null
+    );
+  }
   // A menu opened from the keyboard takes focus, and gives it back to its
   // button when it closes and nothing else took it.
   const focusMenuButton = (folderId: string) =>
-    Array.from(body.querySelectorAll<HTMLElement>(`.${cls('folder-header')}`))
-      .find((header) => header.dataset.folderId === folderId)
+    folderHeader(folderId)
       ?.querySelector<HTMLElement>(`.${cls('icon-button--menu')}`)
       ?.focus();
   const focusIsLost = () => !document.activeElement || document.activeElement === document.body;

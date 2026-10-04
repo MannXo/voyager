@@ -367,18 +367,6 @@
   color: #f87171;
 }
 
-.gv-floating-folder-panel__confirm-message {
-  color: #e8eaed;
-  font-size: 12px;
-  line-height: 1.35;
-  padding: 6px 8px 8px;
-}
-
-.gv-floating-folder-panel__confirm-actions {
-  display: flex;
-  gap: 6px;
-}
-
 .gv-floating-folder-panel__color-section {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -446,10 +434,6 @@
 :host([data-gv-scheme='light']) .gv-floating-folder-panel__menu-item:hover,
 :host([data-gv-scheme='light']) .gv-floating-folder-panel__menu-item:focus-visible {
   background: rgba(15, 23, 42, 0.06);
-}
-
-:host([data-gv-scheme='light']) .gv-floating-folder-panel__confirm-message {
-  color: #1f2937;
 }
 
 :host([data-gv-scheme='light']) .gv-floating-folder-panel__color-section {
@@ -958,39 +942,6 @@
   box-shadow:
     inset 0 0 0 1px rgba(0, 0, 0, 0.16),
     0 0 0 2px var(--gv-floating-folder-panel__accent);
-}
-
-.gv-floating-folder-panel__context-menu--confirming {
-  min-width: 224px;
-}
-
-.gv-floating-folder-panel__confirm-inline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px;
-}
-
-.gv-floating-folder-panel__confirm-message {
-  flex: 1;
-  min-width: 0;
-  color: var(--gv-floating-folder-panel__text);
-  font-size: 13px;
-  line-height: 20px;
-  padding: 0;
-}
-
-.gv-floating-folder-panel__confirm-actions {
-  flex: 0 0 auto;
-  display: inline-flex;
-  gap: 4px;
-}
-
-.gv-floating-folder-panel__confirm-button {
-  width: auto;
-  min-height: 28px;
-  padding: 4px 8px;
-  white-space: nowrap;
 }
 
 :host([data-gv-scheme='dark']) {

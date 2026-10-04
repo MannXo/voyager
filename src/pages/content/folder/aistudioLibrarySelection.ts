@@ -2,9 +2,12 @@
  * Multi-select on /library rows: a long press starts it, clicks then toggle
  * rows, and a floating bar counts the selection and offers batch delete.
  */
+import { askConfirm } from '@/core/ui/confirm';
+import { isVoyagerLayerEvent } from '@/core/ui/layer';
+import type { ToastTone, Toaster } from '@/core/ui/toast/types';
+
 import { LibraryBatchDeleter } from './aistudioLibraryBatchDelete';
 import { getLibraryPromptRows, libraryPromptData } from './aistudioLibraryTable';
-import type { AIStudioNotify } from './aistudioNotifications';
 
 const LONG_PRESS_MS = 500;
 const MAX_BATCH_DELETE_COUNT = 50;
@@ -31,13 +34,16 @@ export class LibrarySelection {
   private deleting = false;
   private host: HTMLElement | null = null;
   private outsideClick: ((event: MouseEvent) => void) | null = null;
+  /** Aborted when the selection ends, which answers its open confirm with null. */
+  private session = new AbortController();
   private readonly deleter: LibraryBatchDeleter;
 
   constructor(
     private readonly t: (key: string) => string,
-    private readonly notify: AIStudioNotify,
+    private readonly notify: (message: string, tone: ToastTone) => void,
+    toaster: Toaster,
   ) {
-    this.deleter = new LibraryBatchDeleter(t);
+    this.deleter = new LibraryBatchDeleter(t, toaster);
   }
 
   get isActive(): boolean {
@@ -90,6 +96,7 @@ export class LibrarySelection {
 
   exit(): void {
     this.active = false;
+    this.session.abort();
     this.removeOutsideClick();
     this.selected.clear();
     this.refresh();
@@ -125,6 +132,7 @@ export class LibrarySelection {
 
   private enter(conversationId: string): void {
     this.active = true;
+    this.session = new AbortController();
     this.selected.add(conversationId);
     this.refresh();
     this.addOutsideClick();
@@ -153,7 +161,7 @@ export class LibrarySelection {
     deleteButton.className = 'gv-multi-select-action-btn gv-multi-select-delete-btn';
     deleteButton.title = this.t('batch_delete_button');
     deleteButton.appendChild(createIcon('delete'));
-    deleteButton.addEventListener('click', () => void this.deleteSelected());
+    deleteButton.addEventListener('click', () => void this.deleteSelected(deleteButton));
 
     const exitButton = document.createElement('button');
     exitButton.className = 'gv-multi-select-action-btn gv-multi-select-exit-btn';
@@ -204,6 +212,8 @@ export class LibrarySelection {
     const handler = (event: MouseEvent) => {
       const target = event.target;
       if (!(target instanceof Node) || this.host?.contains(target)) return;
+      // The delete confirm and the toasts are part of this selection's flow.
+      if (isVoyagerLayerEvent(event)) return;
       if ((target as Element).closest?.('.cdk-overlay-container, .mat-mdc-dialog-container'))
         return;
       if (getLibraryPromptRows().some((row) => row.contains(target))) return;
@@ -222,10 +232,17 @@ export class LibrarySelection {
     this.outsideClick = null;
   }
 
-  private async deleteSelected(): Promise<void> {
+  private async deleteSelected(anchor: HTMLElement): Promise<void> {
     if (this.deleting || this.selected.size === 0) return;
     const ids = Array.from(this.selected);
-    if (!confirm(this.t('batch_delete_confirm').replace('{count}', String(ids.length)))) return;
+    const answer = await askConfirm({
+      message: this.t('batch_delete_confirm').replace('{count}', String(ids.length)),
+      anchor,
+      tone: 'danger',
+      choices: [{ id: 'confirm', label: this.t('pm_delete') }],
+      signal: this.session.signal,
+    });
+    if (answer !== 'confirm' || this.deleting) return;
 
     this.deleting = true;
     const { successCount, failedCount } = await this.deleter.run(ids).finally(() => {

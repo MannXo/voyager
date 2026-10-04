@@ -114,7 +114,7 @@ describe('folder menu in a popover layer', () => {
   });
 
   it('stays open for a click on the menu outside its items, and closes for one outside', () => {
-    const { root } = mount();
+    const { root } = mount({ actions: { confirmFolderRemoval: vi.fn() } });
     openMenu(root, 'a');
 
     layerRoot()

@@ -3,7 +3,9 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import { askConfirm } from '@/core/ui/confirm';
 import { PluginScope } from '@/features/plugins/runtime/pluginScope';
+import { confirmDriver } from '@/tests/confirmDriver';
 import { initI18n } from '@/utils/i18n';
 
 import { CHATGPT_FOLDERS_GUIDE_DEBUG_EVENT, CHATGPT_FOLDERS_GUIDE_ID } from '../chatgptFolderGuide';
@@ -161,6 +163,25 @@ describe('ChatGPT folders sidebar guide', () => {
     await activate();
     expect(bubble()).toBeNull();
     dialog.remove();
+    sidebar.rerenderList();
+    await nextPass();
+    expect(bubble()).not.toBeNull();
+  });
+
+  it('waits while a Voyager confirm is open, and shows once it is answered', async () => {
+    const anchor = document.createElement('button');
+    document.body.append(anchor);
+    const answered = askConfirm({
+      message: 'Remove?',
+      anchor,
+      tone: 'danger',
+      choices: [{ id: 'remove', label: 'Remove' }],
+    });
+    await activate();
+    expect(bubble()).toBeNull();
+
+    confirmDriver.answer('Cancel');
+    await answered;
     sidebar.rerenderList();
     await nextPass();
     expect(bubble()).not.toBeNull();

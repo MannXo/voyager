@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AISTUDIO_ROOT_BUCKET_ID } from '@/features/folder/constants';
 import enMessages from '@/locales/en/messages.json';
+import { confirmDriver } from '@/tests/confirmDriver';
+import { toastDriver } from '@/tests/toastDriver';
 
 import { AIStudioFolderManager } from '../aistudio';
 import { mergeAIStudioImport } from '../aistudioImport';
@@ -106,7 +108,6 @@ type Internals = {
 
 describe('AI Studio folder messages', () => {
   const managers: Internals[] = [];
-  let alertSpy: ReturnType<typeof vi.fn>;
 
   function createManager(initial: FolderData): Internals {
     const internals = new AIStudioFolderManager() as unknown as Internals;
@@ -139,12 +140,10 @@ describe('AI Studio folder messages', () => {
     await vi.advanceTimersByTimeAsync(0);
   }
 
-  /** The latest notification's level and message. */
+  /** The latest notice's level and message. */
   function lastNotification(): { level: string; message: string } {
-    const element = [...document.querySelectorAll('.gv-notification')].at(-1);
-    const level = element?.className.replace('gv-notification gv-notification-', '') ?? '';
-    const message = element?.textContent?.replace('[Gemini Voyager] ', '') ?? '';
-    return { level, message };
+    const toast = toastDriver.all().at(-1);
+    return { level: toast?.tone ?? '', message: toast?.message ?? '' };
   }
 
   async function importText(manager: Internals, text: string): Promise<void> {
@@ -164,8 +163,6 @@ describe('AI Studio folder messages', () => {
     vi.useFakeTimers();
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    alertSpy = vi.fn();
-    vi.stubGlobal('alert', alertSpy);
   });
 
   afterEach(() => {
@@ -174,7 +171,6 @@ describe('AI Studio folder messages', () => {
         internals.destroy();
       } catch {}
     }
-    vi.unstubAllGlobals();
     vi.useRealTimers();
     vi.restoreAllMocks();
     document.body.innerHTML = '';
@@ -210,7 +206,7 @@ describe('AI Studio folder messages', () => {
       folderContents: { a: [prompt('p1')] },
     });
     manager.treeActions().confirmConversationRemoval!("Cost $& Benefit $'", document.body, vi.fn());
-    const message = document.querySelector('.gv-folder-confirm-message')?.textContent ?? '';
+    const message = confirmDriver.message() ?? '';
     expect(message).toContain("Cost $& Benefit $'");
     expectRendered(message);
   });
@@ -245,15 +241,19 @@ describe('AI Studio folder messages', () => {
         folderContents: { a: [prompt('p1'), prompt('p2')], n: [prompt('p3')] },
       }),
     );
-    expect(alertSpy).toHaveBeenLastCalledWith('✓ Imported 1 folders, 2 conversations');
+    expect(lastNotification()).toEqual({
+      level: 'success',
+      message: '✓ Imported 1 folders, 2 conversations',
+    });
 
     await importText(manager, 'not json');
-    const failure = alertSpy.mock.lastCall?.[0];
-    expect(failure).toMatch(/^✗ Import failed: SyntaxError/);
-    for (const [message] of alertSpy.mock.calls) expectRendered(message);
+    const failure = lastNotification();
+    expect(failure.level).toBe('error');
+    expect(failure.message).toMatch(/^✗ Import failed: SyntaxError/);
+    for (const message of toastDriver.messages()) expectRendered(message);
 
     // The parser quotes the bad input; `$&` in it is not a replacement pattern.
     await importText(manager, '$& oops');
-    expect(alertSpy.mock.lastCall?.[0]).toContain('$& oops');
+    expect(lastNotification().message).toContain('$& oops');
   });
 });

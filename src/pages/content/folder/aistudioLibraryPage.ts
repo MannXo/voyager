@@ -3,12 +3,12 @@
  * multi-select with batch delete, and the floating drop zone. The manager
  * attaches it on /library and detaches it on the way out.
  */
+import type { ToastTone, Toaster } from '@/core/ui/toast/types';
 import type { FolderCommands } from '@/features/folder/commands/folderCommands';
 
 import { mountLibraryDropZone, type LibraryDropZone } from './aistudioLibraryDropZone';
 import { LibrarySelection } from './aistudioLibrarySelection';
 import { bindLibraryRows, watchLibraryTable } from './aistudioLibraryTable';
-import type { AIStudioNotify } from './aistudioNotifications';
 import { newFolderId } from './aistudioTree';
 import type { Folder, FolderData } from './types';
 
@@ -24,7 +24,9 @@ export type LibraryPageHost = {
   placeDrop: (event: DragEvent, folderId: string | null) => boolean;
   /** Re-syncs which rows hide as archived. */
   applyHideArchived: () => void;
-  notify: AIStudioNotify;
+  notify: (message: string, tone: ToastTone) => void;
+  /** The manager's toaster, for the batch delete progress. */
+  toaster: Toaster;
 };
 
 export class LibraryPage {
@@ -33,7 +35,7 @@ export class LibraryPage {
   private dropZone: LibraryDropZone | null = null;
 
   constructor(private readonly host: LibraryPageHost) {
-    this.selection = new LibrarySelection(host.t, host.notify);
+    this.selection = new LibrarySelection(host.t, host.notify, host.toaster);
   }
 
   /** Binds the table (now and as it changes) and mounts the drop zone. Idempotent. */

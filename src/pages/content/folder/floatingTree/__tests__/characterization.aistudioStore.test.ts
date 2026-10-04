@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
 import { AISTUDIO_ROOT_BUCKET_ID } from '@/features/folder/constants';
+import { confirmDriver } from '@/tests/confirmDriver';
 
 import { AIStudioFolderManager } from '../../aistudio';
 import { AISTUDIO_TREE_HOST_CLASS } from '../../aistudioTree';
@@ -116,23 +117,15 @@ async function mount(data: FolderData = DATA) {
   return treeDriver({ root: host.shadowRoot, rootBucketId: ROOT });
 }
 
-/** The folder deletion question in the page, by its text; null while none is open. */
-function deletionQuestion(): HTMLElement | null {
-  const question = label('folder_delete_confirm');
-  return (
-    Array.from(document.body.querySelectorAll<HTMLElement>('*')).find(
-      (element) => element.children.length === 0 && element.textContent === question,
-    ) ?? null
-  );
+/** The folder deletion question in the page; null while none is open. */
+function deletionQuestion(): string | null {
+  const question = confirmDriver.message();
+  return question === label('folder_delete_confirm') ? question : null;
 }
 
-/** Answers the open folder deletion dialog; it closes only through its own buttons. */
+/** Answers the open folder deletion confirm. */
 function answerDeletion(answer: 'folder_delete' | 'pm_cancel'): void {
-  const button = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button')).find(
-    (candidate) => candidate.textContent === label(answer),
-  );
-  if (!button) throw new Error('no deletion confirm is open');
-  button.click();
+  confirmDriver.answer(label(answer));
 }
 
 beforeEach(() => {

@@ -269,7 +269,7 @@ describe('floating panel inline name form', () => {
 
 describe('floating panel context menu', () => {
   it('stays open for clicks inside the panel and closes for a click outside it', () => {
-    const handle = mountPanel();
+    const handle = mountPanel({ confirmFolderRemoval: vi.fn() });
     contextMenu(folderHeader(panelRoot(handle), 'folder-a'));
 
     click(part(handle, 'menu-divider'));
@@ -287,18 +287,6 @@ describe('floating panel context menu', () => {
     expect(menu.getAttribute('role')).toBe('menu');
 
     handle.update({ folders: [createFolder('folder-b', 'Beta', null, 1)], folderContents: {} });
-    expect(queryPart(handle, 'context-menu')).toBeNull();
-  });
-
-  it('cancels a pending delete without deleting', () => {
-    const onDeleteFolder = vi.fn();
-    const handle = mountPanel({ onDeleteFolder });
-    contextMenu(folderHeader(panelRoot(handle), 'folder-a'));
-    click(part(handle, 'menu-item--danger'));
-    const buttons = panelRoot(handle).querySelectorAll(`.${FLOATING_PANEL_CLASS}__confirm-button`);
-    click(buttons[1]);
-
-    expect(onDeleteFolder).not.toHaveBeenCalled();
     expect(queryPart(handle, 'context-menu')).toBeNull();
   });
 });

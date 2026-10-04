@@ -15,6 +15,7 @@ import {
 import { DataBackupService } from '@/core/services/DataBackupService';
 import { StorageKeys } from '@/core/types/common';
 import { validateFolderData } from '@/features/folder/model/folderData';
+import { toastDriver } from '@/tests/toastDriver';
 
 import { AIStudioFolderManager } from '../aistudio';
 import { migrateAIStudioLegacySync } from '../aistudioImport';
@@ -202,9 +203,7 @@ function rootFolderOrder(): string[] {
 }
 
 function notificationText(): string {
-  return Array.from(document.querySelectorAll('.gv-notification'), (node) => node.textContent).join(
-    '\n',
-  );
+  return toastDriver.messages().join('\n');
 }
 
 function backupSlot(namespace: string, slot: 'primary' | 'emergency'): FolderData | null {
@@ -634,15 +633,14 @@ describe('AI Studio persistence characterization', () => {
       local[await scopedKey('b')] = folderData('Private b');
       const manager = await mount();
       tree.requestRemoval('Private a', 'p1');
-      const dialog = document.querySelector('.gv-folder-confirm-dialog')!;
 
       await vi.advanceTimersByTimeAsync(2500);
-      expect(dialog.isConnected).toBe(true);
+      expect(tree.pendingQuestion()).not.toBeNull();
       expect(treeText()).toContain('Private a');
 
       selectAccount('b');
       await vi.advanceTimersByTimeAsync(1200);
-      expect(dialog.isConnected).toBe(false);
+      expect(tree.pendingQuestion()).toBeNull();
       expect(manager.activeStorageKey).toBe(await scopedKey('b'));
       expect(treeText()).toContain('Private b');
     });
@@ -689,6 +687,27 @@ describe('AI Studio persistence characterization', () => {
         'After re-enable',
       );
       expect(localStorage.getItem(GLOBAL_KEY)).toBeNull();
+    });
+
+    it('still reports a failed save after the folder feature is turned off and on', async () => {
+      local[GLOBAL_KEY] = folderData('Kept');
+      const manager = await mount();
+      mockBrowser.storage.local.set.mockRejectedValueOnce(new Error('quota'));
+      await manager.save();
+      expect(toastDriver.find('Failed to save folder data')?.tone).toBe('error');
+
+      emitStorageChange({ geminiFolderEnabled: { newValue: false } }, 'sync');
+      await vi.advanceTimersByTimeAsync(0);
+      // Turning the feature off takes its notices with it.
+      expect(toastDriver.all()).toEqual([]);
+
+      emitStorageChange({ geminiFolderEnabled: { newValue: true } }, 'sync');
+      await vi.advanceTimersByTimeAsync(0);
+      mockBrowser.storage.local.set.mockRejectedValueOnce(new Error('quota'));
+      await manager.save();
+      expect(toastDriver.messages()).toEqual([
+        'Failed to save folder data. Changes may not be persisted.',
+      ]);
     });
   });
 });

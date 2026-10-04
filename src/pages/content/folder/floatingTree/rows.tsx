@@ -296,7 +296,6 @@ export function FolderRow({ tree, node, item, index, measure, hidden }: ItemRowP
               folderId: folder.id,
               x: e.clientX,
               y: e.clientY,
-              confirmingDelete: false,
             },
           });
         }}
@@ -405,7 +404,6 @@ export function FolderRow({ tree, node, item, index, measure, hidden }: ItemRowP
                   x: rect.left,
                   y: rect.bottom,
                   anchor: { width: rect.width, height: rect.height },
-                  confirmingDelete: false,
                   // Enter or Space on the button: a click with no pointer.
                   ...(e.detail === 0 ? { fromKeyboard: true } : {}),
                 },

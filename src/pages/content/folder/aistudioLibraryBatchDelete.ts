@@ -1,7 +1,8 @@
 /**
  * Deletes /library prompts one by one through AI Studio's own row menu and
- * confirmation dialog, as a user would, with a progress card meanwhile.
+ * confirmation dialog, as a user would, with a progress toast meanwhile.
  */
+import type { Toaster } from '@/core/ui/toast/types';
 import { normalizeText } from '@/core/utils/text';
 
 import { findLibraryPromptRow } from './aistudioLibraryTable';
@@ -123,28 +124,14 @@ async function deletePrompt(conversationId: string, keywords: string[]): Promise
   return true;
 }
 
-const PROGRESS_STYLE = `
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      background: rgba(32, 33, 36, 0.95);
-      color: #e8eaed;
-      padding: 16px 24px;
-      border-radius: 8px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-      z-index: 2147483647;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-family: 'Google Sans', Roboto, Arial, sans-serif;
-      font-size: 14px;
-    `;
+const PROGRESS_CHANNEL = 'batch-delete';
 
-/** Runs batch deletions and owns the progress card shown while one runs. */
+/** Runs batch deletions and shows their progress. */
 export class LibraryBatchDeleter {
-  private progress: HTMLElement | null = null;
-
-  constructor(private readonly t: (key: string) => string) {}
+  constructor(
+    private readonly t: (key: string) => string,
+    private readonly toaster: Toaster,
+  ) {}
 
   async run(conversationIds: readonly string[]): Promise<BatchDeleteResult> {
     const keywords = (this.t('batch_delete_match_patterns') || '')
@@ -167,25 +154,13 @@ export class LibraryBatchDeleter {
   }
 
   hideProgress(): void {
-    this.progress?.remove();
-    this.progress = null;
+    this.toaster.dismiss(PROGRESS_CHANNEL);
   }
 
   private showProgress(current: number, total: number): void {
-    if (!this.progress) {
-      this.progress = document.createElement('div');
-      this.progress.className = 'gv-batch-delete-progress';
-      this.progress.style.cssText = PROGRESS_STYLE;
-      const text = document.createElement('span');
-      text.className = 'gv-batch-delete-progress-text';
-      this.progress.appendChild(text);
-      document.body.appendChild(this.progress);
-    }
-    const text = this.progress.querySelector('.gv-batch-delete-progress-text');
-    if (text) {
-      text.textContent = this.t('batch_delete_in_progress')
-        .replace('{current}', String(current))
-        .replace('{total}', String(total));
-    }
+    const message = this.t('batch_delete_in_progress')
+      .replace('{current}', String(current))
+      .replace('{total}', String(total));
+    this.toaster.show({ message, pending: true, durationMs: null, channel: PROGRESS_CHANNEL });
   }
 }

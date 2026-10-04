@@ -165,7 +165,8 @@ describe('mountFloatingPanel', () => {
   it('fires context-menu pin and delete callbacks without mutating data directly', () => {
     const onToggleFolderPinned = vi.fn();
     const onDeleteFolder = vi.fn();
-    const handle = mountPanel({ onToggleFolderPinned, onDeleteFolder });
+    const confirmFolderRemoval = vi.fn<(anchor: HTMLElement, onConfirm: () => void) => void>();
+    const handle = mountPanel({ onToggleFolderPinned, onDeleteFolder, confirmFolderRemoval });
 
     contextMenu(folderHeader(panelRoot(handle), 'folder-a'));
     const pinButton = requireElement<HTMLButtonElement>(
@@ -182,18 +183,11 @@ describe('mountFloatingPanel', () => {
     );
     click(deleteButton);
 
-    const confirmDeleteButton = requireElement<HTMLButtonElement>(
-      panelRoot(handle),
-      `.${FLOATING_PANEL_CLASS}__menu-item--danger`,
-    );
-    const confirmMenu = requireElement<HTMLElement>(
-      panelRoot(handle),
-      `.${FLOATING_PANEL_CLASS}__context-menu--confirming`,
-    );
-    const confirmButtons = confirmMenu.querySelectorAll(`.${FLOATING_PANEL_CLASS}__menu-item`);
-    expect(confirmMenu.querySelector(`.${FLOATING_PANEL_CLASS}__confirm-message`)).toBeNull();
-    expect(confirmButtons).toHaveLength(2);
-    click(confirmDeleteButton);
+    // The host asks beside the folder's row; nothing is deleted until it answers.
+    const [anchor, onConfirm] = confirmFolderRemoval.mock.calls[0];
+    expect(anchor).toBe(folderHeader(panelRoot(handle), 'folder-a'));
+    expect(onDeleteFolder).not.toHaveBeenCalled();
+    onConfirm();
 
     expect(onDeleteFolder).toHaveBeenCalledWith('folder-a');
     expect(panelRoot(handle).textContent).toContain('Alpha');

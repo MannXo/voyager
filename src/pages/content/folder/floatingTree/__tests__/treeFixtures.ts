@@ -15,7 +15,7 @@ export function conv(
   return { conversationId: id, title, url: `https://example.test/c/${id}`, addedAt: 1, ...extra };
 }
 
-/** Hooks for a site's own menus, selection and drags; added per case like the confirms. */
+/** Hooks for a site's own menus, selection and drags; added per case like the conversation confirm. */
 type SiteHooks =
   | 'onRenameConversation'
   | 'onConversationMenu'
@@ -26,13 +26,13 @@ type SiteHooks =
   | 'onConversationDragEnd';
 
 type DataCallbacks = Required<
-  Omit<
-    TreeActions,
-    'confirmFolderRemoval' | 'confirmConversationRemoval' | 'onDrop' | 'acceptsDrag' | SiteHooks
-  >
+  Omit<TreeActions, 'confirmConversationRemoval' | 'onDrop' | 'acceptsDrag' | SiteHooks>
 >;
 
-/** Every data callback of `TreeActions` as a spy; confirms and drop hooks are added per case. */
+/**
+ * Every data callback of `TreeActions` as a spy, and the folder delete confirm,
+ * which never answers; the conversation confirm and drop hooks are added per case.
+ */
 export type ActionSpies = { [K in keyof DataCallbacks]: Mock<DataCallbacks[K]> };
 
 export function spyActions(): ActionSpies {
@@ -41,6 +41,7 @@ export function spyActions(): ActionSpies {
     onCreateFolder: vi.fn(),
     onRenameFolder: vi.fn(),
     onDeleteFolder: vi.fn(),
+    confirmFolderRemoval: vi.fn(),
     onRemoveConversation: vi.fn(),
     onToggleStar: vi.fn(),
     onToggleFolderPinned: vi.fn(),

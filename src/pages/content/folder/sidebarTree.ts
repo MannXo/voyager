@@ -193,7 +193,6 @@ function createActions(options: SidebarTreeOptions): TreeActions {
         : undefined;
       navigation.navigate(latest ?? conversation, bucketId ?? undefined);
     },
-    confirmFolderRemoval: (anchor, onConfirm) => dialogs.confirmFolderRemoval(anchor, onConfirm),
     onDrop: (e, folderId, placement) => dropOnSidebar(drops, e, folderId, placement),
     acceptsDrag: acceptsSidebarDrag,
     onRenameConversation: (conversation) => void onRenameNative(conversation),

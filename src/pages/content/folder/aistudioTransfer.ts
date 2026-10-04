@@ -10,12 +10,12 @@ import browser, { type Runtime } from 'webextension-polyfill';
 
 import type { AccountScope } from '@/core/services/AccountIsolationService';
 import type { PromptItem, SyncAccountScope } from '@/core/types/sync';
+import type { ToastTone } from '@/core/ui/toast/types';
 import { cloneFolderData } from '@/features/folder/model/folderData';
 import { mergeFolderData, mergePrompts } from '@/utils/merge';
 
 import type { FolderDataSession } from './FolderDataSession';
 import { mergeAIStudioImport, readAIStudioImportFile } from './aistudioImport';
-import type { AIStudioNotify } from './aistudioNotifications';
 import type { FolderData } from './types';
 
 export type AIStudioTransferHost = {
@@ -27,7 +27,7 @@ export type AIStudioTransferHost = {
   data: () => FolderData;
   /** Persists a draft (with prompts in the same write) and publishes it only on success. */
   replaceData: (data: FolderData, prompts?: PromptItem[]) => Promise<boolean>;
-  notify: AIStudioNotify;
+  notify: (message: string, tone: ToastTone) => void;
 };
 
 type DownloadResponse =
@@ -264,20 +264,24 @@ export class AIStudioTransfer {
       if (!current()) return;
       const read = readAIStudioImportFile(JSON.parse(text));
       if (!read.ok) {
-        alert(t(read.messageKey) || 'Invalid file format');
+        this.host.notify(t(read.messageKey) || 'Invalid file format', 'error');
         return;
       }
       const merge = mergeAIStudioImport(this.host.data(), read.data);
       const saved = await this.host.replaceData(merge.data);
       if (!current() || !saved) return;
-      alert(
+      this.host.notify(
         t('folder_import_success')
           .replace('{folders}', String(merge.stats.foldersImported))
           .replace('{conversations}', String(merge.stats.conversationsImported)),
+        'success',
       );
     } catch (error) {
       if (!current()) return;
-      alert(t('folder_import_error').replace('{error}', () => String(error)));
+      this.host.notify(
+        t('folder_import_error').replace('{error}', () => String(error)),
+        'error',
+      );
     }
   }
 

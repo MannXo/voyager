@@ -288,10 +288,9 @@ describe.each(CONSUMERS)('$name: view state never reaches the stored data', ({ c
     view.openMenuByRightClick('Zeta');
     menuItem(label('floatingPanelCreateSubfolder')).click();
     view.pressInInput('Escape');
-    // Delete: open the confirm and cancel it.
+    // Delete: ask the host, which never answers.
     view.openMenuByRightClick('Zeta');
     menuItem(label('floatingPanelDeleteFolder')).click();
-    menuItem(label('floatingPanelCancel')).click();
     // Drag a row over folders without dropping.
     const transfer = view.dragRow('a', 'Oldest');
     view.dragOver(view.folderRow('Zeta'), transfer);
@@ -301,7 +300,7 @@ describe.each(CONSUMERS)('$name: view state never reaches the stored data', ({ c
 
     expect(openMenu()).toBeNull();
     expect(view.nameInput()).toBeNull();
-    expect(calledSpies(actions)).toEqual([]);
+    expect(calledSpies(actions)).toEqual(['confirmFolderRemoval']);
     expect(onDrop).not.toHaveBeenCalled();
     expect(data).toEqual(snapshot);
     expect(view.outline()).toEqual(shown);

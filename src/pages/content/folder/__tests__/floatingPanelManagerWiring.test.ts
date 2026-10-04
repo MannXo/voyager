@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { accountIsolationService } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
+import { confirmDriver } from '@/tests/confirmDriver';
 
 import { FolderStore } from '../FolderStore';
 import { FolderManager } from '../manager';
@@ -128,17 +129,33 @@ describe('floating panel wired through FolderManager', () => {
     const row = root.querySelector<HTMLElement>('[data-conversation-id="c-work"]')!;
 
     row.querySelector<HTMLButtonElement>(`.${PANEL}__icon-button--remove`)!.click();
-    const dialog = document.querySelector<HTMLElement>('.gv-folder-confirm-dialog');
-    expect(dialog?.textContent).toContain('Remove "Quarterly plan"?');
+    expect(confirmDriver.message()).toContain('Remove "Quarterly plan"?');
     expect(manager!.getFolders()).toHaveLength(1);
     expect(root.querySelector('[data-conversation-id="c-work"]')).not.toBeNull();
 
-    dialog!.querySelector<HTMLButtonElement>('.gv-folder-confirm-yes')!.click();
+    const [, remove] = confirmDriver.labels();
+    confirmDriver.answer(remove);
     await vi.advanceTimersByTimeAsync(0);
 
     expect(root.querySelector('[data-conversation-id="c-work"]')).toBeNull();
     expect(savedContents()?.work).toEqual([]);
-    expect(document.querySelector('.gv-folder-confirm-dialog')).toBeNull();
+    expect(confirmDriver.isOpen()).toBe(false);
+  });
+
+  it('asks with the same folder confirm as the sidebar before deleting a folder', async () => {
+    const root = await openFloatingPanel();
+    const header = root.querySelector<HTMLElement>(
+      `.${PANEL}__folder-header[data-folder-id="work"]`,
+    )!;
+    header.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    root.querySelector<HTMLButtonElement>(`.${PANEL}__menu-item--danger`)!.click();
+
+    expect(confirmDriver.message()).toBe('folder_delete_confirm');
+    expect(confirmDriver.focusedLabel()).toBe('pm_cancel');
+    confirmDriver.answer('folder_delete');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(manager!.getFolders()).toEqual([]);
   });
 
   it('saves folder expansion in the stored data', async () => {

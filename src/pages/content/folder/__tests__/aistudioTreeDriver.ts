@@ -5,6 +5,7 @@
  * folder menu renders in a popover layer on `document.body`.
  */
 import { AISTUDIO_ROOT_BUCKET_ID } from '@/features/folder/constants';
+import { confirmDriver } from '@/tests/confirmDriver';
 
 import { AISTUDIO_TREE_HOST_CLASS } from '../aistudioTree';
 import { POPOVER_LAYER_HOST_CLASS } from '../floatingTree/popoverLayer';
@@ -207,29 +208,12 @@ export const tree = {
       .click(),
 
   /** Text of the open removal question, or null. */
-  pendingQuestion: (): string | null =>
-    document.querySelector('.gv-folder-confirm-dialog .gv-folder-confirm-message')?.textContent ??
-    null,
+  pendingQuestion: (): string | null => confirmDriver.message(),
 
   /** Answers the open removal question or folder deletion confirm. */
   answer: (confirm: boolean): void => {
-    const dialog = document.querySelector('.gv-folder-confirm-dialog');
-    if (dialog) {
-      dialog
-        .querySelector<HTMLButtonElement>(
-          confirm ? '.gv-folder-confirm-yes' : '.gv-folder-confirm-no',
-        )!
-        .click();
-      return;
-    }
-    const confirming = menuRoot().querySelector(part('context-menu--confirming'))!;
-    confirming
-      .querySelector<HTMLButtonElement>(
-        confirm
-          ? part('menu-item--danger')
-          : `${part('confirm-button')}:not(${part('menu-item--danger')})`,
-      )!
-      .click();
+    const [cancel, accept] = confirmDriver.labels();
+    confirmDriver.answer(confirm ? accept : cancel);
   },
 
   canCreateSubfolder: (folderId: string): boolean => {

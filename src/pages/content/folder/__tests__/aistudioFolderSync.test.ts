@@ -710,7 +710,16 @@ describe('AI Studio account scope retry', () => {
   it('binds before the next poll and later polls keep the bound account', async () => {
     sync[StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED] = true;
     const key = await scopedKey('a');
-    local[key] = folderData('Private a');
+    const privateA = folderData('Private a');
+    privateA.folderContents['Private a'] = [
+      {
+        conversationId: 'p1',
+        title: 'Prompt p1',
+        url: 'https://aistudio.google.com/prompts/p1',
+        addedAt: 1,
+      },
+    ];
+    local[key] = privateA;
     const resolve = accountIsolationService.resolveAccountScope.bind(accountIsolationService);
     vi.spyOn(accountIsolationService, 'resolveAccountScope')
       .mockRejectedValueOnce(new Error('background not listening'))
@@ -722,12 +731,10 @@ describe('AI Studio account scope retry', () => {
     expect(manager.activeStorageKey).toBe(key);
     expect(panelText()).toContain('Private a');
 
-    const dialog = document.createElement('div');
-    dialog.className = 'gv-folder-confirm-dialog gv-aistudio-confirm';
-    document.body.appendChild(dialog);
+    tree.requestRemoval('Private a', 'p1');
     await vi.advanceTimersByTimeAsync(3600);
 
-    expect(dialog.isConnected).toBe(true);
+    expect(tree.pendingQuestion()).not.toBeNull();
     expect(manager.activeStorageKey).toBe(key);
   });
 });

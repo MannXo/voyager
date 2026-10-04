@@ -6,6 +6,7 @@ import { StorageKeys } from '@/core/types/common';
 import type { FolderData } from '@/core/types/folder';
 import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import { PluginScope } from '@/features/plugins/runtime/pluginScope';
+import { confirmDriver } from '@/tests/confirmDriver';
 import { initI18n } from '@/utils/i18n';
 
 import { CHATGPT_FOLDER_CONFIG } from '../config';
@@ -210,24 +211,24 @@ describe('ChatGPT folders plugin', () => {
 
     remove();
     await settle(20);
-    const question = document.querySelector('.gv-folder-confirm-dialog');
-    expect(question?.textContent).toContain('Trip plan');
+    expect(confirmDriver.message()).toContain('Trip plan');
     expect(filed()).toHaveLength(1);
 
-    document.querySelector<HTMLButtonElement>('.gv-folder-confirm-yes')!.click();
+    confirmDriver.answer('Remove');
     await settle(20);
     expect(filed()).toEqual([]);
-    expect(document.querySelector('.gv-folder-confirm-dialog')).toBeNull();
+    expect(confirmDriver.isOpen()).toBe(false);
 
     // Filed again from another tab; this time the plugin is turned off mid-question.
     memory.external('local', StorageKeys.FOLDER_DATA_CHATGPT, oneFiled);
     await settle(30);
     remove();
     await settle(20);
-    expect(document.querySelector('.gv-folder-confirm-dialog')).not.toBeNull();
+    expect(confirmDriver.isOpen()).toBe(true);
 
     await scope.dispose();
-    expect(document.querySelector('.gv-folder-confirm-dialog')).toBeNull();
+    await settle(0);
+    expect(confirmDriver.isOpen()).toBe(false);
     expect(filed()).toHaveLength(1);
   });
 

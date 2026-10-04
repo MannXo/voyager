@@ -48,7 +48,7 @@ type MenuPlacement = {
   fromKeyboard?: boolean;
 };
 
-export type FolderMenuState = MenuPlacement & { folderId: string; confirmingDelete: boolean };
+export type FolderMenuState = MenuPlacement & { folderId: string };
 
 /** A filed conversation's menu, which offers `onRenameConversation`. */
 export type ConversationMenuState = MenuPlacement & { conversation: ConversationReference };
@@ -91,8 +91,8 @@ export type TreeActions = {
   onRenameFolder?: (folderId: string, newName: string) => void;
   onDeleteFolder?: (folderId: string) => void;
   /**
-   * Asks before `onDeleteFolder` in a dialog of the host's own. Without it, the
-   * menu turns into an inline Delete / Cancel confirm.
+   * Asks beside `anchor`, the folder's row, before `onDeleteFolder`; the folder
+   * menu offers Delete only when set.
    */
   confirmFolderRemoval?: (anchor: HTMLElement, onConfirm: () => void) => void;
   onRemoveConversation?: (folderId: string, conversationId: string) => void;
@@ -216,6 +216,8 @@ export type TreeProps = {
   site?: TreeSiteOptions;
   /** The controller renders the folder menu in a body-level layer instead. */
   menuInLayer?: boolean;
+  /** A folder's header row as rendered now, which outlives the menu opened from it. */
+  folderHeader: (folderId: string) => HTMLElement | null;
   /**
    * The layout of `data` from the owner of its revision. Without it, each render
    * lays the data out again.

@@ -8,6 +8,7 @@
  * shared coachmark list, so it shows once per user. Turning the plugin off, or
  * the header leaving the screen, closes an open guide without marking it seen.
  */
+import { LAYER_ATTR } from '@/core/ui/layer';
 import { detectRTL } from '@/core/utils/rtl';
 import type { Dispose, PluginScope } from '@/features/plugins/runtime/pluginScope';
 import { type CoachmarkResult, hasSeenCoachmark, showCoachmark } from '@/pages/content/coachmark';
@@ -24,13 +25,13 @@ export const CHATGPT_FOLDERS_GUIDE_DEBUG_EVENT = 'gv:debug:chatgptFoldersCoachma
 const FOLDER_ICON =
   '<svg viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true"><path d="M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h240l80 80h320q33 0 56.5 23.5T880-640v400q0 33-23.5 56.5T800-160H160Z"/></svg>';
 
-/** ChatGPT's Radix menus and dialogs, plus this plugin's picker and Gemini's confirm. */
+/** ChatGPT's Radix menus and dialogs, plus this plugin's picker and Voyager's confirms. */
 const OVERLAY_SELECTOR = [
   '[role="menu"]',
   '[role="dialog"]',
   '[role="alertdialog"]',
   `.${FOLDER_PICKER_CLASS}`,
-  '.gv-folder-confirm-dialog',
+  `[${LAYER_ATTR}="popover"]`,
 ].join(',');
 
 /**

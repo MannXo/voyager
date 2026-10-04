@@ -2,6 +2,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { createToaster } from '@/core/ui/toast/toaster';
+import { confirmDriver } from '@/tests/confirmDriver';
+import { toastDriver } from '@/tests/toastDriver';
 import { createTranslator } from '@/utils/i18n';
 
 import { AIStudioFolderManager } from '../aistudio';
@@ -341,7 +344,7 @@ describe('AIStudio prompt binding performance guards', () => {
     vi.useFakeTimers();
     const first = createLibraryPromptRow('library111', 'First Library Prompt');
     const second = createLibraryPromptRow('library222', 'Second Library Prompt');
-    const selection = new LibrarySelection(createTranslator(), vi.fn());
+    const selection = new LibrarySelection(createTranslator(), vi.fn(), createToaster());
 
     bindLibraryRows((row) => selection.bindRow(row));
 
@@ -363,6 +366,39 @@ describe('AIStudio prompt binding performance guards', () => {
         '[data-multi-select-floating-host="true"] [data-selection-count="true"]',
       )?.textContent,
     ).toBe('2 selected');
+  });
+
+  it('asks before deleting the selected library prompts, and answering keeps the selection', async () => {
+    vi.useFakeTimers();
+    const doomed = createLibraryPromptRow('library444', 'Doomed Prompt');
+    const notify = vi.fn();
+    const selection = new LibrarySelection(createTranslator(), notify, createToaster());
+    bindLibraryRows((row) => selection.bindRow(row));
+    doomed.row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+    await vi.advanceTimersByTimeAsync(500);
+    await vi.advanceTimersByTimeAsync(0);
+    const deleteButton = () =>
+      document.querySelector<HTMLButtonElement>('.gv-multi-select-delete-btn')!;
+
+    deleteButton().click();
+    expect(confirmDriver.message()).toBe(
+      'Are you sure you want to delete 1 conversation(s)? This action cannot be undone.',
+    );
+    expect(confirmDriver.focusedLabel()).toBe('Cancel');
+    confirmDriver.answer('Cancel');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(doomed.row.classList.contains('gv-library-row-selected')).toBe(true);
+
+    deleteButton().click();
+    confirmDriver.answer('Delete');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(toastDriver.find('Deleting...')).toMatchObject({ pending: true });
+
+    // AI Studio never opens a row menu here, so the one deletion fails.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(toastDriver.find('Deleting...')).toBeUndefined();
+    expect(notify).toHaveBeenCalledWith('Deletion complete: 0 succeeded, 1 failed', 'warning');
+    expect(doomed.row.classList.contains('gv-library-row-selected')).toBe(false);
   });
 
   it('does not re-bind library rows when the floating multi-select host changes', async () => {

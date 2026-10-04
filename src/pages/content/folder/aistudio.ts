@@ -12,6 +12,8 @@ import browser from 'webextension-polyfill';
 import type { AccountScope } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 import type { PromptItem } from '@/core/types/sync';
+import { createToaster } from '@/core/ui/toast/toaster';
+import type { ToastTone } from '@/core/ui/toast/types';
 import { isSaved } from '@/features/folder/commands/folderCommands';
 import { createTranslator, initI18n } from '@/utils/i18n';
 
@@ -24,7 +26,6 @@ import { migrateAIStudioLegacySync } from './aistudioImport';
 import { LibraryPage } from './aistudioLibraryPage';
 import { clearArchivedRows, isLibraryPath } from './aistudioLibraryTable';
 import { openPromptInApp } from './aistudioNavigation';
-import { showAIStudioNotification } from './aistudioNotifications';
 import {
   buildFolderPanel,
   insertFolderPanel,
@@ -56,6 +57,13 @@ const RECOVERY_MESSAGES = {
   lost: 'Failed to load folder data. All folders have been reset.',
   unreadable: 'Failed to load folder data, folders are read-only for now',
 } as const;
+/** Errors and warnings stay longer than a confirmation. */
+const NOTICE_MS: Record<ToastTone, number> = {
+  info: 3000,
+  success: 3000,
+  warning: 7000,
+  error: 5000,
+};
 
 export class AIStudioFolderManager {
   /** Resolves against the bundled messages on every call, so it is right before `initI18n` settles. */
@@ -63,6 +71,11 @@ export class AIStudioFolderManager {
   // Missing keys render literally: keep them in every locale and fill placeholders explicitly.
   // Function replacers keep dollar sequences in user and error text literal.
   private readonly translate = (key: string) => this.t(key);
+  /** Cleared, not destroyed, when the feature turns off, so a re-enable can notify again. */
+  private readonly toaster = createToaster();
+  private readonly notify = (message: string, tone: ToastTone): void => {
+    this.toaster.show({ message, tone, durationMs: NOTICE_MS[tone] });
+  };
   /** Owns sessions, load, recovery, serialized saves, drafts, echoes and scope retry. */
   private readonly repository = new FolderRepository(
     AISTUDIO_FOLDER_CONFIG,
@@ -73,10 +86,7 @@ export class AIStudioFolderManager {
         if (reason === 'loaded' || reason === 'data' || reason === 'availability') this.render();
       },
       onRecovery: (result) =>
-        showAIStudioNotification(
-          RECOVERY_MESSAGES[result],
-          result === 'recovered' ? 'warning' : 'error',
-        ),
+        this.notify(RECOVERY_MESSAGES[result], result === 'recovered' ? 'warning' : 'error'),
       onExternalChange: () => {
         // Sidebar rendering leaves /library rows untouched; refresh their archive classes too.
         if (this.folderEnabled) void this.load().then(() => this.applyHideArchived());
@@ -84,7 +94,7 @@ export class AIStudioFolderManager {
       onAccountReleased: () => this.releaseAccountUi(),
       isEnabled: () => this.folderEnabled,
       onSaveFailed: () =>
-        showAIStudioNotification('Failed to save folder data. Changes may not be persisted.'),
+        this.notify('Failed to save folder data. Changes may not be persisted.', 'error'),
       // Membership decides which /library rows are archived, so every settled write re-syncs them.
       onPersistSettled: () => {
         this.applyHideArchived();
@@ -107,7 +117,7 @@ export class AIStudioFolderManager {
     canEdit: () => this.canEdit,
     data: () => this.data,
     replaceData: (data, prompts) => this.replaceData(data, prompts),
-    notify: showAIStudioNotification,
+    notify: this.notify,
   });
   private readonly library = new LibraryPage({
     commands: this.commands,
@@ -118,7 +128,8 @@ export class AIStudioFolderManager {
     save: () => this.save(),
     placeDrop: (event, folderId) => this.placeDroppedPrompt(event, folderId),
     applyHideArchived: () => this.applyHideArchived(),
-    notify: showAIStudioNotification,
+    notify: this.notify,
+    toaster: this.toaster,
   });
   private readonly hideArchived = new HideArchivedSetting();
   private readonly sidebarWidth = new SidebarWidth();
@@ -484,6 +495,7 @@ export class AIStudioFolderManager {
     this.stopRouteWatcher = null;
     this.library.destroy();
     this.dialogs.closeAll();
+    this.toaster.clear();
     // With the feature off nothing would show the /library rows it hid.
     clearArchivedRows();
     this.unmountTree();

@@ -340,16 +340,10 @@ describe('confirmFolderRemoval', () => {
     expect(onDeleteFolder).toHaveBeenCalledWith('a');
   });
 
-  it('default: the menu turns into an inline Delete / Cancel confirm', () => {
-    const onDeleteFolder = vi.fn();
-    const { root } = mount(undefined, { onDeleteFolder });
+  it('without one, the menu offers no Delete', () => {
+    const { root } = mount(undefined, { onDeleteFolder: vi.fn() });
     openMenu(root);
-    deleteItem(root).click();
-
-    expect(q(root, 'context-menu--confirming')).not.toBeNull();
-    expect(onDeleteFolder).not.toHaveBeenCalled();
-    deleteItem(root).click();
-    expect(onDeleteFolder).toHaveBeenCalledWith('a');
+    expect(deleteItem(root)).toBeUndefined();
   });
 });
 

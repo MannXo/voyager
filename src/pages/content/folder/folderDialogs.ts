@@ -1,4 +1,5 @@
 import type { Folder } from '@/core/types/folder';
+import { askConfirm } from '@/core/ui/confirm';
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
 import {
@@ -7,8 +8,6 @@ import {
   openColorPicker,
   openInstructionsDialog,
   openMoveDialog,
-  openRemovalConfirm,
-  placeConfirm,
 } from './folderDialogViews';
 import { insertCreateEditor, openRenameEditor } from './folderInlineEditors';
 
@@ -37,7 +36,8 @@ export type FolderDialogs = {
     instructions: string | undefined,
     onSave: (instructions: string | undefined) => Promise<boolean>,
   ) => void;
-  confirmFolderRemoval: (folderElement: Element | null, onConfirm: () => void) => void;
+  /** Asks next to `anchor`; `onConfirm` runs only if the answer arrives before a close. */
+  confirmFolderRemoval: (anchor: HTMLElement, onConfirm: () => void) => void;
   confirmConversationRemoval: (title: string, anchor: HTMLElement, onConfirm: () => void) => void;
   openMenu: (
     event: MouseEvent,
@@ -56,6 +56,29 @@ export function createFolderDialogs(): FolderDialogs {
   let activeCreate: { view: DialogView; input: HTMLInputElement } | null = null;
   let activeColor: { view: DialogView; folderId: string } | null = null;
   let conversationMenu: DialogView | null = null;
+  // Removal confirms are anchored to a row, so every close ends them.
+  let confirms = new AbortController();
+
+  const askRemoval = async (
+    anchor: HTMLElement,
+    message: string,
+    label: string,
+    onConfirm: () => void,
+  ): Promise<void> => {
+    const { signal } = confirms;
+    const answer = await askConfirm({
+      message,
+      anchor,
+      tone: 'danger',
+      choices: [{ id: 'confirm', label }],
+      signal,
+    });
+    if (answer === 'confirm' && !signal.aborted) onConfirm();
+  };
+  const endConfirms = (): void => {
+    confirms.abort();
+    confirms = new AbortController();
+  };
 
   const own = (
     element: HTMLElement,
@@ -123,36 +146,17 @@ export function createFolderDialogs(): FolderDialogs {
 
     openInstructions: (instructions, onSave) => openInstructionsDialog(own, instructions, onSave),
 
-    confirmFolderRemoval: (folderElement, onConfirm) => {
-      const dialog = openRemovalConfirm(
-        own,
-        t('folder_delete_confirm'),
-        t('folder_delete'),
-        onConfirm,
-      );
-      const header = folderElement?.querySelector('.gv-folder-item-header');
-      if (header) {
-        const rect = header.getBoundingClientRect();
-        placeConfirm(dialog, rect.left + 24, rect.bottom + 4);
-        dialog.style.zIndex = '10002';
-      } else if (folderElement) {
-        const rect = folderElement.getBoundingClientRect();
-        placeConfirm(dialog, rect.left, rect.top + 32);
-        dialog.style.zIndex = '10002';
-      }
-    },
+    confirmFolderRemoval: (anchor, onConfirm) =>
+      void askRemoval(anchor, t('folder_delete_confirm'), t('folder_delete'), onConfirm),
 
-    confirmConversationRemoval: (title, anchor, onConfirm) => {
-      const dialog = openRemovalConfirm(
-        own,
+    confirmConversationRemoval: (title, anchor, onConfirm) =>
+      void askRemoval(
+        anchor,
         t('folder_remove_conversation_confirm').replace('{title}', () => title),
         // Removing from a folder keeps the conversation, so it is not a delete.
         t('folder_remove_conversation_action'),
         onConfirm,
-      );
-      const rect = anchor.getBoundingClientRect();
-      placeConfirm(dialog, rect.left, rect.bottom + 4);
-    },
+      ),
 
     openMenu: (event, items, kind = 'folder') => {
       event.stopPropagation();
@@ -188,9 +192,11 @@ export function createFolderDialogs(): FolderDialogs {
       for (const view of views) if (view.inline) view.close();
     },
     closeTransient: () => {
+      endConfirms();
       for (const view of views) if (!view.modal) view.close();
     },
     closeAll: () => {
+      endConfirms();
       for (const view of views) view.close();
     },
   };

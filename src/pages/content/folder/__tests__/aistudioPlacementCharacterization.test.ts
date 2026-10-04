@@ -7,6 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AISTUDIO_ROOT_BUCKET_ID } from '@/features/folder/constants';
+import { toastDriver } from '@/tests/toastDriver';
 
 import { AIStudioFolderManager } from '../aistudio';
 import type { TreeActions } from '../floatingTree/shared';
@@ -313,8 +314,7 @@ describe('AI Studio sidebar drop zone', () => {
 });
 
 describe('AI Studio library floating drop zone', () => {
-  const lastNotice = () =>
-    [...document.querySelectorAll('.gv-notification-info')].at(-1)?.textContent;
+  const lastNotice = () => toastDriver.all().at(-1);
 
   it('confirms the move after saving', async () => {
     const manager = createManager(initial);
@@ -323,13 +323,13 @@ describe('AI Studio library floating drop zone', () => {
       conversationId: 'p2',
       title: 'P2',
     });
-    expect(lastNotice()).toBe('[Gemini Voyager] Added to "Folder b"');
+    expect(lastNotice()).toMatchObject({ message: 'Added to "Folder b"', tone: 'info' });
     await dropTargets[1].drop(manager, null, {
       type: 'conversation',
       conversationId: 'p2',
       title: 'P2',
     });
-    expect(lastNotice()).toBe('[Gemini Voyager] Saved to Uncategorized');
+    expect(lastNotice()).toMatchObject({ message: 'Saved to Uncategorized', tone: 'info' });
   });
 });
 
@@ -352,14 +352,7 @@ describe('AI Studio import', () => {
     return vi.mocked(manager.replaceData).mock.calls[0][0];
   }
 
-  let alertSpy: ReturnType<typeof vi.fn>;
-  beforeEach(() => {
-    alertSpy = vi.fn();
-    vi.stubGlobal('alert', alertSpy);
-  });
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
+  const lastNotice = () => toastDriver.all().at(-1);
 
   const exported = {
     format: 'gemini-voyager.folders.v1',
@@ -394,7 +387,10 @@ describe('AI Studio import', () => {
     });
     // The counts are what the merge added; the file's repeated prompts count as they are
     // appended. A file repeating a folder id is refused (aistudioPersistence.test.ts).
-    expect(alertSpy).toHaveBeenCalledWith('✓ Imported 1 folders, 3 conversations');
+    expect(lastNotice()).toMatchObject({
+      message: '✓ Imported 1 folders, 3 conversations',
+      tone: 'success',
+    });
   });
 
   it('drafts the merge on a copy that shares nothing with live data', async () => {
@@ -461,11 +457,13 @@ describe('AI Studio import', () => {
     const manager = createManager({ folders: [], folderContents: {} });
     manager.replaceData = vi.fn().mockResolvedValue(true);
     await importText(manager, JSON.stringify({ data: { folders: 'no', folderContents: {} } }));
-    expect(alertSpy).toHaveBeenLastCalledWith(
-      'Invalid file format. Please select a valid folder configuration file.',
-    );
+    expect(lastNotice()).toMatchObject({
+      message: 'Invalid file format. Please select a valid folder configuration file.',
+      tone: 'error',
+    });
     await importText(manager, 'not json {}');
-    expect(alertSpy.mock.lastCall?.[0]).toMatch(/^✗ Import failed: SyntaxError: /);
+    expect(lastNotice()?.message).toMatch(/^✗ Import failed: SyntaxError: /);
+    expect(lastNotice()?.tone).toBe('error');
     expect(manager.replaceData).not.toHaveBeenCalled();
     expect(sessionStorage.length).toBe(0);
   });

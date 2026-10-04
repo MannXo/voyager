@@ -21,6 +21,7 @@ import {
   settle,
   treeDriver,
 } from '@/pages/content/folder/floatingTree/__tests__/treeDriver';
+import { confirmDriver } from '@/tests/confirmDriver';
 import { initI18n } from '@/utils/i18n';
 
 import { activateChatGptFolders } from '../index';
@@ -170,7 +171,7 @@ describe('ChatGPT folder section: what it writes', () => {
     press(document.body);
     view.openMenuByRightClick('Personal');
     menuItem(label('floatingPanelDeleteFolder')).click();
-    document.querySelector<HTMLButtonElement>('.gv-folder-confirm-no')!.click();
+    confirmDriver.answer(label('pm_cancel'));
     view.dragOver(view.folderRow('Personal'), view.dragRow('work', 'Plan'));
     await nextPass();
 
@@ -218,7 +219,7 @@ describe('ChatGPT folder section: what it writes', () => {
     const view = await activate();
     view.openMenuByRightClick('Loop Y');
     menuItem(label('floatingPanelDeleteFolder')).click();
-    document.querySelector<HTMLButtonElement>('.gv-folder-confirm-yes')!.click();
+    confirmDriver.answer(label('folder_delete'));
     await nextPass();
 
     expect(openMenu()).toBeNull();
@@ -242,7 +243,7 @@ describe('ChatGPT folder section: what it writes', () => {
   it('removes a chat from the one folder whose row was used', async () => {
     const view = await activate();
     view.removeButton('personal', 'Shared').click();
-    document.querySelector<HTMLButtonElement>('.gv-folder-confirm-yes')?.click();
+    confirmDriver.answer(label('folder_remove_conversation_action'));
     await nextPass();
 
     expect(stored().folderContents.personal).toEqual([]);

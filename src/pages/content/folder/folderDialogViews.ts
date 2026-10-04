@@ -26,22 +26,6 @@ export type OwnDialogView = (
   modal?: boolean,
 ) => DialogView;
 
-const VIEWPORT_MARGIN = 8;
-
-/**
- * Pins a confirm at `left`/`top`, moved in as far as its measured width needs
- * to stay on screen. A fixed 280px allowance let a wider dialog spill past the
- * right edge. It is measured at the left edge: a shrink-to-fit box measured
- * at the anchor is narrower there than once it moves in.
- */
-export function placeConfirm(dialog: HTMLElement, left: number, top: number): void {
-  dialog.style.position = 'fixed';
-  dialog.style.top = `${top}px`;
-  dialog.style.left = '0px';
-  const maxLeft = window.innerWidth - dialog.getBoundingClientRect().width - VIEWPORT_MARGIN;
-  dialog.style.left = `${Math.max(VIEWPORT_MARGIN, Math.min(left, maxLeft))}px`;
-}
-
 export function dismissOnOutsideClick(view: DialogView): void {
   view.defer(() => {
     document.addEventListener(
@@ -59,42 +43,6 @@ function normalizeFolderPath(value: string): string {
     .trim()
     .toLocaleLowerCase()
     .replace(/\s*\/\s*/g, '/');
-}
-
-export function openRemovalConfirm(
-  own: OwnDialogView,
-  message: string,
-  label: string,
-  onConfirm: () => void,
-): HTMLElement {
-  const dialog = document.createElement('div');
-  dialog.className = 'gv-folder-confirm-dialog';
-  const view = own(dialog);
-  const text = document.createElement('div');
-  text.className = 'gv-folder-confirm-message';
-  text.textContent = message;
-  const actions = document.createElement('div');
-  actions.className = 'gv-folder-confirm-actions';
-  const yes = document.createElement('button');
-  yes.className = 'gv-folder-confirm-btn gv-folder-confirm-yes';
-  yes.textContent = label;
-  yes.addEventListener(
-    'click',
-    () => {
-      view.close();
-      onConfirm();
-    },
-    { signal: view.signal },
-  );
-  const no = document.createElement('button');
-  no.className = 'gv-folder-confirm-btn gv-folder-confirm-no';
-  no.textContent = t('pm_cancel');
-  no.addEventListener('click', view.close, { signal: view.signal });
-  actions.append(yes, no);
-  dialog.append(text, actions);
-  document.body.appendChild(dialog);
-  dismissOnOutsideClick(view);
-  return dialog;
 }
 
 function createCustomColorButton(

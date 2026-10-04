@@ -240,49 +240,27 @@ describe.each(CONSUMERS)('$name: rename with the name the folder already has', (
 });
 
 describe.each(CONSUMERS)('$name: deleting a folder', ({ consumer }) => {
-  it('turns the menu into a Delete / Cancel confirm and deletes nothing on Cancel', () => {
+  it('closes the menu and asks the host beside the folder’s row, deleting only on its answer', () => {
     const { view, actions } = mount(consumer);
     view.openMenuByRightClick('Alpha');
     menuItem(label('floatingPanelDeleteFolder')).click();
 
-    expect(menuItemLabels()).toEqual([
-      label('floatingPanelDeleteFolder'),
-      label('floatingPanelCancel'),
-    ]);
-    expect(actions.onDeleteFolder).not.toHaveBeenCalled();
-
-    menuItem(label('floatingPanelCancel')).click();
     expect(openMenu()).toBeNull();
-    expect(calledSpies(actions)).toEqual([]);
-  });
-
-  it('asks the host to delete only the chosen folder; its subtree is the host’s to remove', () => {
-    const { view, actions } = mount(consumer);
-    view.openMenuByRightClick('Alpha');
-    menuItem(label('floatingPanelDeleteFolder')).click();
-    menuItem(label('floatingPanelDeleteFolder')).click();
-
-    expect(actions.onDeleteFolder.mock.calls).toEqual([['a']]);
-    expect(calledSpies(actions)).toEqual(['onDeleteFolder']);
-    expect(openMenu()).toBeNull();
-  });
-});
-
-describe('AI Studio: deleting through the host dialog', () => {
-  it('closes the menu, asks the host, and deletes only once the host confirms', () => {
-    const confirmFolderRemoval = vi.fn<(anchor: HTMLElement, onConfirm: () => void) => void>();
-    const { view, actions } = mount('aistudio', { confirmFolderRemoval });
-    view.openMenuByButton('Alpha');
-    menuItem(label('floatingPanelDeleteFolder')).click();
-
-    expect(openMenu()).toBeNull();
-    expect(confirmFolderRemoval).toHaveBeenCalledTimes(1);
-    const [anchor, onConfirm] = confirmFolderRemoval.mock.calls[0];
-    expect(anchor).toBeInstanceOf(HTMLElement);
-    expect(actions.onDeleteFolder).not.toHaveBeenCalled();
+    expect(calledSpies(actions)).toEqual(['confirmFolderRemoval']);
+    const [anchor, onConfirm] = actions.confirmFolderRemoval.mock.calls[0];
+    // The menu item is gone by now; a confirm anchored to it would close at once.
+    expect(anchor.isConnected).toBe(true);
+    expect(anchor.dataset.folderId).toBe('a');
 
     onConfirm();
+    // Only the chosen folder: its subtree is the host’s to remove.
     expect(actions.onDeleteFolder.mock.calls).toEqual([['a']]);
+  });
+
+  it('offers no Delete when the host has no confirm', () => {
+    const { view } = mount(consumer, { confirmFolderRemoval: undefined });
+    view.openMenuByRightClick('Alpha');
+    expect(menuItemLabels()).not.toContain(label('floatingPanelDeleteFolder'));
   });
 });
 

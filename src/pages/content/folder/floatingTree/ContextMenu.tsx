@@ -33,7 +33,6 @@ function MenuButton({ labelKey, extraClass, onClick }: MenuButtonProps) {
 }
 
 const DANGER = cls('menu-item--danger');
-const CONFIRM_BUTTON = cls('confirm-button');
 
 /**
  * Right-click menu for one folder (pin, subfolder, rename, color, delete), or
@@ -73,7 +72,8 @@ function ConversationMenu({ tree, menu }: { tree: TreeProps; menu: ConversationM
 type FolderMenuProps = { tree: TreeProps; menu: FolderMenuState; folder: Folder };
 
 function FolderMenu({ tree, menu: contextMenu, folder }: FolderMenuProps) {
-  const { data, actions, apply } = tree;
+  const { data, actions, apply, folderHeader } = tree;
+  const confirmRemoval = actions.confirmFolderRemoval;
   const ref = useRef<HTMLDivElement>(null);
   // Opens at its anchor, then floats inside the viewport until it closes.
   useLayoutEffect(
@@ -82,38 +82,6 @@ function FolderMenu({ tree, menu: contextMenu, folder }: FolderMenuProps) {
   );
 
   const position = { left: `${contextMenu.x}px`, top: `${contextMenu.y}px` };
-
-  if (contextMenu.confirmingDelete) {
-    return (
-      <div
-        ref={ref}
-        class={`${cls('context-menu')} ${cls('context-menu--confirming')}`}
-        style={position}
-        role="menu"
-      >
-        <div class={cls('confirm-inline')}>
-          <div class={cls('confirm-actions')}>
-            <MenuButton
-              labelKey="floatingPanelDeleteFolder"
-              extraClass={`${DANGER} ${CONFIRM_BUTTON}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                apply({ contextMenu: null }, () => actions.onDeleteFolder?.(folder.id));
-              }}
-            />
-            <MenuButton
-              labelKey="floatingPanelCancel"
-              extraClass={CONFIRM_BUTTON}
-              onClick={(e) => {
-                e.stopPropagation();
-                apply({ contextMenu: null });
-              }}
-            />
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   const dark = isDarkMode();
   const activeColor = folder.color ?? 'default';
@@ -193,24 +161,23 @@ function FolderMenu({ tree, menu: contextMenu, folder }: FolderMenuProps) {
           }}
         />
       ))}
-      <div class={cls('menu-divider')} />
-      <MenuButton
-        labelKey="floatingPanelDeleteFolder"
-        extraClass={DANGER}
-        onClick={(e) => {
-          e.stopPropagation();
-          const confirm = actions.confirmFolderRemoval;
-          if (!confirm) {
-            apply({ contextMenu: { ...contextMenu, confirmingDelete: true } });
-            return;
-          }
-          // The effect runs before the menu unmounts, so the item still has a rect.
-          const anchor = e.currentTarget as HTMLElement;
-          apply({ contextMenu: null }, () =>
-            confirm(anchor, () => actions.onDeleteFolder?.(folder.id)),
-          );
-        }}
-      />
+      {confirmRemoval && (
+        <>
+          <div class={cls('menu-divider')} />
+          <MenuButton
+            labelKey="floatingPanelDeleteFolder"
+            extraClass={DANGER}
+            onClick={(e) => {
+              e.stopPropagation();
+              // Not this item: a confirm closes once its anchor leaves the page, as the menu is about to.
+              const anchor = folderHeader(folder.id);
+              apply({ contextMenu: null }, () => {
+                if (anchor) confirmRemoval(anchor, () => actions.onDeleteFolder?.(folder.id));
+              });
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }
