@@ -4,6 +4,7 @@ import { DataBackupService } from '@/core/services/DataBackupService';
 import { AUTHORITY_FENCE_KEY } from '@/features/folder/owner/authorityFence';
 import { LegacyFolderFence } from '@/features/folder/owner/legacyFolderFence';
 import { FOLDER_PLATFORMS } from '@/features/folder/platforms';
+import { requestBudgetCopy } from '@/features/storage/budgetCopyMessage';
 import { createStorageBudget } from '@/features/storage/storageBudget';
 
 import { startBudgetCopies } from '../budgetCopies';
@@ -200,6 +201,21 @@ describe.each(cases)('$namespace background backup authority', ({ site, namespac
     expect(JSON.parse(stored[slot] as string).data).toEqual({ folders: ['Legacy'] });
   });
 
+  it('a published fence missing this site refuses both page and durable writes', async () => {
+    wire();
+    stored[AUTHORITY_FENCE_KEY] = { build: 'incomplete', sites: {} };
+    stored[key] = 'Existing folders';
+    stored[slot] = 'Existing recovery copy';
+    const fence = new LegacyFolderFence(key, () => {}, false);
+    fences.push(fence);
+    await expect(
+      fence.write(() => chrome.storage.local.set({ [key]: 'Legacy' })),
+    ).rejects.toThrow();
+    expect(await requestBudgetCopy(slot, 'Legacy')).toBe(false);
+    expect(stored[key]).toBe('Existing folders');
+    expect(stored[slot]).toBe('Existing recovery copy');
+  });
+
   it('keeps writing legacy folder copies when no authority fence exists', async () => {
     wire();
     expect(await backup(namespace, key).createEmergencyBackup({ folders: ['Legacy'] })).toBe(true);
@@ -216,4 +232,21 @@ it('generic backup copies do not depend on folder authority', async () => {
     await new DataBackupService('prompt-library').createEmergencyBackup({ prompts: ['Keep'] }),
   ).toBe(true);
   expect(JSON.parse(stored['gvBackup_prompt-library_emergency'] as string)).toBeDefined();
+});
+
+it('preserves underscored namespaces through every durable backup slot', async () => {
+  wire();
+  const namespace = 'prompt_library_primary';
+  const data = { prompts: ['Keep'] };
+  const service = new DataBackupService(namespace);
+  backups.push(service);
+  expect(await service.createPrimaryBackup(data)).toBe(true);
+  expect(await service.createEmergencyBackup(data)).toBe(true);
+  service.setupBeforeUnloadBackup(() => data);
+  window.dispatchEvent(new Event('beforeunload'));
+  await service.finishPendingWrites();
+  for (const slot of ['primary', 'emergency', 'beforeUnload']) {
+    expect(JSON.parse(stored[`gvBackup_${namespace}_${slot}`] as string).data).toEqual(data);
+  }
+  expect(JSON.parse(stored[`gvBackup_${namespace}_metadata`] as string).primary.itemCount).toBe(1);
 });

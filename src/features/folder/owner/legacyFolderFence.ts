@@ -3,11 +3,10 @@ import browser from 'webextension-polyfill';
 import { createToaster } from '@/core/ui/toast/toaster';
 import { getTranslationSync } from '@/utils/i18n';
 
-import { AUTHORITY_FENCE_KEY } from './authorityFence';
+import { authorityForSite, readAuthorityFence } from './authorityFence';
 import { siteOfFolderKey } from './folderOwnerPolicy';
 
 type FenceState = 'legacy' | 'unreadable' | 'reload_required';
-const AUTHORITY_READ_TIMEOUT_MS = 1000;
 const RETRY_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000] as const;
 
 export class LegacyFolderWriteRefusedError extends Error {
@@ -50,32 +49,17 @@ export class LegacyFolderFence {
     if (this.destroyed || this.reloadRequired) return false;
     const generation = this.generation;
     const sequence = ++this.readSequence;
-    let deadline: ReturnType<typeof setTimeout> | undefined;
     try {
-      // A hung extension call must not leave editing enabled or block a save forever.
-      const stored = await Promise.race([
-        browser.storage.local.get(AUTHORITY_FENCE_KEY),
-        new Promise<never>((_, reject) => {
-          deadline = setTimeout(
-            () => reject(new Error('Folder authority read timed out')),
-            AUTHORITY_READ_TIMEOUT_MS,
-          );
-        }),
-      ]);
+      const authority = await readAuthorityFence(browser.storage.local, this.site);
       if (generation !== this.generation || this.destroyed) return false;
       if (sequence < this.settledRead) return this.canWrite;
       this.settledRead = sequence;
-      const sites = (
-        stored?.[AUTHORITY_FENCE_KEY] as { sites?: Record<string, unknown> } | undefined
-      )?.sites;
-      this.setState(this.site && sites?.[this.site] === 'owner' ? 'reload_required' : 'legacy');
+      this.setState(authority === 'owner' ? 'reload_required' : 'legacy');
     } catch {
       if (generation === this.generation && sequence >= this.settledRead && !this.destroyed) {
         this.settledRead = sequence;
         this.setState('unreadable');
       }
-    } finally {
-      clearTimeout(deadline);
     }
     return generation === this.generation && this.canWrite;
   }
@@ -88,8 +72,11 @@ export class LegacyFolderFence {
 
   observe(value: unknown): void {
     this.generation += 1;
-    const sites = (value as { sites?: Record<string, unknown> } | null)?.sites;
-    this.setState(this.site && sites?.[this.site] === 'owner' ? 'reload_required' : 'legacy');
+    try {
+      this.setState(authorityForSite(value, this.site) === 'owner' ? 'reload_required' : 'legacy');
+    } catch {
+      this.setState('unreadable');
+    }
   }
 
   private setState(state: FenceState): void {

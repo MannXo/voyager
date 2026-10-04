@@ -67,6 +67,7 @@ describe('folder runtime message lifecycle', () => {
   beforeEach(() => {
     mockBrowser.runtime.onMessage.addListener.mockClear();
     mockBrowser.storage.onChanged.addListener.mockClear();
+    mockBrowser.storage.local.get.mockResolvedValue({});
     (chrome.runtime.onMessage.addListener as ReturnType<typeof vi.fn>).mockClear();
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({});
     (chrome.storage.local.set as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);

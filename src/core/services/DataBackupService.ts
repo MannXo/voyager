@@ -21,6 +21,8 @@ import browser from 'webextension-polyfill';
 import { isSafari } from '@/core/utils/browser';
 import { requestBudgetCopy } from '@/features/storage/budgetCopyMessage';
 
+import { dataBackupKey } from './dataBackupKeys';
+
 /** Recovery waits this long for backup writes in flight, then reads what landed. */
 const PENDING_WRITE_WAIT_MS = 2000;
 
@@ -76,10 +78,10 @@ export class DataBackupService<T = unknown> {
     private readonly canWrite: () => boolean = () => true,
     private readonly writeGate?: <R>(operation: () => R | Promise<R>) => Promise<R>,
   ) {
-    this.primaryKey = `gvBackup_${namespace}_primary`;
-    this.emergencyKey = `gvBackup_${namespace}_emergency`;
-    this.beforeUnloadKey = `gvBackup_${namespace}_beforeUnload`;
-    this.metadataKey = `gvBackup_${namespace}_metadata`;
+    this.primaryKey = dataBackupKey(namespace, 'primary');
+    this.emergencyKey = dataBackupKey(namespace, 'emergency');
+    this.beforeUnloadKey = dataBackupKey(namespace, 'beforeUnload');
+    this.metadataKey = dataBackupKey(namespace, 'metadata');
   }
 
   /** Read durable slots before recovery, even when they cannot fit in localStorage. */

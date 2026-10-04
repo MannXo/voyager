@@ -5,10 +5,9 @@
  */
 import browser from 'webextension-polyfill';
 
-export const WRITE_COPY_MESSAGE = 'gv.storageBudget.writeCopy';
+import { parseDataBackupKey } from '@/core/services/dataBackupKeys';
 
-/** The slots `DataBackupService` writes, and nothing else. */
-const BACKUP_COPY_KEY = /^gvBackup_.+_(primary|emergency|beforeUnload|metadata)$/;
+export const WRITE_COPY_MESSAGE = 'gv.storageBudget.writeCopy';
 
 export interface WriteCopyMessage {
   type: typeof WRITE_COPY_MESSAGE;
@@ -24,7 +23,7 @@ export function isWriteCopyMessage(message: unknown): message is WriteCopyMessag
   return (
     type === WRITE_COPY_MESSAGE &&
     typeof key === 'string' &&
-    BACKUP_COPY_KEY.test(key) &&
+    parseDataBackupKey(key) !== null &&
     typeof value === 'string'
   );
 }

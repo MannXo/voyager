@@ -120,6 +120,7 @@ function storedConversation(conversationId: string, title: string): StoredConver
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(browser.storage.local.get).mockResolvedValue({});
 });
 
 afterEach(() => {
