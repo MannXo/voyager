@@ -20,6 +20,7 @@ import {
   type SavedLibraryItem,
   buildSavedLibraryItemUrl,
   filterSavedLibraryItems,
+  isSavedLibraryItemConversationUrl,
   toSavedLibraryItems,
 } from '@/features/savedLibrary/model';
 import { cn } from '@/lib/utils';
@@ -32,24 +33,22 @@ interface StarredHistoryProps {
 
 export function shouldOpenStarredMessageInCurrentTab(
   currentUrl: string | undefined,
-  targetUrl: string,
+  item: SavedLibraryItem,
 ): boolean {
   if (!currentUrl) return false;
   try {
-    const currentHost = new URL(currentUrl).hostname;
-    const targetHost = new URL(targetUrl).hostname;
+    const target = new URL(item.conversationUrl);
     return (
-      currentHost === targetHost &&
-      (targetHost === 'gemini.google.com' ||
-        targetHost === 'aistudio.google.com' ||
-        targetHost === 'claude.ai')
+      new URL(currentUrl).origin === target.origin &&
+      isSavedLibraryItemConversationUrl(item, target)
     );
   } catch {
     return false;
   }
 }
 
-async function loadHighlights(scope: HighlightAccountScope): Promise<HighlightRecordV1[]> {
+async function loadHighlights(scope: HighlightAccountScope | null): Promise<HighlightRecordV1[]> {
+  if (!scope) return [];
   const response = (await chrome.runtime.sendMessage({
     type: 'gv.highlight.list',
     payload: { scope, includeDeleted: false },
@@ -81,45 +80,46 @@ export function StarredHistory({ onClose, sourceTabId }: StarredHistoryProps) {
   } | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
-  const resolveSourceHighlightScope = useCallback(async (): Promise<HighlightAccountScope> => {
-    const tab =
-      typeof sourceTabId === 'number'
-        ? await chrome.tabs.get(sourceTabId).catch(() => undefined)
-        : (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
-    const pageUrl = tab?.url ?? '';
-    const platform = detectAccountPlatformFromUrl(pageUrl);
-    // Sites without their own highlight bucket must not open Gemini's for the same account.
-    if (!platform) throw new Error('Highlight account scope is unavailable');
-    let routeUserId = extractRouteUserIdFromUrl(pageUrl);
-    let email: string | null = null;
-    if (tab?.id) {
-      try {
-        const response = (await chrome.tabs.sendMessage(tab.id, {
-          type: 'gv.account.getContext',
-        })) as
-          | { ok?: boolean; context?: { routeUserId?: string | null; email?: string | null } }
-          | undefined;
-        if (response?.ok && response.context) {
-          routeUserId = response.context.routeUserId ?? routeUserId;
-          email = response.context.email ?? null;
+  const resolveSourceHighlightScope =
+    useCallback(async (): Promise<HighlightAccountScope | null> => {
+      const tab =
+        typeof sourceTabId === 'number'
+          ? await chrome.tabs.get(sourceTabId).catch(() => undefined)
+          : (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+      const pageUrl = tab?.url ?? '';
+      const platform = detectAccountPlatformFromUrl(pageUrl);
+      // Sites without their own highlight bucket must not open Gemini's for the same account.
+      if (!platform) return null;
+      let routeUserId = extractRouteUserIdFromUrl(pageUrl);
+      let email: string | null = null;
+      if (tab?.id) {
+        try {
+          const response = (await chrome.tabs.sendMessage(tab.id, {
+            type: 'gv.account.getContext',
+          })) as
+            | { ok?: boolean; context?: { routeUserId?: string | null; email?: string | null } }
+            | undefined;
+          if (response?.ok && response.context) {
+            routeUserId = response.context.routeUserId ?? routeUserId;
+            email = response.context.email ?? null;
+          }
+        } catch {
+          // A /u/<index> route remains a usable explicit scope without DOM context.
         }
-      } catch {
-        // A /u/<index> route remains a usable explicit scope without DOM context.
       }
-    }
-    if (!routeUserId && !email) throw new Error('Highlight account scope is unavailable');
-    const resolved = await accountIsolationService.resolveAccountScope({
-      pageUrl,
-      routeUserId,
-      email,
-    });
-    return {
-      platform,
-      accountKey: resolved.accountKey,
-      accountId: resolved.accountId,
-      routeUserId: resolved.routeUserId,
-    };
-  }, [sourceTabId]);
+      if (!routeUserId && !email) throw new Error('Highlight account scope is unavailable');
+      const resolved = await accountIsolationService.resolveAccountScope({
+        pageUrl,
+        routeUserId,
+        email,
+      });
+      return {
+        platform,
+        accountKey: resolved.accountKey,
+        accountId: resolved.accountId,
+        routeUserId: resolved.routeUserId,
+      };
+    }, [sourceTabId]);
 
   const loadSavedItems = useCallback(async () => {
     setLoading(true);
@@ -160,7 +160,7 @@ export function StarredHistory({ onClose, sourceTabId }: StarredHistoryProps) {
           : (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
       const targetUrl = buildSavedLibraryItemUrl(item);
 
-      if (shouldOpenStarredMessageInCurrentTab(currentTab?.url, targetUrl) && currentTab?.id) {
+      if (shouldOpenStarredMessageInCurrentTab(currentTab?.url, item) && currentTab?.id) {
         await chrome.tabs.update(currentTab.id, { url: targetUrl });
         window.close();
         return;
@@ -176,9 +176,11 @@ export function StarredHistory({ onClose, sourceTabId }: StarredHistoryProps) {
     setTransferring(true);
     setTransferNotice(null);
     try {
+      const scope = await resolveSourceHighlightScope();
+      if (!scope) throw new Error('Highlight account scope is unavailable');
       const response = (await chrome.runtime.sendMessage({
         type: 'gv.highlight.export',
-        payload: { format, scope: await resolveSourceHighlightScope() },
+        payload: { format, scope },
       })) as { ok?: boolean; data?: string; filename?: string; error?: string } | undefined;
       if (!response?.ok || typeof response.data !== 'string') {
         throw new Error(response?.error || 'Highlight export failed');
@@ -200,9 +202,11 @@ export function StarredHistory({ onClose, sourceTabId }: StarredHistoryProps) {
     setTransferring(true);
     setTransferNotice(null);
     try {
+      const scope = await resolveSourceHighlightScope();
+      if (!scope) throw new Error('Highlight account scope is unavailable');
       const response = (await chrome.runtime.sendMessage({
         type: 'gv.highlight.import',
-        payload: { data: await file.text(), scope: await resolveSourceHighlightScope() },
+        payload: { data: await file.text(), scope },
       })) as
         | {
             ok?: boolean;

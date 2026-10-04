@@ -72,3 +72,35 @@ describe('saved library model', () => {
     ).toThrow(TypeError);
   });
 });
+
+it.each([
+  ['chatgpt:conv:x', 'https://chatgpt.com/c/x'],
+  ['chatgpt:conv:x', 'https://chat.openai.com/c/x'],
+  ['deepseek:conv:x', 'https://chat.deepseek.com/a/chat/s/x'],
+  ['claude:conv:x', 'https://claude.ai/chat/x'],
+  ['gemini:conv:x', 'https://business.gemini.google/u/1/app/x'],
+  ['gemini:hash', 'https://gemini.google.com/app/x'],
+  ['legacy-id', 'https://gemini.google.com/app/x'],
+  ['legacy-id', 'https://aistudio.google.cn/prompts/x'],
+  ['aistudio:conv:x', 'https://aistudio.google.com/prompts/x'],
+])('a saved star from %s opens its own timeline site', (conversationId, conversationUrl) => {
+  const [item] = toSavedLibraryItems([{ ...starred, conversationId, conversationUrl }], []);
+  expect(buildSavedLibraryItemUrl(item)).toBe(`${conversationUrl}#gv-turn-turn-star`);
+});
+
+it.each([
+  ['chatgpt:conv:x', 'https://evil.example/c/x'],
+  ['chatgpt:conv:x', 'https://claude.ai/chat/x'],
+  ['claude:conv:x', 'https://chatgpt.com/c/x'],
+  ['deepseek:conv:x', 'https://gemini.google.com/app/x'],
+  ['gemini:conv:x', 'https://aistudio.google.com/prompts/x'],
+  ['chatgpt:conv:x', 'javascript:alert(1)'],
+  ['chatgpt:conv:x', 'http://chatgpt.com/c/x'],
+  ['legacy-id', 'https://chatgpt.com/c/x'],
+])(
+  'a saved star with a mismatched or unsafe URL cannot open (%s, %s)',
+  (conversationId, conversationUrl) => {
+    const [item] = toSavedLibraryItems([{ ...starred, conversationId, conversationUrl }], []);
+    expect(() => buildSavedLibraryItemUrl(item)).toThrow(TypeError);
+  },
+);
