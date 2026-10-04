@@ -46,7 +46,7 @@ const PROMPT_INPUT_SELECTOR = '[contenteditable="true"], textarea';
 const EDIT_CONTAINER_SELECTOR = 'chat-message, .query-content.edit-mode, .edit-container';
 const MAIN_COMPOSER_SELECTOR =
   '.text-input-field, .input-area, ms-prompt-input-wrapper, ms-prompt-input, ms-chat-turn-input';
-const VOYAGER_UI_SELECTOR = '.gv-ph-panel, .gv-pm-panel, .gv-pm-confirm, [role="dialog"]';
+const VOYAGER_UI_SELECTOR = '.gv-ph-panel, .gv-pm-panel, [role="dialog"]';
 
 let isEnabled = false;
 let ctrlEnterSendEnabled = false;
