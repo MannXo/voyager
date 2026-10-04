@@ -268,6 +268,31 @@ describe('ChatGPT folder section: multi-select', () => {
     expect(toolbar(section)).toBeNull();
   });
 
+  it('ends on Escape in the section search, but not when a folder name field takes it', async () => {
+    const section = await activate();
+    await selectAlphaAndBeta(section);
+    const escape = (field: HTMLInputElement): KeyboardEvent => {
+      field.focus();
+      const event = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      });
+      field.dispatchEvent(event);
+      return event;
+    };
+
+    section.root.querySelector<HTMLButtonElement>('[class*="icon-button--create"]')!.click();
+    escape(section.view.nameInput()!);
+    expect(section.view.nameInput()).toBeNull();
+    expect(selectedTitles(section)).toEqual(['Alpha', 'Beta']);
+
+    escape(section.root.querySelector<HTMLInputElement>('input[type="search"]')!);
+    expect(selectedTitles(section)).toEqual([]);
+    expect(toolbar(section)).toBeNull();
+  });
+
   it('ends when ChatGPT remounts the sidebar the section sits in', async () => {
     const section = await activate();
     await selectAlphaAndBeta(section);

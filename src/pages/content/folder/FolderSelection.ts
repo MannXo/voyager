@@ -92,7 +92,7 @@ export class FolderSelection {
   /** The folder chat whose long press entered multi-select; its own release click is swallowed. */
   private longPressRow: { conversationId: string; folderId: string } | null = null;
   private outsideClickHandler: ((e: MouseEvent) => void) | null = null;
-  private escapeHandler: ((e: KeyboardEvent) => void) | null = null;
+  private releaseEscape: (() => void) | null = null;
   private batchDeleteController: AbortController | null = null;
   private readonly timers = new Set<number>();
   private readonly dragImages = new Set<HTMLElement>();
@@ -396,20 +396,24 @@ export class FolderSelection {
 
   private setupEscapeHandler(): void {
     this.removeEscapeHandler();
-    const handler = (e: KeyboardEvent) => {
+    const handler = (e: Event) => {
       // A field or menu that took the Escape for itself keeps the selection.
-      if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
+      if (!(e instanceof KeyboardEvent) || e.key !== 'Escape') return;
+      if (e.defaultPrevented || e.isComposing) return;
       this.exitMultiSelectMode();
     };
-    this.escapeHandler = handler;
-    document.addEventListener('keydown', handler);
+    // A shadow-root panel keeps its fields' keys from reaching the document.
+    const shadow = this.options.runtime.panel?.shadowRoot;
+    const targets: EventTarget[] = shadow ? [document, shadow] : [document];
+    for (const target of targets) target.addEventListener('keydown', handler);
+    this.releaseEscape = () => {
+      for (const target of targets) target.removeEventListener('keydown', handler);
+    };
   }
 
   private removeEscapeHandler(): void {
-    if (this.escapeHandler) {
-      document.removeEventListener('keydown', this.escapeHandler);
-      this.escapeHandler = null;
-    }
+    this.releaseEscape?.();
+    this.releaseEscape = null;
   }
 
   private cleanupSelectionArtifacts(): void {
