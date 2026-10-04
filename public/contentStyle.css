@@ -2505,67 +2505,6 @@ html[data-gv-scheme='dark'] .gv-pm-support:hover {
   color: #e5e7eb;
 }
 
-/* Notice message - floating toast style */
-.gv-pm-notice {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.4;
-  white-space: nowrap;
-  pointer-events: none;
-  z-index: 100;
-  opacity: 0;
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.gv-pm-notice:not(:empty) {
-  opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
-}
-
-.gv-pm-notice:empty {
-  transform: translate(-50%, -50%) scale(0.9);
-}
-
-.gv-pm-notice.ok {
-  background: rgba(34, 197, 94, 0.95);
-  color: #ffffff;
-}
-
-.gv-pm-notice.err {
-  background: rgba(239, 68, 68, 0.95);
-  color: #ffffff;
-}
-
-html[data-gv-scheme='light'] .gv-pm-notice.ok {
-  background: rgba(34, 197, 94, 0.95);
-  color: #ffffff;
-}
-
-html[data-gv-scheme='light'] .gv-pm-notice.err {
-  background: rgba(239, 68, 68, 0.95);
-  color: #ffffff;
-}
-
-html[data-gv-scheme='dark'] .gv-pm-notice.ok {
-  background: rgba(34, 197, 94, 0.95);
-  color: #ffffff;
-}
-
-html[data-gv-scheme='dark'] .gv-pm-notice.err {
-  background: rgba(239, 68, 68, 0.95);
-  color: #ffffff;
-}
-
-/* Inline confirm popover for delete (floating and responsive) */
 /* Pin toggle. It trails the action cluster; a pinned row keeps it visible at
  * rest, because once the other icons fade out the row still has to say why it
  * is sitting above the divider. */
@@ -2597,75 +2536,6 @@ html[data-gv-scheme='dark'] .gv-pm-notice.err {
 
 html[data-gv-scheme='light'] .gv-pm-pin-divider {
   background: rgba(0, 0, 0, 0.1);
-}
-
-.gv-pm-confirm {
-  position: fixed;
-  background: rgba(2, 6, 23, 0.96);
-  color: #e5e7eb;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  padding: 6px 8px;
-  display: inline-flex;
-  gap: 8px;
-  align-items: center;
-  z-index: 2147483646;
-  max-width: 280px;
-  box-shadow: 0 8px 24px rgba(2, 6, 23, 0.4);
-}
-
-.gv-pm-confirm span {
-  font-size: 12px;
-  opacity: 0.95;
-  line-height: 1.3;
-  white-space: normal;
-  flex: 1;
-}
-
-.gv-pm-confirm button {
-  padding: 2px 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(31, 41, 55, 0.6);
-  color: #e5e7eb;
-  white-space: nowrap;
-  font-size: 12px;
-}
-
-.gv-pm-confirm .gv-pm-confirm-yes {
-  background: rgba(239, 68, 68, 0.18);
-  border-color: rgba(239, 68, 68, 0.38);
-  color: #fecaca;
-}
-
-.gv-pm-confirm button:hover {
-  filter: brightness(1.05);
-}
-
-.gv-pm-confirm::after {
-  content: '';
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  background: rgba(2, 6, 23, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  transform: rotate(45deg);
-}
-
-.gv-pm-confirm[data-side='left']::after {
-  right: -6px;
-  top: 50%;
-  transform: translateY(-50%) rotate(45deg);
-  border-left: none;
-  border-bottom: none;
-}
-
-.gv-pm-confirm[data-side='right']::after {
-  left: -6px;
-  top: 50%;
-  transform: translateY(-50%) rotate(45deg);
-  border-right: none;
-  border-top: none;
 }
 
 .gv-pm-drag {
@@ -3006,16 +2876,6 @@ html[data-gv-scheme='light'] .gv-pm-pin-divider {
   color: #e5e7eb;
 }
 
-.gv-pm-panel[data-gv-theme='dark'] .gv-pm-notice.ok {
-  background: rgba(34, 197, 94, 0.95);
-  color: #ffffff;
-}
-
-.gv-pm-panel[data-gv-theme='dark'] .gv-pm-notice.err {
-  background: rgba(239, 68, 68, 0.95);
-  color: #ffffff;
-}
-
 /* ========================================
    PM Theme Override: Light
    (user forces light on any page)
@@ -3246,16 +3106,6 @@ html[data-gv-scheme='light'] .gv-pm-pin-divider {
 .gv-pm-panel[data-gv-theme='light'] .gv-pm-support:hover {
   background: rgba(0, 0, 0, 0.04);
   color: #1f2937;
-}
-
-.gv-pm-panel[data-gv-theme='light'] .gv-pm-notice.ok {
-  background: rgba(34, 197, 94, 0.95);
-  color: #ffffff;
-}
-
-.gv-pm-panel[data-gv-theme='light'] .gv-pm-notice.err {
-  background: rgba(239, 68, 68, 0.95);
-  color: #ffffff;
 }
 
 /* ========================================
@@ -10138,15 +9988,6 @@ body.gv-hide-input-halo .nl-canvas {
   box-shadow:
     0 10px 32px rgb(0 0 0 / 0.22),
     0 4px 12px rgb(0 0 0 / 0.16) !important;
-}
-
-/* Prompt Manager copy/insert toast: follows the host platform too. */
-:root.gv-platform-themed .gv-pm-notice.ok {
-  background: var(--gv-pm-brand, var(--gv-pm-brand-default)) !important;
-  color: var(--gv-pm-brand-fg, var(--gv-pm-brand-fg-default)) !important;
-  box-shadow:
-    0 4px 16px rgb(0 0 0 / 0.18),
-    0 2px 8px var(--gv-pm-brand-soft) !important;
 }
 
 /* Ghost / soft accent surfaces (footer Starred-Library button and compact-view grid toggle). */

@@ -5,6 +5,8 @@ import {
   type PromptLibraryOp,
   createPromptLibraryOwner,
 } from '@/features/prompt/library/promptLibraryOwner';
+import { confirmDriver } from '@/tests/confirmDriver';
+import { toastDriver } from '@/tests/toastDriver';
 
 import { startPromptManager } from '../index';
 import { resolvePromptSiteAdapter } from '../resolvePromptSiteAdapter';
@@ -17,9 +19,6 @@ const prompts = [
 ];
 
 let manager: Awaited<ReturnType<typeof startPromptManager>> | undefined;
-/** Every text Prompt Manager's notice showed, in order. */
-let notices: string[];
-let observer: MutationObserver | undefined;
 
 function storageGet(values: Record<string, unknown>): typeof chrome.storage.sync.get {
   const get = (
@@ -102,11 +101,6 @@ function useLibrary(
 async function openPanel(): Promise<void> {
   manager = await startPromptManager(resolvePromptSiteAdapter(location.href));
   document.querySelector<HTMLButtonElement>('#gv-pm-trigger')!.click();
-  const notice = document.querySelector('.gv-pm-notice')!;
-  observer = new MutationObserver(() => {
-    if (notice.textContent) notices.push(notice.textContent);
-  });
-  observer.observe(notice, { childList: true, characterData: true, subtree: true });
 }
 
 /** The prompts listed, by name. */
@@ -117,7 +111,7 @@ const rowIds = () =>
 
 async function deleteFirstPrompt(): Promise<void> {
   document.querySelector<HTMLButtonElement>('.gv-pm-item .gv-pm-del')!.click();
-  document.querySelector<HTMLButtonElement>('.gv-pm-confirm .gv-pm-confirm-yes')!.click();
+  confirmDriver.answer('Delete');
   await vi.advanceTimersByTimeAsync(1);
 }
 
@@ -126,7 +120,6 @@ beforeEach(() => {
   vi.useFakeTimers();
   document.body.innerHTML = '';
   localStorage.clear();
-  notices = [];
   vi.mocked(chrome.storage.sync.get).mockImplementation(
     storageGet({ [StorageKeys.LANGUAGE]: 'en' }),
   );
@@ -138,7 +131,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  observer?.disconnect();
   manager?.destroy();
   manager = undefined;
   vi.clearAllTimers();
@@ -156,11 +148,11 @@ describe('Prompt Manager write notices', () => {
 
     await deleteFirstPrompt();
     expect(rowIds()).toEqual(['Beta']);
-    expect(notices).toEqual([]);
+    expect(toastDriver.messages()).toEqual([]);
 
     reply();
     await vi.advanceTimersByTimeAsync(1);
-    expect(notices).toEqual(['Deleted']);
+    expect(toastDriver.messages()).toEqual(['Deleted']);
     expect(rowIds()).toEqual(['Beta']);
   });
 
@@ -173,7 +165,7 @@ describe('Prompt Manager write notices', () => {
     await deleteFirstPrompt();
 
     expect(rowIds()).toEqual(['Alpha', 'Beta']);
-    expect(notices).toEqual(["Couldn't save your change. It was undone."]);
+    expect(toastDriver.messages()).toEqual(["Couldn't save your change. It was undone."]);
   });
 
   it('keeps the form open with what was typed when an add fails', async () => {
@@ -188,7 +180,7 @@ describe('Prompt Manager write notices', () => {
     await vi.advanceTimersByTimeAsync(1);
 
     expect(rowIds()).toEqual(['Alpha', 'Beta']);
-    expect(notices).toEqual(["Couldn't save your change. It was undone."]);
+    expect(toastDriver.messages()).toEqual(["Couldn't save your change. It was undone."]);
     expect(form.classList.contains('gv-hidden')).toBe(false);
     expect(form.querySelector<HTMLTextAreaElement>('.gv-pm-input-text')!.value).toBe('Gamma body');
   });
@@ -236,6 +228,7 @@ describe('Prompt Manager write notices', () => {
     await deleteFirstPrompt();
     write([gamma, prompts[1]]);
     expect(rowIds()).toEqual(['Gamma', 'Beta']);
+    expect(toastDriver.messages()).toEqual(['✓ Synced successfully']);
     // Nothing is read back: a read failing now cannot blank the list.
     vi.mocked(chrome.storage.local.get).mockRejectedValue(
       new Error('Extension context invalidated.'),
@@ -244,7 +237,7 @@ describe('Prompt Manager write notices', () => {
     await vi.advanceTimersByTimeAsync(1);
 
     expect(rowIds()).toEqual(['Gamma', 'Beta']);
-    expect(notices).toEqual(['✓ Synced successfully', 'Deleted']);
+    expect(toastDriver.messages()).toEqual(['Deleted']);
   });
 
   it('keeps a change another tab made while the library was first being read', async () => {
@@ -281,12 +274,12 @@ describe('Prompt Manager write notices', () => {
     await vi.advanceTimersByTimeAsync(15_000);
     const unavailable =
       'Prompts are not responding. Your last change is still being saved; try again shortly.';
-    expect(notices).toEqual([unavailable]);
+    expect(toastDriver.messages()).toEqual([unavailable]);
 
     await deleteFirstPrompt();
     expect(rowIds()).toEqual(['Beta']);
     expect(ops.map((op) => op.kind)).toEqual(['delete']);
-    expect(notices).toEqual([unavailable, unavailable]);
+    expect(toastDriver.messages()).toEqual([unavailable]);
 
     document.querySelector<HTMLButtonElement>('.gv-pm-add')!.click();
     const form = document.querySelector<HTMLFormElement>('.gv-pm-add-form')!;
@@ -318,7 +311,9 @@ describe('Prompt Manager write notices', () => {
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await vi.advanceTimersByTimeAsync(1);
     expect(ops).toEqual([]);
-    expect(notices).toEqual(["Couldn't load your prompts. Trying again; retry in a moment."]);
+    expect(toastDriver.messages()).toEqual([
+      "Couldn't load your prompts. Trying again; retry in a moment.",
+    ]);
     expect(form.querySelector<HTMLTextAreaElement>('.gv-pm-input-text')!.value).toBe('Alpha body');
 
     // Opening the panel again reads it again.
@@ -345,7 +340,7 @@ describe('Prompt Manager write notices', () => {
     reply();
     await vi.advanceTimersByTimeAsync(1);
 
-    expect(notices).toEqual([]);
+    expect(toastDriver.messages()).toEqual([]);
     expect(rendered).not.toHaveBeenCalled();
   });
 });

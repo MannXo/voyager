@@ -240,17 +240,6 @@ describe('applyBrandTheme', () => {
 });
 
 describe('platform theme CSS', () => {
-  it('themes the Prompt Manager copy notice on third-party platforms', () => {
-    const css = readFileSync(resolve(process.cwd(), 'public/contentStyle.css'), 'utf8');
-    const noticeBlock =
-      css.match(/:root\.gv-platform-themed \.gv-pm-notice\.ok\s*{([\s\S]*?)}/)?.[1] ?? '';
-
-    // Effective accent = inline override OR theme-aware default fallback.
-    expect(noticeBlock).toContain('var(--gv-pm-brand, var(--gv-pm-brand-default))');
-    expect(noticeBlock).toContain('var(--gv-pm-brand-fg, var(--gv-pm-brand-fg-default))');
-    expect(noticeBlock).toContain('var(--gv-pm-brand-soft)');
-  });
-
   it('paints the FAB with the brand and lets nothing repaint it afterwards', () => {
     const css = readFileSync(resolve(process.cwd(), 'public/contentStyle.css'), 'utf8');
     const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body], order) => ({

@@ -33,7 +33,8 @@
   --gv-z-top: 2147483647;
 }
 
-:host([data-gv-scheme='dark']) {
+:host([data-gv-scheme='dark']:not([data-gv-ui-scheme='light'])),
+:host([data-gv-ui-scheme='dark']) {
   --gv-ui-surface: oklch(0.29 0.006 285);
   --gv-ui-surface-hover: oklch(0.33 0.006 285);
   --gv-ui-text: oklch(0.92 0.004 250);

@@ -22,6 +22,8 @@ import { createLockOpenIcon } from '@/core/icons/promptManagerIcons';
 import { logger } from '@/core/services/LoggerService';
 import { promptStorageService } from '@/core/services/StorageService';
 import { StorageKeys } from '@/core/types/common';
+import { isVoyagerLayerEvent } from '@/core/ui/layer';
+import { createToaster } from '@/core/ui/toast/toaster';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
 import { migrateFromLocalStorage } from '@/core/utils/storageMigration';
 import type { PromptSiteAdapter } from '@/features/prompt/PromptSiteAdapter';
@@ -371,8 +373,7 @@ export async function startPromptManager(
     footer.appendChild(saved.footerActions);
     footer.appendChild(secondaryActions);
 
-    // Notice as floating toast (not in footer layout)
-    const notice = createEl('div', 'gv-pm-notice');
+    const toaster = createToaster();
 
     // State
     let libraryShown = false; // Library changes render once the panel is built.
@@ -407,7 +408,6 @@ export async function startPromptManager(
     panel.appendChild(form.element);
     panel.appendChild(list);
     panel.appendChild(footer);
-    panel.appendChild(notice);
 
     await library.load();
     let open = false;
@@ -442,14 +442,16 @@ export async function startPromptManager(
     let starredSearchValue = '';
 
     function setNotice(text: string, kind: 'ok' | 'err' = 'ok') {
-      notice.textContent = text || '';
-      notice.classList.toggle('ok', kind === 'ok');
-      notice.classList.toggle('err', kind === 'err');
-      if (text) {
-        window.setTimeout(() => {
-          if (notice.textContent === text) notice.textContent = '';
-        }, 1800);
+      if (!text) {
+        toaster.dismiss('notice');
+        return;
       }
+      toaster.show({
+        message: text,
+        tone: kind === 'ok' ? 'success' : 'error',
+        durationMs: 1800,
+        channel: 'notice',
+      });
     }
 
     const viewMode = createViewModeToggle({
@@ -479,6 +481,7 @@ export async function startPromptManager(
       primaryActions.classList.toggle('gv-hidden', isStarredView);
       secondaryActions.classList.toggle('gv-hidden', isStarredView);
       if (isStarredView) {
+        listView.closeTransient();
         form.hide();
         preview.hide();
       }
@@ -544,8 +547,7 @@ export async function startPromptManager(
       panel.classList.add('gv-hidden');
       saved.closeExportMenu();
       preview.hide();
-      // The fill surface is anchored to a row that is about to be hidden.
-      listView.closeTemplateFill();
+      listView.closeTransient();
     }
 
     function refreshUITexts(): void {
@@ -594,13 +596,12 @@ export async function startPromptManager(
 
     // Close when clicking outside of the manager (panel/trigger/confirm are exceptions)
     const onWindowPointerDown = (ev: PointerEvent) => {
-      if (!open) return;
+      if (!open || isVoyagerLayerEvent(ev)) return;
       const target = ev.target as HTMLElement | null;
       if (!target) return;
       saved.handlePointerDown(target);
       if (target.closest(`#${ID.panel}`)) return;
       if (target.closest(`#${ID.trigger}`)) return;
-      if (target.closest('.gv-pm-confirm')) return;
       // The hover-preview tooltip lives on document.body so users can
       // interact with it (scroll long prompts, select text). Without this
       // exclusion, clicking its scrollbar would be treated as an outside
@@ -653,8 +654,7 @@ export async function startPromptManager(
         pmLogger.info('Hide prompt manager setting changed', { shouldHide });
         if (trigger.setHiddenByUser(shouldHide)) {
           // The trigger is gone, so the panel goes with it
-          panel.classList.add('gv-hidden');
-          open = false;
+          closePanel();
         }
       }
       if (area === 'sync' && changes[StorageKeys.PROMPT_INSERT_ON_CLICK]) {
@@ -759,6 +759,7 @@ export async function startPromptManager(
           window.removeEventListener('keydown', onWindowKeyDown);
           placement.destroy();
           listView.destroy();
+          toaster.destroy();
 
           chrome.storage?.onChanged?.removeListener(storageChangeHandler);
           library.dispose();
@@ -770,7 +771,6 @@ export async function startPromptManager(
 
           trigger.destroy();
           panel.remove();
-          document.querySelectorAll('.gv-pm-confirm').forEach((el) => el.remove());
         } catch (e) {
           console.error('[PromptManager] Destroy error:', e);
         }

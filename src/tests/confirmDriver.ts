@@ -25,6 +25,15 @@ export const confirmDriver = {
     const root = dialog()?.getRootNode();
     return root instanceof ShadowRoot ? (root.activeElement?.textContent ?? null) : null;
   },
+  /** Presses within the card across its shadow boundary. */
+  pressInside(): void {
+    dialog()?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true }));
+  },
+  /** The effective scheme exposed by the layer's host. */
+  scheme(): string | null {
+    const host = (dialog()?.getRootNode() as ShadowRoot | undefined)?.host;
+    return host?.getAttribute('data-gv-ui-scheme') ?? host?.getAttribute('data-gv-scheme') ?? null;
+  },
   answer(label: string): void {
     const button = Array.from(dialog()?.querySelectorAll('button') ?? []).find(
       (candidate) => candidate.textContent === label,

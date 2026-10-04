@@ -20,6 +20,8 @@ export type ConfirmRequest<C extends string> = {
   readonly anchor: HTMLElement;
   /** Default `below`; it flips when the viewport has no room. */
   readonly side?: PopoverSide;
+  /** An owning panel may use a different theme from the page. */
+  readonly scheme?: 'light' | 'dark';
   /** A danger confirm focuses Cancel, so Enter right after opening it never destroys. */
   readonly tone: 'danger' | 'neutral';
   /** Rendered after Cancel, in order. */
@@ -61,6 +63,9 @@ export function askConfirm<C extends string = 'confirm'>(
       signal: request.signal,
       onDismiss: () => settle(null),
     });
+
+    // Keep the panel override separate from the scheme mirrored from the page.
+    if (request.scheme) popover.host.dataset.gvUiScheme = request.scheme;
 
     const card = document.createElement('div');
     card.className = 'gv-confirm';

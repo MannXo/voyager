@@ -9,6 +9,7 @@
  */
 import { StorageKeys } from '@/core/types/common';
 import type { PromptItem } from '@/core/types/sync';
+import { askConfirm } from '@/core/ui/confirm';
 import { isPromptTemplate } from '@/features/prompt/model/promptTemplate';
 import type { TranslationKey } from '@/utils/translations';
 
@@ -25,7 +26,6 @@ import { isPinned, pinGroupOf, sortPinnedFirst } from './promptPinning';
 import { writePromptPref } from './promptPrefs';
 import type { PromptPreview } from './promptPreview';
 import { createPromptReorder } from './promptReorder';
-import { createPromptRowSurfaces } from './promptRowConfirm';
 import { collectAllTags } from './promptTags';
 import { getScrollHintState } from './scrollHint';
 import { sanitizeSelectedTags } from './tagFilterState';
@@ -43,8 +43,8 @@ export interface PromptListView {
   render: () => void;
   /** Shows the "more tags below" hint when the tag area overflows. */
   syncTagScrollHint: () => void;
-  /** Closes an open template fill, whose row is going away. */
-  closeTemplateFill: () => void;
+  /** Closes surfaces anchored to a row that is going away. */
+  closeTransient: () => void;
   destroy: () => void;
 }
 
@@ -152,7 +152,11 @@ export function createPromptListView({
 
   /* Manual ordering (#1009): the list renders `items` in stored order, so a
    * move is a splice plus one write. The gesture lives in promptReorder.ts. */
-  const rowSurfaces = createPromptRowSurfaces();
+  let confirmLifetime = new AbortController();
+  function closeConfirm(): void {
+    confirmLifetime.abort();
+    confirmLifetime = new AbortController();
+  }
   /** Rebuilt every render; a whole-row tap resolves its action through this. */
   const rowActivators = new Map<string, () => void>();
   const reorder = createPromptReorder<PromptItem>({
@@ -164,24 +168,32 @@ export function createPromptListView({
     },
     onDragStart: () => {
       preview.hide();
-      rowSurfaces.close();
+      closeConfirm();
     },
     onTap: (id) => rowActivators.get(id)?.(),
     groupOf: (id) => pinGroupOf(library.items, id),
   });
 
-  function confirmDelete(it: PromptItem, anchor: HTMLElement): void {
-    rowSurfaces.openConfirm({
+  async function confirmDelete(it: PromptItem, anchor: HTMLElement): Promise<void> {
+    const id = it.id;
+    const signal = confirmLifetime.signal;
+    const theme = getTheme();
+    const answer = await askConfirm({
       anchor,
+      side: 'beside',
+      scheme: theme === 'light' || theme === 'dark' ? theme : undefined,
       message: t('pm_delete_confirm') || 'Delete this prompt?',
-      confirmLabel: t('pm_delete') || 'Delete',
+      tone: 'danger',
+      choices: [{ id: 'delete', label: t('pm_delete') || 'Delete' }],
       cancelLabel: t('pm_cancel') || 'Cancel',
-      onConfirm: () => {
-        void library.remove(it.id).then((ok) => ok && setNotice(t('pm_deleted'), 'ok'));
-        renderTags();
-        rerender();
-      },
+      signal,
     });
+    // A re-render or panel close can invalidate an answer before its continuation runs.
+    if (answer !== 'delete' || signal.aborted || !library.items.some((item) => item.id === id))
+      return;
+    void library.remove(id).then((ok) => ok && setNotice(t('pm_deleted'), 'ok'));
+    renderTags();
+    rerender();
   }
 
   // Copying is also the fallback when insert-on-click finds no composer.
@@ -237,6 +249,7 @@ export function createPromptListView({
     // display stale content. Close it up front so every re-render starts
     // from a clean state.
     preview.hide();
+    closeConfirm();
 
     // Preserve the user's scroll position across the wipe-and-rebuild.
     // Without this, actions like expand/collapse, search, tag filter,
@@ -392,7 +405,7 @@ export function createPromptListView({
     del.title = t('pm_delete') || 'Delete';
     del.addEventListener('click', (e) => {
       e.stopPropagation();
-      confirmDelete(it, del);
+      void confirmDelete(it, del);
     });
 
     row.appendChild(textContainer);
@@ -444,11 +457,14 @@ export function createPromptListView({
     renderTags,
     render,
     syncTagScrollHint,
-    closeTemplateFill,
+    closeTransient: () => {
+      closeConfirm();
+      closeTemplateFill();
+    },
     destroy: () => {
       // Drops the reorder listeners and auto-scroll frame on a mid-drag teardown.
       reorder.destroy();
-      rowSurfaces.destroy();
+      confirmLifetime.abort();
       tagsWrap.removeEventListener('scroll', syncTagScrollHint);
       closeTemplateFill();
     },
