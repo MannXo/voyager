@@ -66,6 +66,8 @@ Use `StorageService` where suitable; established direct `chrome.storage`/`browse
 
 Choose checks by changed surface. Repeat passing checks only after relevant changes or new evidence. Code contributions require `bun run verify:pr` before PR handoff; it covers the automated checks below, so do not repeat them for unchanged inputs. Prose-only contributions use the applicable rows below. Native/live-browser checks remain separate; releases use the final-tree gates in the `release` skill.
 
+While iterating, run `bun run test:changed`: tests affected by changes since `main`; CSS, locale or config changes run the whole suite. Worktrees share one machine, so queue every full run behind one lock (`lockf -k /tmp/voyager-verify.lock bun run verify:pr` on macOS, `flock` on Linux). Overlapping suites starve each other into timeouts; a failure that passes when its file reruns alone is load, not a regression.
+
 | Changed surface                                        | Checks before completion                                                                                                            |
 | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
 | Prose, agent instructions, comments or formatting only | Review the diff for lost requirements, validate referenced paths/commands, format-check changed files                               |

@@ -20,6 +20,15 @@ export default defineConfig({
     // also swallows `?raw` imports. The bundled plugin catalog is plain CSS
     // read as text, so let Vite serve it for real; app CSS stays stubbed.
     css: { include: [/src\/features\/plugins\/catalog\/.*\.css(?:\?raw)?$/] },
+    // `--changed` follows imports only. Tests read stylesheets and locale files
+    // from disk and app CSS is stubbed, so a change to either runs everything.
+    // Anchored at the root: a leading `**` never crosses `.claude/worktrees`.
+    forceRerunTriggers: [
+      'package.json',
+      '{vite,vitest}.config.*',
+      'src/**/*.css',
+      'src/locales/**',
+    ].map((pattern) => path.join(__dirname, pattern)),
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
