@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { ConversationExportService } from '@/features/export/services/ConversationExportService';
+import { toastDriver } from '@/tests/toastDriver';
 import type { AppLanguage } from '@/utils/language';
 import type { TranslationKey } from '@/utils/translations';
 
@@ -10,6 +12,11 @@ import {
   isDeepResearchReportMenuPanel,
   showDeepResearchExportProgressOverlay,
 } from '../menuButton';
+
+vi.mock('@/features/export/services/ImageExportPreferenceService', () => ({
+  getSavedImageExportWidth: async () => 800,
+  saveImageExportWidth: async () => {},
+}));
 
 function createNativeMenuButton({
   testId,
@@ -396,5 +403,70 @@ describe('applyDeepResearchDownloadButtonI18n', () => {
     hide();
 
     expect(document.querySelector('.gv-export-progress-overlay')).toBeNull();
+  });
+});
+
+describe('saving a Deep Research report', () => {
+  const SAFARI_UA =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.innerHTML = '';
+  });
+
+  async function exportReportAs(format: string): Promise<void> {
+    (window as unknown as { chrome: unknown }).chrome = {
+      storage: { sync: { get: (_key: string, cb: (result: object) => void) => cb({}) } },
+    };
+    document.body.innerHTML = `
+      <deep-research-immersive-panel>
+        <div class="markdown"><h1>Solar report</h1><p>Findings</p></div>
+      </deep-research-immersive-panel>`;
+    const panel = createDeepResearchReportMenuPanel();
+    await injectDownloadButton(panel);
+    panel.querySelector<HTMLElement>('.gv-deep-research-save-report')!.click();
+
+    await vi.waitFor(() => expect(document.querySelector('.gv-export-dialog')).not.toBeNull());
+    const radio = document.querySelector<HTMLInputElement>(`input[value="${format}"]`)!;
+    radio.checked = true;
+    radio.dispatchEvent(new Event('change'));
+    document.querySelector<HTMLButtonElement>('.gv-export-dialog-btn-primary')!.click();
+  }
+
+  it('shows why the report export failed', async () => {
+    vi.spyOn(ConversationExportService, 'export').mockResolvedValue({
+      success: false,
+      format: 'json',
+      error: 'disk full',
+    } as Awaited<ReturnType<typeof ConversationExportService.export>>);
+
+    await exportReportAs('json');
+
+    await vi.waitFor(() =>
+      expect(toastDriver.all()).toMatchObject([
+        { message: expect.stringContaining('disk full'), tone: 'error' },
+      ]),
+    );
+  });
+
+  it('guides Safari through saving the finished report PDF', async () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(SAFARI_UA);
+    vi.spyOn(navigator, 'vendor', 'get').mockReturnValue('Apple Computer, Inc.');
+    vi.spyOn(ConversationExportService, 'export').mockResolvedValue({
+      success: true,
+      format: 'pdf',
+    } as Awaited<ReturnType<typeof ConversationExportService.export>>);
+
+    await exportReportAs('pdf');
+
+    await vi.waitFor(() =>
+      expect(toastDriver.messages()).toEqual(['You can now press Command + P to export PDF.']),
+    );
+    expect(ConversationExportService.export).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.objectContaining({ title: 'Solar report' }),
+      expect.objectContaining({ format: 'pdf', filename: 'Solar-report.pdf' }),
+    );
   });
 });

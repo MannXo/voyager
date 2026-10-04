@@ -9,6 +9,7 @@
  * selection UI is dismissed.
  */
 import { resolveExportErrorMessage } from '../../../features/export/ui/ExportErrorMessage';
+import { showExportAlert } from '../../../features/export/ui/exportToasts';
 import type { ChatGptTurnRole } from './adapter/type';
 import type { ExportMessage, ExportMessageRole } from './conversationCollector';
 import { isAbortError, throwIfExportCancelled } from './exportCancellation';
@@ -375,7 +376,7 @@ export function startExportSelectionSession(
       }
       updateBottomBar(bar);
     } catch (error) {
-      if (!isAbortError(error)) alert(resolveExportErrorMessage(error, t));
+      if (!isAbortError(error)) showExportAlert(resolveExportErrorMessage(error, t));
     } finally {
       if (!signal?.aborted && !uiCleaned) {
         selectionBusy = false;
@@ -430,7 +431,7 @@ export function startExportSelectionSession(
     swallow(ev);
     if (selectionBusy) return;
     if (selectedIds.size === 0) {
-      alert(t('export_select_mode_empty'));
+      showExportAlert(t('export_select_mode_empty'), 'warning');
       return;
     }
 

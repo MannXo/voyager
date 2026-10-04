@@ -21,8 +21,7 @@ const OMITTED_IMAGES_CHANNEL = 'export-images-omitted';
 const NOTICE_MS = 2200;
 const SAFARI_PDF_MS = 5000;
 const OMITTED_IMAGES_MS = 8000;
-/** A failure used to be an alert the user had to close; it stays long enough to read. */
-const FAILURE_MS = 10_000;
+const ALERT_MS = 10_000;
 
 export function showExportNotice(
   message: string,
@@ -36,8 +35,9 @@ export function showExportNotice(
   });
 }
 
-export function showExportFailure(message: string): void {
-  showExportNotice(message, { tone: 'error', durationMs: FAILURE_MS });
+/** A problem the user has to read, so it stays up well beyond an outcome. */
+export function showExportAlert(message: string, tone: 'warning' | 'error' = 'error'): void {
+  showExportNotice(message, { tone, durationMs: ALERT_MS });
 }
 
 /** What a finished export still needs to tell the user, if anything. */

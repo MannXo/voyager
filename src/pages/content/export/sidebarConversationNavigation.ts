@@ -5,6 +5,7 @@
  * Navigation goes through the sidebar's own link (a native SPA route change).
  * A hard navigation to the target URL happens only when no sidebar link exists.
  */
+import { showExportAlert } from '../../../features/export/ui/exportToasts';
 import { waitForAnyElement } from './domWait';
 import { resolveSidebarConversationTarget } from './sidebarConversationTarget';
 
@@ -107,7 +108,7 @@ async function navigateToConversationAndWait(
 
 /**
  * Navigate to the conversation a sidebar menu trigger belongs to and wait
- * until its user turns render. Alerts the user and resolves false when the
+ * until its user turns render. Tells the user and resolves false when the
  * conversation cannot be located or opened.
  */
 export async function openSidebarConversationForExport(
@@ -116,7 +117,9 @@ export async function openSidebarConversationForExport(
 ): Promise<boolean> {
   const target = resolveSidebarConversationTarget(trigger);
   if (!target) {
-    alert('Unable to locate the selected conversation. Please open it first, then export.');
+    showExportAlert(
+      'Unable to locate the selected conversation. Please open it first, then export.',
+    );
     return false;
   }
 
@@ -126,7 +129,7 @@ export async function openSidebarConversationForExport(
     userSelectors,
   );
   if (!ready) {
-    alert('Failed to open the selected conversation for export. Please retry.');
+    showExportAlert('Failed to open the selected conversation for export. Please retry.');
     return false;
   }
   return true;

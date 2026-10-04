@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { toastDriver } from '@/tests/toastDriver';
+
 import type { ExportMessage, ExportMessageRole } from '../conversationCollector';
 import {
   type ExportSelectionSessionOptions,
@@ -98,6 +100,25 @@ describe('startExportSelectionSession', () => {
 
     await vi.waitFor(() => expect(selectedHostIds()).toEqual(['b']));
     expect(resolveRoles).toHaveBeenCalledWith(new Set(['a', 'b']));
+    session.cancel();
+  });
+
+  it('tells the user why a role filter failed and leaves the selection usable', async () => {
+    const messages = [message('a', 'unknown'), message('b', 'unknown')];
+    const resolveRoles = vi.fn(async () => {
+      throw new Error('chatgpt_export_conversation_changed');
+    });
+    const { session } = start({ readMessages: () => messages, resolveRoles });
+
+    barButton('selectAI').click();
+
+    await vi.waitFor(() =>
+      expect(toastDriver.all()).toMatchObject([
+        { message: 'T:export_error_refresh_retry', tone: 'error' },
+      ]),
+    );
+    expect(selectedHostIds()).toEqual([]);
+    expect(barButton('selectAI').disabled).toBe(false);
     session.cancel();
   });
 

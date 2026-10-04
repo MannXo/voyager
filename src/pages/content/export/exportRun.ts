@@ -20,7 +20,7 @@ import type {
   ExportSpeakerLabels,
 } from '../../../features/export/types/export';
 import { resolveExportErrorMessage } from '../../../features/export/ui/ExportErrorMessage';
-import { reportFinishedExport } from '../../../features/export/ui/exportToasts';
+import { reportFinishedExport, showExportAlert } from '../../../features/export/ui/exportToasts';
 import { removeCanvasExportSections } from './conversationCollector';
 import { waitForAnyElement, waitForElement } from './domWait';
 import { isAbortError, throwIfExportCancelled } from './exportCancellation';
@@ -90,7 +90,7 @@ export interface ExportRunner {
   /**
    * Abort any active run, then start this one. `prepare` runs first under the
    * new operation's signal (for work that must happen before the page changes).
-   * Never rejects: cancellations are silent, other errors are logged or alerted.
+   * Never rejects: cancellations are silent, other errors are logged or shown in a toast.
    */
   run(
     request: ExportRunRequest,
@@ -193,7 +193,7 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
     if (state.attempt > 25) {
       console.warn('[Gemini Voyager] Export aborted: too many attempts.');
       clearPendingExportState(sessionStorage);
-      alert('Export stopped: Too many attempts detected.');
+      showExportAlert('Export stopped: Too many attempts detected.');
       return;
     }
 
@@ -306,7 +306,7 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
 
     const messages = reader.messages();
     if (!noteExportTurns(messages.length > 0, () => collector.collectChatPairs().length > 0)) {
-      alert(t('export_dialog_warning'));
+      showExportAlert(t('export_dialog_warning'), 'warning');
       return;
     }
     removeExportProgressOverlays();
@@ -370,14 +370,14 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
         throwIfExportCancelled(signal);
 
         if (!result.success) {
-          alert(resolveExportErrorMessage(result.error, t));
+          showExportAlert(resolveExportErrorMessage(result.error, t));
         } else {
           reportFinishedExport(result, state.format, t);
         }
       } catch (error) {
         if (!isAbortError(error)) {
           console.error('[Gemini Voyager] Export error:', error);
-          alert(resolveExportErrorMessage(error, t));
+          showExportAlert(resolveExportErrorMessage(error, t));
         }
       } finally {
         hideProgress?.();

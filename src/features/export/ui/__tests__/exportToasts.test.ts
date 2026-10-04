@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toastDriver } from '@/tests/toastDriver';
 
 import { ExportFormat } from '../../types/export';
-import { reportFinishedExport, showExportFailure, showExportNotice } from '../exportToasts';
+import { reportFinishedExport, showExportAlert, showExportNotice } from '../exportToasts';
 
 const SAFARI_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
@@ -45,7 +45,7 @@ describe('export outcome toasts', () => {
   });
 
   it('announces a failure as an alert and keeps it up long enough to read', () => {
-    showExportFailure('Export failed: boom');
+    showExportAlert('Export failed: boom');
 
     expect(toastDriver.all()).toMatchObject([
       { message: 'Export failed: boom', tone: 'error', role: 'alert' },

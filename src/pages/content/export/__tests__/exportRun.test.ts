@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { toastDriver } from '@/tests/toastDriver';
+
 import { ExportFormat } from '../../../../features/export/types/export';
 import { nativeHealthReporter } from '../../nativeHealth';
 import type { ChatTurn, ConversationCollector, ExportMessage } from '../conversationCollector';
@@ -8,7 +10,6 @@ import type { ExportSite, ExportTurnReader, ExportTurnSession } from '../exportS
 
 const mocks = vi.hoisted(() => ({
   exportPendingConversation: vi.fn(),
-  reportFinishedExport: vi.fn(),
 }));
 
 vi.mock('../generatedUiScreenshots', () => ({
@@ -20,14 +21,16 @@ vi.mock('../pendingExportState', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../pendingExportState')>()),
   exportPendingConversation: mocks.exportPendingConversation,
 }));
-vi.mock('../../../../features/export/ui/exportToasts', () => ({
-  reportFinishedExport: mocks.reportFinishedExport,
-}));
 
 const { createExportRunner } = await import('../exportRun');
 
 const dict = {
-  en: { pm_export: 'Export now' },
+  en: {
+    pm_export: 'Export now',
+    export_toast_images_omitted: '{count} images stayed as links',
+    export_error_generic: 'Export failed: {error}',
+    export_dialog_warning: 'Nothing to export yet',
+  },
 } as unknown as ExportDictionaries;
 
 /** Advance fake time until `condition` holds (runs stay in fake time end to end). */
@@ -122,9 +125,9 @@ describe('createExportRunner', () => {
     document.body.className = '';
   });
 
-  it('exports the selected messages and reports the finished PDF', async () => {
+  it('exports the selected messages and reports what the finished file left out', async () => {
     const found = vi.spyOn(nativeHealthReporter, 'reportFound');
-    const result = { success: true };
+    const result = { success: true, omittedImageCount: 2 };
     mocks.exportPendingConversation.mockResolvedValue(result);
     const release = vi.fn();
     const collector = fakeCollector(renderMessages());
@@ -159,16 +162,18 @@ describe('createExportRunner', () => {
     expect(metadata).toMatchObject({ title: 'A conversation', platform: 'Test Chat', count: 2 });
     expect(includeImageSource).toBe(true);
 
-    const [reported, format, t] = mocks.reportFinishedExport.mock.calls[0];
-    expect(reported).toBe(result);
-    expect(format).toBe('pdf');
-    expect(t('pm_export')).toBe('Export now');
+    expect(toastDriver.all()).toMatchObject([
+      { message: '2 images stayed as links', tone: 'warning' },
+    ]);
     expect(selectionBar()).toBeNull();
   });
 
-  it('alerts the export error instead of reporting success', async () => {
-    mocks.exportPendingConversation.mockResolvedValue({ success: false, error: 'boom' });
-    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+  it('shows the export error instead of reporting success', async () => {
+    mocks.exportPendingConversation.mockResolvedValue({
+      success: false,
+      error: 'boom',
+      omittedImageCount: 2,
+    });
     const runner = createExportRunner({ site: fakeSite(fakeCollector(renderMessages())) });
 
     const running = runner.run({ format: ExportFormat.JSON }, { dict, lang: 'en' });
@@ -177,20 +182,22 @@ describe('createExportRunner', () => {
     clickBarAction('export');
     await settle(running);
 
-    expect(alertSpy).toHaveBeenCalledTimes(1);
-    expect(mocks.reportFinishedExport).not.toHaveBeenCalled();
+    expect(toastDriver.all()).toMatchObject([
+      { message: 'Export failed: boom', tone: 'error', role: 'alert' },
+    ]);
   });
 
   it('warns and reports missing turns with a fresh health recheck', async () => {
     const missing = vi.spyOn(nativeHealthReporter, 'reportMissing');
     const found = vi.spyOn(nativeHealthReporter, 'reportFound');
-    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
     const collector = fakeCollector([]);
     const runner = createExportRunner({ site: fakeSite(collector) });
 
     await settle(runner.run({ format: ExportFormat.MARKDOWN }, { dict, lang: 'en' }));
 
-    expect(alertSpy).toHaveBeenCalledWith('export_dialog_warning');
+    expect(toastDriver.all()).toMatchObject([
+      { message: 'Nothing to export yet', tone: 'warning' },
+    ]);
     expect(found).not.toHaveBeenCalled();
     expect(missing).toHaveBeenCalledWith(
       'export',

@@ -17,7 +17,7 @@ import type {
 } from '@/features/export/types/export';
 import { ExportDialog } from '@/features/export/ui/ExportDialog';
 import { resolveExportErrorMessage } from '@/features/export/ui/ExportErrorMessage';
-import { reportFinishedExport } from '@/features/export/ui/exportToasts';
+import { reportFinishedExport, showExportAlert } from '@/features/export/ui/exportToasts';
 import type { AppLanguage } from '@/utils/language';
 import type { TranslationKey } from '@/utils/translations';
 
@@ -302,13 +302,13 @@ function handleSaveReport(dict: ExportDictionaries, lang: AppLanguage): void {
           const minVisiblePromise = new Promise((resolve) => setTimeout(resolve, 420));
           const [result] = await Promise.all([resultPromise, minVisiblePromise]);
           if (!result.success) {
-            alert(resolveExportErrorMessage(result.error, t));
+            showExportAlert(resolveExportErrorMessage(result.error, t));
           } else {
             reportFinishedExport(result, format, t);
           }
         } catch (error) {
           console.error('[Gemini Voyager] Report export error:', error);
-          alert('Export error occurred.');
+          showExportAlert(resolveExportErrorMessage(error, t));
         } finally {
           hideProgress();
         }
