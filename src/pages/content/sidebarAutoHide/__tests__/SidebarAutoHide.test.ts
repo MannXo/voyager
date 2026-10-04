@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { confirmDriver } from '@/tests/confirmDriver';
+
 function mockVisibleRect(element: HTMLElement, width: number = 300, height: number = 600): void {
   vi.spyOn(element, 'getBoundingClientRect').mockReturnValue({
     x: 0,
@@ -97,6 +99,50 @@ describe('sidebarAutoHide', () => {
     expect(toggleSpy).not.toHaveBeenCalled();
 
     colorPicker.remove();
+    sidenav.dispatchEvent(new Event('mouseleave'));
+    vi.advanceTimersByTime(600);
+    expect(toggleSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not collapse while a folder removal confirm is open', async () => {
+    document.body.classList.add('mat-sidenav-opened');
+
+    const sidenav = document.createElement('bard-sidenav');
+    mockVisibleRect(sidenav, 320, 800);
+    const deleteButton = document.createElement('button');
+    sidenav.appendChild(deleteButton);
+    document.body.appendChild(sidenav);
+
+    const toggleButton = document.createElement('button');
+    toggleButton.setAttribute('data-test-id', 'side-nav-menu-button');
+    const toggleSpy = vi.fn();
+    toggleButton.addEventListener('click', toggleSpy);
+    document.body.appendChild(toggleButton);
+
+    (chrome.storage.sync.get as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (_defaults: Record<string, unknown>, callback: (result: Record<string, unknown>) => void) => {
+        callback({ gvSidebarAutoHide: true });
+      },
+    );
+
+    const { startSidebarAutoHide } = await import('../index');
+    startSidebarAutoHide();
+
+    const { askConfirm } = await import('@/core/ui/confirm');
+    const answer = askConfirm({
+      message: 'Remove this folder?',
+      anchor: deleteButton,
+      tone: 'danger',
+      choices: [{ id: 'confirm', label: 'Remove' }],
+    });
+    mockVisibleRect(document.querySelector<HTMLElement>('[data-gv-layer="popover"]')!, 240, 120);
+
+    sidenav.dispatchEvent(new Event('mouseleave'));
+    vi.advanceTimersByTime(600);
+    expect(toggleSpy).not.toHaveBeenCalled();
+
+    confirmDriver.pressEscape();
+    await expect(answer).resolves.toBeNull();
     sidenav.dispatchEvent(new Event('mouseleave'));
     vi.advanceTimersByTime(600);
     expect(toggleSpy).toHaveBeenCalledTimes(1);

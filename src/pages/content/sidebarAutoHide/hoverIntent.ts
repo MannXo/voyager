@@ -1,3 +1,5 @@
+import { LAYER_ATTR } from '@/core/ui/layer';
+
 import { getSidenavElement, isSidebarCollapsed, isSidebarVisible } from './sidebarDom';
 
 const LEAVE_DELAY_MS = 400;
@@ -9,7 +11,7 @@ const PREDICTIVE_SAFETY_COLLAPSE_MS = 1200;
 const CUSTOM_POPUP_SELECTORS = [
   '.gv-folder-dialog',
   '.gv-folder-dialog-overlay',
-  '.gv-folder-confirm-dialog',
+  `[${LAYER_ATTR}="popover"]`,
   '.gv-folder-import-dialog',
   '.gv-folder-menu',
   '.gv-color-picker-dialog',
