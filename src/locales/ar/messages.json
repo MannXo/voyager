@@ -2177,6 +2177,18 @@
     "message": "استبعادها",
     "description": "Confirm choice that leaves the source links of web search images out of the Markdown export"
   },
+  "export_error_too_many_attempts": {
+    "message": "توقّف التصدير: محاولات كثيرة جدًا.",
+    "description": "Export error toast when the export restarted too many times while loading the full conversation"
+  },
+  "export_error_conversation_not_found": {
+    "message": "تعذّر العثور على المحادثة المحددة. افتحها أولًا ثم صدّرها.",
+    "description": "Export error toast when the sidebar menu's conversation cannot be located"
+  },
+  "export_error_conversation_open_failed": {
+    "message": "تعذّر فتح المحادثة المحددة للتصدير. يُرجى المحاولة مرة أخرى.",
+    "description": "Export error toast when the sidebar menu's conversation fails to open"
+  },
   "deepResearch_exportedAt": {
     "message": "وقت التصدير",
     "description": "تسمية الطابع الزمني للتصدير في Deep Research"

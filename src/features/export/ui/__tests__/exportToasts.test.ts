@@ -26,6 +26,7 @@ const translate = (key: string) =>
   ({
     export_toast_safari_pdf_ready: 'Choose Save as PDF in the print dialog',
     export_toast_images_omitted: '{count} images stayed as links',
+    floatingPanelClose: 'Close',
   })[key] ?? key;
 
 beforeEach(() => {
@@ -53,7 +54,7 @@ describe('export outcome toasts', () => {
   });
 
   it('announces a failure as an alert and keeps it up long enough to read', () => {
-    showExportAlert('Export failed: boom');
+    showExportAlert('Export failed: boom', translate);
 
     expect(toastDriver.all()).toMatchObject([
       { message: 'Export failed: boom', tone: 'error', role: 'alert' },
@@ -61,6 +62,18 @@ describe('export outcome toasts', () => {
     vi.advanceTimersByTime(9999);
     expect(toastDriver.messages()).toEqual(['Export failed: boom']);
     vi.advanceTimersByTime(1);
+    expect(toastDriver.all()).toEqual([]);
+  });
+});
+
+describe('export problem toasts', () => {
+  it('closes from its own Close button, as the alert it replaced did', () => {
+    showExportAlert('Nothing to export yet', translate, 'warning');
+    const [alert] = toastDriver.all();
+
+    expect(toastDriver.labels(alert)).toEqual(['Close']);
+    toastDriver.press(alert, 'Close');
+
     expect(toastDriver.all()).toEqual([]);
   });
 });

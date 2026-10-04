@@ -376,7 +376,7 @@ export function startExportSelectionSession(
       }
       updateBottomBar(bar);
     } catch (error) {
-      if (!isAbortError(error)) showExportAlert(resolveExportErrorMessage(error, t));
+      if (!isAbortError(error)) showExportAlert(resolveExportErrorMessage(error, t), t);
     } finally {
       if (!signal?.aborted && !uiCleaned) {
         selectionBusy = false;
@@ -431,7 +431,7 @@ export function startExportSelectionSession(
     swallow(ev);
     if (selectionBusy) return;
     if (selectedIds.size === 0) {
-      showExportAlert(t('export_select_mode_empty'), 'warning');
+      showExportAlert(t('export_select_mode_empty'), t, 'warning');
       return;
     }
 

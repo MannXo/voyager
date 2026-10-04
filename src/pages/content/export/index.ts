@@ -115,7 +115,12 @@ export async function startExportButton(
       if (context.menuType === 'sidebar' && context.trigger) {
         const trigger = context.trigger;
         void (async () => {
-          if (!(await openSidebarConversationForExport(trigger, entryPoints.userSelectors))) {
+          const opened = await openSidebarConversationForExport(
+            trigger,
+            entryPoints.userSelectors,
+            createExportTranslator(dict, lang),
+          );
+          if (!opened) {
             return;
           }
           await showExportDialog(dict, lang);

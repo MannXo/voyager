@@ -2177,6 +2177,18 @@
     "message": "不包含",
     "description": "Confirm choice that leaves the source links of web search images out of the Markdown export"
   },
+  "export_error_too_many_attempts": {
+    "message": "嘗試次數過多，已停止匯出。",
+    "description": "Export error toast when the export restarted too many times while loading the full conversation"
+  },
+  "export_error_conversation_not_found": {
+    "message": "找不到所選對話。請先開啟該對話，再匯出。",
+    "description": "Export error toast when the sidebar menu's conversation cannot be located"
+  },
+  "export_error_conversation_open_failed": {
+    "message": "無法開啟所選對話進行匯出，請再試一次。",
+    "description": "Export error toast when the sidebar menu's conversation fails to open"
+  },
   "deepResearch_exportedAt": {
     "message": "匯出時間",
     "description": "深度研究匯出時間戳標籤"

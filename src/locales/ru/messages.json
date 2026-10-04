@@ -2177,6 +2177,18 @@
     "message": "Не включать",
     "description": "Confirm choice that leaves the source links of web search images out of the Markdown export"
   },
+  "export_error_too_many_attempts": {
+    "message": "Экспорт остановлен: слишком много попыток.",
+    "description": "Export error toast when the export restarted too many times while loading the full conversation"
+  },
+  "export_error_conversation_not_found": {
+    "message": "Не удалось найти выбранный чат. Сначала откройте его, затем экспортируйте.",
+    "description": "Export error toast when the sidebar menu's conversation cannot be located"
+  },
+  "export_error_conversation_open_failed": {
+    "message": "Не удалось открыть выбранный чат для экспорта. Попробуйте ещё раз.",
+    "description": "Export error toast when the sidebar menu's conversation fails to open"
+  },
   "deepResearch_exportedAt": {
     "message": "Экспортировано",
     "description": "Метка временной метки экспорта Deep Research"

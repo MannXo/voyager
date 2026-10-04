@@ -13,13 +13,17 @@ describe('openSidebarConversationForExport', () => {
     const trigger = document.createElement('button');
     document.body.appendChild(trigger);
 
-    await expect(openSidebarConversationForExport(trigger, () => ['.user-query'])).resolves.toBe(
-      false,
-    );
+    await expect(
+      openSidebarConversationForExport(
+        trigger,
+        () => ['.user-query'],
+        (key) => `T:${key}`,
+      ),
+    ).resolves.toBe(false);
 
     expect(toastDriver.all()).toMatchObject([
       {
-        message: 'Unable to locate the selected conversation. Please open it first, then export.',
+        message: 'T:export_error_conversation_not_found',
         tone: 'error',
       },
     ]);

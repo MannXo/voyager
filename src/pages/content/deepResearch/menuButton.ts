@@ -273,13 +273,13 @@ function handleSaveReport(dict: ExportDictionaries, lang: AppLanguage): void {
           const minVisiblePromise = new Promise((resolve) => setTimeout(resolve, 420));
           const [result] = await Promise.all([resultPromise, minVisiblePromise]);
           if (!result.success) {
-            showExportAlert(resolveExportErrorMessage(result.error, t));
+            showExportAlert(resolveExportErrorMessage(result.error, t), t);
           } else {
             reportFinishedExport(result, format, t);
           }
         } catch (error) {
           console.error('[Gemini Voyager] Report export error:', error);
-          showExportAlert(resolveExportErrorMessage(error, t));
+          showExportAlert(resolveExportErrorMessage(error, t), t);
         } finally {
           progress.hide();
         }

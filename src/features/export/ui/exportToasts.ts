@@ -37,9 +37,22 @@ export function showExportNotice(
   });
 }
 
-/** A problem the user has to read, so it stays up well beyond an outcome. */
-export function showExportAlert(message: string, tone: 'warning' | 'error' = 'error'): void {
-  showExportNotice(message, { tone, durationMs: ALERT_MS });
+/**
+ * A problem the user has to read, so it stays up well beyond an outcome and
+ * offers a close button, as the native alert it replaced did.
+ */
+export function showExportAlert(
+  message: string,
+  t: (key: TranslationKey) => string,
+  tone: 'warning' | 'error' = 'error',
+): void {
+  exportToaster.show({
+    channel: OUTCOME_CHANNEL,
+    message,
+    tone,
+    durationMs: ALERT_MS,
+    dismissLabel: t('floatingPanelClose'),
+  });
 }
 
 export type ExportProgressText = {

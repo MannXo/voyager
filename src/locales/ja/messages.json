@@ -2177,6 +2177,18 @@
     "message": "含めない",
     "description": "Confirm choice that leaves the source links of web search images out of the Markdown export"
   },
+  "export_error_too_many_attempts": {
+    "message": "試行回数が多すぎるため、エクスポートを中止しました。",
+    "description": "Export error toast when the export restarted too many times while loading the full conversation"
+  },
+  "export_error_conversation_not_found": {
+    "message": "選択した会話が見つかりません。先に会話を開いてからエクスポートしてください。",
+    "description": "Export error toast when the sidebar menu's conversation cannot be located"
+  },
+  "export_error_conversation_open_failed": {
+    "message": "選択した会話を開けませんでした。もう一度お試しください。",
+    "description": "Export error toast when the sidebar menu's conversation fails to open"
+  },
   "deepResearch_exportedAt": {
     "message": "エクスポート日時",
     "description": "深層研究エクスポートタイムスタンプラベル"

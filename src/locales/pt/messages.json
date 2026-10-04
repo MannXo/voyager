@@ -2177,6 +2177,18 @@
     "message": "Omitir",
     "description": "Confirm choice that leaves the source links of web search images out of the Markdown export"
   },
+  "export_error_too_many_attempts": {
+    "message": "Exportação interrompida: tentativas demais.",
+    "description": "Export error toast when the export restarted too many times while loading the full conversation"
+  },
+  "export_error_conversation_not_found": {
+    "message": "Não foi possível encontrar a conversa selecionada. Abra-a primeiro e depois exporte.",
+    "description": "Export error toast when the sidebar menu's conversation cannot be located"
+  },
+  "export_error_conversation_open_failed": {
+    "message": "Não foi possível abrir a conversa selecionada para exportar. Tente novamente.",
+    "description": "Export error toast when the sidebar menu's conversation fails to open"
+  },
   "deepResearch_exportedAt": {
     "message": "Exportado em",
     "description": "Etiqueta de carimbo de data/hora de exportação de Deep Research"

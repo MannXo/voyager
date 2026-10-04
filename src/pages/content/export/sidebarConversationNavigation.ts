@@ -7,6 +7,7 @@
  */
 import { showExportAlert } from '../../../features/export/ui/exportToasts';
 import { waitForAnyElement } from './domWait';
+import type { ExportTranslate } from './exportLocale';
 import { resolveSidebarConversationTarget } from './sidebarConversationTarget';
 
 function conversationIdFromPathname(pathname: string): string | null {
@@ -114,12 +115,11 @@ async function navigateToConversationAndWait(
 export async function openSidebarConversationForExport(
   trigger: HTMLElement,
   userSelectors: () => string[],
+  t: ExportTranslate,
 ): Promise<boolean> {
   const target = resolveSidebarConversationTarget(trigger);
   if (!target) {
-    showExportAlert(
-      'Unable to locate the selected conversation. Please open it first, then export.',
-    );
+    showExportAlert(t('export_error_conversation_not_found'), t);
     return false;
   }
 
@@ -129,7 +129,7 @@ export async function openSidebarConversationForExport(
     userSelectors,
   );
   if (!ready) {
-    showExportAlert('Failed to open the selected conversation for export. Please retry.');
+    showExportAlert(t('export_error_conversation_open_failed'), t);
     return false;
   }
   return true;

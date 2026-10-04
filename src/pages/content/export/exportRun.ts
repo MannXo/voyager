@@ -199,7 +199,8 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
     if (state.attempt > 25) {
       console.warn('[Gemini Voyager] Export aborted: too many attempts.');
       clearPendingExportState(sessionStorage);
-      showExportAlert('Export stopped: Too many attempts detected.');
+      const t = createExportTranslator(dict, lang);
+      showExportAlert(t('export_error_too_many_attempts'), t);
       return;
     }
 
@@ -313,7 +314,7 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
 
     const messages = reader.messages();
     if (!noteExportTurns(messages.length > 0, () => collector.collectChatPairs().length > 0)) {
-      showExportAlert(t('export_dialog_warning'), 'warning');
+      showExportAlert(t('export_dialog_warning'), t, 'warning');
       return;
     }
     hideExportProgress();
@@ -399,14 +400,14 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
         throwIfExportCancelled(signal);
 
         if (!result.success) {
-          showExportAlert(resolveExportErrorMessage(result.error, t));
+          showExportAlert(resolveExportErrorMessage(result.error, t), t);
         } else {
           reportFinishedExport(result, state.format, t);
         }
       } catch (error) {
         if (!isAbortError(error)) {
           console.error('[Gemini Voyager] Export error:', error);
-          showExportAlert(resolveExportErrorMessage(error, t));
+          showExportAlert(resolveExportErrorMessage(error, t), t);
         }
       } finally {
         hideProgress?.();

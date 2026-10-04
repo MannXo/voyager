@@ -271,9 +271,10 @@ describe('createExportRunner', () => {
     ])('gives focus back to the composer after %s drops the export', async (_, dismiss) => {
       const collector = collectorWithSearchImages();
       const site = fakeSite(collector);
-      let finishBuild: (turns: ChatTurn[]) => void = () => {};
+      type Turns = ReturnType<ConversationCollector['turnsForMessageIds']>;
+      let finishBuild: (turns: Turns) => void = () => {};
       const build = () =>
-        new Promise<ChatTurn[]>((resolve) => {
+        new Promise<Turns>((resolve) => {
           finishBuild = resolve;
         });
       const runner = createExportRunner({ site: { ...site, turns: { ...site.turns, build } } });
