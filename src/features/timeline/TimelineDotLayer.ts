@@ -4,6 +4,8 @@ import type { TimelineHierarchyGeometry } from './TimelineHierarchyGeometry';
 import { getTimelineSpringProfile } from './TimelineNavigation';
 import type { DotElement, TimelineMarker } from './types';
 
+const COMPACT_RAIL_PADDING_PX = 6;
+
 /** Owns measured marker positions, keyed dot rendering and the runner lifetime. */
 export class TimelineDotLayer {
   private runnerRing: HTMLElement | null = null;
@@ -425,9 +427,10 @@ export class TimelineDotLayer {
     }
   }
   render(): void {
-    if (!this.track || !this.content) return;
+    if (!this.bar || !this.track || !this.content) return;
     const hidden = this.geometry.getHiddenMarkerIndices();
-    const dense = this.options.getStyle() !== 'dots';
+    const style = this.options.getStyle();
+    const dense = style !== 'dots';
     const top = this.track.scrollTop;
     const height = this.track.clientHeight;
     const buffer = Math.max(100, height);
@@ -436,6 +439,23 @@ export class TimelineDotLayer {
       ? this.markers.length - 1
       : Math.max(start - 1, this.upperBound(this.yPositions, top + height + buffer));
     const offsets = dense ? this.buildCompactMarkerOffsets(hidden) : new Map<number, number>();
+    if (style === 'compact') {
+      // Paint follows the tick endpoints; the full-height bar remains the hover target.
+      const values = Array.from(offsets.values());
+      const first = values[0] ?? 0;
+      const last = values[values.length - 1] ?? 0;
+      this.bar.style.setProperty(
+        '--timeline-compact-rail-offset',
+        `${values.length ? first - COMPACT_RAIL_PADDING_PX : 0}px`,
+      );
+      this.bar.style.setProperty(
+        '--timeline-compact-rail-height',
+        `${values.length ? last - first + 2 * COMPACT_RAIL_PADDING_PX : 0}px`,
+      );
+    } else {
+      this.bar.style.removeProperty('--timeline-compact-rail-offset');
+      this.bar.style.removeProperty('--timeline-compact-rail-height');
+    }
     const visibleIds = new Set<string>();
     const orderedDots: DotElement[] = [];
     for (let index = start; index <= end; index++) {

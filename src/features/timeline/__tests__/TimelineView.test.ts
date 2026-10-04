@@ -43,8 +43,8 @@ function fixture(
   views.push(view);
   view.mount();
   const { timelineBar: bar, track, trackContent, sliderHandle: handle } = view.ui;
-  Object.defineProperty(bar, 'clientHeight', { value: 400 });
-  Object.defineProperty(track, 'clientHeight', { value: 400 });
+  Object.defineProperty(bar, 'clientHeight', { value: 400, configurable: true });
+  Object.defineProperty(track, 'clientHeight', { value: 400, configurable: true });
   Object.defineProperty(bar, 'setPointerCapture', { value: vi.fn() });
   Object.defineProperty(handle, 'setPointerCapture', { value: vi.fn() });
   vi.spyOn(bar!, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 50, 24, 400));
@@ -57,6 +57,7 @@ function fixture(
   view.render();
   return {
     view,
+    state,
     viewport,
     bar: bar!,
     track: track!,
@@ -159,6 +160,83 @@ describe('TimelineView', () => {
     view.applyContainerVisibility();
     expect(bar.classList.contains('timeline-no-container')).toBe(false);
   });
+
+  it('the compact rail follows its tick cluster as turns are added and removed', () => {
+    const { view, state, bar, trackContent } = fixture(3);
+    view.timelineStyle = 'compact';
+    view.applyTimelineStyle();
+    const offsets = () =>
+      Array.from(trackContent.querySelectorAll<HTMLElement>('.timeline-dot'), (dot) =>
+        Number.parseFloat(dot.style.getPropertyValue('--timeline-compact-offset')),
+      );
+    expect(offsets()).toEqual([-8, 0, 8]);
+    expect(bar.style.getPropertyValue('--timeline-compact-rail-offset')).toBe('-14px');
+    expect(bar.style.getPropertyValue('--timeline-compact-rail-height')).toBe('28px');
+
+    state.replaceMarkers([...state.markers, { ...state.markers[2], id: 'new-turn', baseN: 1 }]);
+    view.render();
+    expect(offsets()).toEqual([-12, -4, 4, 12]);
+    expect(bar.style.getPropertyValue('--timeline-compact-rail-offset')).toBe('-18px');
+    expect(bar.style.getPropertyValue('--timeline-compact-rail-height')).toBe('36px');
+
+    state.replaceMarkers(state.markers.slice(0, 1));
+    view.render();
+    expect(offsets()).toEqual([0]);
+    expect(bar.style.getPropertyValue('--timeline-compact-rail-offset')).toBe('-6px');
+    expect(bar.style.getPropertyValue('--timeline-compact-rail-height')).toBe('12px');
+
+    state.replaceMarkers([]);
+    view.render();
+    expect(offsets()).toEqual([]);
+    expect(bar.style.getPropertyValue('--timeline-compact-rail-offset')).toBe('0px');
+    expect(bar.style.getPropertyValue('--timeline-compact-rail-height')).toBe('0px');
+  });
+
+  it.each(['dots', 'ruler'] as const)(
+    'leaving compact for %s clears the compact rail extent',
+    (style) => {
+      const { view, bar } = fixture(3);
+      view.timelineStyle = 'compact';
+      view.applyTimelineStyle();
+      expect(bar.style.getPropertyValue('--timeline-compact-rail-height')).toBe('28px');
+
+      view.timelineStyle = style;
+      view.applyTimelineStyle();
+      expect(bar.style.getPropertyValue('--timeline-compact-rail-offset')).toBe('');
+      expect(bar.style.getPropertyValue('--timeline-compact-rail-height')).toBe('');
+    },
+  );
+
+  it.each(['left', 'right'] as const)(
+    'resizing or hiding the %s compact rail preserves its centered tick extent',
+    (position) => {
+      const { view, bar, track, trackContent } = fixture(60, { position });
+      view.applyRTLUpdate('ar');
+      view.timelineStyle = 'compact';
+      view.applyTimelineStyle();
+      expect(bar.style.getPropertyValue('--timeline-compact-rail-offset')).toBe('-86px');
+      expect(bar.style.getPropertyValue('--timeline-compact-rail-height')).toBe('172px');
+      const first = trackContent.querySelector<HTMLElement>('.timeline-dot')!;
+      expect(first.style.top).toBe('calc(50% - 80px)');
+
+      Object.defineProperty(bar, 'clientHeight', { value: 240, configurable: true });
+      Object.defineProperty(track, 'clientHeight', { value: 240, configurable: true });
+      window.dispatchEvent(new Event('resize'));
+      vi.advanceTimersByTime(140);
+      expect(bar.style.getPropertyValue('--timeline-compact-rail-offset')).toBe('-86px');
+      expect(bar.style.getPropertyValue('--timeline-compact-rail-height')).toBe('172px');
+      expect(first.style.top).toBe('calc(50% - 80px)');
+
+      view.hideContainer = true;
+      view.applyContainerVisibility();
+      expect(bar.classList.contains('timeline-no-container')).toBe(true);
+      view.hideContainer = false;
+      view.applyContainerVisibility();
+      expect(bar.classList.contains('timeline-no-container')).toBe(false);
+      expect(bar.style.getPropertyValue('--timeline-compact-rail-height')).toBe('172px');
+      view.applyRTLUpdate('en');
+    },
+  );
 
   it('moves the runner with a compositor transform and reads the spring profile once', () => {
     const { view, trackContent } = fixture();

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { TimelineStyle } from '@/core/types/common';
 import { TimelineState } from '@/features/timeline/TimelineState';
 import { createGeminiTimelineStoragePolicy } from '@/pages/content/timeline/GeminiTimelineStorage';
 
@@ -8,7 +9,11 @@ import { TimelineHierarchyGeometry } from '../TimelineHierarchyGeometry';
 
 const fixtures: Array<{ layer: TimelineDotLayer; state: TimelineState }> = [];
 
-function fixture(positions = [0, 0.5, 1], getActiveId: () => string | null = () => null) {
+function fixture(
+  positions = [0, 0.5, 1],
+  getActiveId: () => string | null = () => null,
+  getStyle: () => TimelineStyle = () => 'dots',
+) {
   const bar = document.createElement('div');
   const track = document.createElement('div');
   const content = document.createElement('div');
@@ -39,13 +44,13 @@ function fixture(positions = [0, 0.5, 1], getActiveId: () => string | null = () 
     (id) => state.hierarchy.isMarkerCollapsed(id),
   );
   const layer = new TimelineDotLayer(() => state.markers, geometry, {
-    getStyle: () => 'dots',
+    getStyle,
     getViewport: () => null,
     getActiveId,
   });
   fixtures.push({ layer, state });
   layer.mount(bar, track, content);
-  return { layer, state, geometry, content };
+  return { layer, state, geometry, content, bar };
 }
 
 beforeEach(() => {
@@ -138,6 +143,34 @@ describe('TimelineDotLayer', () => {
     expect(layer.yPositions).toEqual([10, 30, 50, 70, 90, 110]);
     expect(content.querySelectorAll('.timeline-dot')).toHaveLength(6);
     expect(content.querySelector('[data-target-turn-id="turn-0"]')).toBe(dots[0]);
+  });
+
+  it('collapsed turns do not leave a long compact rail around the remaining ticks', async () => {
+    const { layer, state, geometry, content, bar } = fixture(
+      [0, 0.3, 0.6, 1],
+      () => null,
+      () => 'compact',
+    );
+    await state.hierarchy.init();
+    geometry.markerLevelEnabled = true;
+    state.hierarchy.setMarkerLevel('turn-1', 2);
+    state.hierarchy.setMarkerLevel('turn-2', 2);
+    layer.layout();
+    layer.render();
+    expect(bar.style.getPropertyValue('--timeline-compact-rail-height')).toBe('36px');
+
+    state.hierarchy.toggleCollapse('turn-0');
+    layer.layout();
+    layer.render();
+    expect(content.querySelectorAll('.timeline-dot')).toHaveLength(2);
+    expect(bar.style.getPropertyValue('--timeline-compact-rail-offset')).toBe('-10px');
+    expect(bar.style.getPropertyValue('--timeline-compact-rail-height')).toBe('20px');
+
+    state.hierarchy.toggleCollapse('turn-0');
+    layer.layout();
+    layer.render();
+    expect(content.querySelectorAll('.timeline-dot')).toHaveLength(4);
+    expect(bar.style.getPropertyValue('--timeline-compact-rail-height')).toBe('36px');
   });
 
   it('replaces a running animation without letting the old jump move or hide the runner', () => {

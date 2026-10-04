@@ -316,6 +316,12 @@ html[data-gv-scheme='light'] .gemini-timeline-bar:not(.timeline-no-container)::b
   cursor: pointer;
 }
 
+.gemini-timeline-bar.timeline-style-compact::before {
+  top: calc(50% + var(--timeline-compact-rail-offset, 0px));
+  bottom: auto;
+  height: var(--timeline-compact-rail-height, 0px);
+}
+
 .gemini-timeline-bar.timeline-style-compact .timeline-track {
   pointer-events: none;
   overflow: hidden;
