@@ -49,8 +49,15 @@ export function createDownloadFeedback({
 
   const open = (handle: ToastHandle | null): ToastHandle | null => (handle?.isOpen ? handle : null);
 
+  // Dismissing feedback must remain possible while the native image download continues.
   const showPending = (message: string, durationMs: number): ToastHandle =>
-    toaster.show({ message, tone: 'info', pending: true, durationMs });
+    toaster.show({
+      message,
+      tone: 'info',
+      pending: true,
+      durationMs,
+      dismissLabel: t('floatingPanelClose', 'Close'),
+    });
 
   function clearActiveDownloadSequence(): void {
     if (!activeSequence) return;
@@ -145,7 +152,13 @@ export function createDownloadFeedback({
     sequence.download?.dismiss();
     sequence.download = null;
 
-    const final = { message, tone, pending: false, durationMs: FINAL_MS[tone] } as const;
+    const final = {
+      message,
+      tone,
+      pending: false,
+      durationMs: FINAL_MS[tone],
+      dismissLabel: t('floatingPanelClose', 'Close'),
+    } as const;
     const processing = open(sequence.processing);
     if (processing) processing.update(final);
     else sequence.processing = toaster.show(final);
@@ -170,6 +183,7 @@ export function createDownloadFeedback({
         message: warning,
         tone: 'warning',
         durationMs: LARGE_WARNING_MS,
+        dismissLabel: t('floatingPanelClose', 'Close'),
       });
     }
   }
