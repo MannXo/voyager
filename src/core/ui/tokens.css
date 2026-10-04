@@ -1,8 +1,9 @@
 /* Shared tokens for Voyager's body-level layers (confirm, toast).
  * Every layer renders in its own shadow root, and `attachShadowSurface` mirrors
  * the page's `data-gv-scheme` and `body.gv-rtl` onto the host, so the tokens key
- * off `:host(...)`: page selectors cannot reach a shadow tree. The values are the
- * oklch surfaces the prompt panel, timeline tooltip and research pack already use.
+ * off `:host(...)`: page selectors cannot reach a shadow tree. These layers float
+ * above every supported page, so their dark surface is lighter than the darkest
+ * site background.
  * The font is pinned like the prompt panel's and the timeline tooltip's: the
  * host's own font ('Google Sans' on Gemini) would make Voyager differ per site.
  * The accent is inherited from `<html>` (`--gv-pm-brand`, set inline per site), and
@@ -33,11 +34,11 @@
 }
 
 :host([data-gv-scheme='dark']) {
-  --gv-ui-surface: oklch(0.2 0.008 285);
-  --gv-ui-surface-hover: oklch(0.25 0.008 285);
+  --gv-ui-surface: oklch(0.29 0.006 285);
+  --gv-ui-surface-hover: oklch(0.33 0.006 285);
   --gv-ui-text: oklch(0.92 0.004 250);
   --gv-ui-text-muted: oklch(0.72 0.01 270);
-  --gv-ui-border: oklch(0.3 0.008 285 / 0.7);
+  --gv-ui-border: oklch(0.38 0.008 285 / 0.7);
   --gv-ui-shadow: 0 6px 20px oklch(0 0 0 / 0.28);
   --gv-ui-danger: oklch(0.72 0.15 25);
   --gv-ui-danger-fg: oklch(0.2 0.008 285);
