@@ -11,6 +11,8 @@ import {
   createUploadIcon,
 } from '@/core/icons/folderIcons';
 import type { ConversationReference } from '@/core/types/folder';
+import { createToaster } from '@/core/ui/toast/toaster';
+import type { ToastTone } from '@/core/ui/toast/types';
 import type { EditOutcome, FolderCommands } from '@/features/folder/commands/folderCommands';
 import type { AddVia } from '@/features/folder/owner/folderOwnerPolicy';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
@@ -62,13 +64,21 @@ import { type ChatGptFolderSectionPrefs, loadSectionPrefs, saveSectionPrefs } fr
 import { chatgptFolderExportFilename, exportChatGptFolders } from './transfer';
 
 const HINT_KEYS = ['chatgptFoldersHint', 'floatingPanelGestureHint'];
+/** As long as the tree's status line these notices replace. */
+const NOTICE_MS = 4000;
+/** Like that status line, each outcome replaces the one before. */
+const NOTICE_CHANNEL = 'chatgpt-folders';
 
-/** The flash that confirms a filing, or `null` when the folders were not open for edits. */
-function addOutcomeKey(outcome: EditOutcome): string | null {
+type Notice = { message: string; tone: ToastTone };
+
+/** The notice that confirms a filing, or `null` when the folders were not open for edits. */
+function addOutcomeNotice(outcome: EditOutcome): Notice | null {
   if (outcome.kind === 'failed') return null;
-  if (outcome.kind === 'unchanged') return 'chatgptFoldersAlreadyFiled';
+  if (outcome.kind === 'unchanged')
+    return { message: t('chatgptFoldersAlreadyFiled'), tone: 'info' };
   // A rejection: the folder was deleted elsewhere; trying again shows the current folders.
-  return outcome.kind === 'rejected' ? outcome.messageKey : 'chatgptFoldersAdded';
+  if (outcome.kind === 'rejected') return { message: t(outcome.messageKey), tone: 'error' };
+  return { message: t('chatgptFoldersAdded'), tone: 'success' };
 }
 
 function format(key: string, values: Record<string, string | number>): string {
@@ -89,6 +99,9 @@ class ChatGptFoldersView {
   private openedConversationId: string | null = null;
   // Gemini's removal confirm; it closes with the panel.
   private readonly dialogs = createFolderDialogs();
+  // One place for every outcome: the section, the panel and a row's menu all
+  // report here, and either tree may be hidden.
+  private readonly toaster = createToaster();
 
   constructor(
     private readonly scope: PluginScope,
@@ -100,6 +113,7 @@ class ChatGptFoldersView {
 
   /** Mounts the sidebar section, which owns `sectionPrefs` from here on. */
   start(sectionPrefs: ChatGptFolderSectionPrefs): void {
+    this.scope.child(this.toaster, 'chatgpt-folders:toasts');
     this.scope.effect(() => () => this.showFloatingEntry(false), 'chatgpt-folders:fab');
     this.scope.effect(
       () => this.store.subscribe((change) => this.refresh(change)),
@@ -108,7 +122,9 @@ class ChatGptFoldersView {
     this.scope.effect(() => () => this.unmountPanel(), 'chatgpt-folders:panel');
     this.scope.effect(() => {
       const rootBucketId = CHATGPT_FOLDER_CONFIG.rootBucketId;
-      const feedback = { showNotification: (message: string) => this.flashTree(message) };
+      const feedback = {
+        showNotification: (message: string, tone: ToastTone = 'info') => this.notify(message, tone),
+      };
       const selection: FolderSelection = new FolderSelection({
         store: this.store,
         commands: this.commands,
@@ -291,7 +307,7 @@ class ChatGptFoldersView {
   }
 
   /**
-   * Files `conversation` into `folderId` and confirms the result in both trees.
+   * Files `conversation` into `folderId` and confirms the result.
    * A sidebar row dragged onto a folder (`outside-drop`) lands last, as on
    * Gemini; a picked folder puts it first.
    */
@@ -305,18 +321,13 @@ class ChatGptFoldersView {
         via,
       })
       .then((outcome) => {
-        const key = addOutcomeKey(outcome);
-        if (key && !this.scope.isDisposed) this.flashTree(t(key));
+        const notice = addOutcomeNotice(outcome);
+        if (notice && !this.scope.isDisposed) this.notify(notice.message, notice.tone);
       });
   }
 
-  /**
-   * Confirms a filing in both trees. The sidebar section, the panel and a row's
-   * menu can all start one, and the panel may be closed.
-   */
-  private flashTree(message: string): void {
-    this.section?.flash(message);
-    this.panel?.flash(message);
+  private notify(message: string, tone: ToastTone): void {
+    this.toaster.show({ message, tone, durationMs: NOTICE_MS, channel: NOTICE_CHANNEL });
   }
 
   private setOpen(open: boolean): void {
@@ -395,7 +406,7 @@ class ChatGptFoldersView {
       ? null
       : readCurrentConversation(t('chatgptFoldersUntitled'));
     if (!conversation) {
-      this.flashTree(t('chatgptFoldersNoConversation'));
+      this.notify(t('chatgptFoldersNoConversation'), 'info');
       return;
     }
     if (!this.store.ready) return;
@@ -407,7 +418,7 @@ class ChatGptFoldersView {
       exportChatGptFolders(this.store.data),
       chatgptFolderExportFilename(),
     );
-    this.flashTree(t('folder_export_success'));
+    this.notify(t('folder_export_success'), 'success');
   }
 
   private pickImportFile(): void {
@@ -426,7 +437,7 @@ class ChatGptFoldersView {
     const parsed = await FolderImportExportService.readJSONFile(file);
     if (this.scope.isDisposed) return;
     if (!parsed.success) {
-      this.flashTree(t('folder_import_invalid_format'));
+      this.notify(t('folder_import_invalid_format'), 'error');
       return;
     }
     if (!this.store.ready) return;
@@ -437,24 +448,30 @@ class ChatGptFoldersView {
       source: 'file',
     });
     if (this.scope.isDisposed) return;
-    const message = importMessage(outcome);
-    if (message) this.flashTree(message);
+    const notice = importNotice(outcome);
+    if (notice) this.notify(notice.message, notice.tone);
   }
 }
 
-/** The panel's notice for an import, as today; `null` when the folders were not open for edits. */
-function importMessage(outcome: EditOutcome): string | null {
+/** The notice for an import; `null` when the folders were not open for edits. */
+function importNotice(outcome: EditOutcome): Notice | null {
   switch (outcome.kind) {
     case 'saved':
-      return format('folder_import_success', {
-        folders: outcome.stats?.foldersImported ?? 0,
-        conversations: outcome.stats?.conversationsImported ?? 0,
-      });
+      return {
+        message: format('folder_import_success', {
+          folders: outcome.stats?.foldersImported ?? 0,
+          conversations: outcome.stats?.conversationsImported ?? 0,
+        }),
+        tone: 'success',
+      };
     case 'rejected':
-      return t(outcome.messageKey);
+      return { message: t(outcome.messageKey), tone: 'error' };
     case 'failed':
       if (outcome.reason === 'not_loaded') return null;
-      return format('folder_import_error', { error: outcome.detail ?? '' });
+      return {
+        message: format('folder_import_error', { error: outcome.detail ?? '' }),
+        tone: 'error',
+      };
     default:
       return null;
   }

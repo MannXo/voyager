@@ -13,6 +13,7 @@ import type { FolderData } from '@/core/types/folder';
 import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import { PluginScope } from '@/features/plugins/runtime/pluginScope';
 import { treeDriver } from '@/pages/content/folder/floatingTree/__tests__/treeDriver';
+import { toastDriver } from '@/tests/toastDriver';
 import { initI18n } from '@/utils/i18n';
 
 import { activateChatGptFolders } from '../index';
@@ -233,14 +234,13 @@ function folderWrites(): number {
   return memory.writes.filter((write) => write.area === 'local' && write.key === KEY).length;
 }
 
-function status(root: ShadowRoot): string {
-  const line = root.querySelector<HTMLElement>('[role="status"]')!;
-  return line.hidden ? '' : (line.textContent ?? '');
+function status(): string {
+  return toastDriver.messages().join('\n');
 }
 
 describe('dragging a ChatGPT sidebar row onto a folder', () => {
   it('dragging a recents row onto a folder files it', async () => {
-    const { view, root } = await activate();
+    const { view } = await activate();
 
     dragRowOnto(TARGET.id, view.folderNameElement('Trips'));
     await nextPass();
@@ -248,7 +248,7 @@ describe('dragging a ChatGPT sidebar row onto a folder', () => {
     expect(stored().folderContents.trips).toEqual([expect.objectContaining(FILED)]);
     expect(stored().folderContents.work).toEqual([]);
     expect(view.outline()).toEqual(['Work', 'Trips', `  · ${TARGET.title}`]);
-    expect(status(root)).toBe('Added to folder.');
+    expect(status()).toBe('Added to folder.');
   });
 
   it('puts the row after what the folder already holds, as on Gemini', async () => {
@@ -297,7 +297,7 @@ describe('dragging a ChatGPT sidebar row onto a folder', () => {
       ...structuredClone(DATA),
       folderContents: { ...DATA.folderContents, trips: [{ ...FILED, addedAt: 1, sortIndex: 0 }] },
     });
-    const { view, root } = await activate();
+    const { view } = await activate();
     const before = folderWrites();
 
     dragRowOnto(TARGET.id, view.folderNameElement('Trips'));
@@ -305,7 +305,7 @@ describe('dragging a ChatGPT sidebar row onto a folder', () => {
 
     expect(folderWrites()).toBe(before);
     expect(stored().folderContents.trips).toEqual([{ ...FILED, addedAt: 1, sortIndex: 0 }]);
-    expect(status(root)).toBe('Already in this folder.');
+    expect(status()).toBe('Already in this folder.');
   });
 
   it('dragging a recents row onto a floating panel folder files it', async () => {

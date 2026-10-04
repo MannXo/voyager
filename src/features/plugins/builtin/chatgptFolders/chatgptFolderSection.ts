@@ -61,9 +61,6 @@ export const sectionToolbarIcon: SelectionToolbarIcon = (name) => {
   return name === 'delete' ? createTrashIcon(SECTION_ICON_SIZE) : createXIcon(SECTION_ICON_SIZE);
 };
 
-/** How long a `flash` message stays, as in the floating panel. */
-const STATUS_MS = 4000;
-
 /**
  * Gemini's folder sidebar drawn in ChatGPT's line-icon style: chevrons, tinted
  * folder icons, a menu button on each folder, and the same drags.
@@ -124,11 +121,9 @@ export class ChatGptFolderSection {
   private readonly sortToggle: HTMLButtonElement;
   private readonly search: FolderSearchBox;
   private readonly headerButtons: HTMLButtonElement[];
-  private readonly status: HTMLElement;
   private readonly tree: FolderTreeController;
   private readonly onPrefsChange: (prefs: ChatGptFolderSectionPrefs) => void;
   private readonly isConversationSelected: TreeSiteOptions['isConversationSelected'];
-  private statusTimer: ReturnType<typeof setTimeout> | null = null;
   private activeConversationId: string | null = null;
   private data: FolderData;
   private prefs: ChatGptFolderSectionPrefs;
@@ -211,11 +206,6 @@ export class ChatGptFolderSection {
     toolbar.append(this.sortToggle, ...this.headerButtons);
     header.append(title, toolbar);
 
-    this.status = document.createElement('div');
-    this.status.className = `${FLOATING_PANEL_CLASS}__status`;
-    this.status.setAttribute('role', 'status');
-    this.status.hidden = true;
-
     this.search = createFolderSearch({
       query: () => this.searchQuery,
       setQuery: (query) => (this.searchQuery = query),
@@ -240,7 +230,7 @@ export class ChatGptFolderSection {
 
     const css = `${panelCss}\n${sectionCss}`;
     this.surface = attachShadowSurface(this.element, css);
-    this.surface.root.append(header, this.status, this.content);
+    this.surface.root.append(header, this.content);
 
     // The sidebar scrolls and clips, so the folder menu renders in a body-level layer.
     this.tree = mountFolderTree({
@@ -342,16 +332,7 @@ export class ChatGptFolderSection {
     return folderDropTargetAt(this.surface.root, x, y);
   }
 
-  /** Shows `message` under the header until the next one or a few seconds pass. */
-  flash(message: string): void {
-    this.clearStatus();
-    this.status.textContent = message;
-    this.status.hidden = false;
-    this.statusTimer = setTimeout(() => this.clearStatus(), STATUS_MS);
-  }
-
   destroy(): void {
-    this.clearStatus();
     this.search.cancel();
     this.tree.destroy();
     this.surface.disconnect();
@@ -408,12 +389,5 @@ export class ChatGptFolderSection {
     const recent = sortMode === 'recent';
     this.sortToggle.setAttribute('aria-pressed', String(recent));
     this.sortToggle.title = `${t('folder_sort')}: ${t(recent ? 'folder_sort_recent' : 'folder_sort_manual')}`;
-  }
-
-  private clearStatus(): void {
-    if (this.statusTimer) clearTimeout(this.statusTimer);
-    this.statusTimer = null;
-    this.status.hidden = true;
-    this.status.textContent = '';
   }
 }

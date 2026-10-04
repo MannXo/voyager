@@ -372,18 +372,6 @@
   outline-offset: 1px;
 }
 
-/* "Added to …" after Move to folder: a quiet line under the header, on the
- * sidebar's own background rather than the panel's surface. */
-:host(.gv-chatgpt-folder-section) .gv-floating-folder-panel__status {
-  padding: 0 16px 6px;
-  border-bottom: 0;
-  background: transparent;
-  color: var(--gv-floating-folder-panel__text-muted);
-  font-family: inherit;
-  font-size: 13px;
-  line-height: 18px;
-}
-
 /* ─── Tree ─────────────────────────────────────────────────────────────── */
 :host(.gv-chatgpt-folder-section) .gv-floating-folder-panel__body {
   flex: none;
@@ -559,7 +547,6 @@
 }
 
 /* ─── RTL ──────────────────────────────────────────────────────────────── */
-:host(.gv-chatgpt-folder-section[data-gv-rtl]) .gv-chatgpt-folder-section__header,
-:host(.gv-chatgpt-folder-section[data-gv-rtl]) .gv-floating-folder-panel__status {
+:host(.gv-chatgpt-folder-section[data-gv-rtl]) .gv-chatgpt-folder-section__header {
   direction: rtl;
 }

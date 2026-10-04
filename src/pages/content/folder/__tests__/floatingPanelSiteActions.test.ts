@@ -56,7 +56,6 @@ describe('floating panel site props', () => {
       'floatingPanelClose',
     ]);
     expect(hintTexts(handle)).toEqual(['floatingPanelMoveHint', 'floatingPanelGestureHint']);
-    expect(part(handle, 'status').hidden).toBe(true);
 
     contextMenu(folderHeader(panelRoot(handle), 'folder-a'));
     expect(menuItems(handle)).not.toContain('floatingPanelAddCurrentHere');
@@ -106,28 +105,5 @@ describe('floating panel site props', () => {
 
     expect(addHere).toHaveBeenCalledWith('folder-b');
     expect(queryPart(handle, 'context-menu')).toBeNull();
-  });
-
-  it('shows a status message, then clears it', () => {
-    vi.useFakeTimers();
-    const handle = mountPanel();
-    const status = part(handle, 'status');
-
-    handle.flash('Added');
-    expect(status.hidden).toBe(false);
-    expect(status.textContent).toBe('Added');
-    expect(status.getAttribute('role')).toBe('status');
-
-    vi.advanceTimersByTime(4000);
-    expect(status.hidden).toBe(true);
-    expect(status.textContent).toBe('');
-  });
-
-  it('leaves no status timer behind when destroyed mid-message', () => {
-    vi.useFakeTimers();
-    const handle = mountPanel();
-    handle.flash('Added');
-    handle.destroy();
-    expect(vi.getTimerCount()).toBe(0);
   });
 });

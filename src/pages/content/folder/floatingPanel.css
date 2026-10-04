@@ -1011,20 +1011,6 @@
   background: var(--gv-floating-folder-panel__surface, #ffffff);
 }
 
-.gv-floating-folder-panel__status {
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--gv-floating-folder-panel__outline-subtle, rgba(60, 64, 67, 0.1));
-  color: var(--gv-floating-folder-panel__text, #1f1f1f);
-  background: var(--gv-floating-folder-panel__surface, #ffffff);
-  font-family: 'Google Sans', Roboto, Arial, sans-serif;
-  font-size: 12px;
-  line-height: 16px;
-}
-
-.gv-floating-folder-panel__status[hidden] {
-  display: none;
-}
-
 .gv-floating-folder-panel__hint-stack .gv-floating-folder-panel__move-hint {
   min-height: 20px;
   padding: 1px 0;

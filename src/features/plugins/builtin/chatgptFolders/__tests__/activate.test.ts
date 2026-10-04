@@ -7,6 +7,7 @@ import type { FolderData } from '@/core/types/folder';
 import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import { PluginScope } from '@/features/plugins/runtime/pluginScope';
 import { confirmDriver } from '@/tests/confirmDriver';
+import { toastDriver } from '@/tests/toastDriver';
 import { initI18n } from '@/utils/i18n';
 
 import { CHATGPT_FOLDER_CONFIG } from '../config';
@@ -156,7 +157,7 @@ describe('ChatGPT folders plugin', () => {
         url: `https://chatgpt.com/g/g-p-abc/c/${A}`,
       }),
     ]);
-    expect(shadow().querySelector('[role="status"]')?.textContent).toBe('Added to folder.');
+    expect(toastDriver.all()).toMatchObject([{ message: 'Added to folder.', tone: 'success' }]);
     expect(memory.values.local.get(StorageKeys.CHATGPT_FOLDER_PANEL)).toMatchObject({ open: true });
 
     expect(migrate).not.toHaveBeenCalled();
@@ -179,9 +180,9 @@ describe('ChatGPT folders plugin', () => {
     shadow().querySelector<HTMLButtonElement>('[class*="icon-button--add-current"]')!.click();
     await settle(20);
 
-    expect(shadow().querySelector('[role="status"]')?.textContent).toBe(
+    expect(toastDriver.messages()).toEqual([
       "Open a saved conversation first. Temporary chats can't be filed.",
-    );
+    ]);
     expect(memory.writes.filter((w) => w.key === StorageKeys.FOLDER_DATA_CHATGPT)).toEqual([]);
   });
 

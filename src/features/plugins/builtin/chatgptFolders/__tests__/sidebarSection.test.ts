@@ -8,6 +8,7 @@ import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
 import { PluginScope } from '@/features/plugins/runtime/pluginScope';
 import { openMenu } from '@/pages/content/folder/floatingTree/__tests__/treeDriver';
+import { toastDriver } from '@/tests/toastDriver';
 import { initI18n, getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
 import { activateChatGptFolders } from '../index';
@@ -227,9 +228,9 @@ describe('ChatGPT folder section in the sidebar', () => {
       .click();
 
     expect(download).toHaveBeenCalledTimes(1);
-    const status = section().shadowRoot!.querySelector<HTMLElement>('[role="status"]')!;
-    expect(status.hidden).toBe(false);
-    expect(status.textContent).toBe(t('folder_export_success'));
+    expect(toastDriver.all()).toMatchObject([
+      { message: t('folder_export_success'), tone: 'success' },
+    ]);
   });
 
   it('creates and saves a folder from its own header', async () => {
@@ -254,7 +255,6 @@ describe('ChatGPT folder section in the sidebar', () => {
   it('confirms "Add current conversation here" in the section while the panel is closed', async () => {
     await activate();
     const root = section().shadowRoot!;
-    const status = root.querySelector<HTMLElement>('[role="status"]')!;
     const addCurrentHere = async (): Promise<void> => {
       root
         .querySelector('[data-folder-id="f1"]')!
@@ -270,8 +270,7 @@ describe('ChatGPT folder section in the sidebar', () => {
     history.pushState(null, '', `/c/${ROWS[2].id}`);
     try {
       await addCurrentHere();
-      expect(status.hidden).toBe(false);
-      expect(status.textContent).toBe('Added to folder.');
+      expect(toastDriver.messages()).toEqual(['Added to folder.']);
       const saved = memory.values.local.get(StorageKeys.FOLDER_DATA_CHATGPT) as FolderData;
       expect(saved.folderContents.f1.map((c) => c.conversationId)).toContain(
         `chatgpt:conv:${ROWS[2].id}`,
@@ -281,9 +280,9 @@ describe('ChatGPT folder section in the sidebar', () => {
     }
 
     await addCurrentHere();
-    expect(status.textContent).toBe(
+    expect(toastDriver.messages()).toEqual([
       "Open a saved conversation first. Temporary chats can't be filed.",
-    );
+    ]);
   });
 
   it('marks the filed conversation the page has open, and follows the route', async () => {

@@ -17,6 +17,7 @@ import {
   label,
   treeDriver,
 } from '@/pages/content/folder/floatingTree/__tests__/treeDriver';
+import { toastDriver } from '@/tests/toastDriver';
 import { initI18n } from '@/utils/i18n';
 
 import { activateChatGptFolders } from '../index';
@@ -180,8 +181,7 @@ function sortToggle(): HTMLButtonElement {
 }
 
 function status(): string {
-  const line = shadow().querySelector<HTMLElement>('[role="status"]')!;
-  return line.hidden ? '' : (line.textContent ?? '');
+  return toastDriver.messages().join('\n');
 }
 
 function dragEvent(type: string, transfer: FakeTransfer, clientY = 20): Event {

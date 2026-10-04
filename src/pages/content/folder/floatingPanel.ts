@@ -52,8 +52,6 @@ export type FloatingPanelMountArgs = MountArgs;
 
 export type FloatingPanelHandle = {
   element: HTMLElement;
-  /** Shows `message` in the panel's status line until the next one or a few seconds pass. */
-  flash: (message: string) => void;
   setDataReady: (ready: boolean) => void;
   /** The folder drop target under a viewport point, for a drag driven by pointer events. */
   dropTargetAt: (x: number, y: number) => FolderDropTarget | null;
@@ -71,7 +69,6 @@ const MIN_PANEL_HEIGHT = 320;
 const MAX_PANEL_WIDTH = 640;
 const VIEWPORT_SIZE_MARGIN = 32;
 const SIZE_CHANGE_DEBOUNCE_MS = 300;
-const STATUS_MS = 4000;
 const DEFAULT_HINT_KEYS = ['floatingPanelMoveHint', 'floatingPanelGestureHint'];
 const HINT_ICONS = ['i', '?'];
 
@@ -310,24 +307,8 @@ export function mountFloatingPanel({
   };
   setDataReady(dataReady);
 
-  const status = document.createElement('div');
-  status.className = `${FLOATING_PANEL_CLASS}__status`;
-  status.setAttribute('role', 'status');
-  status.hidden = true;
-  let statusTimer: ReturnType<typeof setTimeout> | null = null;
-  const flash = (message: string): void => {
-    if (statusTimer) clearTimeout(statusTimer);
-    status.textContent = message;
-    status.hidden = false;
-    statusTimer = setTimeout(() => {
-      statusTimer = null;
-      status.hidden = true;
-      status.textContent = '';
-    }, STATUS_MS);
-  };
-
   const surface = attachShadowSurface(panel, panelCss);
-  surface.root.append(header, createHintStack(hintKeys), status, body);
+  surface.root.append(header, createHintStack(hintKeys), body);
 
   const initialSize = clampSize(storedSize ?? { w: DEFAULT_WIDTH, h: DEFAULT_HEIGHT });
   const initialPos = clampPos(storedPos ?? defaultPos(initialSize), initialSize.w, initialSize.h);
@@ -466,10 +447,6 @@ export function mountFloatingPanel({
       clearTimeout(sizeDebounceTimer);
       sizeDebounceTimer = null;
     }
-    if (statusTimer) {
-      clearTimeout(statusTimer);
-      statusTimer = null;
-    }
     tree.destroy();
     surface.disconnect();
     panel.remove();
@@ -479,7 +456,6 @@ export function mountFloatingPanel({
 
   return {
     element: panel,
-    flash,
     setDataReady,
     dropTargetAt: (x, y) => folderDropTargetAt(surface.root, x, y),
     reset: tree.reset,

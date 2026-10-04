@@ -6,6 +6,7 @@ import { StorageKeys } from '@/core/types/common';
 import type { FolderData } from '@/core/types/folder';
 import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import { PluginScope } from '@/features/plugins/runtime/pluginScope';
+import { toastDriver } from '@/tests/toastDriver';
 import { initI18n } from '@/utils/i18n';
 
 import { activateChatGptFolders } from '../index';
@@ -213,12 +214,8 @@ describe('"Move to folder" in a sidebar row menu', () => {
   });
 
   it('confirms the move in the sidebar section while the floating panel is closed', async () => {
-    const status = () =>
-      document
-        .querySelector('.gv-chatgpt-folder-section')!
-        .shadowRoot!.querySelector<HTMLElement>('[role="status"]')!;
     expect(document.querySelector('.gv-floating-folder-panel')).toBeNull();
-    expect(status().hidden).toBe(true);
+    expect(toastDriver.all()).toEqual([]);
 
     for (const expected of ['Added to folder.', 'Already in this folder.']) {
       const menu = sidebar.openMenu(TARGET.id);
@@ -227,8 +224,8 @@ describe('"Move to folder" in a sidebar row menu', () => {
       await nextPass();
       pick('Work');
       await settle(20);
-      expect(status().hidden).toBe(false);
-      expect(status().textContent).toBe(expected);
+      // Each outcome replaces the one before, as the old status line did.
+      expect(toastDriver.messages()).toEqual([expected]);
     }
   });
 
@@ -251,11 +248,9 @@ describe('"Move to folder" in a sidebar row menu', () => {
     const saved = memory.values.local.get(StorageKeys.FOLDER_DATA_CHATGPT) as FolderData;
     expect(Object.hasOwn(saved.folderContents, 'f2')).toBe(false);
     expect(memory.writes.length).toBe(writes);
-    const status = document
-      .querySelector('.gv-chatgpt-folder-section')!
-      .shadowRoot!.querySelector<HTMLElement>('[role="status"]')!;
-    expect(status.hidden).toBe(false);
-    expect(status.textContent).toBe('Could not save folder changes. Please try again.');
+    expect(toastDriver.all()).toMatchObject([
+      { message: 'Could not save folder changes. Please try again.', tone: 'error' },
+    ]);
   });
 
   it.each([0, 2])(
