@@ -27,6 +27,7 @@ export default defineConfig({
       'package.json',
       '{vite,vitest}.config.*',
       'src/**/*.css',
+      'public/**/*.css',
       'src/locales/**',
     ].map((pattern) => path.join(__dirname, pattern)),
     coverage: {
