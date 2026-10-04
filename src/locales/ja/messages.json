@@ -1561,6 +1561,10 @@
     "message": "思考内容を Markdown 形式でダウンロード",
     "description": "Deep Research download button tooltip"
   },
+  "deepResearchNoThinkingContent": {
+    "message": "ダウンロードできる思考内容が見つかりませんでした。",
+    "description": "Warning when Deep Research has no thinking content to download"
+  },
   "folder_uncategorized": {
     "message": "未分類",
     "description": "Label for root-level conversations not in any folder"

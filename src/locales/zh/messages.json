@@ -1561,6 +1561,10 @@
     "message": "将 Thinking 内容导出为 Markdown 文件",
     "description": "Deep Research download button tooltip"
   },
+  "deepResearchNoThinkingContent": {
+    "message": "未找到可下载的 Thinking 内容。",
+    "description": "Warning when Deep Research has no thinking content to download"
+  },
   "folder_uncategorized": {
     "message": "未分类",
     "description": "根目录下未分类对话的标签"

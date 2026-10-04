@@ -1561,6 +1561,10 @@
     "message": "생각 내용을 Markdown 으로 다운로드",
     "description": "Deep Research download button tooltip"
   },
+  "deepResearchNoThinkingContent": {
+    "message": "다운로드할 생각 내용이 없습니다.",
+    "description": "Warning when Deep Research has no thinking content to download"
+  },
   "folder_uncategorized": {
     "message": "미분류",
     "description": "Label for root-level conversations not in any folder"

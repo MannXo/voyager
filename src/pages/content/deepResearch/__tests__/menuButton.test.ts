@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { StorageKeys } from '@/core/types/common';
 import { ConversationExportService } from '@/features/export/services/ConversationExportService';
 import { toastDriver } from '@/tests/toastDriver';
 import type { AppLanguage } from '@/utils/language';
@@ -370,6 +371,45 @@ describe('applyDeepResearchDownloadButtonI18n', () => {
     expect(panel.querySelector('.gv-deep-research-download')).toBeTruthy();
     expect(panel.querySelector('.gv-deep-research-save-report')).toBeTruthy();
   });
+});
+
+describe('downloading Deep Research thinking content', () => {
+  afterEach(() => {
+    document.body.replaceChildren();
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    { language: 'zh', message: '未找到可下载的 Thinking 内容。', close: '关闭' },
+    {
+      language: 'ja',
+      message: 'ダウンロードできる思考内容が見つかりませんでした。',
+      close: '閉じる',
+    },
+  ])(
+    'an empty thinking download shows a visible warning in $language',
+    async ({ language, message, close }) => {
+      let currentLanguage = 'en';
+      vi.spyOn(chrome.storage.sync, 'get').mockImplementation(
+        (_keys: unknown, callback?: (result: Record<string, unknown>) => void) => {
+          callback?.({ [StorageKeys.LANGUAGE]: currentLanguage });
+          return Promise.resolve({ [StorageKeys.LANGUAGE]: currentLanguage });
+        },
+      );
+      document.body.innerHTML = '<deep-research-immersive-panel></deep-research-immersive-panel>';
+      const panel = createDeepResearchReportMenuPanel();
+      await injectDownloadButton(panel);
+      // A menu can remain open while the language changes; the notice follows the click's language.
+      currentLanguage = language;
+      panel.querySelector<HTMLElement>('.gv-deep-research-download')!.click();
+
+      await vi.waitFor(() =>
+        expect(toastDriver.all()).toMatchObject([{ message, tone: 'warning' }]),
+      );
+      toastDriver.press(toastDriver.all()[0], close);
+      expect(toastDriver.all()).toEqual([]);
+    },
+  );
 });
 
 describe('saving a Deep Research report', () => {

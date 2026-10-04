@@ -1561,6 +1561,10 @@
     "message": "Скачать содержимое мыслей как Markdown",
     "description": "Deep Research download button tooltip"
   },
+  "deepResearchNoThinkingContent": {
+    "message": "Не найдено размышлений для скачивания.",
+    "description": "Warning when Deep Research has no thinking content to download"
+  },
   "folder_uncategorized": {
     "message": "Без категории",
     "description": "Label for root-level conversations not in any folder"

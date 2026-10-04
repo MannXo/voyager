@@ -75,13 +75,16 @@ export function applyDeepResearchSaveReportButtonI18n(
 /**
  * Handle download button click
  */
-async function handleDownload(): Promise<void> {
+async function handleDownload(dict: ExportDictionaries): Promise<void> {
   try {
     console.log('[Gemini Voyager] Extracting Deep Research thinking content...');
 
     const content = extractThinkingPanels();
     if (!content) {
       console.warn('[Gemini Voyager] No thinking content found');
+      // An empty download still needs a visible outcome, in the language selected at click time.
+      const t = createExportTranslator(dict, await readExportLanguage());
+      showExportAlert(t('deepResearchNoThinkingContent'), t, 'warning');
       return;
     }
 
@@ -194,6 +197,7 @@ function createMenuButton({
 function createDownloadButton(
   text: string,
   tooltip: string,
+  dict: ExportDictionaries,
   menuContent: HTMLElement,
 ): HTMLElement {
   return createMenuButton({
@@ -201,7 +205,7 @@ function createDownloadButton(
     tooltip,
     className: DOWNLOAD_BUTTON_CLASS,
     iconName: 'download',
-    onClick: () => void handleDownload(),
+    onClick: () => void handleDownload(dict),
     menuContent,
   });
 }
@@ -386,6 +390,7 @@ export async function injectDownloadButton(targetMenuPanel?: HTMLElement): Promi
       downloadButton = createDownloadButton(
         t('deepResearchDownload'),
         t('deepResearchDownloadTooltip'),
+        dict,
         menuContent as HTMLElement,
       );
       menuContent.appendChild(downloadButton);

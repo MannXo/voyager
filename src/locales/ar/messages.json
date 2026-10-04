@@ -1561,6 +1561,10 @@
     "message": "تنزيل محتوى التفكير بتنسيق Markdown",
     "description": "Deep Research download button tooltip"
   },
+  "deepResearchNoThinkingContent": {
+    "message": "لم يتم العثور على محتوى تفكير لتنزيله.",
+    "description": "Warning when Deep Research has no thinking content to download"
+  },
   "folder_uncategorized": {
     "message": "غير مصنف",
     "description": "Label for root-level conversations not in any folder"
