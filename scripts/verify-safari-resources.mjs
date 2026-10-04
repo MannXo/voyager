@@ -46,6 +46,7 @@ function listFiles(directory, prefix = '') {
   });
 }
 
+// build-safari-release.sh passes the exported appex's Resources directory.
 const bundleResourcesDir = process.argv[2];
 if (bundleResourcesDir) {
   const missingBundleFiles = listFiles(distDir).filter(

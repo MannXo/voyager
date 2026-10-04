@@ -40,7 +40,6 @@
     "typecheck": "tsc --noEmit",
     "verify:pr": "bun run format:check && bun run lint:check && bun run typecheck && bun run i18n:check && bun run filesize:check && bun run plugin:check && bun run test && bun run build:all && bun run docs:build",
     "verify:katex-export": "bun scripts/verify-katex-export.ts",
-    "verify:safari-resources": "node scripts/verify-safari-resources.mjs",
     "commitlint": "commitlint --edit $GIT_PARAMS",
     "catalog:build": "bun scripts/build-plugin-catalog.ts",
     "plugin:new": "bun scripts/plugin-new.ts",
