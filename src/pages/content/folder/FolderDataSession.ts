@@ -39,6 +39,8 @@ export class FolderDataSession {
   } | null = null;
   readonly backup: DataBackupService<FolderData>;
   private active = true;
+  debouncePending = false;
+  private debounceTimer: number | null = null;
 
   constructor(
     readonly storageKey: string,
@@ -63,6 +65,38 @@ export class FolderDataSession {
     if (this.failedEditGen !== null && this.failedEditGen <= gen) this.failedEditGen = null;
   }
 
+  get isActive(): boolean {
+    return this.active;
+  }
+
+  scheduleDebounce(flush: () => void, delay: number): void {
+    this.pauseDebounce();
+    this.debouncePending = true;
+    this.debounceTimer = window.setTimeout(() => {
+      this.debounceTimer = null;
+      flush();
+    }, delay);
+  }
+
+  pauseDebounce(): void {
+    if (this.debounceTimer !== null) window.clearTimeout(this.debounceTimer);
+    this.debounceTimer = null;
+  }
+
+  takeDebounce(): boolean {
+    if (!this.debouncePending) return false;
+    this.pauseDebounce();
+    this.debouncePending = false;
+    return true;
+  }
+
+  cancelPendingSave(): void {
+    this.takeDebounce();
+    this.pendingSave = null;
+    this.pendingSaveCompletion?.resolve(false);
+    this.pendingSaveCompletion = null;
+  }
+
   markReady(): void {
     this.ready = true;
     if (this.active) this.backup.setupBeforeUnloadBackup(() => this.data);
@@ -75,6 +109,7 @@ export class FolderDataSession {
 
   deactivate(): void {
     this.active = false;
+    this.pauseDebounce();
     // Invalidates reads already in flight without discarding pending writes.
     this.loadVersion += 1;
     this.backup.destroy();

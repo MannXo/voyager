@@ -109,8 +109,6 @@ export class FolderRepository {
   private activeStorageKey: string;
   private destroyed = false;
   private readonly storageEchoes = new StorageEchoTracker();
-  /** Another context wrote the active bucket; reload once local work settles. */
-  private saveDebounceTimer: number | null = null;
   /** The session a scope refresh released, still told about writes until it rebinds. */
   private releasingSession: FolderDataSession | null = null;
   private beforeUnloadFlushHandler: (() => void) | null = null;
@@ -215,10 +213,7 @@ export class FolderRepository {
     if (!this.destroyed) browser.storage.onChanged.addListener(this.storageChangeHandler);
   }
 
-  /**
-   * Release the active session without destroying the repository: edits stop,
-   * in-flight scope work goes stale, and a later `refreshAccountScope` resumes.
-   */
+  /** Suspend edits and invalidate in-flight reads; account refresh resumes the session. */
   suspend(): void {
     this.flushPendingSaveData();
     // Cached memory is not an authoritative snapshot until the resumed session loads again.
@@ -233,12 +228,9 @@ export class FolderRepository {
   }
 
   destroy(): void {
-    // The flush must precede `destroyed`, which gates `saveData`; the retry
-    // timer is cancelled straight after so a pending resolution cannot rearm.
+    // Accept the final debounce before disabling edits and cancelling retry timers.
     this.flushPendingSaveData();
     this.destroyed = true;
-    if (this.saveDebounceTimer !== null) window.clearTimeout(this.saveDebounceTimer);
-    this.saveDebounceTimer = null;
     this.clearAccountScopeRetry();
     this.clearReadRetry();
     this.dataSession?.deactivate();
@@ -253,6 +245,8 @@ export class FolderRepository {
     if (this.dataSession) sessions.add(this.dataSession);
     void Promise.all(
       [...sessions].map(async (session) => {
+        // Parked work has no drain once teardown stops authority retries.
+        if (!session.saveInProgress || !this.fence.canWrite) session.cancelPendingSave();
         await (session.pendingSaveCompletion?.promise ?? session.activeSave);
         await session.backup.finishPendingWrites();
       }),
@@ -274,7 +268,7 @@ export class FolderRepository {
 
   async loadData(): Promise<void> {
     const session = this.dataSession;
-    if (!session || !this.fence.canWrite || this.destroyed) return;
+    if (!session?.isActive || !this.fence.canWrite || this.destroyed) return;
     if (session.pendingSave) {
       this.drainPendingSave(session);
       return;
@@ -290,6 +284,7 @@ export class FolderRepository {
     const isCurrent = () =>
       this.fence.canWrite &&
       this.dataSession === session &&
+      session.isActive &&
       session.loadVersion === version &&
       !this.destroyed;
     session.loadsInFlight += 1;
@@ -334,7 +329,7 @@ export class FolderRepository {
         const base = session.baseline;
         session.baseline = cloneFolderData(fresh);
         // Edits still waiting on the debounce were made after `base`; keep them.
-        if (this.saveDebounceTimer !== null && base) mergeDebouncedEdits(fresh, this.data, base);
+        if (session.debouncePending && base) mergeDebouncedEdits(fresh, this.data, base);
         // Readable storage wins on resumption; failed edits are retained only for recovery.
         this.data = fresh;
 
@@ -353,7 +348,10 @@ export class FolderRepository {
         // Create primary backup on successful load
         void session.backup.createPrimaryBackup(this.data);
         await session.backup.finishLocalWrites();
+        // Suspension or a newer load during backup authorization cannot restore readiness.
+        if (!isCurrent()) return;
         session.markReady();
+        if (session.debouncePending) this.armDebounce(session);
         applied = true;
 
         this.debug('Data loaded and validated successfully');
@@ -391,19 +389,21 @@ export class FolderRepository {
       applied = await this.attemptDataRecovery(error, session);
     } finally {
       session.loadsInFlight -= 1;
-      if (applied && this.dataSession === session) this.clearReadRetry();
+      if (applied && isCurrent()) this.clearReadRetry();
       // A bucket event during this read still needs a fresh answer.
-      if (applied && !session.storageChangedDuringRead) session.reconcilePending = false;
-      // Authoritative data replaced a failed edit made before this read; merged debounced
-      // edits are pending, not failed, and a write that failed during recovery is newer.
-      if (applied) session.settleFailedEdit(writesBefore);
+      if (applied && isCurrent() && !session.storageChangedDuringRead)
+        session.reconcilePending = false;
+      // Only the current load settles older failed edits; recovery writes settle their own generation.
+      if (applied && isCurrent()) session.settleFailedEdit(writesBefore);
       if (isCurrent() && session.ready) {
         this.hooks.onChange('loaded');
       }
-      // A discarded read, or a write observed during this one, still needs a reload.
-      // A failed recovery keeps its flag but waits for the next storage event or
-      // settled local write: retrying now would rewrite the same failing snapshot.
-      if (this.dataSession === session && (applied || (!isCurrent() && !recovering))) {
+      // Failed recovery waits for a bucket event or settled write; a suspended load stays parked.
+      if (
+        this.dataSession === session &&
+        session.isActive &&
+        (applied || (!isCurrent() && !recovering))
+      ) {
         this.tryReconcile();
       }
     }
@@ -456,19 +456,18 @@ export class FolderRepository {
   /** Returns whether storage now holds the recovered data. */
   private async attemptDataRecovery(error: unknown, session: FolderDataSession): Promise<boolean> {
     if (this.dataSession !== session) return false;
+    const version = session.loadVersion;
     console.warn(`${this.tag} Attempting data recovery after load failure`);
 
-    // Memory holding an edit whose save failed is newer than every backup (the
-    // primary predates it); repair storage from it instead of rolling it back.
+    // Failed local edits outrank backups when storage is corrupt.
     if (session.failedEditGen !== null && validateFolderData(this.data)) {
       this.data = this.config.normalize(this.data);
       session.markReady();
       this.hooks.onRecovery('kept');
-      return this.saveData();
+      return this.saveMemory(true, version);
     }
 
     // Step 1: Read both stores, including durable copies that cannot fit in localStorage.
-    const version = session.loadVersion;
     await session.backup.ensureHydrated();
     if (this.dataSession !== session || session.loadVersion !== version || this.destroyed)
       return false;
@@ -480,7 +479,7 @@ export class FolderRepository {
       this.hooks.onRecovery('recovered');
       // Save recovered data to persistent storage. It is the backup, not a local edit:
       // its failure must not outrank a newer backup another tab may write meanwhile.
-      return this.saveMemory(false);
+      return this.saveMemory(false, version);
     }
 
     // Step 2: If current this.data already has valid structure, keep it
@@ -508,30 +507,24 @@ export class FolderRepository {
    * reload: expand/collapse and conversation timestamps.
    */
   scheduleSaveData(): void {
-    if (!this.canEdit) return;
-    if (this.saveDebounceTimer !== null) {
-      window.clearTimeout(this.saveDebounceTimer);
-    }
-    this.saveDebounceTimer = window.setTimeout(() => this.fireDebouncedSave(), SAVE_DEBOUNCE_MS);
+    if (this.canEdit && this.dataSession) this.armDebounce(this.dataSession);
   }
 
-  private fireDebouncedSave(): void {
-    // Saving now would supersede a read in flight and overwrite what it found, or
-    // write memory a failed read could not check; keep the timer armed so the next
-    // successful load merges this edit, then save.
-    if (!this.fence.canWrite || this.dataSession?.loadsInFlight || this.dataSession?.readFailed) {
-      this.saveDebounceTimer = window.setTimeout(() => this.fireDebouncedSave(), SAVE_DEBOUNCE_MS);
+  private armDebounce(session: FolderDataSession): void {
+    session.scheduleDebounce(() => this.fireDebouncedSave(session), SAVE_DEBOUNCE_MS);
+  }
+
+  private fireDebouncedSave(session: FolderDataSession): void {
+    // An account's accepted edit stays parked until that account is active and freshly loaded.
+    if (this.destroyed || this.dataSession !== session || !session.isActive) return;
+    if (!this.canEdit || session.loadsInFlight) {
+      if (this.fence.canWrite) this.armDebounce(session);
       return;
     }
-    this.saveDebounceTimer = null;
-    void this.saveData();
+    this.flushPendingSaveData();
   }
 
-  /**
-   * Flag each session whose bucket another context wrote, including a session
-   * retained for its pending write while another account is active: it stays
-   * flagged until it is active and idle again, and never flags another bucket.
-   */
+  /** Flag external writes for their captured bucket, including retained account sessions. */
   private markExternalChanges(changes: Record<string, Storage.StorageChange>): void {
     const sessions = new Set(this.dataSessions.values());
     if (this.dataSession) sessions.add(this.dataSession);
@@ -548,11 +541,7 @@ export class FolderRepository {
     this.tryReconcile();
   }
 
-  /**
-   * Reload after another context's write once no write or read is in flight, so
-   * the reload is neither skipped nor discarded. The flag stays set until a load
-   * applies storage (see `loadData`). Debounced edits are merged onto that data.
-   */
+  /** Reconcile external writes once this session is idle; merge pending debounced edits. */
   private tryReconcile(): void {
     const session = this.dataSession;
     if (!session?.reconcilePending || this.destroyed || !this.fence.canWrite) return;
@@ -573,9 +562,7 @@ export class FolderRepository {
   }
 
   flushPendingSaveData(): void {
-    if (this.saveDebounceTimer === null || !this.canEdit) return;
-    window.clearTimeout(this.saveDebounceTimer);
-    this.saveDebounceTimer = null;
+    if (!this.canEdit || !this.dataSession?.takeDebounce()) return;
     void this.saveData();
   }
 
@@ -619,14 +606,19 @@ export class FolderRepository {
     return this.saveMemory(true);
   }
 
-  private async saveMemory(carriesEdit: boolean): Promise<boolean> {
+  private async saveMemory(carriesEdit: boolean, recoveryVersion?: number): Promise<boolean> {
     const session = this.dataSession;
-    if (!session || !this.canEdit) return false;
+    if (
+      !session ||
+      !this.canEdit ||
+      (recoveryVersion !== undefined && session.loadVersion !== recoveryVersion)
+    )
+      return false;
     try {
       this.data = this.config.normalize(this.data);
       const snapshot = cloneFolderData(session.data);
-      // A mutation supersedes any storage read already in flight for this session.
-      session.loadVersion += 1;
+      // Recovery belongs to its current load; user mutations supersede an in-flight read.
+      if (recoveryVersion === undefined) session.loadVersion += 1;
       session.markReady();
       // Backups stay off the save chain: a slow or failed copy never delays or fails a save.
       void session.backup.createEmergencyBackup(snapshot);
@@ -743,9 +735,7 @@ export class FolderRepository {
       }
       session.saveInProgress = false;
       if (this.destroyed && !this.fence.canWrite) {
-        session.pendingSave = null;
-        session.pendingSaveCompletion?.resolve(false);
-        session.pendingSaveCompletion = null;
+        session.cancelPendingSave();
       }
       session.activeSave = null;
       if (this.fence.canWrite) this.drainPendingSave(session);
@@ -753,6 +743,7 @@ export class FolderRepository {
         !session.pendingSave &&
         !session.saveInProgress &&
         this.dataSession !== session &&
+        this.releasingSession !== session &&
         !session.replacingData
       ) {
         this.dataSessions.delete(session.storageKey);
@@ -818,10 +809,8 @@ export class FolderRepository {
 
   async refreshAccountScope(): Promise<void> {
     // A reload-required tab must keep the unsaved session rather than release it for rebinding.
-    if (!this.fence.canWrite) {
-      this.scopeRefreshPending = true;
-      return;
-    }
+    if (this.fence.reloadRequired || this.destroyed) return;
+    this.scopeRefreshPending = true;
     const request = ++this.accountScopeRequest;
     this.clearAccountScopeRetry();
     this.clearReadRetry();
@@ -831,7 +820,15 @@ export class FolderRepository {
     this.flushPendingSaveData();
     previous?.deactivate();
     this.releasingSession = previous;
-    if (previous && !previous.saveInProgress && !previous.replacingData) {
+    if (
+      previous &&
+      this.dataSession === previous &&
+      this.fence.canWrite &&
+      !previous.saveInProgress &&
+      !previous.pendingSave &&
+      !previous.debouncePending &&
+      !previous.replacingData
+    ) {
       this.dataSessions.delete(previous.storageKey);
     }
     this.dataSession = null;
@@ -856,6 +853,8 @@ export class FolderRepository {
       storageKey = resolvedScope
         ? buildScopedStorageKey(this.config.storageKey, resolvedScope.accountKey)
         : this.config.storageKey;
+      // Resolve visibility even while authority is unavailable; binding waits for its timer.
+      if (!this.fence.canWrite) throw new LegacyFolderWriteRefusedError();
       await this.initializeStorage(storageKey);
       if (request !== this.accountScopeRequest || this.destroyed) return;
       const session =
@@ -879,7 +878,7 @@ export class FolderRepository {
       this.activeStorageKey = storageKey;
       this.hooks.onAccountBound?.(context);
       // A disabled rebind may have loaded before another context wrote this cached session.
-      if (session.reconcilePending) session.ready = false;
+      if (session.reconcilePending || session.debouncePending) session.ready = false;
       session.activate();
       this.accountScopeRetryAttempt = 0;
       if (session.ready) {
@@ -967,6 +966,7 @@ export class FolderRepository {
       for (const session of sessions) {
         session.loadVersion += 1;
         session.backup.destroy();
+        session.pauseDebounce();
       }
       if (this.fence.reloadRequired) {
         this.accountScopeRequest += 1;
@@ -976,12 +976,8 @@ export class FolderRepository {
           this.activeStorageKey = this.dataSession.storageKey;
           this.resolvedAccountScope = this.dataSession.accountScope;
         }
-        if (this.saveDebounceTimer !== null) window.clearTimeout(this.saveDebounceTimer);
-        this.saveDebounceTimer = null;
         for (const session of sessions) {
-          session.pendingSave = null;
-          session.pendingSaveCompletion?.resolve(false);
-          session.pendingSaveCompletion = null;
+          session.cancelPendingSave();
         }
       } else this.hooks.onRecovery('unreadable');
     } else {
@@ -989,7 +985,6 @@ export class FolderRepository {
       void Promise.resolve().then(async () => {
         if (this.destroyed || !this.fence.canWrite) return;
         for (const session of sessions) this.drainPendingSave(session);
-        this.flushPendingSaveData();
         if (!this.dataSession || this.scopeRefreshPending) await this.refreshAccountScope();
         if (this.dataSession?.ready) this.dataSession.markReady();
         await this.loadData();

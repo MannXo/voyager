@@ -1,17 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import browser from 'webextension-polyfill';
 
-import {
-  accountIsolationService,
-  buildScopedFolderStorageKey,
-} from '@/core/services/AccountIsolationService';
+import { buildScopedFolderStorageKey } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
+import { isVoyagerLayerEvent } from '@/core/ui/layer';
+import { createToaster } from '@/core/ui/toast/toaster';
 import { AUTHORITY_FENCE_KEY } from '@/features/folder/owner/authorityFence';
 import {
   LegacyFolderFence,
   LegacyFolderWriteRefusedError,
 } from '@/features/folder/owner/legacyFolderFence';
 import { CHATGPT_FOLDER_CONFIG } from '@/features/plugins/builtin/chatgptFolders/config';
+import { toastDriver } from '@/tests/toastDriver';
 
 import { FolderRepository } from './FolderRepository';
 import {
@@ -156,6 +156,54 @@ afterEach(() => {
 });
 
 describe('legacy folder authority fence', () => {
+  it('keeps one persistent reload toast beside other feedback until the user dismisses it', async () => {
+    vi.useFakeTimers();
+    const repo = await ready();
+    const other = createToaster();
+    try {
+      other.show({ message: 'Other feedback', durationMs: null });
+      change(fence('chatgpt'));
+      change(fence('chatgpt'));
+      await vi.advanceTimersByTimeAsync(60_000);
+      const notice = toastDriver.find('Voyager was updated')!;
+      expect(notice).toMatchObject({ tone: 'error', role: 'alert' });
+      expect(toastDriver.all()).toHaveLength(2);
+      const events: boolean[] = [];
+      const pressed = (event: Event) => events.push(isVoyagerLayerEvent(event));
+      document.addEventListener('pointerdown', pressed, { once: true });
+      notice.element.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, composed: true }),
+      );
+      expect(events).toEqual([true]);
+      toastDriver.press(notice, 'Close');
+      expect(toastDriver.messages()).toEqual(['Other feedback']);
+      change(fence('chatgpt'));
+      expect(toastDriver.messages()).toEqual(['Other feedback']);
+      expect(repo.canEdit).toBe(false);
+    } finally {
+      other.destroy();
+    }
+  });
+
+  it.each(['close', 'destroy'] as const)(
+    'removes only its reload toast when %s ends its lifetime',
+    (method) => {
+      const guard = new LegacyFolderFence(StorageKeys.FOLDER_DATA_CHATGPT, () => {}, false);
+      const other = createToaster();
+      try {
+        other.show({ message: 'Other feedback', durationMs: null });
+        guard.observe(fence('chatgpt'));
+        expect(toastDriver.all()).toHaveLength(2);
+        guard[method]();
+        guard[method]();
+        expect(toastDriver.messages()).toEqual(['Other feedback']);
+      } finally {
+        guard.destroy();
+        other.destroy();
+      }
+    },
+  );
+
   it.each([
     [CHATGPT_FOLDER_CONFIG, 'chatgpt'],
     [GEMINI_FOLDER_CONFIG, 'gemini'],
@@ -179,7 +227,7 @@ describe('legacy folder authority fence', () => {
       expect(repo.data).toEqual(initial);
       expect(stored[config.storageKey]).toBeUndefined();
       expect(localStorage.getItem(`gvBackup_${config.backupNamespace}_primary`)).toBeNull();
-      expect(document.querySelector('[role="alert"]')?.textContent).toBe(
+      expect(toastDriver.all().find(({ role }) => role === 'alert')?.message).toBe(
         'Voyager was updated. Reload this tab to keep editing folders.',
       );
       expect(await repo.saveData()).toBe(false);
@@ -226,7 +274,7 @@ describe('legacy folder authority fence', () => {
     expect(repo.data.folders[0]?.name).toBe('Unsaved');
     expect(repo.canEdit).toBe(false);
     expect(pageBackups()).toEqual(backups);
-    expect(document.querySelector('[role="alert"]')).not.toBeNull();
+    expect(toastDriver.all().some(({ role }) => role === 'alert')).toBe(true);
     expect(onSaveFailed).not.toHaveBeenCalled();
   });
 
@@ -242,7 +290,7 @@ describe('legacy folder authority fence', () => {
     expect(await repo.saveData()).toBe(false);
     expect(repo.data.folders[0]?.name).toBe('Memory');
     expect(stored[StorageKeys.FOLDER_DATA_CHATGPT]).toEqual(initial);
-    expect(document.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    expect(toastDriver.all().filter(({ role }) => role === 'alert')).toHaveLength(1);
   });
 
   it('blocks a failed fence read without writing data or backups', async () => {
@@ -259,7 +307,7 @@ describe('legacy folder authority fence', () => {
     expect(pageBackups()).toEqual(backups);
     expect(onRecovery).toHaveBeenCalledWith('unreadable');
     expect(onSaveFailed).not.toHaveBeenCalled();
-    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(toastDriver.all().some(({ role }) => role === 'alert')).toBe(false);
   });
 
   it.each([GEMINI_FOLDER_CONFIG, AISTUDIO_FOLDER_CONFIG, CHATGPT_FOLDER_CONFIG])(
@@ -351,19 +399,20 @@ describe('legacy folder authority fence', () => {
 
   it('finishes account binding after a failed startup fence read', async () => {
     vi.useFakeTimers();
-    const scopedKey = buildScopedFolderStorageKey('email:test');
+    window.history.replaceState({}, '', '/u/1/app');
+    vi.mocked(browser.storage.sync.get).mockResolvedValue({
+      [StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED_GEMINI]: true,
+    });
+    const scopedKey = buildScopedFolderStorageKey('route:1');
     stored[StorageKeys.FOLDER_DATA] = clone(initial);
     stored[scopedKey] = { ...initial, folders: [{ ...initial.folders[0], name: 'Account' }] };
-    vi.spyOn(accountIsolationService, 'isIsolationEnabled').mockResolvedValue(true);
-    vi.spyOn(accountIsolationService, 'resolveAccountScope').mockResolvedValue({
-      accountKey: 'email:test',
-      accountId: 1,
-      routeUserId: '1',
-      emailHash: 'test',
+    const get = vi.mocked(browser.storage.local.get).getMockImplementation()!;
+    let failedFenceReads = 0;
+    vi.mocked(browser.storage.local.get).mockImplementation(async (keys) => {
+      if (keys === AUTHORITY_FENCE_KEY && failedFenceReads++ < 2)
+        throw new Error('fence unavailable');
+      return get(keys);
     });
-    vi.mocked(browser.storage.local.get)
-      .mockRejectedValueOnce(new Error('fence unavailable'))
-      .mockRejectedValueOnce(new Error('fence still unavailable'));
     const repo = repository(GEMINI_FOLDER_CONFIG);
     await repo.init();
     expect(repo.canEdit).toBe(false);
@@ -478,7 +527,7 @@ describe('legacy folder authority fence', () => {
     expect(repo.data.folders[0]?.name).toBe('Unsaved');
     expect(stored[StorageKeys.FOLDER_DATA_CHATGPT]).toBe('broken');
     expect(repo.canEdit).toBe(false);
-    expect(document.querySelector('[role="alert"]')).not.toBeNull();
+    expect(toastDriver.all().some(({ role }) => role === 'alert')).toBe(true);
   });
 
   it('retains memory when the owner fence arrives during backup hydration', async () => {
@@ -514,7 +563,7 @@ describe('legacy folder authority fence', () => {
     expect(await repo.saveData()).toBe(false);
     expect(stored[StorageKeys.FOLDER_DATA_CHATGPT]).toEqual(initial);
     expect(repo.data.folders[0]?.name).toBe('Unsaved');
-    expect(document.querySelector('[role="alert"]')).not.toBeNull();
+    expect(toastDriver.all().some(({ role }) => role === 'alert')).toBe(true);
   });
 
   it('cancels queued snapshots and the debounce while retaining the newest edit', async () => {
@@ -584,7 +633,7 @@ describe('legacy folder authority fence', () => {
       JSON.parse(localStorage.getItem('gvBackup_chatgpt-folders_beforeUnload')!).data.folders[0]
         .name,
     ).toBe('Saved');
-    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(toastDriver.all().some(({ role }) => role === 'alert')).toBe(false);
     expect(onRecovery).not.toHaveBeenCalled();
   });
 });

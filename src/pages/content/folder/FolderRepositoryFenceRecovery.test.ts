@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import browser from 'webextension-polyfill';
 
+import { buildScopedFolderStorageKey } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 import { AUTHORITY_FENCE_KEY } from '@/features/folder/owner/authorityFence';
 import { CHATGPT_FOLDER_CONFIG } from '@/features/plugins/builtin/chatgptFolders/config';
+import { toastDriver } from '@/tests/toastDriver';
 
 import { FolderRepository } from './FolderRepository';
 import {
@@ -54,6 +57,7 @@ async function settle() {
 }
 
 let originalStorage: typeof chrome.storage;
+let originalPageUrl: string;
 let stored: Record<string, unknown>;
 let listeners: Set<Listener>;
 const repositories: FolderRepository[] = [];
@@ -114,6 +118,7 @@ function emergency(config: PlatformFolderConfig) {
 beforeEach(() => {
   vi.useFakeTimers();
   originalStorage = chrome.storage;
+  originalPageUrl = window.location.href;
   stored = {};
   listeners = new Set();
   recovery.mockReset();
@@ -142,6 +147,7 @@ beforeEach(() => {
 afterEach(() => {
   for (const repo of repositories.splice(0)) repo.destroy();
   chrome.storage = originalStorage;
+  window.history.replaceState({}, '', originalPageUrl);
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
@@ -172,7 +178,7 @@ describe.each(configs)('folder fence availability for $storageKey', (config) => 
       if (state === 'owner') {
         await vi.advanceTimersByTimeAsync(60000);
         expect(reloads.mock.calls.length).toBeLessThanOrEqual(1);
-        expect(document.querySelectorAll('[role="alert"]')).toHaveLength(1);
+        expect(toastDriver.all().filter(({ role }) => role === 'alert')).toHaveLength(1);
       }
     },
   );
@@ -279,6 +285,38 @@ describe.each(configs)('folder fence availability for $storageKey', (config) => 
     expect((stored[config.storageKey] as FolderData).folders[0].isExpanded).toBe(false);
   });
 
+  it('an accepted debounce survives a resumed binding held longer than its save delay', async () => {
+    const { repo } = await ready(config);
+    repo.data.folders[0].isExpanded = false;
+    repo.scheduleSaveData();
+    get.mockImplementation(async (keys) => {
+      if (keys === AUTHORITY_FENCE_KEY) throw new Error('Authority unreadable');
+      return read(keys);
+    });
+    await repo.loadData();
+    repo.suspend();
+    await repo.refreshAccountScope();
+    const bindingAuthority = deferred<Record<string, unknown>>();
+    let recoveredProbe = false;
+    get.mockImplementation(async (keys) => {
+      if (keys === AUTHORITY_FENCE_KEY) {
+        if (recoveredProbe) return bindingAuthority.promise;
+        recoveredProbe = true;
+      }
+      return read(keys);
+    });
+    await vi.advanceTimersByTimeAsync(1600);
+    expect(recoveredProbe).toBe(true);
+    expect(repo.canEdit).toBe(false);
+    get.mockImplementation(async (keys) => read(keys));
+    bindingAuthority.resolve({});
+    await settle();
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(repo.data.folders[0].isExpanded).toBe(false);
+    expect((stored[config.storageKey] as FolderData).folders[0].isExpanded).toBe(false);
+    expect(repo.canEdit).toBe(true);
+  });
+
   it('destroy flushes an accepted debounced edit when no owner fence exists', async () => {
     const { repo } = await ready(config);
     repo.data.folders[0].isExpanded = false;
@@ -286,6 +324,117 @@ describe.each(configs)('folder fence availability for $storageKey', (config) => 
     repo.destroy();
     await settle();
     expect((stored[config.storageKey] as FolderData).folders[0].isExpanded).toBe(false);
+  });
+
+  it.each(['during rebinding', 'before rebinding'] as const)(
+    'a superseded backup completion cannot reopen a resumed snapshot and delete a restored folder %s',
+    async (timing) => {
+      const { repo } = await ready(config);
+      const backupAuthority = deferred<Record<string, unknown>>();
+      const bindingAuthority = deferred<Record<string, unknown>>();
+      const freshRead = deferred<Record<string, unknown>>();
+      const freshStarted = deferred<void>();
+      let authorityReads = 0;
+      let phase: 'old-load' | 'binding' | 'fresh' = 'old-load';
+      get.mockImplementation(async (keys) => {
+        if (keys === AUTHORITY_FENCE_KEY) {
+          if (phase === 'binding') return bindingAuthority.promise;
+          if (
+            phase === 'old-load' &&
+            ++authorityReads === (config === GEMINI_FOLDER_CONFIG ? 3 : 2)
+          )
+            return backupAuthority.promise;
+        }
+        if (phase === 'fresh' && keys === config.storageKey) {
+          freshStarted.resolve();
+          return freshRead.promise;
+        }
+        return read(keys);
+      });
+      const oldLoad = repo.loadData();
+      await settle();
+      repo.suspend();
+      phase = 'binding';
+      let binding = timing === 'during rebinding' ? repo.refreshAccountScope() : null;
+      await settle();
+      backupAuthority.resolve({});
+      await oldLoad;
+      if (timing === 'before rebinding') {
+        expect(repo.canEdit).toBe(false);
+        binding = repo.refreshAccountScope();
+        await settle();
+      }
+      phase = 'fresh';
+      bindingAuthority.resolve({});
+      await binding;
+      const resumedLoad = repo.loadData();
+      await freshStarted.promise;
+      const restored = {
+        folders: [
+          ...clone(initial.folders),
+          { ...initial.folders[0], id: 'restored', name: 'Restored' },
+        ],
+        folderContents: { f: [], restored: [] },
+      };
+      emit(config.storageKey, restored);
+      expect(repo.canEdit).toBe(false);
+      repo.data.folders[0].name = 'Rejected rename';
+      expect(await repo.saveData()).toBe(false);
+      expect(stored[config.storageKey]).toEqual(restored);
+      get.mockImplementation(async (keys) => read(keys));
+      freshRead.resolve({ [config.storageKey]: initial });
+      await resumedLoad;
+      await vi.advanceTimersByTimeAsync(30000);
+      await settle();
+      expect(repo.canEdit).toBe(true);
+      expect(repo.data.folders.map(({ id }) => id)).toContain('restored');
+      expect((stored[config.storageKey] as FolderData).folders.map(({ id }) => id)).toContain(
+        'restored',
+      );
+    },
+  );
+
+  it('destroy settles a parked queued edit after the active write has already finished', async () => {
+    const { repo } = await ready(config);
+    const issued = deferred<void>();
+    const writingB = deferred<void>();
+    set.mockImplementation(async (items) => {
+      if ((items[config.storageKey] as FolderData | undefined)?.folders[0]?.name === 'B') {
+        issued.resolve();
+        await writingB.promise;
+      }
+      commit(items);
+    });
+    repo.data.folders[0].name = 'B';
+    const savingB = repo.saveData();
+    await issued.promise;
+    const lateAuthority = deferred<Record<string, unknown>>();
+    get.mockImplementation(async (keys) =>
+      keys === AUTHORITY_FENCE_KEY ? lateAuthority.promise : read(keys),
+    );
+    repo.data.folders[0].name = 'C';
+    let completedC: boolean | undefined;
+    void repo.saveData().then((saved) => {
+      completedC = saved;
+    });
+    await settle();
+    await vi.advanceTimersByTimeAsync(1001);
+    writingB.resolve();
+    expect(await savingB).toBe(true);
+    await settle();
+    expect(completedC).toBeUndefined();
+    expect((stored[config.storageKey] as FolderData).folders[0].name).toBe('B');
+    repo.destroy();
+    await settle();
+    expect(completedC).toBe(false);
+    const callsAfterDestroy = get.mock.calls.length;
+    get.mockImplementation(async (keys) => read(keys));
+    lateAuthority.resolve({});
+    await vi.advanceTimersByTimeAsync(60000);
+    await settle();
+    expect(get.mock.calls.length).toBe(callsAfterDestroy);
+    expect((stored[config.storageKey] as FolderData).folders[0].name).toBe('B');
+    expect(repo.canEdit).toBe(false);
   });
 
   it('an older authorization cannot replace the newest emergency recovery snapshot', async () => {
@@ -369,7 +518,124 @@ describe.each(configs)('folder fence availability for $storageKey', (config) => 
     expect(repo.canEdit).toBe(false);
     expect(repo.data.folders[0].name).toBe('Unsaved');
     expect(stored[config.storageKey]).toEqual(initial);
-    expect(document.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    expect(toastDriver.all().filter(({ role }) => role === 'alert')).toHaveLength(1);
     expect(reloads.mock.calls.length).toBeLessThanOrEqual(1);
   });
+});
+
+it('hides account A when account B is selected after authority became unreadable', async () => {
+  window.history.replaceState({}, '', '/');
+  vi.mocked(browser.storage.sync.get).mockResolvedValue({
+    [StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED_GEMINI]: true,
+  });
+  const firstKey = buildScopedFolderStorageKey('default');
+  const secondKey = buildScopedFolderStorageKey('route:1');
+  stored[firstKey] = clone(initial);
+  stored[secondKey] = {
+    ...clone(initial),
+    folders: [{ ...initial.folders[0], name: 'Account B' }],
+  };
+  const { repo } = create(GEMINI_FOLDER_CONFIG);
+  await repo.init();
+  await settle();
+  expect(repo.storageKey).toBe(firstKey);
+  set.mockImplementation(async (items) => {
+    if (Object.hasOwn(items, firstKey)) throw new Error('Account A save failed');
+    commit(items);
+  });
+  repo.data.folders[0].name = 'Private account A edit';
+  expect(await repo.saveData()).toBe(false);
+  await settle();
+  set.mockImplementation(async (items) => commit(items));
+  get.mockImplementation(async (keys) => {
+    if (keys === AUTHORITY_FENCE_KEY) throw new Error('Authority unreadable');
+    return read(keys);
+  });
+  await repo.loadData();
+  expect(repo.canEdit).toBe(false);
+  const activation = repo.activation;
+  window.history.replaceState({}, '', '/u/1/app');
+  await repo.refreshAccountScope();
+  expect(repo.storageKey).toBe('');
+  expect(repo.data).toEqual({ folders: [], folderContents: {} });
+  expect(repo.activation).toBeGreaterThan(activation);
+  get.mockImplementation(async (keys) => read(keys));
+  await vi.advanceTimersByTimeAsync(30000);
+  await settle();
+  expect(repo.storageKey).toBe(secondKey);
+  expect(repo.data.folders[0]?.name).toBe('Account B');
+  expect(repo.canEdit).toBe(true);
+  stored[firstKey] = { corrupted: true };
+  localStorage.removeItem(firstKey);
+  window.history.replaceState({}, '', '/');
+  await repo.refreshAccountScope();
+  await repo.loadData();
+  await settle();
+  expect(repo.storageKey).toBe(firstKey);
+  expect(repo.data.folders[0]?.name).toBe('Private account A edit');
+  expect((stored[firstKey] as FolderData).folders[0]?.name).toBe('Private account A edit');
+});
+
+it('account A debounced edits stay with A through unreadable authority and a delayed account B binding', async () => {
+  window.history.replaceState({}, '', '/');
+  vi.mocked(browser.storage.sync.get).mockResolvedValue({
+    [StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED_GEMINI]: true,
+  });
+  const firstKey = buildScopedFolderStorageKey('default');
+  const secondKey = buildScopedFolderStorageKey('route:1');
+  stored[firstKey] = clone(initial);
+  stored[secondKey] = {
+    ...clone(initial),
+    folders: [{ ...initial.folders[0], name: 'Account B' }],
+  };
+  const { repo } = create(GEMINI_FOLDER_CONFIG);
+  await repo.init();
+  await settle();
+  repo.data.folders[0].isExpanded = false;
+  repo.scheduleSaveData();
+  get.mockImplementation(async (keys) => {
+    if (keys === AUTHORITY_FENCE_KEY) throw new Error('Authority unreadable');
+    return read(keys);
+  });
+  await repo.loadData();
+  window.history.replaceState({}, '', '/u/1/app');
+  await repo.refreshAccountScope();
+  const bindingAuthority = deferred<Record<string, unknown>>();
+  let recoveredProbe = false;
+  get.mockImplementation(async (keys) => {
+    if (keys === AUTHORITY_FENCE_KEY) {
+      if (recoveredProbe) return bindingAuthority.promise;
+      recoveredProbe = true;
+    }
+    return read(keys);
+  });
+  await vi.advanceTimersByTimeAsync(1600);
+  expect(recoveredProbe).toBe(true);
+  expect(repo.storageKey).toBe('');
+  expect(repo.canEdit).toBe(false);
+  get.mockImplementation(async (keys) => read(keys));
+  bindingAuthority.resolve({});
+  await settle();
+  await vi.advanceTimersByTimeAsync(30000);
+  expect(repo.storageKey).toBe(secondKey);
+  expect(repo.data.folders[0].isExpanded).toBe(true);
+  expect((stored[secondKey] as FolderData).folders[0].isExpanded).toBe(true);
+  const restored: FolderData = {
+    folders: [
+      ...clone(initial.folders),
+      { ...initial.folders[0], id: 'restored', name: 'Restored elsewhere' },
+    ],
+    folderContents: { f: [], restored: [] },
+  };
+  emit(firstKey, restored);
+  window.history.replaceState({}, '', '/');
+  await repo.refreshAccountScope();
+  await repo.loadData();
+  await vi.advanceTimersByTimeAsync(1000);
+  await settle();
+  expect(repo.storageKey).toBe(firstKey);
+  expect(repo.data.folders[0].isExpanded).toBe(false);
+  expect(repo.data.folders.map(({ id }) => id)).toContain('restored');
+  expect((stored[firstKey] as FolderData).folders[0].isExpanded).toBe(false);
+  expect((stored[firstKey] as FolderData).folders.map(({ id }) => id)).toContain('restored');
 });

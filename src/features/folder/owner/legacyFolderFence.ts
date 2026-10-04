@@ -1,5 +1,6 @@
 import browser from 'webextension-polyfill';
 
+import { createToaster } from '@/core/ui/toast/toaster';
 import { getTranslationSync } from '@/utils/i18n';
 
 import { AUTHORITY_FENCE_KEY } from './authorityFence';
@@ -20,7 +21,7 @@ export class LegacyFolderWriteRefusedError extends Error {
 export class LegacyFolderFence {
   private readonly site;
   private state: FenceState = 'legacy';
-  private notice: HTMLElement | null = null;
+  private readonly toaster = createToaster();
   private destroyed = false;
   private closing = false;
   private generation = 0;
@@ -103,11 +104,12 @@ export class LegacyFolderFence {
     if (state === this.state) return;
     this.state = state;
     if (this.reloadRequired && !this.closing) {
-      this.notice = document.createElement('div');
-      this.notice.className = 'gv-notification gv-notification-error show';
-      this.notice.setAttribute('role', 'alert');
-      this.notice.textContent = getTranslationSync('folder_reload_required');
-      document.body.appendChild(this.notice);
+      this.toaster.show({
+        message: getTranslationSync('folder_reload_required'),
+        tone: 'error',
+        durationMs: null,
+        dismissLabel: getTranslationSync('coachmarkClose'),
+      });
     }
     this.onChange();
   }
@@ -126,15 +128,12 @@ export class LegacyFolderFence {
     this.closing = true;
     if (this.retry !== null) clearTimeout(this.retry);
     this.retry = null;
-    this.notice?.remove();
+    this.toaster.destroy();
   }
 
   destroy(): void {
     this.close();
     this.destroyed = true;
     this.generation += 1;
-    if (this.retry !== null) clearTimeout(this.retry);
-    this.retry = null;
-    this.notice?.remove();
   }
 }
