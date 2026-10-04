@@ -73,8 +73,8 @@ export class AIStudioFolderManager {
   private readonly translate = (key: string) => this.t(key);
   /** Cleared, not destroyed, when the feature turns off, so a re-enable can notify again. */
   private readonly toaster = createToaster();
-  private readonly notify = (message: string, tone: ToastTone): void => {
-    this.toaster.show({ message, tone, durationMs: NOTICE_MS[tone] });
+  private readonly notify = (message: string, tone: ToastTone, channel?: string): void => {
+    this.toaster.show({ message, tone, durationMs: NOTICE_MS[tone], channel });
   };
   /** Owns sessions, load, recovery, serialized saves, drafts, echoes and scope retry. */
   private readonly repository = new FolderRepository(

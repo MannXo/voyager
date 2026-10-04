@@ -27,8 +27,11 @@ export type AIStudioTransferHost = {
   data: () => FolderData;
   /** Persists a draft (with prompts in the same write) and publishes it only on success. */
   replaceData: (data: FolderData, prompts?: PromptItem[]) => Promise<boolean>;
-  notify: (message: string, tone: ToastTone) => void;
+  notify: (message: string, tone: ToastTone, channel?: string) => void;
 };
+
+/** One transfer notice at a time: a result replaces its "in progress" notice. */
+const TRANSFER_CHANNEL = 'transfer';
 
 type DownloadResponse =
   | {
@@ -148,7 +151,7 @@ export class AIStudioTransfer {
     if (!started) return;
     const { session, current } = started;
     try {
-      this.host.notify(this.host.t('uploadInProgress'), 'info');
+      this.report(this.host.t('uploadInProgress'), 'info');
       const folders = cloneFolderData(session.data);
       const prompts = await readLocalPrompts('upload');
       if (!current()) return;
@@ -162,7 +165,7 @@ export class AIStudioTransfer {
         },
       })) as { ok?: boolean; error?: string } | undefined;
       if (!current()) return;
-      if (response?.ok) this.host.notify(this.host.t('uploadSuccess'), 'success');
+      if (response?.ok) this.report(this.host.t('uploadSuccess'), 'success');
       else this.notifySyncError(response?.error || 'Unknown error');
     } catch (error) {
       if (!current()) return;
@@ -177,7 +180,7 @@ export class AIStudioTransfer {
     if (!started) return;
     const { session, current } = started;
     try {
-      this.host.notify(this.host.t('downloadInProgress'), 'info');
+      this.report(this.host.t('downloadInProgress'), 'info');
       const response = (await browser.runtime.sendMessage({
         type: 'gv.sync.download',
         payload: { platform: 'aistudio', accountScope: toSyncAccountScope(session.accountScope) },
@@ -185,7 +188,7 @@ export class AIStudioTransfer {
       if (!current()) return;
       if (!response?.ok) return this.notifySyncError(response?.error || 'Download failed');
       if (!response.data) {
-        this.host.notify(this.host.t('syncNoData') || 'No data in cloud', 'info');
+        this.report(this.host.t('syncNoData') || 'No data in cloud', 'info');
         return;
       }
       const cloudFolders = response.data.folders?.data || { folders: [], folderContents: {} };
@@ -197,7 +200,7 @@ export class AIStudioTransfer {
         mergePrompts(localPrompts, cloudPrompts),
       );
       if (!current() || !saved) return;
-      this.host.notify(this.host.t('downloadMergeSuccess'), 'success');
+      this.report(this.host.t('downloadMergeSuccess'), 'success');
     } catch (error) {
       if (!current()) return;
       console.error('[AIStudioFolderManager] Cloud sync failed:', error);
@@ -264,13 +267,13 @@ export class AIStudioTransfer {
       if (!current()) return;
       const read = readAIStudioImportFile(JSON.parse(text));
       if (!read.ok) {
-        this.host.notify(t(read.messageKey) || 'Invalid file format', 'error');
+        this.report(t(read.messageKey) || 'Invalid file format', 'error');
         return;
       }
       const merge = mergeAIStudioImport(this.host.data(), read.data);
       const saved = await this.host.replaceData(merge.data);
       if (!current() || !saved) return;
-      this.host.notify(
+      this.report(
         t('folder_import_success')
           .replace('{folders}', String(merge.stats.foldersImported))
           .replace('{conversations}', String(merge.stats.conversationsImported)),
@@ -278,7 +281,7 @@ export class AIStudioTransfer {
       );
     } catch (error) {
       if (!current()) return;
-      this.host.notify(
+      this.report(
         t('folder_import_error').replace('{error}', () => String(error)),
         'error',
       );
@@ -300,8 +303,12 @@ export class AIStudioTransfer {
     return undefined;
   }
 
+  private report(message: string, tone: ToastTone): void {
+    this.host.notify(message, tone, TRANSFER_CHANNEL);
+  }
+
   private notifySyncError(message: string): void {
-    this.host.notify(
+    this.report(
       this.host.t('syncError').replace('{error}', () => message),
       'error',
     );

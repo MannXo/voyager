@@ -15,6 +15,7 @@ import {
 import { StorageKeys } from '@/core/types/common';
 import type { PromptItem } from '@/core/types/sync';
 import { useCloudSyncTransfer } from '@/pages/popup/components/useCloudSyncTransfer';
+import { toastDriver } from '@/tests/toastDriver';
 
 import { AIStudioFolderManager } from '../aistudio';
 import type { FolderData } from '../types';
@@ -41,7 +42,7 @@ type Manager = {
   data: FolderData;
   activeStorageKey: string;
   save(): Promise<boolean>;
-  transfer: { sync(): Promise<void> };
+  transfer: { sync(): Promise<void>; upload(): Promise<void> };
   destroy(): void;
 };
 
@@ -209,6 +210,21 @@ describe('AI Studio folder sync across contexts', () => {
     expect(bucketReads(GLOBAL_KEY)).toBe(readsAfterMount);
     expect(local.gvPromptItems).toEqual([prompt]);
     expect(manager.data.folders.map((folder) => folder.name)).toEqual(['Edited here', 'Cloud']);
+  });
+
+  it('leaves only the result once a cloud transfer finishes, not its in-progress notice', async () => {
+    local[GLOBAL_KEY] = folderData('Mine');
+    local.gvPromptItems = [];
+    const manager = await mount();
+
+    mockBrowser.runtime.sendMessage.mockResolvedValue({ ok: true });
+    await manager.transfer.upload();
+    expect(toastDriver.all().map((toast) => toast.tone)).toEqual(['success']);
+
+    mockBrowser.runtime.sendMessage.mockResolvedValue({ ok: false, error: 'offline' });
+    await manager.transfer.sync();
+    expect(toastDriver.all()).toMatchObject([{ tone: 'error' }]);
+    expect(toastDriver.messages()[0]).toContain('offline');
   });
 
   it('reloads another tab write that follows an unchanged save', async () => {
