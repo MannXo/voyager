@@ -16,6 +16,7 @@ import type { AddVia } from '@/features/folder/owner/folderOwnerPolicy';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
 import type { PluginScope } from '@/features/plugins/runtime/pluginScope';
 import type { PluginSettings } from '@/features/plugins/types';
+import { FolderSelection } from '@/pages/content/folder/FolderSelection';
 import { createCommandTreeActions } from '@/pages/content/folder/commandTreeActions';
 import { mountFloatingFab, unmountFloatingFab } from '@/pages/content/folder/floatingModeFab';
 import { type FloatingPanelHandle, mountFloatingPanel } from '@/pages/content/folder/floatingPanel';
@@ -38,7 +39,11 @@ import { isTemporaryChat } from '../chatgptTemporaryHandoff/handoff';
 import { type ChatGptFolderChange, ChatGptFolderStore } from './ChatGptFolderStore';
 import { ChatGptFolderGuide } from './chatgptFolderGuide';
 import { type FolderPickerHandle, openFolderPicker } from './chatgptFolderPicker';
-import { ChatGptFolderSection, SECTION_ICON_SIZE } from './chatgptFolderSection';
+import {
+  ChatGptFolderSection,
+  SECTION_ICON_SIZE,
+  sectionToolbarIcon,
+} from './chatgptFolderSection';
 import { ChatGptHideFiled, HIDE_FILED_SETTING } from './chatgptHideFiled';
 import { bareConversationId, readChatGptConversation } from './chatgptIdentity';
 import { ChatGptMoveMenu, MOVE_ENTRY_ATTR } from './chatgptMoveMenu';
@@ -75,6 +80,8 @@ function format(key: string, values: Record<string, string | number>): string {
 class ChatGptFoldersView {
   private panel: FloatingPanelHandle | null = null;
   private section: ChatGptFolderSection | null = null;
+  /** Multi-select in the sidebar section; it lives and ends with the section. */
+  private selection: FolderSelection | null = null;
   private picker: FolderPickerHandle | null = null;
   private fabShown = false;
   /** The conversation last recorded as opened, so each open is recorded once. */
@@ -100,18 +107,42 @@ class ChatGptFoldersView {
     this.scope.effect(() => () => this.unmountPanel(), 'chatgpt-folders:panel');
     this.scope.effect(() => {
       const rootBucketId = CHATGPT_FOLDER_CONFIG.rootBucketId;
+      const feedback = { showNotification: (message: string) => this.flashTree(message) };
+      const selection: FolderSelection = new FolderSelection({
+        store: this.store,
+        commands: this.commands,
+        runtime: {
+          get panel(): HTMLElement {
+            return section.element;
+          },
+          // ChatGPT's own rows never join; a press on them ends the selection.
+          sidebar: null,
+        },
+        // The section marks the open chat as it draws its rows.
+        navigation: { highlightActiveConversation: () => {} },
+        feedback,
+        toolbar: {
+          host: () => section.selectionBar,
+          placement: 'inline',
+          icon: sectionToolbarIcon,
+        },
+        getContext: () => ({ accountIsolationEnabled: false, isDestroyed: this.scope.isDisposed }),
+        onFolderSelectionChange: () => section.refreshSelection(),
+      });
       const drops: SidebarDropContext = {
         store: this.store,
         commands: this.commands,
         rootBucketId,
-        feedback: { showNotification: (message) => this.flashTree(message) },
+        feedback,
         sortMode: () => section.sortMode,
+        finish: () => selection.finishDrop(),
       };
-      const section = new ChatGptFolderSection({
+      const section: ChatGptFolderSection = new ChatGptFolderSection({
         data: this.store.data,
         rootBucketId,
         actions: {
           ...this.treeActions(),
+          ...selection.treeActions(),
           onDrop: (e, folderId, placement) => dropOnSidebar(drops, e, folderId, placement),
           acceptsDrag: acceptsSidebarDrag,
           // The section sits in the sidebar, next to the row ChatGPT renames in.
@@ -119,6 +150,11 @@ class ChatGptFoldersView {
         },
         prefs: sectionPrefs,
         onPrefsChange: (prefs) => void saveSectionPrefs(prefs),
+        selection: {
+          toolbar: selection.createMultiSelectIndicator(),
+          isConversationSelected: (conversation, bucketId) =>
+            selection.isFolderConversationSelected(conversation.conversationId, bucketId),
+        },
         headerActions: [
           {
             modifier: 'add-current',
@@ -145,8 +181,11 @@ class ChatGptFoldersView {
       section.header.setAttribute(DROP_FOLDER_ATTR, rootBucketId);
       const unbindRootDrop = bindRootDropZone(section.header, drops, DROP_TARGET_CLASS);
       this.section = section;
+      this.selection = selection;
       return () => {
         this.section = null;
+        this.selection = null;
+        selection.reset();
         unbindRootDrop();
         section.destroy();
       };
@@ -177,7 +216,11 @@ class ChatGptFoldersView {
    */
   placeSection(sidebar: HTMLElement | null): void {
     const openId = readChatGptConversation(location.href)?.conversationId ?? null;
+    const wasPlaced = !!this.section?.element.isConnected;
     this.section?.place(sidebar);
+    // ChatGPT dropped the section, or it left a sidebar that lost Recents: a
+    // selection made in the old place ends, as on a Gemini remount.
+    if (wasPlaced !== !!this.section?.element.isConnected) this.selection?.reset();
     this.section?.setActiveConversation(openId);
     this.showFloatingEntry(!this.section?.element.isConnected);
     this.recordOpened(openId);

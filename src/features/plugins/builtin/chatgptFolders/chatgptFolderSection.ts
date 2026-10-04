@@ -1,8 +1,11 @@
 import {
   createChevronDownIcon,
   createChevronRightIcon,
+  createCircleCheckIcon,
   createClockArrowDownIcon,
   createPlusIcon,
+  createTrashIcon,
+  createXIcon,
 } from '@/core/icons/folderIcons';
 /**
  * The folder tree as a section of ChatGPT's own sidebar, just above Recents. It
@@ -30,6 +33,7 @@ import {
   type FolderTreeController,
   mountFolderTree,
 } from '@/pages/content/folder/floatingTree/treeController';
+import type { SelectionToolbarIcon } from '@/pages/content/folder/selectionToolbar';
 import { type ShadowSurface, attachShadowSurface } from '@/pages/content/folder/shadowHost';
 import {
   type FolderSearchCriteria,
@@ -50,6 +54,12 @@ export const FOLDER_SECTION_CLASS = 'gv-chatgpt-folder-section';
 
 /** Header icons, at the size of Gemini's folder header icons. */
 export const SECTION_ICON_SIZE = 18;
+
+/** The multi-select toolbar's icons, in the header's line style. */
+export const sectionToolbarIcon: SelectionToolbarIcon = (name) => {
+  if (name === 'check_circle') return createCircleCheckIcon(SECTION_ICON_SIZE);
+  return name === 'delete' ? createTrashIcon(SECTION_ICON_SIZE) : createXIcon(SECTION_ICON_SIZE);
+};
 
 /** How long a `flash` message stays, as in the floating panel. */
 const STATUS_MS = 4000;
@@ -83,6 +93,11 @@ export type ChatGptFolderSectionOptions = {
   prefs: ChatGptFolderSectionPrefs;
   /** The section was collapsed or its conversation order changed. */
   onPrefsChange: (prefs: ChatGptFolderSectionPrefs) => void;
+  /** Long-press multi-select: its toolbar, shown atop the tree, and the rows it holds. */
+  selection?: {
+    toolbar: HTMLElement;
+    isConversationSelected: NonNullable<TreeSiteOptions['isConversationSelected']>;
+  };
 };
 
 function headerButton(modifier: string, labelKey: string, icon: SVGElement): HTMLButtonElement {
@@ -99,6 +114,8 @@ export class ChatGptFolderSection {
   readonly element: HTMLElement;
   /** The header row with the section's title: what the one-time guide points at. */
   readonly header: HTMLElement;
+  /** Holds the multi-select toolbar and carries the mode class while selecting. */
+  readonly selectionBar: HTMLElement;
   private readonly surface: ShadowSurface;
   private readonly body: HTMLElement;
   /** The search box and the tree, hidden while the section is collapsed. */
@@ -110,6 +127,7 @@ export class ChatGptFolderSection {
   private readonly status: HTMLElement;
   private readonly tree: FolderTreeController;
   private readonly onPrefsChange: (prefs: ChatGptFolderSectionPrefs) => void;
+  private readonly isConversationSelected: TreeSiteOptions['isConversationSelected'];
   private statusTimer: ReturnType<typeof setTimeout> | null = null;
   private activeConversationId: string | null = null;
   private data: FolderData;
@@ -128,8 +146,10 @@ export class ChatGptFolderSection {
     headerActions = [],
     prefs,
     onPrefsChange,
+    selection,
   }: ChatGptFolderSectionOptions) {
     this.data = data;
+    this.isConversationSelected = selection?.isConversationSelected;
     this.prefs = { ...prefs };
     this.onPrefsChange = onPrefsChange;
     this.element = document.createElement('div');
@@ -213,7 +233,10 @@ export class ChatGptFolderSection {
     this.body.className = `${FLOATING_PANEL_CLASS}__body`;
     this.content = document.createElement('div');
     this.content.className = `${FOLDER_SECTION_CLASS}__content`;
-    this.content.append(this.search.element, this.body);
+    this.selectionBar = document.createElement('div');
+    this.selectionBar.className = `${FOLDER_SECTION_CLASS}__selection`;
+    if (selection) this.selectionBar.append(selection.toolbar);
+    this.content.append(this.search.element, this.selectionBar, this.body);
 
     const css = `${panelCss}\n${sectionCss}`;
     this.surface = attachShadowSurface(this.element, css);
@@ -298,6 +321,11 @@ export class ChatGptFolderSection {
     this.tree.setSite(this.site());
   }
 
+  /** The selection changed: rows show whether they are selected again. */
+  refreshSelection(): void {
+    this.tree.setSite(this.site());
+  }
+
   setDataReady(ready: boolean): void {
     this.body.inert = !ready;
     this.body.setAttribute('aria-busy', String(!ready));
@@ -336,6 +364,7 @@ export class ChatGptFolderSection {
       ...searchAndSortOptions(this.searchCriteria() !== null, this.prefs.sortMode),
       filter: this.filter,
       activeConversationId: this.activeConversationId,
+      isConversationSelected: this.isConversationSelected,
     };
   }
 

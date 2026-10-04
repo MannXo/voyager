@@ -73,6 +73,13 @@
     var(--gv-floating-folder-panel__text) 7%,
     transparent
   );
+  /* ChatGPT's own destructive text and its hover wash; the app sets one value
+     for both themes. */
+  --gv-chatgpt-folder-section__danger: var(--color-text-danger, #e02e2a);
+  --gv-chatgpt-folder-section__danger-soft: var(
+    --color-background-danger-outline-hover,
+    color-mix(in oklab, #fa423e 8%, transparent)
+  );
 }
 
 :host(.gv-chatgpt-folder-section[data-gv-scheme='dark']),
@@ -264,6 +271,105 @@
 
 .gv-folder-search-mode-badge[hidden] {
   display: none;
+}
+
+/* ─── Multi-select: a bar atop the tree, on the folder menu's surface ──── */
+/* Shown only while selecting. It sticks to the top of the sidebar's scroll
+ * area while the section is in view, so the count and actions stay in reach
+ * of a long selection. */
+.gv-chatgpt-folder-section__selection {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: none;
+  padding: 0 6px 4px;
+}
+
+.gv-chatgpt-folder-section__selection.gv-multi-select-mode {
+  display: block;
+}
+
+.gv-chatgpt-folder-section__selection .gv-multi-select-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: var(--gv-chatgpt-folder-section__row-height);
+  box-sizing: border-box;
+  padding-inline: 10px 4px;
+  border: 1px solid var(--gv-floating-folder-panel__outline);
+  border-radius: var(--gv-chatgpt-folder-section__row-radius);
+  background: var(--gv-floating-folder-panel__surface);
+  color: var(--gv-floating-folder-panel__text);
+  box-shadow: var(--shadow-lg, 0 4px 8px -2px rgba(0, 0, 0, 0.1));
+}
+
+.gv-chatgpt-folder-section__selection .gv-multi-select-indicator-content {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gv-chatgpt-folder-section__selection .gv-multi-select-indicator-content svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--gv-floating-folder-panel__text-muted);
+}
+
+.gv-chatgpt-folder-section__selection .gv-multi-select-indicator-text {
+  overflow: hidden;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gv-chatgpt-folder-section__selection .gv-multi-select-actions {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.gv-chatgpt-folder-section__selection .gv-multi-select-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--gv-floating-folder-panel__text-muted);
+  cursor: pointer;
+}
+
+.gv-chatgpt-folder-section__selection .gv-multi-select-action-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.gv-chatgpt-folder-section__selection .gv-multi-select-exit-btn:is(:hover, :focus-visible) {
+  background: var(--gv-floating-folder-panel__surface-hover);
+  color: var(--gv-floating-folder-panel__text);
+}
+
+.gv-chatgpt-folder-section__selection .gv-multi-select-delete-btn {
+  color: var(--gv-chatgpt-folder-section__danger);
+}
+
+.gv-chatgpt-folder-section__selection .gv-multi-select-delete-btn:is(:hover, :focus-visible) {
+  background: var(--gv-chatgpt-folder-section__danger-soft);
+}
+
+.gv-chatgpt-folder-section__selection .gv-multi-select-action-btn:focus-visible {
+  outline: 2px solid var(--gv-floating-folder-panel__outline);
+  outline-offset: 1px;
 }
 
 /* "Added to …" after Move to folder: a quiet line under the header, on the
