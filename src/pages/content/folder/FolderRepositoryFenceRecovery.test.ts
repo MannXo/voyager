@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import browser from 'webextension-polyfill';
 
-import { buildScopedFolderStorageKey } from '@/core/services/AccountIsolationService';
+import {
+  buildScopedFolderStorageKey,
+  buildScopedStorageKey,
+} from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 import { AUTHORITY_FENCE_KEY } from '@/features/folder/owner/authorityFence';
 import { CHATGPT_FOLDER_CONFIG } from '@/features/plugins/builtin/chatgptFolders/config';
@@ -639,3 +642,92 @@ it('account A debounced edits stay with A through unreadable authority and a del
   expect((stored[firstKey] as FolderData).folders[0].isExpanded).toBe(false);
   expect((stored[firstKey] as FolderData).folders.map(({ id }) => id)).toContain('restored');
 });
+
+it.each([GEMINI_FOLDER_CONFIG, AISTUDIO_FOLDER_CONFIG])(
+  'a collapse survives returning to account A after its queued save finishes with account B bound ($storageKey)',
+  async (config) => {
+    window.history.replaceState({}, '', '/');
+    vi.mocked(browser.storage.sync.get).mockResolvedValue({
+      [StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED_GEMINI]: true,
+      [StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED_AISTUDIO]: true,
+    });
+    const firstKey = buildScopedStorageKey(config.storageKey, 'default');
+    const secondKey = buildScopedStorageKey(config.storageKey, 'route:1');
+    stored[firstKey] = clone(initial);
+    const accountB = {
+      ...clone(initial),
+      folders: [{ ...initial.folders[0], name: 'Account B' }],
+    };
+    stored[secondKey] = clone(accountB);
+    const { repo } = create(config);
+    await repo.init();
+    await settle();
+    expect(repo.storageKey).toBe(firstKey);
+
+    const startedB = deferred<void>();
+    const finishB = deferred<void>();
+    const startedC = deferred<void>();
+    const finishC = deferred<void>();
+    set.mockImplementation(async (items) => {
+      const name = (items[firstKey] as FolderData | undefined)?.folders[0]?.name;
+      if (name === 'B') {
+        startedB.resolve();
+        await finishB.promise;
+      } else if (name === 'C') {
+        startedC.resolve();
+        await finishC.promise;
+      }
+      commit(items);
+    });
+    repo.data.folders[0].name = 'B';
+    const savingB = repo.saveData();
+    await startedB.promise;
+    // Hold C's emergency-backup authorization until the later collapse has been accepted.
+    const unreadableAuthority = deferred<void>();
+    get.mockImplementation(async (keys) => {
+      if (keys === AUTHORITY_FENCE_KEY) {
+        await unreadableAuthority.promise;
+        throw new Error('Authority unreadable');
+      }
+      return read(keys);
+    });
+    repo.data.folders[0].name = 'C';
+    const savingC = repo.saveData();
+    await settle();
+    expect(repo.canEdit).toBe(true);
+    repo.data.folders[0].isExpanded = false;
+    repo.scheduleSaveData();
+    unreadableAuthority.resolve();
+    await settle();
+    expect(repo.canEdit).toBe(false);
+    window.history.replaceState({}, '', '/u/1/app');
+    await repo.refreshAccountScope();
+    finishB.resolve();
+    expect(await savingB).toBe(true);
+    await settle();
+
+    get.mockImplementation(async (keys) => read(keys));
+    await vi.advanceTimersByTimeAsync(1000);
+    await settle();
+    await startedC.promise;
+    expect(repo.storageKey).toBe(secondKey);
+    expect(repo.canEdit).toBe(true);
+    expect(repo.data.folders[0].name).toBe('Account B');
+    // C must settle after B binds: only A's still-pending collapse keeps its session alive.
+    finishC.resolve();
+    expect(await savingC).toBe(true);
+    await settle();
+    expect((stored[firstKey] as FolderData).folders[0].isExpanded).toBe(true);
+
+    window.history.replaceState({}, '', '/');
+    await repo.refreshAccountScope();
+    await repo.loadData();
+    await vi.advanceTimersByTimeAsync(1000);
+    await settle();
+    expect(repo.storageKey).toBe(firstKey);
+    expect(repo.data.folders[0].name).toBe('C');
+    expect(repo.data.folders[0].isExpanded).toBe(false);
+    expect((stored[firstKey] as FolderData).folders[0].isExpanded).toBe(false);
+    expect(stored[secondKey]).toEqual(accountB);
+  },
+);

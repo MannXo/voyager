@@ -596,7 +596,7 @@ export class FolderRepository {
       if (this.dataSession === session && !this.destroyed) {
         this.hooks.onChange(saved ? 'data' : 'availability');
         this.reconcileAfterWrite(session, saved);
-      } else if (!session.saveInProgress) {
+      } else if (!session.saveInProgress && !session.debouncePending) {
         this.dataSessions.delete(session.storageKey);
       }
     }
@@ -739,9 +739,11 @@ export class FolderRepository {
       }
       session.activeSave = null;
       if (this.fence.canWrite) this.drainPendingSave(session);
+      // A later accepted debounce still belongs to this session after its older write settles.
       if (
         !session.pendingSave &&
         !session.saveInProgress &&
+        !session.debouncePending &&
         this.dataSession !== session &&
         this.releasingSession !== session &&
         !session.replacingData
