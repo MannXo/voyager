@@ -4,7 +4,7 @@
  */
 import type { FolderPlatform } from '@/features/folder/platforms';
 import type { PluginStateMap } from '@/features/plugins/storage/pluginState';
-import type { StarredMessagesData } from '@/pages/content/timeline/starredTypes';
+import type { StarredMessagesData } from '@/features/savedLibrary/starTypes';
 
 import type { FolderData } from './folder';
 import type { HighlightExportPayloadV1 } from './highlight';
@@ -122,7 +122,7 @@ export interface PluginStateExportPayload {
 export type {
   StarredMessage as StarredMessageSync,
   StarredMessagesData as StarredMessagesDataSync,
-} from '@/pages/content/timeline/starredTypes';
+} from '@/features/savedLibrary/starTypes';
 
 /**
  * Starred messages export payload format

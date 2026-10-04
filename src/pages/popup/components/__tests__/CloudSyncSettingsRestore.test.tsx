@@ -8,6 +8,7 @@ import type { SyncState } from '@/core/types/sync';
 import { DEFAULT_SYNC_STATE } from '@/core/types/sync';
 
 import { CloudSyncSettings } from '../CloudSyncSettings';
+import { createCloudSyncChromeMock as createChromeMock } from './cloudSyncChromeMock';
 
 vi.mock('@/contexts/LanguageContext', () => ({
   useLanguage: () => ({
@@ -36,34 +37,6 @@ const baseState: SyncState = {
   mode: 'manual',
   isAuthenticated: false,
 };
-
-function createChromeMock(sendMessage: ReturnType<typeof vi.fn>): MockedChrome {
-  return {
-    runtime: { sendMessage, lastError: null, id: 'test-extension-id' },
-    tabs: {
-      get: vi.fn().mockResolvedValue({ id: 1, url: 'https://gemini.google.com/app' }),
-      query: vi.fn().mockResolvedValue([{ id: 1, url: 'https://gemini.google.com/app' }]),
-      sendMessage: vi.fn().mockResolvedValue({
-        ok: true,
-        data: { folders: [], folderContents: {} },
-      }),
-    },
-    storage: {
-      local: {
-        get: vi.fn().mockResolvedValue({}),
-        set: vi.fn().mockResolvedValue(undefined),
-        remove: vi.fn().mockResolvedValue(undefined),
-      },
-      sync: {
-        get: vi.fn().mockResolvedValue({}),
-        set: vi.fn().mockResolvedValue(undefined),
-        remove: vi.fn().mockResolvedValue(undefined),
-        clear: vi.fn().mockResolvedValue(undefined),
-      },
-      onChanged: { addListener: vi.fn(), removeListener: vi.fn() },
-    },
-  } as unknown as MockedChrome;
-}
 
 async function flushMicrotasks(): Promise<void> {
   await act(async () => {
@@ -145,7 +118,7 @@ describe('CloudSyncSettings restore failures', () => {
               version: '1.0.0',
               data: { cloud: { enabled: false, installedAt: 4 } },
             },
-            starred: { data: { messages: {} } },
+            starred: { format: 'gemini-voyager.starred.v1', data: { messages: {} } },
           },
         });
       }
@@ -214,7 +187,7 @@ describe('CloudSyncSettings restore failures', () => {
               version: '1.0.0',
               data: { cloud: { enabled: false, installedAt: 4 } },
             },
-            starred: { data: { messages: {} } },
+            starred: { format: 'gemini-voyager.starred.v1', data: { messages: {} } },
           },
         });
       }
@@ -249,7 +222,7 @@ describe('CloudSyncSettings restore failures', () => {
     expect(chromeMock.storage.sync.set).toHaveBeenCalled();
     expect(container.textContent).toContain(
       'Restored: storageQuotaHighlights、pluginsTitle、storageQuotaSync. ' +
-        'Not restored: folder_title、promptDataMigration (folders write failed)',
+        'Not restored: folder_title、promptDataMigration、savedLibraryStars (folders write failed)',
     );
   });
 
@@ -259,7 +232,7 @@ describe('CloudSyncSettings restore failures', () => {
         folders: { data: { folders: [], folderContents: {} } },
         prompts: { items: [] },
         // No settings and no plugin state in this backup.
-        starred: { data: { messages: {} } },
+        starred: { format: 'gemini-voyager.starred.v1', data: { messages: {} } },
       },
       true,
     );
@@ -281,7 +254,7 @@ describe('CloudSyncSettings restore failures', () => {
     expect(chromeMock.storage.sync.set).not.toHaveBeenCalled();
     expect(container.textContent).toContain(
       'Restored: storageQuotaHighlights. ' +
-        'Not restored: folder_title、promptDataMigration (folders write failed)',
+        'Not restored: folder_title、promptDataMigration、savedLibraryStars (folders write failed)',
     );
   });
 
@@ -296,7 +269,7 @@ describe('CloudSyncSettings restore failures', () => {
           version: '1.0.0',
           data: { [StorageKeys.MERMAID_ENABLED]: false },
         },
-        starred: { data: { messages: {} } },
+        starred: { format: 'gemini-voyager.starred.v1', data: { messages: {} } },
       },
       true,
     );
@@ -314,15 +287,47 @@ describe('CloudSyncSettings restore failures', () => {
     expect(chromeMock.storage.sync.set).not.toHaveBeenCalled();
     expect(container.textContent).toContain(
       'Restored: storageQuotaHighlights. ' +
-        'Not restored: storageQuotaSync、folder_title、promptDataMigration ' +
+        'Not restored: storageQuotaSync、folder_title、promptDataMigration、savedLibraryStars ' +
         '(syncOverwriteMissingFolders)',
+    );
+  });
+
+  it('reports folders and prompts as restored when the star owner write fails', async () => {
+    const sendMessage = downloadResponder(
+      {
+        folders: { data: { folders: [], folderContents: {} } },
+        prompts: { items: [] },
+        starred: { format: 'gemini-voyager.starred.v1', data: { messages: {} } },
+      },
+      false,
+    );
+    const mocked = createChromeMock(sendMessage);
+    const stored: Record<string, unknown> = {};
+    vi.mocked(mocked.storage.local.set).mockImplementation(async (items) => {
+      if (StorageKeys.TIMELINE_STARRED_MESSAGES in items) throw new Error('stars write failed');
+      Object.assign(stored, items);
+    });
+    (globalThis as { chrome: MockedChrome }).chrome = mocked;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<CloudSyncSettings />);
+    });
+    await flushMicrotasks();
+    await clickRestore(container, 'syncMerge');
+    expect(stored[StorageKeys.FOLDER_DATA]).toEqual({ folders: [], folderContents: {} });
+    expect(stored[StorageKeys.PROMPT_ITEMS]).toEqual([]);
+    expect(container.textContent).toContain(
+      'Restored: folder_title、promptDataMigration. Not restored: savedLibraryStars (stars write failed)',
     );
   });
 
   it('keeps the plain missing-folders message when nothing was restored', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const sendMessageMock = downloadResponder(
-      { prompts: { items: [] }, starred: { data: { messages: {} } } },
+      {
+        prompts: { items: [] },
+        starred: { format: 'gemini-voyager.starred.v1', data: { messages: {} } },
+      },
       false,
     );
     const chromeMock = createChromeMock(sendMessageMock);

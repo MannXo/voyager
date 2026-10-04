@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { HighlightRecordV1 } from '@/core/types/highlight';
-import type { StarredMessage } from '@/pages/content/timeline/starredTypes';
+import type { StarredMessage } from '@/features/savedLibrary/starTypes';
 
 import { buildSavedLibraryItemUrl, filterSavedLibraryItems, toSavedLibraryItems } from '../model';
 

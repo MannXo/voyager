@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
 import { TimelineHierarchyGeometry } from '@/features/timeline/TimelineHierarchyGeometry';
 import { TimelineState } from '@/features/timeline/TimelineState';
 import type { MarkerLevel } from '@/features/timeline/types';
 import { createGeminiTimelineStoragePolicy } from '@/pages/content/timeline/GeminiTimelineStorage';
 
-import { StarredMessagesService } from '../StarredMessagesService';
 import {
   getLegacyTimelineCollapsedStorageKey,
   getLegacyTimelineLevelsStorageKey,

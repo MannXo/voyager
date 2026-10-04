@@ -4,6 +4,7 @@ import { startRemoteAnnouncementBackgroundService } from '@/features/announcemen
 import { registerWelcomePageOnInstall } from '@/features/onboarding/welcomePage';
 import { startChatGptTemporaryHandoffBackgroundService } from '@/features/plugins/builtin/chatgptTemporaryHandoff/background';
 import { HostCatalogRefresher } from '@/features/plugins/remote/hostCatalogRefresh';
+import { createStarStore } from '@/features/savedLibrary/starStore';
 import { startStorageQuotaWarningBackgroundService } from '@/features/storageQuotaWarning/background';
 
 import {
@@ -22,7 +23,7 @@ import { startResearchPackOwner } from './researchPackOwner';
 import { createResponseNotifications } from './responseNotifications';
 import { registerBackgroundRuntimeMessages } from './runtimeMessages';
 import { createSiteAccessRegistration } from './siteAccessRegistration';
-import { createStarredMessagesOwner } from './starredMessages';
+import { createStarredMessagesHandler } from './starredMessages';
 import { registerWatermarkDefaultMigrationOnInstall } from './watermarkDefaultMigration';
 
 const responseNotifications = createResponseNotifications();
@@ -65,10 +66,11 @@ void mainWorld.syncResponseCompleteObserverRegistration();
 
 registerBackgroundSettingListeners({ siteAccess, mainWorld });
 
-const starredMessages = createStarredMessagesOwner(chrome.storage.local);
+const starStore = createStarStore(chrome.storage.local);
+const handleStarredMessage = createStarredMessagesHandler(starStore);
 const forkMessages = createForkMessagesOwner(chrome.storage.local);
 const handleCloudSyncMessage = createCloudSyncMessageHandler({
-  getAllStarredMessages: starredMessages.getAllStarredMessages,
+  getAllStarredMessages: starStore.getAll,
   getAllForkNodes: forkMessages.getAllForkNodes,
 });
 
@@ -80,7 +82,7 @@ registerBackgroundRuntimeMessages({
     }),
   handleGeneratedUiMessage: generatedUiCapture.handle,
   handleNotificationMessage: responseNotifications.handle,
-  handleStarredMessage: starredMessages.handle,
+  handleStarredMessage,
   handleForkMessage: forkMessages.handle,
   handleCloudSyncMessage,
   announcements: remoteAnnouncementService,

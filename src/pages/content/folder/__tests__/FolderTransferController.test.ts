@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { StorageKeys } from '@/core/types/common';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
+import { createStarStore, type StarStore } from '@/features/savedLibrary/starStore';
 import { confirmDriver } from '@/tests/confirmDriver';
 
 import { FolderDataSession } from '../FolderDataSession';
@@ -9,11 +11,18 @@ import type { ImportSource } from '../folderTransferHost';
 import type { FolderData } from '../types';
 
 const { sendMessage } = vi.hoisted(() => ({ sendMessage: vi.fn() }));
+let stored: Record<string, unknown>;
+let owner: StarStore;
 let localGet: ReturnType<typeof vi.fn<(keys: unknown) => Promise<Record<string, unknown>>>>;
 vi.mock('webextension-polyfill', () => ({ default: { runtime: { sendMessage } } }));
 vi.mock('@/utils/i18n', () => ({
   getTranslationSync: (key: string) => key,
-  getTranslationSyncUnsafe: (key: string) => key,
+  getTranslationSyncUnsafe: (key: string) =>
+    key === 'syncRestorePartial'
+      ? 'Restored: {restored}. Not restored: {failed} ({error})'
+      : key === 'syncRestoreListSeparator'
+        ? '、'
+        : key,
 }));
 
 const emptyData = (): FolderData => ({ folders: [], folderContents: {} });
@@ -95,9 +104,30 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   sendMessage.mockReset();
-  localGet = vi.fn(async () => ({}));
+  stored = {};
+  localGet = vi.fn(async (keys: unknown) => {
+    const names = Array.isArray(keys) ? keys : [keys];
+    return Object.fromEntries(
+      names.map((name) => [String(name), structuredClone(stored[String(name)])]),
+    );
+  });
   chrome.storage.local.get = localGet as typeof chrome.storage.local.get;
-  vi.mocked(chrome.storage.local.set).mockResolvedValue();
+  vi.mocked(chrome.storage.local.set).mockImplementation(async (items) => {
+    Object.assign(stored, structuredClone(items));
+  });
+  owner = createStarStore({
+    get: (keys) => localGet(keys),
+    set: (items) => chrome.storage.local.set(items),
+  });
+  vi.spyOn(chrome.runtime, 'sendMessage').mockImplementation(((
+    message: { payload?: unknown },
+    reply: (response: unknown) => void,
+  ) => {
+    void owner.mergeCloud(message.payload).then(
+      (result) => reply({ ok: true, ...result }),
+      (error: Error) => reply({ ok: false, error: error.message }),
+    );
+  }) as typeof chrome.runtime.sendMessage);
 });
 
 afterEach(() => {
@@ -427,20 +457,15 @@ describe('folder transfer commands', () => {
     };
     const cloudPrompt = { id: 'p1', text: 'cloud update', tags: [], createdAt: 1, updatedAt: 2 };
     const localStar = { turnId: 'turn1', title: 'Local tie winner' };
-    localGet.mockImplementation(async (keys) => {
-      if (Array.isArray(keys) && keys.includes('gvPromptItems'))
-        return { gvPromptItems: [localPrompt] };
-      if (Array.isArray(keys) && keys.includes('geminiTimelineStarredMessages')) {
-        return { geminiTimelineStarredMessages: { messages: { abc: [null, {}, localStar] } } };
-      }
-      return {};
-    });
+    stored[StorageKeys.PROMPT_ITEMS] = [localPrompt];
+    stored[StorageKeys.TIMELINE_STARRED_MESSAGES] = { messages: { abc: [null, {}, localStar] } };
     sendMessage.mockResolvedValue({
       ok: true,
       data: {
         folders: { data: importedData() },
         prompts: { items: [cloudPrompt] },
         starred: {
+          format: 'gemini-voyager.starred.v1',
           data: {
             messages: {
               abc: [
@@ -454,15 +479,59 @@ describe('folder transfer commands', () => {
     });
     await h.transfer.sync();
     expect(h.session.data).toEqual(importedData());
-    expect(chrome.storage.local.set).toHaveBeenCalledWith(
-      expect.objectContaining({
-        gvPromptItems: [{ ...cloudPrompt, name: 'Keep local name' }],
-        geminiTimelineStarredMessages: {
-          messages: { abc: [localStar, { turnId: 'turn2', starredAt: 3 }] },
-        },
-      }),
-    );
+    expect(stored[StorageKeys.PROMPT_ITEMS]).toEqual([{ ...cloudPrompt, name: 'Keep local name' }]);
+    const stars = await owner.getAll();
+    expect(stars.messages.abc).toEqual([
+      expect.objectContaining(localStar),
+      expect.objectContaining({ turnId: 'turn2', starredAt: 3 }),
+    ]);
     expect(h.refresh).toHaveBeenCalledOnce();
     expect(h.notify).toHaveBeenLastCalledWith('downloadMergeSuccess', 'success');
+  });
+
+  it('reports the completed folder merge when the star owner cannot persist', async () => {
+    const h = harness();
+    sendMessage.mockResolvedValue({
+      ok: true,
+      data: {
+        folders: { data: importedData() },
+        starred: { format: 'gemini-voyager.starred.v1', data: { messages: {} } },
+      },
+    });
+    vi.mocked(chrome.storage.local.set).mockImplementation(async (items) => {
+      if (StorageKeys.TIMELINE_STARRED_MESSAGES in items) throw new Error('stars write failed');
+      Object.assign(stored, items);
+    });
+    await h.transfer.sync();
+    expect(h.session.data).toEqual(importedData());
+    expect(stored[StorageKeys.PROMPT_ITEMS]).toEqual([]);
+    expect(h.notify).toHaveBeenLastCalledWith(
+      'Restored: folder_title、promptDataMigration. Not restored: savedLibraryStars (stars write failed)',
+      'error',
+    );
+    expect(h.refresh).not.toHaveBeenCalled();
+  });
+
+  it('leaves stars untouched when the account changes while folders save', async () => {
+    const h = harness();
+    stored[StorageKeys.TIMELINE_STARRED_MESSAGES] = { messages: {} };
+    sendMessage.mockResolvedValue({
+      ok: true,
+      data: {
+        folders: { data: importedData() },
+        starred: {
+          format: 'gemini-voyager.starred.v1',
+          data: { messages: { abc: [{ turnId: 'new' }] } },
+        },
+      },
+    });
+    h.applyData.mockImplementation(async () => {
+      h.leaveAndReturn();
+      return true;
+    });
+    await h.transfer.sync();
+    expect((await owner.getAll()).messages).toEqual({});
+    expect(h.refresh).not.toHaveBeenCalled();
+    expect(h.notify).not.toHaveBeenCalledWith('downloadMergeSuccess', 'success');
   });
 });

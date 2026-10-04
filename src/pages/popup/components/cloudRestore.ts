@@ -1,7 +1,7 @@
 /**
  * The popup's writes for a Drive restore, in order: plugin state, synced
- * settings, then folders (plus prompts, starred messages and the timeline
- * hierarchy on Gemini) in one storage write. There is no transaction across
+ * settings, then folders (plus prompts and the timeline hierarchy on Gemini),
+ * followed by the background-owned star merge. There is no transaction across
  * them, and the background has already restored highlights by the time they
  * run, so a failure partway reports which parts were restored and which were
  * not instead of a bare "sync failed".
@@ -13,7 +13,13 @@ import {
 } from '@/features/plugins/storage/pluginState';
 import type { TranslationKey } from '@/utils/translations';
 
-export type CloudRestorePart = 'highlights' | 'plugins' | 'settings' | 'folders' | 'prompts';
+export type CloudRestorePart =
+  | 'highlights'
+  | 'plugins'
+  | 'settings'
+  | 'folders'
+  | 'prompts'
+  | 'starred';
 export type CloudRestoreMode = 'merge' | 'overwrite';
 
 const PART_LABELS: Readonly<Record<CloudRestorePart, TranslationKey>> = {
@@ -22,6 +28,7 @@ const PART_LABELS: Readonly<Record<CloudRestorePart, TranslationKey>> = {
   settings: 'storageQuotaSync',
   folders: 'folder_title',
   prompts: 'promptDataMigration',
+  starred: 'savedLibraryStars',
 };
 
 /**
@@ -47,9 +54,11 @@ export interface CloudRestoreInput {
   /** The Drive plugin-state payload, or undefined when absent or another format. */
   readonly plugins: unknown;
   readonly settings: unknown;
-  /** Folders, plus prompts, starred and hierarchy on Gemini: one storage write. */
+  /** Folders, plus prompts and hierarchy on Gemini: one storage write. */
   readonly storageUpdate: Record<string, unknown>;
   readonly includesPrompts: boolean;
+  /** Resolves true when a present cloud star payload merged successfully. */
+  readonly mergeStarred?: () => Promise<boolean>;
   /** The backup has no folder data; an overwrite then writes nothing. */
   readonly foldersMissing: boolean;
 }
@@ -90,6 +99,10 @@ export async function applyCloudRestore(input: CloudRestoreInput): Promise<void>
       return true;
     },
   });
+
+  if (input.mergeStarred) {
+    steps.push({ parts: ['starred'], run: input.mergeStarred });
+  }
 
   const restored: CloudRestorePart[] = input.highlightsRestored ? ['highlights'] : [];
   if (input.mode === 'overwrite' && input.foldersMissing) {

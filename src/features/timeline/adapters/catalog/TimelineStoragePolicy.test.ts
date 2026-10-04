@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { StarredMessagesService } from '@/pages/content/timeline/StarredMessagesService';
+import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
 
 import { TimelineState } from '../../TimelineState';
 import { createCatalogTimelineStoragePolicy } from './CatalogTimelineStorage';

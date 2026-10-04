@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { StarredMessagesService } from '@/pages/content/timeline/StarredMessagesService';
-import type { StarredMessage } from '@/pages/content/timeline/starredTypes';
+import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
+import type { StarredMessage } from '@/features/savedLibrary/starTypes';
 
 import { catalogStarsStorageKey } from './config';
 

@@ -2,8 +2,10 @@
  * Service for managing starred messages across all conversations
  * Uses message passing to background script to prevent race conditions
  */
-import { eventBus } from './EventBus';
-import type { StarredMessage, StarredMessagesData } from './starredTypes';
+import { eventBus } from '@/pages/content/timeline/EventBus';
+
+import { normalizeStarredMessages } from './starData';
+import type { StarredMessage, StarredMessagesData } from './starTypes';
 
 export class StarredMessagesService {
   /**
@@ -32,16 +34,7 @@ export class StarredMessagesService {
     const response = await this.sendMessage<{ ok: boolean; data: StarredMessagesData }>(
       'gv.starred.getAll',
     );
-    // Failed reads must not become authoritative empty state that a timeline persists.
-    if (
-      !response.data?.messages ||
-      typeof response.data.messages !== 'object' ||
-      Array.isArray(response.data.messages) ||
-      !Object.values(response.data.messages).every(Array.isArray)
-    ) {
-      throw new Error('Invalid starred messages response');
-    }
-    return response.data;
+    return normalizeStarredMessages(response.data);
   }
 
   /**
@@ -54,32 +47,29 @@ export class StarredMessagesService {
       'gv.starred.getForConversation',
       { conversationId },
     );
-    if (!Array.isArray(response.messages)) throw new Error('Invalid starred messages response');
-    return response.messages;
+    return normalizeStarredMessages({ messages: { [conversationId]: response.messages } }).messages[
+      conversationId
+    ];
   }
 
   /**
    * Add a starred message - delegated to background script
    */
   static async addStarredMessage(message: StarredMessage): Promise<void> {
-    try {
-      const response = await this.sendMessage<{ ok: boolean; added: boolean }>(
-        'gv.starred.add',
-        message,
-      );
+    const response = await this.sendMessage<{ ok: boolean; added: boolean }>(
+      'gv.starred.add',
+      message,
+    );
 
-      if (response.added) {
-        // Emit event for cross-component synchronization
-        eventBus.emit('starred:added', {
-          conversationId: message.conversationId,
-          turnId: message.turnId,
-        });
+    if (response.added) {
+      // Emit event for cross-component synchronization
+      eventBus.emit('starred:added', {
+        conversationId: message.conversationId,
+        turnId: message.turnId,
+      });
 
-        // Also update localStorage for backward compatibility
-        await this.updateLegacyStorage(message.conversationId, message.turnId, 'add');
-      }
-    } catch (error) {
-      console.error('[StarredMessagesService] Failed to add starred message:', error);
+      // Also update localStorage for backward compatibility
+      await this.updateLegacyStorage(message.conversationId, message.turnId, 'add');
     }
   }
 
@@ -87,25 +77,32 @@ export class StarredMessagesService {
    * Remove a starred message - delegated to background script
    */
   static async removeStarredMessage(conversationId: string, turnId: string): Promise<void> {
-    try {
-      const response = await this.sendMessage<{ ok: boolean; removed: boolean }>(
-        'gv.starred.remove',
-        { conversationId, turnId },
-      );
+    const response = await this.sendMessage<{ ok: boolean; removed: boolean }>(
+      'gv.starred.remove',
+      { conversationId, turnId },
+    );
 
-      if (response.removed) {
-        // Emit event for cross-component synchronization
-        eventBus.emit('starred:removed', {
-          conversationId,
-          turnId,
-        });
+    if (response.removed) {
+      // Emit event for cross-component synchronization
+      eventBus.emit('starred:removed', {
+        conversationId,
+        turnId,
+      });
 
-        // Also update localStorage for backward compatibility
-        await this.updateLegacyStorage(conversationId, turnId, 'remove');
-      }
-    } catch (error) {
-      console.error('[StarredMessagesService] Failed to remove starred message:', error);
+      // Also update localStorage for backward compatibility
+      await this.updateLegacyStorage(conversationId, turnId, 'remove');
     }
+  }
+
+  static async mergeCloud(
+    envelope: unknown,
+  ): Promise<{ status: 'absent' | 'merged'; count: number }> {
+    const response = await this.sendMessage<{
+      ok: boolean;
+      status: 'absent' | 'merged';
+      count: number;
+    }>('gv.starred.mergeCloud', envelope);
+    return { status: response.status, count: response.count };
   }
 
   /**
@@ -191,19 +188,16 @@ export class StarredMessagesService {
     sourceConversationIds: string[],
     conversationUrl: string,
   ): Promise<StarredMessage[]> {
-    try {
-      const response = await this.sendMessage<{ ok: boolean; messages: StarredMessage[] }>(
-        'gv.starred.reconcileConversationIds',
-        {
-          targetConversationId,
-          sourceConversationIds,
-          conversationUrl,
-        },
-      );
-      return response.messages || [];
-    } catch (error) {
-      console.error('[StarredMessagesService] Failed to reconcile starred messages:', error);
-      return [];
-    }
+    const response = await this.sendMessage<{ ok: boolean; messages: StarredMessage[] }>(
+      'gv.starred.reconcileConversationIds',
+      {
+        targetConversationId,
+        sourceConversationIds,
+        conversationUrl,
+      },
+    );
+    return normalizeStarredMessages({
+      messages: { [targetConversationId]: response.messages },
+    }).messages[targetConversationId];
   }
 }

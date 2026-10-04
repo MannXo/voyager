@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import type { StarredMessage } from '@/features/savedLibrary/starTypes';
 import { eventBus } from '@/pages/content/timeline/EventBus';
-import type { StarredMessage } from '@/pages/content/timeline/starredTypes';
 
 import { TimelineState } from '../../TimelineState';
 import type { TimelineStoragePolicy } from '../../TimelineStoragePolicy';
@@ -18,7 +18,7 @@ const { addStarredMessage, getStarredMessagesForConversation, removeStarredMessa
   }),
 );
 
-vi.mock('@/pages/content/timeline/StarredMessagesService', () => ({
+vi.mock('@/features/savedLibrary/StarredMessagesService', () => ({
   StarredMessagesService: {
     addStarredMessage,
     getStarredMessagesForConversation,

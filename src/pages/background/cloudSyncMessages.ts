@@ -21,13 +21,13 @@ import type {
 import { getPromptNameConflictIds } from '@/core/utils/promptName';
 import { FOLDER_PLATFORMS, supportsAccountIsolation } from '@/features/folder/platforms';
 import { loadPluginState } from '@/features/plugins/storage/pluginState';
+import type { StarredMessagesData } from '@/features/savedLibrary/starTypes';
 import type { ForkNode, ForkNodesData } from '@/pages/content/fork/forkTypes';
 import {
   filterTimelineHierarchyByRouteScope,
   getTimelineHierarchyStorageKeysToRead,
   resolveTimelineHierarchyDataForStorageScope,
 } from '@/pages/content/timeline/hierarchyStorage';
-import type { StarredMessagesData } from '@/pages/content/timeline/starredTypes';
 
 import { isHighlightCloudSyncRequested, notifyHighlightChanged } from './highlightMessages';
 import { mergeCloudPrompts, mergeCloudPromptsForUpload } from './promptDriveMerge';

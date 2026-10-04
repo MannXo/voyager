@@ -10,6 +10,7 @@ import {
 import { StorageKeys } from '@/core/types/common';
 import type { FolderData } from '@/core/types/folder';
 import type { SyncAccountScope, SyncPlatform } from '@/core/types/sync';
+import { createStarStore, type StarStore } from '@/features/savedLibrary/starStore';
 import { getTimelineHierarchyStorageKey } from '@/pages/content/timeline/hierarchyStorage';
 
 import { useCloudSyncTransfer } from '../useCloudSyncTransfer';
@@ -47,6 +48,8 @@ describe('popup cloud sync transfer operations', () => {
   let root: Root;
   let container: HTMLDivElement;
   let transfer: Transfer;
+  let stored: Record<string, unknown>;
+  let starStore: StarStore;
   const tabMessage = vi.fn<(tabId: number, message: { type: string }) => Promise<unknown>>();
   const localGet = vi.fn<(keys: unknown) => Promise<Record<string, unknown>>>();
   const localSet = vi.fn<(items: Record<string, unknown>) => Promise<void>>();
@@ -75,10 +78,25 @@ describe('popup cloud sync transfer operations', () => {
         ? { ok: true, context: { routeUserId: '1' } }
         : { ok: false },
     );
-    localGet.mockResolvedValue({});
-    localSet.mockResolvedValue(undefined);
+    stored = {};
+    localGet.mockImplementation(async (keys) => {
+      const names = Array.isArray(keys) ? keys : [keys];
+      return Object.fromEntries(names.map((name) => [String(name), stored[String(name)]]));
+    });
+    localSet.mockImplementation(async (items) => {
+      Object.assign(stored, structuredClone(items));
+    });
+    starStore = createStarStore({ get: localGet, set: localSet });
     vi.stubGlobal('chrome', {
-      runtime: { id: 'test' },
+      runtime: {
+        id: 'test',
+        sendMessage: (_message: { payload?: unknown }, reply: (response: unknown) => void) => {
+          void starStore.mergeCloud(_message.payload).then(
+            (result) => reply({ ok: true, ...result }),
+            (error: Error) => reply({ ok: false, error: error.message }),
+          );
+        },
+      },
       tabs: { sendMessage: tabMessage },
       storage: {
         local: { get: localGet, set: localSet },
@@ -133,7 +151,7 @@ describe('popup cloud sync transfer operations', () => {
     expect(localSet).not.toHaveBeenCalled();
   });
 
-  it('restores into the tab folder scope but the captured hierarchy scope in one write', async () => {
+  it('restores into the tab folder scope but the captured hierarchy scope without clearing absent stars', async () => {
     await render('gemini', false);
     const download = await transfer.prepareDownload();
     // Changes after preparation must not redirect the hierarchy restore.
@@ -146,11 +164,80 @@ describe('popup cloud sync transfer operations', () => {
     expect(localSet).toHaveBeenCalledExactlyOnceWith({
       [buildScopedStorageKey(StorageKeys.FOLDER_DATA, 'tab')]: folders,
       [StorageKeys.PROMPT_ITEMS]: [],
-      geminiTimelineStarredMessages: { messages: {} },
       [getTimelineHierarchyStorageKey('page')]: { conversations: {} },
     });
     expect(tabMessage).toHaveBeenLastCalledWith(7, { type: 'gv.folders.reload' });
   });
+
+  it.each(['merge', 'overwrite'] as const)(
+    'keeps other sites and Gemini accounts when %s restores stars',
+    async (mode) => {
+      const makeStar = (id: string, url: string) => ({
+        conversationId: id,
+        turnId: 't',
+        content: id,
+        conversationUrl: url,
+        starredAt: 1,
+      });
+      const claude = makeStar('claude:conv:one', 'https://claude.ai/chat/one');
+      const otherAccount = makeStar('gemini:conv:other', 'https://gemini.google.com/u/2/app/other');
+      const cloud = makeStar('gemini:conv:cloud', 'https://gemini.google.com/u/1/app/cloud');
+      stored[StorageKeys.TIMELINE_STARRED_MESSAGES] = {
+        messages: {
+          [claude.conversationId]: [claude],
+          [otherAccount.conversationId]: [otherAccount],
+        },
+      };
+      await render('gemini', false);
+      const download = await transfer.prepareDownload();
+      await download.restore(
+        {
+          folders: { data: folders },
+          starred: {
+            format: 'gemini-voyager.starred.v1',
+            data: { messages: { [cloud.conversationId]: [cloud] } },
+          },
+        },
+        mode,
+        false,
+      );
+      expect((await starStore.getAll()).messages).toEqual({
+        [claude.conversationId]: [claude],
+        [otherAccount.conversationId]: [otherAccount],
+        [cloud.conversationId]: [cloud],
+      });
+      await download.restore(
+        {
+          folders: { data: folders },
+          starred: {
+            format: 'gemini-voyager.starred.v1',
+            data: { messages: {} },
+          },
+        },
+        mode,
+        false,
+      );
+      expect(Object.keys((await starStore.getAll()).messages)).toHaveLength(3);
+    },
+  );
+
+  it.each([undefined, null, 42])(
+    'leaves stars untouched when the cloud star file is %s',
+    async (starred) => {
+      const existing = {
+        turnId: 't',
+        content: 'Keep',
+        conversationId: 'one',
+        conversationUrl: '',
+        starredAt: 1,
+      };
+      stored[StorageKeys.TIMELINE_STARRED_MESSAGES] = { messages: { one: [existing] } };
+      await render('gemini', false);
+      const download = await transfer.prepareDownload();
+      await download.restore({ folders: { data: folders }, starred }, 'overwrite', false);
+      expect((await starStore.getAll()).messages).toEqual({ one: [existing] });
+    },
+  );
 
   it('falls back to scoped legacy folders after the upload tab timeout', async () => {
     await render('gemini', false);

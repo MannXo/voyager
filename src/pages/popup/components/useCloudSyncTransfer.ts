@@ -20,18 +20,17 @@ import {
   getFolderPlatformForHost,
   supportsAccountIsolation,
 } from '@/features/folder/platforms';
+import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
 import {
   getTimelineHierarchyStorageKey,
   getTimelineHierarchyStorageKeysToRead,
   resolveTimelineHierarchyDataForStorageScope,
 } from '@/pages/content/timeline/hierarchyStorage';
 import type { TimelineHierarchyData } from '@/pages/content/timeline/hierarchyTypes';
-import type { StarredMessagesData } from '@/pages/content/timeline/starredTypes';
 
 import {
   mergeFolderData,
   mergePromptsWithStats,
-  mergeStarredMessages,
   mergeTimelineHierarchy,
 } from '../../../utils/merge';
 import { applyCloudRestore, CloudRestoreError, type CloudRestoreMode } from './cloudRestore';
@@ -75,13 +74,6 @@ function isPromptItemArray(value: unknown): value is PromptItem[] {
   );
 }
 
-function isStarredMessagesData(value: unknown): value is StarredMessagesData {
-  if (typeof value !== 'object' || value === null) return false;
-  if (!('messages' in value)) return false;
-  const messages = (value as { messages: unknown }).messages;
-  return typeof messages === 'object' && messages !== null;
-}
-
 function isTimelineHierarchyData(value: unknown): value is TimelineHierarchyData {
   if (typeof value !== 'object' || value === null) return false;
   if (!('conversations' in value)) return false;
@@ -96,7 +88,7 @@ export interface CloudDownloadData {
   prompts?: { items?: PromptItem[] };
   settings?: SettingsExportPayload;
   plugins?: PluginStateExportPayload;
-  starred?: { data?: StarredMessagesData };
+  starred?: unknown;
   timelineHierarchy?: { data?: TimelineHierarchyData };
 }
 
@@ -317,35 +309,18 @@ async function restoreCloudDownload(
   const hasCloudFolderData = isFolderData(rawFolders);
   const cloudFolders = isFolderData(rawFolders) ? rawFolders : { folders: [], folderContents: {} };
   const cloudPrompts = definition.syncsSharedData ? data.prompts?.items || [] : [];
-  const cloudStarred = data.starred?.data || { messages: {} };
   const cloudHierarchy = data.timelineHierarchy?.data || { conversations: {} };
-  let localStarred: StarredMessagesData = { messages: {} };
-  try {
-    const starredResult = definition.syncsSharedData
-      ? await chrome.storage.local.get(['geminiTimelineStarredMessages'])
-      : {};
-    if (isStarredMessagesData(starredResult.geminiTimelineStarredMessages)) {
-      localStarred = starredResult.geminiTimelineStarredMessages;
-    }
-  } catch (error) {
-    console.warn('[CloudSyncSettings] Could not get local starred messages:', error);
-  }
-
   const shouldOverwrite = mode === 'overwrite';
   const nextFolders = shouldOverwrite ? cloudFolders : mergeFolderData(local.folders, cloudFolders);
   const promptMerge = shouldOverwrite
     ? { items: cloudPrompts, nameConflicts: getPromptNameConflictIds(cloudPrompts).size }
     : mergePromptsWithStats(local.prompts, cloudPrompts);
-  const nextStarred = shouldOverwrite
-    ? cloudStarred
-    : mergeStarredMessages(localStarred, cloudStarred);
   const nextHierarchy = shouldOverwrite
     ? cloudHierarchy
     : mergeTimelineHierarchy(local.timelineHierarchy, cloudHierarchy);
   const storageUpdate: Record<string, unknown> = { [local.folderStorageKey]: nextFolders };
   if (context.payload.platform === 'gemini') {
     storageUpdate[StorageKeys.PROMPT_ITEMS] = promptMerge.items;
-    storageUpdate.geminiTimelineStarredMessages = nextStarred;
     storageUpdate[context.timelineHierarchyStorageKey] = nextHierarchy;
   }
   await applyCloudRestore({
@@ -359,6 +334,11 @@ async function restoreCloudDownload(
     storageUpdate,
     includesPrompts: context.payload.platform === 'gemini',
     foldersMissing: !hasCloudFolderData,
+    // Both restore modes merge stars so this tab cannot erase other sites or accounts.
+    mergeStarred:
+      context.payload.platform === 'gemini' && data.starred && typeof data.starred === 'object'
+        ? async () => (await StarredMessagesService.mergeCloud(data.starred)).status === 'merged'
+        : undefined,
   });
   try {
     const tab = await getTargetTab();

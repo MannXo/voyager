@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
-import { createStarredMessagesOwner } from '@/pages/background/starredMessages';
-
-import { StarredMessagesService } from '../StarredMessagesService';
-import type { StarredMessage, StarredMessagesData } from '../starredTypes';
+import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
+import { createStarStore } from '@/features/savedLibrary/starStore';
+import type { StarredMessage, StarredMessagesData } from '@/features/savedLibrary/starTypes';
+import { createStarredMessagesHandler } from '@/pages/background/starredMessages';
 
 const conversationId = 'chatgpt:conv:one';
 const star = (turnId: string): StarredMessage => ({
@@ -23,11 +23,11 @@ function installLibrary(messages: StarredMessage[]) {
       data = structuredClone(items[StorageKeys.TIMELINE_STARRED_MESSAGES]) as StarredMessagesData;
     }),
   };
-  const owner = createStarredMessagesOwner(area);
+  const handle = createStarredMessagesHandler(createStarStore(area));
   vi.mocked(chrome.runtime.sendMessage).mockImplementation(((...args: unknown[]) => {
     const callback = args.at(-1);
     if (typeof callback !== 'function') throw new Error('Missing response callback');
-    void owner.handle(args[0])?.then(
+    void handle(args[0])?.then(
       (response) => callback(response),
       (error: Error) => callback({ ok: false, error: error.message }),
     );

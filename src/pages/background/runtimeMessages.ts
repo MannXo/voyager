@@ -29,7 +29,7 @@ export function registerBackgroundRuntimeMessages(owners: {
   handlePluginMessage: MessageHandler;
   handleGeneratedUiMessage: MessageHandler;
   handleNotificationMessage: MessageHandler;
-  handleStarredMessage(message: BackgroundRuntimeMessage): Promise<unknown> | null;
+  handleStarredMessage: MessageHandler;
   handleForkMessage(message: BackgroundRuntimeMessage): Promise<unknown> | null;
   handleCloudSyncMessage: MessageHandler;
   announcements: {
@@ -107,7 +107,7 @@ export function registerBackgroundRuntimeMessages(owners: {
           sendResponse(await highlightResponse);
           return;
         }
-        const starredResponse = owners.handleStarredMessage(message);
+        const starredResponse = owners.handleStarredMessage(message, sender);
         if (starredResponse) {
           sendResponse(await starredResponse);
           return;

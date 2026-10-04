@@ -7,6 +7,7 @@ import {
 } from '@/core/services/AccountIsolationService';
 import type { PromptItem, SyncAccountScope } from '@/core/types/sync';
 import { cloneFolderData } from '@/features/folder/model/folderData';
+import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 import { mergeFolderData, mergePrompts, mergeTimelineHierarchy } from '@/utils/merge';
 
@@ -19,8 +20,6 @@ import type { TimelineHierarchyData } from '../timeline/hierarchyTypes';
 import { type FolderTransferHost, debugTransfer, isCurrentTransfer } from './folderTransferHost';
 import type { FolderData } from './types';
 
-type StarredData = { messages: Record<string, unknown[]> };
-
 type SyncDownloadResponse =
   | {
       ok?: boolean;
@@ -29,7 +28,7 @@ type SyncDownloadResponse =
       data?: {
         folders?: { data?: FolderData };
         prompts?: { items?: PromptItem[] };
-        starred?: { data?: StarredData };
+        starred?: unknown;
         timelineHierarchy?: { data?: TimelineHierarchyData };
       };
     }
@@ -37,7 +36,6 @@ type SyncDownloadResponse =
 
 type SyncSnapshot = {
   prompts: PromptItem[];
-  starred: StarredData;
   timelineHierarchy: TimelineHierarchyData;
 };
 
@@ -132,7 +130,7 @@ export async function uploadFolders(host: FolderTransferHost): Promise<void> {
   }
 }
 
-/** Read the local prompts, starred messages and timeline hierarchy the cloud copy merges into. */
+/** Read the local prompts and timeline hierarchy the cloud copy merges into. */
 async function readLocalSyncSnapshot(scope: SyncAccountScope | undefined): Promise<SyncSnapshot> {
   let prompts: PromptItem[] = [];
   try {
@@ -142,23 +140,6 @@ async function readLocalSyncSnapshot(scope: SyncAccountScope | undefined): Promi
     }
   } catch (err) {
     console.warn('[FolderTransfer] Could not get local prompts for merge:', err);
-  }
-
-  let starred: StarredData = { messages: {} };
-  try {
-    const starredResult = await chrome.storage.local.get(['geminiTimelineStarredMessages']);
-    const starredData = starredResult.geminiTimelineStarredMessages;
-    if (
-      typeof starredData === 'object' &&
-      starredData !== null &&
-      'messages' in starredData &&
-      typeof starredData.messages === 'object' &&
-      starredData.messages !== null
-    ) {
-      starred = { messages: starredData.messages as Record<string, unknown[]> };
-    }
-  } catch (err) {
-    console.warn('[FolderTransfer] Could not get local starred messages for merge:', err);
   }
 
   let timelineHierarchy: TimelineHierarchyData = { conversations: {} };
@@ -174,52 +155,7 @@ async function readLocalSyncSnapshot(scope: SyncAccountScope | undefined): Promi
   } catch (err) {
     console.warn('[FolderTransfer] Could not get local timeline hierarchy for merge:', err);
   }
-  return { prompts, starred, timelineHierarchy };
-}
-
-function mergeStarredMessages(local: StarredData, cloud: StarredData): StarredData {
-  const localMessages = local?.messages || {};
-  const cloudMessages = cloud?.messages || {};
-
-  const allConversationIds = new Set([
-    ...Object.keys(localMessages),
-    ...Object.keys(cloudMessages),
-  ]);
-
-  const mergedMessages: Record<string, unknown[]> = {};
-
-  allConversationIds.forEach((conversationId) => {
-    const localConvoMessages = localMessages[conversationId] || [];
-    const cloudConvoMessages = cloudMessages[conversationId] || [];
-
-    type StarredMsg = { turnId?: string; starredAt?: number };
-    const messageMap = new Map<string, unknown>();
-
-    // Add cloud messages first
-    cloudConvoMessages.forEach((m) => {
-      const msg = m as StarredMsg;
-      if (msg?.turnId) messageMap.set(msg.turnId, m);
-    });
-
-    // Merge local messages - prefer newer starredAt
-    localConvoMessages.forEach((m) => {
-      const localMsg = m as StarredMsg;
-      if (!localMsg?.turnId) return;
-      const existingMsg = messageMap.get(localMsg.turnId) as StarredMsg | undefined;
-      if (!existingMsg) {
-        messageMap.set(localMsg.turnId, m);
-      } else if ((localMsg.starredAt || 0) >= (existingMsg.starredAt || 0)) {
-        messageMap.set(localMsg.turnId, m);
-      }
-    });
-
-    const mergedArray = Array.from(messageMap.values());
-    if (mergedArray.length > 0) {
-      mergedMessages[conversationId] = mergedArray;
-    }
-  });
-
-  return { messages: mergedMessages };
+  return { prompts, timelineHierarchy };
 }
 
 /** The downloaded payload with an empty value standing in for each missing part. */
@@ -229,11 +165,10 @@ function readCloudSnapshot(
   const cloud = {
     folders: data.folders?.data || { folders: [], folderContents: {} },
     prompts: data.prompts?.items || [],
-    starred: data.starred?.data || { messages: {} },
     timelineHierarchy: data.timelineHierarchy?.data || { conversations: {} },
   };
   debugTransfer(
-    `Downloaded - folders: ${cloud.folders.folders?.length || 0}, prompts: ${cloud.prompts.length}, starred conversations: ${Object.keys(cloud.starred.messages || {}).length}`,
+    `Downloaded - folders: ${cloud.folders.folders?.length || 0}, prompts: ${cloud.prompts.length}`,
   );
   return cloud;
 }
@@ -248,19 +183,18 @@ function mergeCloudSnapshot(
     folders: mergeFolderData(localFolders, cloud.folders),
     // Simple ID-based merge
     prompts: mergePrompts(local.prompts, cloud.prompts),
-    starred: mergeStarredMessages(local.starred, cloud.starred),
     timelineHierarchy: mergeTimelineHierarchy(local.timelineHierarchy, cloud.timelineHierarchy),
   };
 
   debugTransfer(
-    `Merged - folders: ${merged.folders.folders?.length || 0}, prompts: ${merged.prompts.length}, starred conversations: ${Object.keys(merged.starred.messages || {}).length}, hierarchy conversations: ${Object.keys(merged.timelineHierarchy.conversations || {}).length}`,
+    `Merged - folders: ${merged.folders.folders?.length || 0}, prompts: ${merged.prompts.length}, hierarchy conversations: ${Object.keys(merged.timelineHierarchy.conversations || {}).length}`,
   );
   return merged;
 }
 
 /**
  * Download the cloud copy and merge it into local data. Folders save through the host first,
- * then prompts, starred messages and the timeline hierarchy land in one storage write.
+ * then prompts and hierarchy save before the background merges stars.
  */
 export async function syncFolders(host: FolderTransferHost): Promise<void> {
   const context = host.getContext();
@@ -314,13 +248,31 @@ export async function syncFolders(host: FolderTransferHost): Promise<void> {
       return;
     }
 
-    // Save merged prompts and starred to storage
+    // Save non-star data before asking the serialized owner to merge stars.
     await chrome.storage.local.set({
       gvPromptItems: merged.prompts,
-      geminiTimelineStarredMessages: merged.starred,
       [timelineHierarchyStorageKey]: merged.timelineHierarchy,
     });
     if (!isCurrentTransfer(host, context)) return;
+
+    try {
+      const starred = await StarredMessagesService.mergeCloud(response.data.starred);
+      if (!isCurrentTransfer(host, context)) return;
+      debugTransfer(`Merged starred messages: ${starred.count}`);
+    } catch (error) {
+      if (!isCurrentTransfer(host, context)) return;
+      host.notify(
+        t('syncRestorePartial')
+          .replace(
+            '{restored}',
+            [t('folder_title'), t('promptDataMigration')].join(t('syncRestoreListSeparator')),
+          )
+          .replace('{failed}', t('savedLibraryStars'))
+          .replace('{error}', () => (error instanceof Error ? error.message : 'Unknown error')),
+        'error',
+      );
+      return;
+    }
 
     host.refresh();
     host.notify(t('downloadMergeSuccess'), 'success');

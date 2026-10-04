@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
-import { createStarredMessagesOwner } from '@/pages/background/starredMessages';
+import { createStarStore } from '@/features/savedLibrary/starStore';
+import type { StarredMessage, StarredMessagesData } from '@/features/savedLibrary/starTypes';
+import { createStarredMessagesHandler } from '@/pages/background/starredMessages';
 import { createGeminiTimelineStoragePolicy } from '@/pages/content/timeline/GeminiTimelineStorage';
-import type { StarredMessage, StarredMessagesData } from '@/pages/content/timeline/starredTypes';
 
 import { TimelineState } from '../TimelineState';
 import { createCatalogTimelineStoragePolicy } from '../adapters/catalog/CatalogTimelineStorage';
@@ -36,17 +37,19 @@ describe.each(['gemini', 'chatgpt', 'claude', 'deepseek'])('%s Library recovery'
     });
     let data: StarredMessagesData = { messages: { [conversationId]: [message(oldId)] } };
     let healthy = false;
-    const owner = createStarredMessagesOwner({
-      get: async () => {
-        if (!healthy) throw new Error('temporary storage failure');
-        return { [StorageKeys.TIMELINE_STARRED_MESSAGES]: structuredClone(data) };
-      },
-      set: async (values) => {
-        data = structuredClone(
-          values[StorageKeys.TIMELINE_STARRED_MESSAGES],
-        ) as StarredMessagesData;
-      },
-    });
+    const handle = createStarredMessagesHandler(
+      createStarStore({
+        get: async () => {
+          if (!healthy) throw new Error('temporary storage failure');
+          return { [StorageKeys.TIMELINE_STARRED_MESSAGES]: structuredClone(data) };
+        },
+        set: async (values) => {
+          data = structuredClone(
+            values[StorageKeys.TIMELINE_STARRED_MESSAGES],
+          ) as StarredMessagesData;
+        },
+      }),
+    );
     const readRequests: string[] = [];
     vi.mocked(chrome.runtime.sendMessage).mockImplementation(((
       request: { type: string },
@@ -54,9 +57,9 @@ describe.each(['gemini', 'chatgpt', 'claude', 'deepseek'])('%s Library recovery'
     ) => {
       if (request.type === 'gv.starred.getAll' || request.type === 'gv.starred.getForConversation')
         readRequests.push(request.type);
-      void owner
-        .handle(request)
-        ?.then(callback, (error: Error) => callback({ ok: false, error: error.message }));
+      void handle(request)?.then(callback, (error: Error) =>
+        callback({ ok: false, error: error.message }),
+      );
     }) as typeof chrome.runtime.sendMessage);
     const elements = [oldId, newId].map((id) => {
       const element = document.createElement('div');

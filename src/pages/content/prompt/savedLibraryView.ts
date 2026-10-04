@@ -27,6 +27,7 @@ import {
   type HighlightRecordV1,
   getHighlightColorHex,
 } from '@/core/types/highlight';
+import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
 import {
   type SavedLibraryFilter,
   type SavedLibraryItem,
@@ -34,10 +35,9 @@ import {
   filterSavedLibraryItems,
   toSavedLibraryItems,
 } from '@/features/savedLibrary/model';
+import type { StarredMessage } from '@/features/savedLibrary/starTypes';
 import type { TranslationKey } from '@/utils/translations';
 
-import { StarredMessagesService } from '../timeline/StarredMessagesService';
-import type { StarredMessage } from '../timeline/starredTypes';
 import { formatStarredMessageTime } from './starredLibrary';
 
 const EXPORT_WRAP_CLASS = 'gv-pm-saved-export-wrap';
@@ -315,13 +315,20 @@ export function createSavedLibraryView({
     removeBtn.addEventListener('click', async (event) => {
       event.preventDefault();
       event.stopPropagation();
-      const removed =
-        item.kind === 'starred'
-          ? await StarredMessagesService.removeStarredMessage(
-              item.conversationId,
-              item.turnId,
-            ).then(() => true)
-          : await removeStoredHighlight(item, highlightPlatform);
+      let removed: boolean;
+      try {
+        removed =
+          item.kind === 'starred'
+            ? await StarredMessagesService.removeStarredMessage(
+                item.conversationId,
+                item.turnId,
+              ).then(() => true)
+            : await removeStoredHighlight(item, highlightPlatform);
+      } catch {
+        // Keep the saved row until its removal has actually reached storage.
+        setNotice(t('pm_starred_load_error'), 'err');
+        return;
+      }
       if (!removed) {
         setNotice(t('highlightDeleteFailed'), 'err');
         return;

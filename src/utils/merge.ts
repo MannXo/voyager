@@ -7,7 +7,6 @@ import type {
   TimelineHierarchyConversationData,
   TimelineHierarchyData,
 } from '@/pages/content/timeline/hierarchyTypes';
-import type { StarredMessage, StarredMessagesData } from '@/pages/content/timeline/starredTypes';
 
 type MergeableFolder = {
   readonly id: string;
@@ -327,64 +326,6 @@ export function mergePromptsWithStats(local: PromptItem[], cloud: PromptItem[]):
 
   const items = Array.from(itemMap.values());
   return { items, nameConflicts: getPromptNameConflictIds(items).size };
-}
-
-/**
- * Merges local and cloud starred messages.
- * Uses turnId as the unique key within each conversation.
- * Prefers the message with the newer starredAt timestamp when duplicates exist.
- */
-export function mergeStarredMessages(
-  local: StarredMessagesData,
-  cloud: StarredMessagesData,
-): StarredMessagesData {
-  // Ensure we have valid input structures
-  const localMessages = local?.messages || {};
-  const cloudMessages = cloud?.messages || {};
-
-  // Get all conversation IDs from both sources
-  const allConversationIds = new Set([
-    ...Object.keys(localMessages),
-    ...Object.keys(cloudMessages),
-  ]);
-
-  const mergedMessages: Record<string, StarredMessage[]> = {};
-
-  allConversationIds.forEach((conversationId) => {
-    const localConvoMessages = localMessages[conversationId] || [];
-    const cloudConvoMessages = cloudMessages[conversationId] || [];
-
-    // Use Map with turnId as key for deduplication
-    const messageMap = new Map<string, StarredMessage>();
-
-    // Add cloud messages first (so local can overwrite if newer)
-    cloudConvoMessages.forEach((msg) => {
-      messageMap.set(msg.turnId, msg);
-    });
-
-    // Merge local messages - prefer newer starredAt
-    localConvoMessages.forEach((localMsg) => {
-      const existingMsg = messageMap.get(localMsg.turnId);
-      if (!existingMsg) {
-        // New message from local
-        messageMap.set(localMsg.turnId, localMsg);
-      } else {
-        // Conflict: compare starredAt timestamps
-        if (localMsg.starredAt >= existingMsg.starredAt) {
-          messageMap.set(localMsg.turnId, localMsg);
-        }
-        // If cloud is newer, keep cloud (already in map)
-      }
-    });
-
-    // Only add non-empty arrays
-    const mergedArray = Array.from(messageMap.values());
-    if (mergedArray.length > 0) {
-      mergedMessages[conversationId] = mergedArray;
-    }
-  });
-
-  return { messages: mergedMessages };
 }
 
 /**

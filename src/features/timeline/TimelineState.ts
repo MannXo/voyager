@@ -1,9 +1,9 @@
 import { StorageKeys } from '@/core/types/common';
+import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
+import type { StarredMessage, StarredMessagesData } from '@/features/savedLibrary/starTypes';
 import { eventBus } from '@/pages/content/timeline/EventBus';
-import { StarredMessagesService } from '@/pages/content/timeline/StarredMessagesService';
 import { findMatchingStarredMessages } from '@/pages/content/timeline/starredLookup';
 import { resolveStarredDisplay } from '@/pages/content/timeline/starredResolution';
-import type { StarredMessage, StarredMessagesData } from '@/pages/content/timeline/starredTypes';
 import {
   safeLocalStorageGet,
   safeLocalStorageSet,
@@ -296,7 +296,10 @@ export class TimelineState {
   private readStars(): Promise<void> {
     return this.starHydration.read((accept) => this.syncStarredFromService(accept));
   }
-  private async syncStarredFromService(accept: (apply: () => void) => boolean): Promise<void> {
+  private async syncStarredFromService(
+    accept: (apply: () => void) => boolean,
+    forceLibrary = false,
+  ): Promise<void> {
     if (!this.conversationId || !this.policy.stars.libraryMirror) {
       accept(() => {});
       return;
@@ -333,7 +336,7 @@ export class TimelineState {
 
       accept(() => {
         const nextSet = new Set(messages.map((message) => String(message.turnId)));
-        if (this.policy.stars.source === 'local' && !this.localPrimaryPresent) {
+        if (!forceLibrary && this.policy.stars.source === 'local' && !this.localPrimaryPresent) {
           // The first edit must retain both historical local IDs and the Saved Library mirror.
           for (const id of this.starred) nextSet.add(id);
         }
@@ -341,9 +344,13 @@ export class TimelineState {
           if (added) nextSet.add(id);
           else nextSet.delete(id);
         }
-        if (this.policy.stars.source === 'local' && !this.localPrimaryPresent) {
+        if (!forceLibrary && this.policy.stars.source === 'local' && !this.localPrimaryPresent) {
           this.applyStarredIdSet(nextSet, false);
-        } else if (this.policy.stars.source === 'library' || !this.localStarsLoaded) {
+        } else if (
+          forceLibrary ||
+          this.policy.stars.source === 'library' ||
+          !this.localStarsLoaded
+        ) {
           this.applyStarredIdSet(nextSet);
         }
         if (this.pendingStarEdits.size > 0) {
@@ -370,42 +377,41 @@ export class TimelineState {
     if (!this.starHydration.ready) await this.readStars();
     if (!this.isCurrent || !this.policy.canEdit(marker, id) || !this.starHydration.ready) return;
     this.starHydration.changed();
+    const revision = this.starHydration.version;
     const wasStarred = this.isMarkerStarred(id);
     // A stable marker may represent both its current server-id record and an
     // older verified positional alias. Removing the star clears both records.
     const storageIds = wasStarred ? this.getStarStorageIds(id) : [id];
 
-    if (wasStarred) {
-      storageIds.forEach((storageId) => {
-        this.starred.delete(storageId);
-      });
-    } else {
-      this.starred.add(id);
-    }
-
-    this.saveStars();
-
-    // Update global starred messages service
-    if (wasStarred && this.policy.stars.libraryMirror) {
-      await Promise.all(
-        storageIds.map((storageId) =>
-          StarredMessagesService.removeStarredMessage(this.conversationId!, storageId),
-        ),
-      );
-    } else if (!wasStarred) {
-      // Add to global storage with full message info
-      if (marker && this.policy.stars.libraryMirror) {
-        const now = Date.now();
+    try {
+      if (wasStarred && this.policy.stars.libraryMirror) {
+        await Promise.all(
+          storageIds.map((storageId) =>
+            StarredMessagesService.removeStarredMessage(this.conversationId, storageId),
+          ),
+        );
+      } else if (!wasStarred && marker && this.policy.stars.libraryMirror) {
         const message: StarredMessage = {
           turnId: id,
           content: summary ?? '',
-          conversationId: this.conversationId!,
+          conversationId: this.conversationId,
           conversationUrl: this.url,
           conversationTitle,
-          starredAt: now,
+          starredAt: Date.now(),
         };
         await StarredMessagesService.addStarredMessage(message);
       }
+      // A newer complete snapshot wins over a delayed local completion.
+      if (!this.isCurrent || revision !== this.starHydration.version) return;
+      if (wasStarred) storageIds.forEach((storageId) => this.starred.delete(storageId));
+      else this.starred.add(id);
+      this.saveStars();
+    } catch (error) {
+      if (!this.isCurrent) return;
+      // A failed write must repaint from the Library, including partially removed aliases.
+      this.starHydration.invalidate();
+      await this.starHydration.read((accept) => this.syncStarredFromService(accept, true));
+      console.warn('[Timeline] Failed to change starred message:', error);
     }
 
     if (this.isCurrent) this.refreshStars();

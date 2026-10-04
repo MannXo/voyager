@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
+import type { StarredMessage, StarredMessagesData } from '@/features/savedLibrary/starTypes';
 import { TimelineState } from '@/features/timeline/TimelineState';
 import type { TimelineMarker } from '@/features/timeline/types';
 import { createGeminiTimelineStoragePolicy } from '@/pages/content/timeline/GeminiTimelineStorage';
 
 import { HistoryTimestampStore } from '../../timestamp/historyTimestamps';
 import { eventBus } from '../EventBus';
-import { StarredMessagesService } from '../StarredMessagesService';
 import { TimelineTurns } from '../TimelineTurns';
-import type { StarredMessage, StarredMessagesData } from '../starredTypes';
 
 const CONVERSATION_ID = 'gemini:conv:abc';
 const FIRST_ID = 's-1111111111111111';
@@ -140,6 +140,89 @@ describe('TimelineState stars in a partially mounted conversation', () => {
     expect(storedStars()).toEqual([]);
     expect(state.markers[0].starred).toBe(false);
   });
+  it('a failed timeline star removal repaints the saved star and a later press works', async () => {
+    let saved = [message(FIRST_ID, 'first prompt')];
+    const state = await setup([marker(FIRST_ID, 'first prompt')], saved);
+    vi.mocked(StarredMessagesService.getAllStarredMessages).mockImplementation(async () => ({
+      messages: { [CONVERSATION_ID]: saved },
+    }));
+    const remove = vi.spyOn(StarredMessagesService, 'removeStarredMessage');
+    remove.mockRejectedValueOnce(new Error('storage unavailable'));
+    remove.mockImplementationOnce(async () => {
+      saved = [];
+    });
+    await state.toggleStar(FIRST_ID);
+    expect(state.markers[0].starred).toBe(true);
+    expect(storedStars()).toEqual([FIRST_ID]);
+    await state.toggleStar(FIRST_ID);
+    expect(state.markers[0].starred).toBe(false);
+    expect(saved).toEqual([]);
+  });
+
+  it('a failed timeline star addition stays unstarred and a later press works', async () => {
+    let saved: StarredMessage[] = [];
+    const state = await setup([marker(FIRST_ID, 'first prompt')]);
+    vi.mocked(StarredMessagesService.getAllStarredMessages).mockImplementation(async () => ({
+      messages: { [CONVERSATION_ID]: saved },
+    }));
+    const add = vi.spyOn(StarredMessagesService, 'addStarredMessage');
+    add.mockRejectedValueOnce(new Error('storage unavailable'));
+    add.mockImplementationOnce(async (item) => {
+      saved = [item];
+    });
+    await state.toggleStar(FIRST_ID);
+    expect(state.markers[0].starred).toBe(false);
+    expect(storedStars()).toEqual([]);
+    await state.toggleStar(FIRST_ID);
+    expect(state.markers[0].starred).toBe(true);
+    expect(saved.map((item) => item.turnId)).toEqual([FIRST_ID]);
+  });
+
+  it('a failed star edit starts a fresh recovery read while the initial read is still pending', async () => {
+    let releaseInitial!: (data: StarredMessagesData) => void;
+    const read = vi.spyOn(StarredMessagesService, 'getAllStarredMessages');
+    read.mockReturnValueOnce(
+      new Promise((resolve) => {
+        releaseInitial = resolve;
+      }),
+    );
+    read.mockResolvedValue({ messages: { [CONVERSATION_ID]: [message(FIRST_ID, 'saved')] } });
+    const state = new TimelineState(vi.fn(), createGeminiTimelineStoragePolicy());
+    states.push(state);
+    state.replaceMarkers([marker(FIRST_ID, 'saved')]);
+    const initial = state.init();
+    const listeners = vi.mocked(chrome.storage.onChanged.addListener).mock.calls;
+    const receive = listeners[listeners.length - 1][0];
+    receive({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: { messages: {} } } }, 'local');
+    vi.spyOn(StarredMessagesService, 'addStarredMessage').mockRejectedValue(
+      new Error('write failed'),
+    );
+    await state.toggleStar(FIRST_ID);
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(state.markers[0].starred).toBe(true);
+    releaseInitial({ messages: {} });
+    await initial;
+    expect(state.markers[0].starred).toBe(true);
+  });
+
+  it('a delayed star addition does not override a newer complete Library snapshot', async () => {
+    const state = await setup([marker(FIRST_ID, 'saved')]);
+    let complete!: () => void;
+    vi.spyOn(StarredMessagesService, 'addStarredMessage').mockReturnValue(
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+    );
+    const edit = state.toggleStar(FIRST_ID);
+    const listeners = vi.mocked(chrome.storage.onChanged.addListener).mock.calls;
+    const receive = listeners[listeners.length - 1][0];
+    receive({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: { messages: {} } } }, 'local');
+    complete();
+    await edit;
+    expect(state.markers[0].starred).toBe(false);
+    expect(storedStars()).toEqual([]);
+  });
+
   it('does not save a star from an unverified mounted positional id', async () => {
     const add = vi.spyOn(StarredMessagesService, 'addStarredMessage').mockResolvedValue();
     const state = await setup([marker('u-0', 'mounted tail')]);

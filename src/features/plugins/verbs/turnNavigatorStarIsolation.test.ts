@@ -2,8 +2,8 @@ import '@/features/timeline/adapters/catalog/testSetup';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import type { StarredMessage } from '@/features/savedLibrary/starTypes';
 import { buildTurnId } from '@/features/timeline/adapters/catalog/turnMerge';
-import type { StarredMessage } from '@/pages/content/timeline/starredTypes';
 
 import { PluginScope } from '../runtime/pluginScope';
 import type { SiteAdapter } from '../types';
@@ -21,7 +21,7 @@ vi.mock('@/utils/i18n', () => ({
   initI18n: vi.fn().mockResolvedValue(undefined),
   getTranslationSync: (key: string) => key,
 }));
-vi.mock('@/pages/content/timeline/StarredMessagesService', () => ({
+vi.mock('@/features/savedLibrary/StarredMessagesService', () => ({
   StarredMessagesService: {
     addStarredMessage,
     getStarredMessagesForConversation,

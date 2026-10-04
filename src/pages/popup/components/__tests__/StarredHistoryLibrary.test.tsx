@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { StorageKeys } from '@/core/types/common';
+import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
 import { TRANSLATIONS } from '@/utils/translations';
 
 import { StarredHistory } from '../StarredHistory';
@@ -120,4 +121,28 @@ it('opens a saved Claude star in the current Claude tab', async () => {
     url: 'https://claude.ai/chat/saved#gv-turn-turn-one',
   });
   expect(chrome.tabs.create).not.toHaveBeenCalled();
+});
+
+it('keeps a starred row after a failed removal and allows retry', async () => {
+  const remove = vi
+    .spyOn(StarredMessagesService, 'removeStarredMessage')
+    .mockRejectedValueOnce(new Error('Storage unavailable'))
+    .mockResolvedValue(undefined);
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  await mount();
+  const button = container.querySelector<HTMLButtonElement>(
+    `button[aria-label="${TRANSLATIONS.en.removeFromStarred}"]`,
+  )!;
+
+  await act(async () => button.click());
+  expect(container.textContent).toContain('Saved answer');
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+    TRANSLATIONS.en.pm_starred_load_error,
+  );
+  expect(button.isConnected).toBe(true);
+
+  await act(async () => button.click());
+  expect(container.textContent).not.toContain('Saved answer');
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(remove).toHaveBeenCalledWith('claude:conv:saved', 'turn-one');
 });

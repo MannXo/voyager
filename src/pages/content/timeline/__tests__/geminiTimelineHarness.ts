@@ -15,7 +15,8 @@
  */
 import { afterEach, beforeEach, vi } from 'vitest';
 
-import { createStarredMessagesOwner } from '@/pages/background/starredMessages';
+import { createStarStore } from '@/features/savedLibrary/starStore';
+import { createStarredMessagesHandler } from '@/pages/background/starredMessages';
 
 export const SURFACE = {
   bar: '.gemini-timeline-bar',
@@ -115,10 +116,12 @@ export function installExtension(): ExtensionFake {
   });
 
   const local = area('local');
-  const background = createStarredMessagesOwner({
-    get: (keys) => local.get(keys),
-    set: (items) => local.set(items),
-  });
+  const handle = createStarredMessagesHandler(
+    createStarStore({
+      get: (keys) => local.get(keys),
+      set: (items) => local.set(items),
+    }),
+  );
 
   const fake = {
     storage: {
@@ -136,7 +139,7 @@ export function installExtension(): ExtensionFake {
       getURL: (path: string) => `chrome-extension://test-extension-id/${path}`,
       onMessage: { addListener: () => {}, removeListener: () => {} },
       sendMessage: (message: unknown, callback?: (response: unknown) => void) => {
-        const pending = background.handle(message) ?? Promise.resolve(undefined);
+        const pending = handle(message) ?? Promise.resolve(undefined);
         return pending.then((response) => {
           callback?.(response);
           return response;

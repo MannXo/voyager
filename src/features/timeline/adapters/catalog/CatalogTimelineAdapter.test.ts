@@ -7,7 +7,7 @@ import { CatalogTurnOwnership } from './CatalogTurnOwnership';
 import { catalogHierarchyStorageKey, type CatalogTimelineConfig } from './config';
 import { buildConversationId, starConversationId, turnConversationId } from './conversationId';
 
-vi.mock('@/pages/content/timeline/StarredMessagesService', () => ({
+vi.mock('@/features/savedLibrary/StarredMessagesService', () => ({
   StarredMessagesService: {
     getStarredMessagesForConversation: vi.fn().mockResolvedValue([]),
     addStarredMessage: vi.fn().mockResolvedValue(undefined),

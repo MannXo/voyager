@@ -5,7 +5,7 @@ import {
   isHighlightConversationUrl,
 } from '@/core/types/highlight';
 import { NATIVE_SITE_IDS, SiteRegistry } from '@/features/plugins/sites/registry';
-import type { StarredMessage } from '@/pages/content/timeline/starredTypes';
+import type { StarredMessage } from '@/features/savedLibrary/starTypes';
 
 export type SavedLibraryFilter = 'all' | 'starred' | 'highlights';
 

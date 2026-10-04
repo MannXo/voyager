@@ -10,8 +10,18 @@ export class TimelineHydration {
     return this.isCurrent() && this.status === 'ready';
   }
 
+  get version(): number {
+    return this.revision;
+  }
+
   changed(): void {
     this.revision += 1;
+  }
+
+  invalidate(): void {
+    this.changed();
+    this.status = 'failed';
+    this.pending = null;
   }
 
   snapshot(apply: () => void): void {
@@ -27,16 +37,19 @@ export class TimelineHydration {
     const revision = this.revision;
     this.status = 'reading';
     // Settled failures must release the read so a later edit can recover without a remount.
-    this.pending = load((apply) => {
+    const pending = load((apply) => {
       if (!this.isCurrent() || revision !== this.revision) return false;
       this.status = 'ready';
       apply();
       return true;
     }).finally(() => {
+      // An invalidated read cannot release a newer recovery read.
+      if (this.pending !== pending) return;
       this.pending = null;
       if (this.status === 'reading') this.status = 'failed';
     });
-    return this.pending;
+    this.pending = pending;
+    return pending;
   }
 
   edit(retry: () => Promise<void>, apply: () => void): void | Promise<void> {

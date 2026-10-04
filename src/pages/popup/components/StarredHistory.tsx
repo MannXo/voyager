@@ -15,6 +15,7 @@ import {
   type HighlightRecordV1,
   getHighlightColorHex,
 } from '@/core/types/highlight';
+import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
 import {
   type SavedLibraryFilter,
   type SavedLibraryItem,
@@ -24,7 +25,6 @@ import {
   toSavedLibraryItems,
 } from '@/features/savedLibrary/model';
 import { cn } from '@/lib/utils';
-import { StarredMessagesService } from '@/pages/content/timeline/StarredMessagesService';
 
 interface StarredHistoryProps {
   onClose: () => void;

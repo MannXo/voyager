@@ -31,7 +31,7 @@ vi.mock('@/utils/i18n', () => ({
   getTranslationSync: (key: string) => key,
 }));
 
-vi.mock('@/pages/content/timeline/StarredMessagesService', () => ({
+vi.mock('@/features/savedLibrary/StarredMessagesService', () => ({
   StarredMessagesService: {
     addStarredMessage,
     getStarredMessagesForConversation,

@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
-import { createStarredMessagesOwner } from '@/pages/background/starredMessages';
+import { createStarStore } from '@/features/savedLibrary/starStore';
+import type { StarredMessage, StarredMessagesData } from '@/features/savedLibrary/starTypes';
+import { createStarredMessagesHandler } from '@/pages/background/starredMessages';
 import { createGeminiTimelineStoragePolicy } from '@/pages/content/timeline/GeminiTimelineStorage';
-import type { StarredMessage, StarredMessagesData } from '@/pages/content/timeline/starredTypes';
 
 import { TimelineState } from '../TimelineState';
 
@@ -62,16 +63,16 @@ describe('Library hydration ordering', () => {
         ) as StarredMessagesData;
       }),
     };
-    const owner = createStarredMessagesOwner(area);
+    const handle = createStarredMessagesHandler(createStarStore(area));
     const requests: string[] = [];
     vi.mocked(chrome.runtime.sendMessage).mockImplementation(((
       request: { type: string },
       callback: (response: unknown) => void,
     ) => {
       requests.push(request.type);
-      void owner
-        .handle(request)
-        ?.then(callback, (error: Error) => callback({ ok: false, error: error.message }));
+      void handle(request)?.then(callback, (error: Error) =>
+        callback({ ok: false, error: error.message }),
+      );
     }) as typeof chrome.runtime.sendMessage);
     localStorage.setItem(PRIMARY, JSON.stringify([LOCAL]));
     state = new TimelineState(() => {}, createGeminiTimelineStoragePolicy());
