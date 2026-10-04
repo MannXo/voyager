@@ -201,7 +201,7 @@ describe('TimelineState stars in a partially mounted conversation', () => {
     expect(state.markers[0].starred).toBe(true);
   });
 
-  it('a delayed star addition does not override a newer complete Library snapshot', async () => {
+  it('a successful star addition applies after a Library snapshot arrives during its write', async () => {
     const state = await setup([marker(FIRST_ID, 'saved')]);
     let complete!: () => void;
     vi.spyOn(StarredMessagesService, 'addStarredMessage').mockReturnValue(
@@ -216,7 +216,7 @@ describe('TimelineState stars in a partially mounted conversation', () => {
     receive({ [StorageKeys.SAVED_LIBRARY_STARS]: { newValue: { messages: {} } } }, 'local');
     complete();
     await edit;
-    expect(state.markers[0].starred).toBe(false);
+    expect(state.markers[0].starred).toBe(true);
   });
 
   it('does not save a star from an unverified mounted positional id', async () => {

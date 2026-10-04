@@ -17,8 +17,6 @@ export class TimelineState {
   private destroyed = false;
   private starred = new Set<string>();
   private starWrites: Promise<void> = Promise.resolve();
-  private starSnapshotRevision = 0;
-  private pendingStarChoices = new Map<string, { starred: boolean }>();
   private readonly starHydration = new TimelineHydration(() => this.isCurrent);
   private readonly hierarchyHydration = new TimelineHydration(() => this.isCurrent);
   private starDisplayOverride = new Map<string, boolean>();
@@ -122,9 +120,7 @@ export class TimelineState {
       const canonical = this.policy.resolveMountedTurnId(marker.id);
       this.starDisplayOverride.set(
         marker.id,
-        (canonical &&
-          (this.pendingStarChoices.get(canonical)?.starred ?? displayByMarkerId.get(canonical))) ||
-          false,
+        (canonical && displayByMarkerId.get(canonical)) || false,
       );
       const storageIds = canonical ? storageIdsByMarkerId.get(canonical) : undefined;
       if (storageIds) this.starStorageIdsByMarkerId.set(marker.id, storageIds);
@@ -161,7 +157,6 @@ export class TimelineState {
   private applySharedStarredData(data: StarredMessagesData): void {
     if (!this.conversationId) return;
     this.starHydration.snapshot(() => {
-      this.starSnapshotRevision += 1;
       const matched = this.matchLibrary(data);
       this.applyStarredIdSet(new Set(matched.messages.map((message) => message.turnId)));
     });
@@ -215,7 +210,6 @@ export class TimelineState {
       }
 
       accept(() => {
-        this.starSnapshotRevision += 1;
         this.applyStarredIdSet(new Set(messages.map((message) => message.turnId)));
       });
     } catch (error) {
@@ -235,44 +229,31 @@ export class TimelineState {
     const summary = marker?.summary;
     const conversationTitle = this.policy.getConversationTitle(this.markers);
     // Resolve from the header at the press, before hydration or queued writes can yield to another page.
-    const accountRead =
-      !this.starHydration.ready || !this.isMarkerStarred(id)
-        ? this.policy.stars.resolveAccount().then(
-            (account) => ({ account }),
-            (error: unknown) => ({ error }),
-          )
-        : null;
-    if (!this.starHydration.ready) await this.readStars();
-    if (!this.isCurrent || !this.policy.canEdit(marker, id) || !this.starHydration.ready) return;
-    this.starHydration.changed();
-    const wasStarred = this.isMarkerStarred(id);
-    // A stable marker may represent both its current server-id record and an
-    // older verified positional alias. Removing the star clears both records.
-    const storageIds = wasStarred ? this.getStarStorageIds(id) : [id];
+    const accountRead = this.policy.stars.resolveAccount().then(
+      (account) => ({ account }),
+      (error: unknown) => ({ error }),
+    );
 
-    const canonical = this.policy.resolveMountedTurnId(id) ?? id;
-    const choice = { starred: !wasStarred };
-    const snapshotRevision = this.starSnapshotRevision;
-    this.pendingStarChoices.set(canonical, choice);
-    // The next press must see this choice before the Library write settles.
-    if (wasStarred) storageIds.forEach((storageId) => this.starred.delete(storageId));
-    else this.starred.add(id);
-    this.refreshStars();
-
-    // Account lookups must not reorder rapid add/remove presses.
+    // Each press reads the state only after the preceding press has written and applied its toggle.
     const operation = this.starWrites.then(async () => {
       try {
+        if (!this.isCurrent || !this.policy.canEdit(marker, id)) return;
+        if (!this.starHydration.ready) await this.readStars();
         if (!this.isCurrent || !this.policy.canEdit(marker, id) || !this.starHydration.ready)
           return;
+        this.starHydration.changed();
+        const wasStarred = this.isMarkerStarred(id);
+        // Removing a stable turn also clears its verified positional aliases.
+        const storageIds = wasStarred ? this.getStarStorageIds(id) : [id];
         if (wasStarred) {
           await Promise.all(
             storageIds.map((storageId) =>
               StarredMessagesService.removeStarredMessage(this.conversationId, storageId),
             ),
           );
-        } else if (marker) {
+        } else {
+          if (!marker) return;
           const result = await accountRead;
-          if (!result) return;
           if ('error' in result) throw result.error;
           const account = result.account;
           if (!this.isCurrent || !this.policy.canEdit(marker, id) || !this.starHydration.ready)
@@ -288,38 +269,20 @@ export class TimelineState {
           };
           await StarredMessagesService.addStarredMessage(message);
         }
-        const libraryStarred = Array.from(this.starred).some(
-          (storedId) => this.policy.resolveStoredTurnId(storedId) === canonical,
-        );
-        if (
-          this.pendingStarChoices.get(canonical) === choice &&
-          snapshotRevision !== this.starSnapshotRevision &&
-          libraryStarred !== choice.starred
-        ) {
-          // Confirm a superseded optimistic choice from the owner, never replay it over a newer snapshot.
-          this.starHydration.invalidate();
-          await this.starHydration.read((accept) => this.syncStarredFromService(accept));
-        }
+        if (!this.isCurrent) return;
+        if (wasStarred) storageIds.forEach((storageId) => this.starred.delete(storageId));
+        else this.starred.add(id);
+        this.refreshStars();
       } catch (error) {
         if (!this.isCurrent) return;
-        if (this.pendingStarChoices.get(canonical) === choice)
-          this.pendingStarChoices.delete(canonical);
         // A failed write must repaint from the Library, including partially removed aliases.
         this.starHydration.invalidate();
-        await this.starHydration.read((accept) => this.syncStarredFromService(accept));
+        await this.readStars();
         console.warn('[Timeline] Failed to change starred message:', error);
-      } finally {
-        if (this.pendingStarChoices.get(canonical) === choice)
-          this.pendingStarChoices.delete(canonical);
-        if (this.isCurrent) {
-          this.refreshStars();
-        }
       }
     });
     this.starWrites = operation.catch(() => {});
     await operation;
-
-    if (this.isCurrent) this.refreshStars();
   }
 
   /**

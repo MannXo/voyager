@@ -107,7 +107,6 @@ it.each([
 ])('two quick toggles on an $initial turn return to its saved state', async ({ saved }) => {
   const { state, stored, writing, release } = await fixture(saved);
   const first = state.toggleStar(turnId);
-  expect(state.markers[0].starred).toBe(!saved);
   await writing;
   const second = state.toggleStar(turnId);
   expect(state.markers[0].starred).toBe(saved);
@@ -125,7 +124,6 @@ it.each([
 it('a failed first star write repaints from the Library and a later press works', async () => {
   const { state, stored, writing, release } = await fixture(false, true);
   const edit = state.toggleStar(turnId);
-  expect(state.markers[0].starred).toBe(true);
   await writing;
   release();
   await edit;
@@ -140,7 +138,7 @@ it('a failed first star write repaints from the Library and a later press works'
   ).toBe(turnId);
 });
 
-it('an intermediate owner echo does not undo a later queued star choice', async () => {
+it('three quick toggles alternate through intermediate Library writes', async () => {
   const { state, stored, writing, release, secondWriting, releaseSecond } = await fixture(
     false,
     false,
@@ -151,9 +149,7 @@ it('an intermediate owner echo does not undo a later queued star choice', async 
   const second = state.toggleStar(turnId);
   release();
   await secondWriting;
-  expect(state.markers[0].starred).toBe(false);
   const third = state.toggleStar(turnId);
-  expect(state.markers[0].starred).toBe(true);
   releaseSecond();
   await Promise.all([first, second, third]);
   expect(state.markers[0].starred).toBe(true);
