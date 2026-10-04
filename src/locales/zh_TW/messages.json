@@ -2169,6 +2169,14 @@
     "message": "匯出內容包含網路搜尋圖片。是否在 Markdown 中包含圖片來源連結？",
     "description": "Confirm dialog when exporting markdown with web search images"
   },
+  "export_md_include_source_include": {
+    "message": "包含連結",
+    "description": "Confirm choice that keeps the source links of web search images in the Markdown export"
+  },
+  "export_md_include_source_exclude": {
+    "message": "不包含",
+    "description": "Confirm choice that leaves the source links of web search images out of the Markdown export"
+  },
   "deepResearch_exportedAt": {
     "message": "匯出時間",
     "description": "深度研究匯出時間戳標籤"

@@ -2169,6 +2169,14 @@
     "message": "يحتوي المحتوى المُصدَّر على صور من نتائج البحث. هل تريد تضمين روابط مصدر الصور في Markdown؟",
     "description": "Confirm dialog when exporting markdown with web search images"
   },
+  "export_md_include_source_include": {
+    "message": "تضمين الروابط",
+    "description": "Confirm choice that keeps the source links of web search images in the Markdown export"
+  },
+  "export_md_include_source_exclude": {
+    "message": "استبعادها",
+    "description": "Confirm choice that leaves the source links of web search images out of the Markdown export"
+  },
   "deepResearch_exportedAt": {
     "message": "وقت التصدير",
     "description": "تسمية الطابع الزمني للتصدير في Deep Research"

@@ -12,6 +12,7 @@
  * and dismisses its selection UI, and `cancel` does the same without starting.
  */
 import { logger } from '@/core/services/LoggerService';
+import { askConfirm } from '@/core/ui/confirm';
 import type { AppLanguage } from '@/utils/language';
 
 import type {
@@ -354,7 +355,29 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
               turn.assistantContent?.html.includes('attachment-container.search-images') ||
               turn.assistantElement?.querySelector('.attachment-container.search-images') != null,
           );
-          if (hasSearchImages) includeImageSource = confirm(t('export_md_include_source_confirm'));
+          if (hasSearchImages) {
+            const sources = await askConfirm<'include' | 'exclude'>({
+              message: t('export_md_include_source_confirm'),
+              tone: 'neutral',
+              choices: [
+                {
+                  id: 'exclude',
+                  label: t('export_md_include_source_exclude'),
+                  emphasis: 'secondary',
+                },
+                { id: 'include', label: t('export_md_include_source_include') },
+              ],
+              cancelLabel: t('pm_cancel'),
+              signal,
+            });
+            // Cancel, Escape or an outside press drops the export rather than guess its links.
+            if (sources === null) return;
+            throwIfExportCancelled(signal);
+            if (exportRouteKey(location.href) !== exportRouteKey(selectionUrl)) {
+              throw new Error('export_conversation_changed');
+            }
+            includeImageSource = sources === 'include';
+          }
         }
 
         hideProgress = showExportProgressOverlay(collector, t);

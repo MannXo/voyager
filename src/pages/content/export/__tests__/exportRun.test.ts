@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { confirmDriver } from '@/tests/confirmDriver';
 import { toastDriver } from '@/tests/toastDriver';
 
 import { ExportFormat } from '../../../../features/export/types/export';
@@ -30,6 +31,10 @@ const dict = {
     export_toast_images_omitted: '{count} images stayed as links',
     export_error_generic: 'Export failed: {error}',
     export_dialog_warning: 'Nothing to export yet',
+    export_md_include_source_confirm: 'Keep search image links?',
+    export_md_include_source_include: 'Include links',
+    export_md_include_source_exclude: 'Leave out',
+    pm_cancel: 'Cancel',
   },
 } as unknown as ExportDictionaries;
 
@@ -211,6 +216,68 @@ describe('createExportRunner', () => {
     expect(probe.recheck()).toBe(true);
     expect(selectionBar()).toBeNull();
     expect(mocks.exportPendingConversation).not.toHaveBeenCalled();
+  });
+
+  describe('a Markdown export with web search images', () => {
+    function collectorWithSearchImages(): ConversationCollector {
+      const collector = fakeCollector(renderMessages());
+      collector.turnsForMessageIds = (ids) =>
+        Array.from(ids).map((id) => {
+          const assistantElement = document.createElement('div');
+          assistantElement.innerHTML = '<div class="attachment-container search-images"></div>';
+          return { user: `turn ${id}`, assistant: '', starred: false, assistantElement };
+        });
+      return collector;
+    }
+
+    async function exportAll(): Promise<{ running: Promise<void> }> {
+      mocks.exportPendingConversation.mockResolvedValue({ success: true });
+      const runner = createExportRunner({ site: fakeSite(collectorWithSearchImages()) });
+      const running = runner.run({ format: ExportFormat.MARKDOWN }, { dict, lang: 'en' });
+      await until(() => selectionBar() !== null);
+      clickBarAction('selectAll');
+      clickBarAction('export');
+      await until(() => confirmDriver.isOpen());
+      // Wrapped: an async function would otherwise wait for the run it returns.
+      return { running };
+    }
+
+    it('asks whether to keep the image links and exports without them on Leave out', async () => {
+      const { running } = await exportAll();
+
+      expect(confirmDriver.message()).toBe('Keep search image links?');
+      expect(confirmDriver.labels()).toEqual(['Cancel', 'Leave out', 'Include links']);
+      expect(confirmDriver.focusedLabel()).toBe('Include links');
+      confirmDriver.answer('Leave out');
+      await settle(running);
+
+      expect(mocks.exportPendingConversation).toHaveBeenCalledTimes(1);
+      expect(mocks.exportPendingConversation.mock.calls[0][3]).toBe(false);
+    });
+
+    it('drops the export when the question is dismissed', async () => {
+      const { running } = await exportAll();
+
+      confirmDriver.pressEscape();
+      await settle(running);
+
+      expect(mocks.exportPendingConversation).not.toHaveBeenCalled();
+      expect(toastDriver.all()).toEqual([]);
+    });
+
+    it('drops the answer when the conversation changed while it was open', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { running } = await exportAll();
+      const before = location.href;
+
+      history.pushState({}, '', '/another-conversation');
+      confirmDriver.answer('Include links');
+      await settle(running);
+      history.pushState({}, '', before);
+
+      expect(mocks.exportPendingConversation).not.toHaveBeenCalled();
+      expect(toastDriver.all()).toMatchObject([{ tone: 'error' }]);
+    });
   });
 
   it('cancel dismisses the selection and ends the run without exporting', async () => {

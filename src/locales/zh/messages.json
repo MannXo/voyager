@@ -2166,8 +2166,16 @@
     "description": "图片导出遇到瞬时加载失败时的刷新重试提示"
   },
   "export_md_include_source_confirm": {
-    "message": "導出內容包含網路搜尋圖片。是否在 Markdown 中包含圖片來源連結？",
+    "message": "导出内容包含网络搜索图片。是否在 Markdown 中包含图片来源链接？",
     "description": "Confirm dialog when exporting markdown with web search images"
+  },
+  "export_md_include_source_include": {
+    "message": "包含链接",
+    "description": "Confirm choice that keeps the source links of web search images in the Markdown export"
+  },
+  "export_md_include_source_exclude": {
+    "message": "不包含",
+    "description": "Confirm choice that leaves the source links of web search images out of the Markdown export"
   },
   "deepResearch_exportedAt": {
     "message": "导出时间",

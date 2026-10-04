@@ -2169,6 +2169,14 @@
     "message": "내보내기 내용에 웹 검색 이미지가 포함되어 있습니다. Markdown 에 이미지 출처 링크를 포함하시겠습니까？",
     "description": "Confirm dialog when exporting markdown with web search images"
   },
+  "export_md_include_source_include": {
+    "message": "링크 포함",
+    "description": "Confirm choice that keeps the source links of web search images in the Markdown export"
+  },
+  "export_md_include_source_exclude": {
+    "message": "포함 안 함",
+    "description": "Confirm choice that leaves the source links of web search images out of the Markdown export"
+  },
   "deepResearch_exportedAt": {
     "message": "내보내기 일시",
     "description": "Deep Research 내보내기 타임스탬프 레이블"

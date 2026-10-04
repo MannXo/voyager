@@ -2169,6 +2169,14 @@
     "message": "O conteúdo exportado contém imagens de pesquisa na web. Incluir links de origem das imagens no Markdown?",
     "description": "Confirm dialog when exporting markdown with web search images"
   },
+  "export_md_include_source_include": {
+    "message": "Incluir links",
+    "description": "Confirm choice that keeps the source links of web search images in the Markdown export"
+  },
+  "export_md_include_source_exclude": {
+    "message": "Omitir",
+    "description": "Confirm choice that leaves the source links of web search images out of the Markdown export"
+  },
   "deepResearch_exportedAt": {
     "message": "Exportado em",
     "description": "Etiqueta de carimbo de data/hora de exportação de Deep Research"

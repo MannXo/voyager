@@ -2169,6 +2169,14 @@
     "message": "エクスポートするコンテンツにウェブ検索画像が含まれています。Markdown に画像のソースリンクを含めますか？",
     "description": "Confirm dialog when exporting markdown with web search images"
   },
+  "export_md_include_source_include": {
+    "message": "リンクを含める",
+    "description": "Confirm choice that keeps the source links of web search images in the Markdown export"
+  },
+  "export_md_include_source_exclude": {
+    "message": "含めない",
+    "description": "Confirm choice that leaves the source links of web search images out of the Markdown export"
+  },
   "deepResearch_exportedAt": {
     "message": "エクスポート日時",
     "description": "深層研究エクスポートタイムスタンプラベル"
