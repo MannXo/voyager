@@ -1678,7 +1678,7 @@
     "description": "Batch delete confirmation message"
   },
   "folder_batch_remove_confirm": {
-    "message": "선택한 대화 {count}개를 이 폴더에서 삭제할까요?",
+    "message": "선택한 대화({count}개)를 이 폴더에서 제거할까요?",
     "description": "Confirmation before removing the selected conversations from a folder"
   },
   "folder_multi_select_count": {

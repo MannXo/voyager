@@ -1678,7 +1678,7 @@
     "description": "Batch delete confirmation message"
   },
   "folder_batch_remove_confirm": {
-    "message": "Delete {count} selected conversation(s) from this folder?",
+    "message": "Remove the selected conversations ({count}) from this folder?",
     "description": "Confirmation before removing the selected conversations from a folder"
   },
   "folder_multi_select_count": {

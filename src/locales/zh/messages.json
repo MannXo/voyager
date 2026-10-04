@@ -1678,7 +1678,7 @@
     "description": "批量删除确认消息"
   },
   "folder_batch_remove_confirm": {
-    "message": "确定从此文件夹中移除 {count} 个已选对话吗？",
+    "message": "要从此文件夹移除所选对话（{count} 个）吗？",
     "description": "Confirmation before removing the selected conversations from a folder"
   },
   "folder_multi_select_count": {

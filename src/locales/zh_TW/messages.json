@@ -1638,7 +1638,7 @@
     "description": "批次刪除確認訊息"
   },
   "folder_batch_remove_confirm": {
-    "message": "確定要從此資料夾移除 {count} 個已選對話嗎？",
+    "message": "要從此資料夾移除所選對話（{count} 個）嗎？",
     "description": "Confirmation before removing the selected conversations from a folder"
   },
   "folder_multi_select_count": {
