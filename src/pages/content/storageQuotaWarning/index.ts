@@ -40,6 +40,10 @@ async function showStorageQuotaWarning(
     message: bodyTemplate.replace('{percent}', String(payload.percent)),
     tone: critical ? 'error' : 'warning',
     dismissLabel,
+    onDismiss: () => {
+      // Dismissing the visible warning also cancels a replacement whose strings are still loading.
+      renderSequence += 1;
+    },
     durationMs: critical ? CRITICAL_DISMISS_MS : WARNING_DISMISS_MS,
   });
 }
