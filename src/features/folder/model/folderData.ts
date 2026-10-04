@@ -416,11 +416,16 @@ export function validateFolderData(data: unknown): boolean {
     return false;
   const contents = data.folderContents;
   const prototype = Object.getPrototypeOf(contents);
-  // Unusable containers must enter recovery before normalization can erase saved references.
-  return (
-    (prototype === Object.prototype || prototype === null) &&
-    data.folders.every((folder: unknown) => isRecord(folder) && typeof folder.id === 'string') &&
-    Object.values(contents).every((bucket) => Array.isArray(bucket) && bucket.every(isRecord))
+  if (
+    (prototype !== Object.prototype && prototype !== null) ||
+    !data.folders.every((folder: unknown) => isRecord(folder) && typeof folder.id === 'string')
+  )
+    return false;
+  const folderIds = new Set(data.folders.map((folder: { id: string }) => folder.id));
+  // Only listed folders have falsy buckets repaired by normalizeFolderData.
+  return Object.entries(contents).every(
+    ([id, bucket]) =>
+      (!bucket && folderIds.has(id)) || (Array.isArray(bucket) && bucket.every(isRecord)),
   );
 }
 

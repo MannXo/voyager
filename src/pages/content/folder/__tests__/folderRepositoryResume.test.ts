@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { buildScopedStorageKey } from '@/core/services/AccountIsolationService';
+import { StorageKeys } from '@/core/types/common';
 import type { FolderData } from '@/core/types/folder';
 import {
   type MemoryStorage,
@@ -70,8 +72,9 @@ async function ready(
   config: PlatformFolderConfig,
   onRecovery = vi.fn(),
   initial = data('Initial'),
+  storageKey = config.storageKey,
 ) {
-  memory.values.local.set(config.storageKey, initial);
+  memory.values.local.set(storageKey, initial);
   repository = new FolderRepository(
     config,
     config.platform === 'gemini'
@@ -405,6 +408,7 @@ describe.each([
     { corruption: 'null contents', contents: null },
     { corruption: 'non-plain contents', contents: new Date(0) },
     { corruption: 'non-array bucket', contents: { folder: { conversationId: 'c1' } } },
+    { corruption: 'unlisted empty bucket', contents: { orphan: null } },
     { corruption: 'null reference', contents: { folder: [null] } },
     { corruption: 'array reference', contents: { folder: [[]] } },
   ])(
@@ -436,6 +440,41 @@ describe.each([
       expect(repository.data).toEqual(edited);
       await expect(repository.saveData()).resolves.toBe(true);
       expect(memory.values.local.get(config.storageKey)).toEqual(edited);
+    },
+  );
+
+  it.each([null, false, 0, ''])(
+    "keeps a sibling folder's conversations when another folder's bucket is %j",
+    async (emptyBucket) => {
+      let storageKey = config.storageKey;
+      if (config.platform === 'gemini') {
+        memory.values.sync.set(StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED_GEMINI, true);
+        storageKey = buildScopedStorageKey(config.storageKey, 'default');
+      }
+      const recovery = vi.fn();
+      await ready(config, recovery, data('Old backup'), storageKey);
+      expect(repository.storageKey).toBe(storageKey);
+      enabled = false;
+      repository.suspend();
+      const folders = [
+        { ...data('Empty').folders[0], id: 'empty' },
+        { ...data('New').folders[0], id: 'new', sortIndex: 1 },
+      ];
+      const references = [{ conversationId, title: '', url, addedAt: 1, sortIndex: 0 }];
+      memory.external('local', storageKey, {
+        folders,
+        folderContents: { empty: emptyBucket, new: references },
+      });
+      await settle(30);
+      await resume();
+      expect(repository.canEdit).toBe(true);
+      expect(recovery).not.toHaveBeenCalled();
+      expect(repository.data).toMatchObject({ folders, folderContents: { new: references } });
+      await expect(repository.saveData()).resolves.toBe(true);
+      expect(memory.values.local.get(storageKey)).toMatchObject({
+        folders,
+        folderContents: { new: references },
+      });
     },
   );
 
