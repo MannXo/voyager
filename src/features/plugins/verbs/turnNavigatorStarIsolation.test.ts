@@ -21,8 +21,11 @@ vi.mock('@/utils/i18n', () => ({
   initI18n: vi.fn().mockResolvedValue(undefined),
   getTranslationSync: (key: string) => key,
 }));
-vi.mock('@/features/savedLibrary/StarredMessagesService', () => ({
+vi.mock('@/features/savedLibrary/StarredMessagesService', async (importOriginal) => ({
   StarredMessagesService: {
+    decodeStorageChange: (
+      await importOriginal<typeof import('@/features/savedLibrary/StarredMessagesService')>()
+    ).StarredMessagesService.decodeStorageChange,
     addStarredMessage,
     getStarredMessagesForConversation,
     removeStarredMessage: vi.fn().mockResolvedValue(undefined),
@@ -315,7 +318,7 @@ describe('turnNavigator async star isolation', () => {
     // Another tab starred something before this tab refreshed for the new route.
     const callbacks = vi.mocked(chrome.storage.onChanged.addListener).mock.calls;
     for (const [notify] of callbacks)
-      notify({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: { messages: {} } } }, 'local');
+      notify({ [StorageKeys.SAVED_LIBRARY_STARS]: { newValue: { messages: {} } } }, 'local');
     document.querySelector('.ds-user')!.replaceWith(
       Object.assign(document.createElement('div'), {
         className: 'ds-user',

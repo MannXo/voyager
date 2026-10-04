@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { mergeStarredMessages, normalizeStarredMessages } from '../starData';
+import { decodeStarredSnapshot, mergeStarredMessages, normalizeStarredMessages } from '../starData';
 import type { StarredMessage } from '../starTypes';
 
 const star = (turnId: string, starredAt = 1): StarredMessage => ({
@@ -13,6 +13,23 @@ const star = (turnId: string, starredAt = 1): StarredMessage => ({
 const data = (...items: StarredMessage[]) => ({ messages: { chat: items } });
 
 describe('Saved Library star data', () => {
+  it('complete sparse snapshots hydrate through the shared codec', () => {
+    const raw = { messages: { chat: [{ turnId: 'sparse', account: 'opaque' }] } };
+    expect(decodeStarredSnapshot(raw)).toEqual(normalizeStarredMessages(raw));
+    expect(decodeStarredSnapshot({ messages: {} })).toEqual({ messages: {} });
+  });
+
+  it.each([
+    undefined,
+    null,
+    {},
+    { messages: [] },
+    { messages: { chat: null } },
+    { messages: { chat: [star('valid'), null] } },
+    { messages: { chat: [{ content: 'missing id' }] } },
+  ])('a malformed or partial snapshot cannot hydrate from recovered siblings: %j', (value) =>
+    expect(decodeStarredSnapshot(value)).toBeUndefined(),
+  );
   it('recovers sparse identifiable records without dropping valid siblings or opaque fields', () => {
     expect(
       normalizeStarredMessages({

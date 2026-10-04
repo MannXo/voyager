@@ -18,8 +18,11 @@ const { addStarredMessage, getStarredMessagesForConversation, removeStarredMessa
   }),
 );
 
-vi.mock('@/features/savedLibrary/StarredMessagesService', () => ({
+vi.mock('@/features/savedLibrary/StarredMessagesService', async (importOriginal) => ({
   StarredMessagesService: {
+    decodeStorageChange: (
+      await importOriginal<typeof import('@/features/savedLibrary/StarredMessagesService')>()
+    ).StarredMessagesService.decodeStorageChange,
     addStarredMessage,
     getStarredMessagesForConversation,
     removeStarredMessage,
@@ -60,6 +63,7 @@ function create(
       source: 'local',
       libraryMirror: true,
       matchLegacyConversations: false,
+      resolveAccount: async () => undefined,
     },
     hierarchy: { localKey: null },
     isCurrent: () => route === capturedRoute,
@@ -108,7 +112,7 @@ function synchronizeLibrary(messages: StarredMessage[]): void {
   for (const [listener] of vi.mocked(chrome.storage.onChanged.addListener).mock.calls)
     listener(
       {
-        [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: { messages: { [route]: messages } } },
+        [StorageKeys.SAVED_LIBRARY_STARS]: { newValue: { messages: { [route]: messages } } },
       },
       'local',
     );
@@ -373,7 +377,7 @@ describe('catalog star primary storage', () => {
       { messages: { [route]: [null] } },
     ]) {
       for (const [listener] of vi.mocked(chrome.storage.onChanged.addListener).mock.calls)
-        listener({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: value } }, 'local');
+        listener({ [StorageKeys.SAVED_LIBRARY_STARS]: { newValue: value } }, 'local');
       expect(localStorage.getItem(key(route))).toBe('["c-same"]');
       expect(state.isMarkerStarred('c-same')).toBe(true);
     }

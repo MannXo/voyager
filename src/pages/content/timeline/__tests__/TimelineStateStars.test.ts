@@ -193,7 +193,7 @@ describe('TimelineState stars in a partially mounted conversation', () => {
     const initial = state.init();
     const listeners = vi.mocked(chrome.storage.onChanged.addListener).mock.calls;
     const receive = listeners[listeners.length - 1][0];
-    receive({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: { messages: {} } } }, 'local');
+    receive({ [StorageKeys.SAVED_LIBRARY_STARS]: { newValue: { messages: {} } } }, 'local');
     vi.spyOn(StarredMessagesService, 'addStarredMessage').mockRejectedValue(
       new Error('write failed'),
     );
@@ -214,9 +214,10 @@ describe('TimelineState stars in a partially mounted conversation', () => {
       }),
     );
     const edit = state.toggleStar(FIRST_ID);
+    await vi.waitFor(() => expect(StarredMessagesService.addStarredMessage).toHaveBeenCalled());
     const listeners = vi.mocked(chrome.storage.onChanged.addListener).mock.calls;
     const receive = listeners[listeners.length - 1][0];
-    receive({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: { messages: {} } } }, 'local');
+    receive({ [StorageKeys.SAVED_LIBRARY_STARS]: { newValue: { messages: {} } } }, 'local');
     complete();
     await edit;
     expect(state.markers[0].starred).toBe(false);

@@ -13,6 +13,8 @@ export interface StarredMessage {
   conversationUrl: string;
   /** Conversation title (optional) */
   conversationTitle?: string;
+  /** Opaque account context captured when available */
+  account?: string;
   /** Timestamp when the message was starred */
   starredAt: number;
 }

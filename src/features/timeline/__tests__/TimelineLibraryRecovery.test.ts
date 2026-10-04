@@ -41,7 +41,10 @@ describe.each(['gemini', 'chatgpt', 'claude', 'deepseek'])('%s Library recovery'
       createStarStore({
         get: async () => {
           if (!healthy) throw new Error('temporary storage failure');
-          return { [StorageKeys.TIMELINE_STARRED_MESSAGES]: structuredClone(data) };
+          return {
+            [StorageKeys.TIMELINE_STARRED_MESSAGES]: structuredClone(data),
+            [StorageKeys.SAVED_LIBRARY_STARS]: structuredClone(data),
+          };
         },
         set: async (values) => {
           data = structuredClone(

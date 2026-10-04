@@ -17,8 +17,11 @@ vi.mock('@/utils/i18n', () => ({
   initI18n: vi.fn().mockResolvedValue(undefined),
   getTranslationSync: (key: string) => key,
 }));
-vi.mock('@/features/savedLibrary/StarredMessagesService', () => ({
+vi.mock('@/features/savedLibrary/StarredMessagesService', async (importOriginal) => ({
   StarredMessagesService: {
+    decodeStorageChange: (
+      await importOriginal<typeof import('@/features/savedLibrary/StarredMessagesService')>()
+    ).StarredMessagesService.decodeStorageChange,
     addStarredMessage: vi.fn().mockResolvedValue(undefined),
     getStarredMessagesForConversation,
     removeStarredMessage: vi.fn().mockResolvedValue(undefined),

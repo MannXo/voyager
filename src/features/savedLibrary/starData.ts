@@ -39,6 +39,21 @@ export function normalizeStarredMessages(value: unknown): StarredMessagesData {
   return { messages };
 }
 
+export function decodeStarredSnapshot(value: unknown): StarredMessagesData | undefined {
+  try {
+    const data = normalizeStarredMessages(value);
+    const original = value as { messages: Record<string, unknown[]> };
+    // A partial notification cannot authorize hydration after the codec dropped invalid entries.
+    return Object.entries(data.messages).every(
+      ([id, bucket]) => original.messages[id].length === bucket.length,
+    )
+      ? data
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function mergeStarredMessages(
   local: StarredMessagesData,
   cloud: StarredMessagesData,

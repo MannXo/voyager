@@ -76,6 +76,7 @@ export const StorageKeys = {
   TIMELINE_PREVIEW_PINNED: 'geminiTimelinePreviewPinned',
   TIMELINE_MARKER_LEVEL: 'geminiTimelineMarkerLevel',
   TIMELINE_STARRED_MESSAGES: 'geminiTimelineStarredMessages',
+  SAVED_LIBRARY_STARS: 'gvSavedLibraryStars',
   TIMELINE_HIERARCHY: 'geminiTimelineHierarchy',
   TIMELINE_SHORTCUTS: 'geminiTimelineShortcuts',
   HIGHLIGHT_CLOUD_SYNC_ENABLED: 'gvHighlightCloudSyncEnabled',

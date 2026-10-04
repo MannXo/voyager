@@ -57,7 +57,7 @@ function setup(markers = [marker(0), marker(1), marker(2)]) {
 const dots = () => Array.from(document.querySelectorAll<HTMLButtonElement>('.timeline-dot'));
 function fireStorage(data: StarredMessagesData) {
   for (const [listener] of vi.mocked(chrome.storage.onChanged.addListener).mock.calls) {
-    listener({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: { newValue: data } }, 'local');
+    listener({ [StorageKeys.SAVED_LIBRARY_STARS]: { newValue: data } }, 'local');
   }
 }
 

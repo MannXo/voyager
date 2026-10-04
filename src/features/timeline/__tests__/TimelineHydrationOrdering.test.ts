@@ -55,7 +55,10 @@ describe('Library hydration ordering', () => {
             if (reads === 1) releaseInitial = resolve;
             else releaseRetry = resolve;
           });
-        return { [StorageKeys.TIMELINE_STARRED_MESSAGES]: structuredClone(library) };
+        return {
+          [StorageKeys.TIMELINE_STARRED_MESSAGES]: structuredClone(library),
+          [StorageKeys.SAVED_LIBRARY_STARS]: structuredClone(library),
+        };
       }),
       set: vi.fn(async (values: Record<string, unknown>) => {
         library = structuredClone(

@@ -31,6 +31,16 @@ export function createGeminiTimelineStoragePolicy(
 ): TimelineStoragePolicy {
   const conversationId = buildConversationIdFromUrl(url);
   const nativeConversationId = extractConversationIdFromUrl(url);
+  // Account hints belong to this policy even if the page switches during a lookup.
+  const context = detectAccountContextFromDocument(url, document);
+  const resolveAccountScope = async () => {
+    if (!context.routeUserId && !context.email) return null;
+    return accountIsolationService.resolveAccountScope({
+      pageUrl: url,
+      routeUserId: context.routeUserId,
+      email: context.email,
+    });
+  };
   const key = conversationId ? `geminiTimelineStars:${conversationId}` : null;
   return {
     conversationId,
@@ -46,6 +56,7 @@ export function createGeminiTimelineStoragePolicy(
       source: 'library',
       libraryMirror: true,
       matchLegacyConversations: true,
+      resolveAccount: async () => (await resolveAccountScope())?.accountKey,
     },
     hierarchy: {
       extensionKey: StorageKeys.TIMELINE_HIERARCHY,
@@ -53,15 +64,7 @@ export function createGeminiTimelineStoragePolicy(
       legacyCollapsedKey: conversationId
         ? getLegacyTimelineCollapsedStorageKey(conversationId)
         : null,
-      resolveAccountScope: async () => {
-        const context = detectAccountContextFromDocument(url, document);
-        if (!context.routeUserId && !context.email) return null;
-        return accountIsolationService.resolveAccountScope({
-          pageUrl: url,
-          routeUserId: context.routeUserId,
-          email: context.email,
-        });
-      },
+      resolveAccountScope,
     },
     // A mounted u-N is an unverified window position even when stored u-N has a history alias.
     resolveMountedTurnId: (id) => (getLegacyTurnIndex(id) === null ? id : null),

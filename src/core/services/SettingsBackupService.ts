@@ -216,6 +216,11 @@ export const NON_SETTINGS_BACKUP_POLICIES = {
     disposition: 'separate-file',
     reason: 'Starred messages have their own account-scoped Drive file.',
   },
+  [StorageKeys.SAVED_LIBRARY_STARS]: {
+    storage: 'local',
+    disposition: 'separate-file',
+    reason: 'Saved Library stars share the existing account-scoped starred messages Drive file.',
+  },
   [StorageKeys.TIMELINE_HIERARCHY]: {
     storage: 'local',
     disposition: 'separate-file',

@@ -20,7 +20,6 @@ import {
   detectAccountContextFromDocument,
 } from '@/core/services/AccountIsolationService';
 import { logger } from '@/core/services/LoggerService';
-import { StorageKeys } from '@/core/types/common';
 import {
   type HighlightAccountScope,
   type HighlightPlatform,
@@ -399,7 +398,7 @@ export function createSavedLibraryView({
     applyStorageChange: (area, changes) => {
       if (
         area === 'local' &&
-        (changes[StorageKeys.TIMELINE_STARRED_MESSAGES] ||
+        (StarredMessagesService.decodeStorageChange(area, changes) !== undefined ||
           Object.keys(changes).some((key) => key.startsWith('gvAnnotation:'))) &&
         isActive()
       ) {

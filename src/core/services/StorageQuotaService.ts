@@ -125,6 +125,7 @@ const FOLDER_KEYS = new Set<string>([
 
 const TIMELINE_KEYS = new Set<string>([
   StorageKeys.TIMELINE_STARRED_MESSAGES,
+  StorageKeys.SAVED_LIBRARY_STARS,
   StorageKeys.TIMELINE_HIERARCHY,
   StorageKeys.FORK_NODES,
   StorageKeys.GV_MESSAGE_TIMESTAMPS,

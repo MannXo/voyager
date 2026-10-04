@@ -1,4 +1,3 @@
-import { StorageKeys } from '@/core/types/common';
 import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
 import type { StarredMessage, StarredMessagesData } from '@/features/savedLibrary/starTypes';
 import { eventBus } from '@/pages/content/timeline/EventBus';
@@ -110,9 +109,9 @@ export class TimelineState {
     if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
       this.onChromeStorageChanged = (changes, areaName) => {
         if (areaName === 'local' && this.isCurrent) {
-          const starredChange = changes[StorageKeys.TIMELINE_STARRED_MESSAGES];
-          if (starredChange && this.policy.stars.libraryMirror) {
-            this.applySharedStarredData(starredChange.newValue);
+          const starredData = StarredMessagesService.decodeStorageChange(areaName, changes);
+          if (starredData && this.policy.stars.libraryMirror) {
+            this.applySharedStarredData(starredData);
           }
 
           this.hierarchy.applyStorageChanges(changes);
@@ -244,29 +243,7 @@ export class TimelineState {
 
   private applySharedStarredData(value: unknown): void {
     if (!this.conversationId) return;
-    // Only a removed key or a complete valid library snapshot may replace persisted stars.
-    if (value != null) {
-      if (typeof value !== 'object' || !('messages' in value)) return;
-      const messages = value.messages;
-      if (
-        !messages ||
-        typeof messages !== 'object' ||
-        Array.isArray(messages) ||
-        !Object.values(messages).every(
-          (entries) =>
-            Array.isArray(entries) &&
-            entries.every(
-              (message: unknown) =>
-                typeof message === 'object' &&
-                message !== null &&
-                'turnId' in message &&
-                typeof message.turnId === 'string',
-            ),
-        )
-      )
-        return;
-    }
-    const data = value as StarredMessagesData | null | undefined;
+    const data = value as StarredMessagesData;
 
     // Use the same matching rules as syncStarredFromService (init path): stars
     // may live under a legacy/route conversation-id key, and a direct-key-only
@@ -377,7 +354,7 @@ export class TimelineState {
     if (!this.starHydration.ready) await this.readStars();
     if (!this.isCurrent || !this.policy.canEdit(marker, id) || !this.starHydration.ready) return;
     this.starHydration.changed();
-    const revision = this.starHydration.version;
+    let revision = this.starHydration.version;
     const wasStarred = this.isMarkerStarred(id);
     // A stable marker may represent both its current server-id record and an
     // older verified positional alias. Removing the star clears both records.
@@ -391,6 +368,16 @@ export class TimelineState {
           ),
         );
       } else if (!wasStarred && marker && this.policy.stars.libraryMirror) {
+        const account = await this.policy.stars.resolveAccount();
+        if (
+          !this.isCurrent ||
+          !this.policy.canEdit(marker, id) ||
+          !this.starHydration.ready ||
+          this.isMarkerStarred(id)
+        )
+          return;
+        // An unrelated Library snapshot during account lookup cannot cancel this press.
+        revision = this.starHydration.version;
         const message: StarredMessage = {
           turnId: id,
           content: summary ?? '',
@@ -398,6 +385,7 @@ export class TimelineState {
           conversationUrl: this.url,
           conversationTitle,
           starredAt: Date.now(),
+          ...(account ? { account } : {}),
         };
         await StarredMessagesService.addStarredMessage(message);
       }

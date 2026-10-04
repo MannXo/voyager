@@ -14,6 +14,7 @@ export interface TimelineStoragePolicy {
     readonly source: 'library' | 'local';
     readonly libraryMirror: boolean;
     readonly matchLegacyConversations: boolean;
+    readonly resolveAccount: () => Promise<string | undefined>;
   };
   readonly hierarchy:
     | { readonly localKey: string | null }

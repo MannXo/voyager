@@ -67,6 +67,40 @@ describe('SettingsBackupService', () => {
     expect(settingsStorage.set).not.toHaveBeenCalled();
   });
 
+  it.each(['merge', 'overwrite'] as const)(
+    'keeps both star projections local and outside %s settings export and restore',
+    async (mode) => {
+      const stars = { messages: { chat: [{ turnId: 'kept' }] } };
+      const area = {
+        get: vi.fn().mockResolvedValue({
+          ...BACKUPABLE_SYNC_SETTINGS_DEFAULTS,
+          [StorageKeys.SAVED_LIBRARY_STARS]: stars,
+          [StorageKeys.TIMELINE_STARRED_MESSAGES]: stars,
+        }),
+        set: vi.fn().mockResolvedValue(undefined),
+      };
+      const exported = await exportBackupableSyncSettings(area);
+      for (const key of [StorageKeys.SAVED_LIBRARY_STARS, StorageKeys.TIMELINE_STARRED_MESSAGES]) {
+        expect(exported.data).not.toHaveProperty(key);
+        expect(NON_SETTINGS_BACKUP_POLICIES[key]).toMatchObject({
+          storage: 'local',
+          disposition: 'separate-file',
+        });
+      }
+      await expect(
+        restoreBackupableSyncSettings(
+          {
+            [StorageKeys.SAVED_LIBRARY_STARS]: stars,
+            [StorageKeys.TIMELINE_STARRED_MESSAGES]: stars,
+          },
+          area,
+          mode,
+        ),
+      ).resolves.toEqual({});
+      expect(area.set).not.toHaveBeenCalled();
+    },
+  );
+
   it('keeps popup scroll position device-local and outside settings backup', () => {
     const popupScrollKey = 'gvPopupScrollTop';
 

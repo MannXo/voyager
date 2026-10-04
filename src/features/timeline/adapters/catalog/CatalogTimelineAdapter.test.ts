@@ -7,8 +7,11 @@ import { CatalogTurnOwnership } from './CatalogTurnOwnership';
 import { catalogHierarchyStorageKey, type CatalogTimelineConfig } from './config';
 import { buildConversationId, starConversationId, turnConversationId } from './conversationId';
 
-vi.mock('@/features/savedLibrary/StarredMessagesService', () => ({
+vi.mock('@/features/savedLibrary/StarredMessagesService', async (importOriginal) => ({
   StarredMessagesService: {
+    decodeStorageChange: (
+      await importOriginal<typeof import('@/features/savedLibrary/StarredMessagesService')>()
+    ).StarredMessagesService.decodeStorageChange,
     getStarredMessagesForConversation: vi.fn().mockResolvedValue([]),
     addStarredMessage: vi.fn().mockResolvedValue(undefined),
     removeStarredMessage: vi.fn().mockResolvedValue(undefined),

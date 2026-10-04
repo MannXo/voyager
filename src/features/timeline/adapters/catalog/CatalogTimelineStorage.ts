@@ -26,6 +26,7 @@ export function createCatalogTimelineStoragePolicy(
       source: 'local',
       libraryMirror: true,
       matchLegacyConversations: false,
+      resolveAccount: async () => undefined,
     },
     hierarchy: {
       localKey: conversationId ? catalogHierarchyStorageKey(config.siteId, conversationId) : null,

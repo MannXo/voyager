@@ -26,22 +26,46 @@ export function createStarStore(area: StorageArea): StarStore {
     queue = pending.catch(() => {});
     return pending;
   };
-  const read = async (): Promise<StarredMessagesData> => {
-    const values = await area.get([StorageKeys.TIMELINE_STARRED_MESSAGES]);
-    const value = values[StorageKeys.TIMELINE_STARRED_MESSAGES];
-    return value === undefined ? { messages: {} } : normalizeStarredMessages(value);
-  };
+  const keys = [StorageKeys.SAVED_LIBRARY_STARS, StorageKeys.TIMELINE_STARRED_MESSAGES];
   const write = (data: StarredMessagesData): Promise<void> =>
-    area.set({ [StorageKeys.TIMELINE_STARRED_MESSAGES]: data });
+    area.set({
+      [StorageKeys.SAVED_LIBRARY_STARS]: data,
+      [StorageKeys.TIMELINE_STARRED_MESSAGES]: data,
+    });
+  const read = async (): Promise<{ data: StarredMessagesData; dirty: boolean }> => {
+    // Downgraded clients may add legacy stars even after the neutral projection exists.
+    const values = await area.get(keys);
+    const neutral = values[StorageKeys.SAVED_LIBRARY_STARS];
+    const legacy = values[StorageKeys.TIMELINE_STARRED_MESSAGES];
+    const data = mergeStarredMessages(
+      neutral === undefined ? { messages: {} } : normalizeStarredMessages(neutral),
+      legacy === undefined ? { messages: {} } : normalizeStarredMessages(legacy),
+    );
+    const serialized = JSON.stringify(data);
+    return {
+      data,
+      dirty:
+        (neutral !== undefined || legacy !== undefined) &&
+        (JSON.stringify(neutral) !== serialized || JSON.stringify(legacy) !== serialized),
+    };
+  };
+  const readReconciled = async (): Promise<StarredMessagesData> => {
+    const { data, dirty } = await read();
+    if (dirty) await write(data);
+    return data;
+  };
 
   return {
-    getAll: () => serialize(read),
-    getForConversation: (id) => serialize(async () => (await read()).messages[id] || []),
+    getAll: () => serialize(readReconciled),
+    getForConversation: (id) => serialize(async () => (await readReconciled()).messages[id] || []),
     add: (item) =>
       serialize(async () => {
-        const data = await read();
+        const { data, dirty } = await read();
         const bucket = data.messages[item.conversationId] || [];
-        if (bucket.some((message) => message.turnId === item.turnId)) return false;
+        if (bucket.some((message) => message.turnId === item.turnId)) {
+          if (dirty) await write(data);
+          return false;
+        }
         const normalized = normalizeStarredMessages({
           messages: { [item.conversationId]: [item] },
         }).messages[item.conversationId][0];
@@ -61,10 +85,13 @@ export function createStarStore(area: StorageArea): StarStore {
       }),
     remove: (conversationId, turnId) =>
       serialize(async () => {
-        const data = await read();
+        const { data, dirty } = await read();
         const bucket = data.messages[conversationId] || [];
         const remaining = bucket.filter((item) => item.turnId !== turnId);
-        if (bucket.length === remaining.length) return false;
+        if (bucket.length === remaining.length) {
+          if (dirty) await write(data);
+          return false;
+        }
         if (remaining.length) data.messages[conversationId] = remaining;
         else delete data.messages[conversationId];
         await write(data);
@@ -72,7 +99,7 @@ export function createStarStore(area: StorageArea): StarStore {
       }),
     reconcile: (target, sources, url) =>
       serialize(async () => {
-        const data = await read();
+        const { data } = await read();
         const ids = Array.from(new Set([target, ...sources])).filter(Boolean);
         let merged: StarredMessagesData = { messages: {} };
         for (const id of ids) {
@@ -104,7 +131,7 @@ export function createStarStore(area: StorageArea): StarStore {
           throw new Error('Invalid starred messages envelope');
         }
         const cloud = normalizeStarredMessages(envelope.data);
-        const data = mergeStarredMessages(await read(), cloud);
+        const data = mergeStarredMessages((await read()).data, cloud);
         await write(data);
         return {
           status: 'merged',

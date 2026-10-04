@@ -2,9 +2,10 @@
  * Service for managing starred messages across all conversations
  * Uses message passing to background script to prevent race conditions
  */
+import { StorageKeys } from '@/core/types/common';
 import { eventBus } from '@/pages/content/timeline/EventBus';
 
-import { normalizeStarredMessages } from './starData';
+import { decodeStarredSnapshot, normalizeStarredMessages } from './starData';
 import type { StarredMessage, StarredMessagesData } from './starTypes';
 
 export class StarredMessagesService {
@@ -25,6 +26,21 @@ export class StarredMessagesService {
         resolve(response as T);
       });
     });
+  }
+
+  static decodeStorageChange(
+    area: string,
+    changes: Record<string, unknown>,
+  ): StarredMessagesData | undefined {
+    if (area !== 'local') return undefined;
+    const change = changes[StorageKeys.SAVED_LIBRARY_STARS];
+    if (!change || typeof change !== 'object' || Array.isArray(change)) return undefined;
+    if ('newValue' in change) {
+      return change.newValue === undefined
+        ? { messages: {} }
+        : decodeStarredSnapshot(change.newValue);
+    }
+    return 'oldValue' in change ? { messages: {} } : undefined;
   }
 
   /**
