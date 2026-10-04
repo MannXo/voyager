@@ -20,7 +20,7 @@ import type {
   ExportSpeakerLabels,
 } from '../../../features/export/types/export';
 import { resolveExportErrorMessage } from '../../../features/export/ui/ExportErrorMessage';
-import { reportFinishedExport } from '../../../features/export/ui/exportResultNotice';
+import { reportFinishedExport } from '../../../features/export/ui/exportToasts';
 import { removeCanvasExportSections } from './conversationCollector';
 import { waitForAnyElement, waitForElement } from './domWait';
 import { isAbortError, throwIfExportCancelled } from './exportCancellation';

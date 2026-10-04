@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { toastDriver } from '@/tests/toastDriver';
+
 import type { ExportDictionaries } from '../exportLocale';
 
 const mocks = vi.hoisted(() => ({
   isSafari: vi.fn(() => false),
-  showExportToast: vi.fn(),
   renderResponseImageBlob: vi.fn(),
   copyImageBlobToClipboard: vi.fn(),
   copyImageBlobViaSafariNativePasteboard: vi.fn(),
@@ -12,9 +13,6 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/core/utils/browser', () => ({ isSafari: mocks.isSafari }));
-vi.mock('../../../../features/export/ui/ExportToast', () => ({
-  showExportToast: mocks.showExportToast,
-}));
 vi.mock('../responseImageCopy', () => ({
   renderResponseImageBlob: mocks.renderResponseImageBlob,
   copyImageBlobToClipboard: mocks.copyImageBlobToClipboard,
@@ -83,7 +81,7 @@ async function copyFirstResponseAsImage(): Promise<void> {
   expect(button).not.toBeNull();
   button!.click();
   document.querySelector<HTMLElement>('.gv-response-image-menu-item')!.click();
-  await vi.waitFor(() => expect(mocks.showExportToast).toHaveBeenCalled());
+  await vi.waitFor(() => expect(toastDriver.all()).toHaveLength(1));
 }
 
 describe('startResponseCopyImageActions', () => {
@@ -110,7 +108,9 @@ describe('startResponseCopyImageActions', () => {
     expect(turns[0].assistant).toBe('answer');
     expect(turns[0].user).toBe('');
     expect(mocks.copyImageBlobToClipboard).toHaveBeenCalledWith(blob);
-    expect(mocks.showExportToast).toHaveBeenCalledWith('Response image copied');
+    expect(toastDriver.all()).toMatchObject([
+      { message: 'Response image copied', tone: 'success' },
+    ]);
   });
 
   it('downloads the image on Safari when neither clipboard path works', async () => {
@@ -124,10 +124,26 @@ describe('startResponseCopyImageActions', () => {
       blob,
       expect.stringMatching(/^gemini-response-.*\.png$/),
     );
-    expect(mocks.showExportToast).toHaveBeenCalledWith(
-      'Downloaded response image (Safari clipboard limitation)',
-      { autoDismissMs: 3200 },
-    );
+    expect(toastDriver.all()).toMatchObject([
+      { message: 'Downloaded response image (Safari clipboard limitation)', tone: 'info' },
+    ]);
+  });
+
+  it('keeps the download notice up longer than a plain copy notice', async () => {
+    vi.useFakeTimers();
+    mocks.isSafari.mockReturnValue(true);
+    mocks.copyImageBlobToClipboard.mockRejectedValue(new Error('NotAllowedError'));
+    mocks.copyImageBlobViaSafariNativePasteboard.mockResolvedValue(false);
+
+    try {
+      await copyFirstResponseAsImage();
+      await vi.advanceTimersByTimeAsync(2500);
+      expect(toastDriver.all()).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(800);
+      expect(toastDriver.all()).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('uses the Safari native pasteboard before falling back to a download', async () => {
@@ -138,7 +154,7 @@ describe('startResponseCopyImageActions', () => {
     await copyFirstResponseAsImage();
 
     expect(mocks.downloadImageBlob).not.toHaveBeenCalled();
-    expect(mocks.showExportToast).toHaveBeenCalledWith('Response image copied');
+    expect(toastDriver.messages()).toEqual(['Response image copied']);
   });
 
   it('reports an unsupported clipboard outside Safari', async () => {
@@ -149,9 +165,8 @@ describe('startResponseCopyImageActions', () => {
     await copyFirstResponseAsImage();
 
     expect(mocks.downloadImageBlob).not.toHaveBeenCalled();
-    expect(mocks.showExportToast).toHaveBeenCalledWith(
-      'Clipboard image copy is not supported in this browser',
-      { autoDismissMs: 3200 },
-    );
+    expect(toastDriver.all()).toMatchObject([
+      { message: 'Clipboard image copy is not supported in this browser', tone: 'warning' },
+    ]);
   });
 });

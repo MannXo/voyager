@@ -13,7 +13,7 @@ import type {
   ExportSpeakerLabels,
 } from '../../../features/export/types/export';
 import { DEFAULT_IMAGE_EXPORT_WIDTH } from '../../../features/export/types/export';
-import { showExportToast } from '../../../features/export/ui/ExportToast';
+import { showExportNotice } from '../../../features/export/ui/exportToasts';
 import { removeCanvasExportSections } from './conversationCollector';
 import { type ExportDictionaries, createExportTranslator } from './exportLocale';
 import type { ExportSite } from './exportSite';
@@ -46,6 +46,9 @@ type ResponseCopyImageTexts = {
   widthMedium: string;
   widthWide: string;
 };
+
+/** Outcomes that ask the user to do something differently stay a little longer. */
+const NOTICE_LONG_MS = 3200;
 
 let responseActionObserver: MutationObserver | null = null;
 
@@ -146,13 +149,13 @@ async function copyResponseAsImage(
   let blobForFallback: Blob | null = null;
   try {
     if (!messageId) {
-      showExportToast(texts.targetMissing);
+      showExportNotice(texts.targetMissing, { tone: 'warning' });
       return;
     }
 
     const turnsForExport = await site.turns.build(new Set<string>([messageId]), {});
     if (turnsForExport.length === 0) {
-      showExportToast(texts.targetMissing);
+      showExportNotice(texts.targetMissing, { tone: 'warning' });
       return;
     }
 
@@ -170,23 +173,23 @@ async function copyResponseAsImage(
     });
     blobForFallback = blob;
     await copyImageBlobToClipboard(blob);
-    showExportToast(texts.copied);
+    showExportNotice(texts.copied, { tone: 'success' });
   } catch (error) {
     if (isSafari() && blobForFallback) {
       if (await copyImageBlobViaSafariNativePasteboard(blobForFallback)) {
-        showExportToast(texts.copied);
+        showExportNotice(texts.copied, { tone: 'success' });
         return;
       }
       downloadImageBlob(blobForFallback, buildResponseImageFilename());
-      showExportToast(texts.downloaded, { autoDismissMs: 3200 });
+      showExportNotice(texts.downloaded, { durationMs: NOTICE_LONG_MS });
       return;
     }
     if (isUnsupportedClipboardError(error)) {
-      showExportToast(texts.unsupported, { autoDismissMs: 3200 });
+      showExportNotice(texts.unsupported, { tone: 'warning', durationMs: NOTICE_LONG_MS });
       return;
     }
     console.error('[Gemini Voyager] Failed to copy response image:', error);
-    showExportToast(texts.failed, { autoDismissMs: 3200 });
+    showExportNotice(texts.failed, { tone: 'error', durationMs: NOTICE_LONG_MS });
   } finally {
     delete trigger.dataset.gvCopyImageBusy;
     removeCanvasExportSections();

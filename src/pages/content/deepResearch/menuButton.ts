@@ -17,7 +17,7 @@ import type {
 } from '@/features/export/types/export';
 import { ExportDialog } from '@/features/export/ui/ExportDialog';
 import { resolveExportErrorMessage } from '@/features/export/ui/ExportErrorMessage';
-import { reportFinishedExport } from '@/features/export/ui/exportResultNotice';
+import { reportFinishedExport } from '@/features/export/ui/exportToasts';
 import type { AppLanguage } from '@/utils/language';
 import type { TranslationKey } from '@/utils/translations';
 

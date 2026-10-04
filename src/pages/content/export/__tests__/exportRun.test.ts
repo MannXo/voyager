@@ -20,7 +20,7 @@ vi.mock('../pendingExportState', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../pendingExportState')>()),
   exportPendingConversation: mocks.exportPendingConversation,
 }));
-vi.mock('../../../../features/export/ui/exportResultNotice', () => ({
+vi.mock('../../../../features/export/ui/exportToasts', () => ({
   reportFinishedExport: mocks.reportFinishedExport,
 }));
 
