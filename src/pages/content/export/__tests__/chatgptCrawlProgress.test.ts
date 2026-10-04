@@ -6,6 +6,8 @@ import {
 } from '@/features/export/services/DOMContentExtractor';
 import type { ExportContentDialect } from '@/features/export/services/exportContentDialect';
 import { normalizeText } from '@/features/export/services/exportDomPolicy';
+import { showExportProgress } from '@/features/export/ui/exportToasts';
+import { toastDriver } from '@/tests/toastDriver';
 
 import { makeTurns, mountThreadFixture } from '../adapter/__tests__/chatgptThreadFixture';
 import type { ChatGptCrawlTiming } from '../adapter/chatgptCrawl';
@@ -29,8 +31,11 @@ const FAST: Partial<ChatGptCrawlTiming> = {
   historyStallMs: 150,
 };
 
-function pill(): HTMLElement | null {
-  return document.querySelector<HTMLElement>('.gv-export-crawl-progress');
+function progressText(): string {
+  return toastDriver
+    .all()
+    .map((toast) => [toast.title, toast.message, toast.detail].filter(Boolean).join(' '))
+    .join(' | ');
 }
 
 beforeEach(() => {
@@ -62,28 +67,26 @@ afterEach(() => {
 });
 
 describe('prepareChatGptExportWithProgress', () => {
-  it('counts the turns it reads, then removes itself and uncovers the export pill', async () => {
+  it('counts the turns it reads in the export progress, then gives the export its text back', async () => {
     const turns = makeTurns(5);
     mountThreadFixture({ turns });
-    const exportPill = document.createElement('div');
-    exportPill.className = 'gv-export-progress-overlay';
-    document.body.appendChild(exportPill);
+    const exportProgress = showExportProgress({ title: 'Export...', message: 'Loading' });
     const shown: string[] = [];
 
     const session = await prepareChatGptExportWithProgress(preparer, {
       extractor,
       timing: FAST,
       onProgress: () => {
-        expect(exportPill.hidden).toBe(true);
-        shown.push(pill()?.textContent ?? '');
+        shown.push(progressText());
       },
     });
 
-    expect(shown.at(-1)).toContain('Reading conversation');
-    expect(shown.at(-1)).toContain('Turns read: 5');
-    expect(pill()).toBeNull();
-    expect(exportPill.hidden).toBe(false);
+    expect(shown.at(-1)).toBe('Reading conversation… Turns read: 5');
+    expect(progressText()).toBe('Export... Loading');
+    expect(toastDriver.all()).toMatchObject([{ pending: true }]);
     expect(session?.containers()).toHaveLength(10);
+    exportProgress.hide();
+    expect(toastDriver.all()).toEqual([]);
   });
 
   it('cancels from its button: restores the scroll, stops watching the thread and rejects quietly', async () => {
@@ -92,7 +95,7 @@ describe('prepareChatGptExportWithProgress', () => {
     fixture.setOffset(3000);
     const fromEnd = fixture.range() - fixture.offset();
     const onProgress = (count: number) => {
-      if (count === 2) pill()?.querySelector<HTMLButtonElement>('.gv-export-crawl-cancel')?.click();
+      if (count === 2) toastDriver.press(toastDriver.all()[0], 'Cancel');
     };
 
     await expect(
@@ -100,7 +103,7 @@ describe('prepareChatGptExportWithProgress', () => {
     ).rejects.toMatchObject({ name: 'AbortError' });
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(pill()).toBeNull();
+    expect(toastDriver.all()).toEqual([]);
     expect(fixture.range() - fixture.offset()).toBe(fromEnd);
     expect(observing.size).toBe(0);
   });
@@ -120,7 +123,7 @@ describe('prepareChatGptExportWithProgress', () => {
         onProgress,
       }),
     ).rejects.toMatchObject({ name: 'AbortError' });
-    expect(pill()).toBeNull();
+    expect(toastDriver.all()).toEqual([]);
   });
 
   it('shows nothing on the earlier DOM, which has no crawl', async () => {
@@ -129,6 +132,6 @@ describe('prepareChatGptExportWithProgress', () => {
     await expect(
       prepareChatGptExportWithProgress(preparer, { extractor, timing: FAST }),
     ).resolves.toBeNull();
-    expect(pill()).toBeNull();
+    expect(toastDriver.all()).toEqual([]);
   });
 });

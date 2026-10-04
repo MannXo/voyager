@@ -1,3 +1,4 @@
+import { showExportProgress } from '@/features/export/ui/exportToasts';
 import { getTranslationSync } from '@/utils/i18n';
 import type { TranslationKey } from '@/utils/translations';
 
@@ -7,71 +8,23 @@ import type { ChatGptThreadPreparer, ChatGptThreadSession } from './adapter/chat
 
 /**
  * Progress for ChatGPT's thread crawl, which reads a long conversation for a
- * while (about 0.7s per turn live): a pill styled like the export progress
- * pill that counts the turns read, with a Cancel button.
+ * while (about 0.7s per turn live): the export progress toast counts the turns
+ * read and offers Cancel, then shows the export's own progress again.
  *
  * Cancel aborts only the crawl. The crawl restores the reader's scroll
  * position and rejects with an AbortError, which the export treats as a quiet
  * cancellation: no file, no warning.
  */
 
-const PILL_CLASS = 'gv-export-crawl-progress';
-const CANCEL_CLASS = 'gv-export-crawl-cancel';
-/** The export's own progress pill, hidden while this one shows. */
-const EXPORT_PROGRESS_SELECTOR = '.gv-export-progress-overlay';
-
 type Translate = (key: TranslationKey) => string;
 
-interface CrawlProgressPill {
-  update(turns: number): void;
-  dispose(): void;
-}
-
-function showCrawlProgress(t: Translate, onCancel: () => void): CrawlProgressPill {
-  document.querySelectorAll(`.${PILL_CLASS}`).forEach((pill) => pill.remove());
-  const covered = Array.from(document.querySelectorAll<HTMLElement>(EXPORT_PROGRESS_SELECTOR));
-  covered.forEach((overlay) => (overlay.hidden = true));
-
-  const pill = document.createElement('div');
-  pill.className = PILL_CLASS;
-  pill.setAttribute('role', 'status');
-
-  const card = document.createElement('div');
-  card.className = 'gv-export-progress-card';
-  const spinner = document.createElement('div');
-  spinner.className = 'gv-export-progress-spinner';
-  const title = document.createElement('div');
-  title.className = 'gv-export-progress-title';
-  title.textContent = t('export_reading_conversation_title');
-  const desc = document.createElement('div');
-  desc.className = 'gv-export-progress-desc';
-  const cancel = document.createElement('button');
-  cancel.type = 'button';
-  cancel.className = CANCEL_CLASS;
-  cancel.textContent = t('pm_cancel');
-  cancel.addEventListener('click', onCancel, { once: true });
-
-  card.append(spinner, title, desc, cancel);
-  pill.appendChild(card);
-  document.body.appendChild(pill);
-
-  const update = (turns: number) => {
-    desc.textContent = t('export_reading_conversation_turns').replace('{count}', String(turns));
-  };
-  update(0);
-
-  return {
-    update,
-    dispose() {
-      pill.remove();
-      covered.forEach((overlay) => (overlay.hidden = false));
-    },
-  };
+function crawlTurnsText(t: Translate, turns: number): string {
+  return t('export_reading_conversation_turns').replace('{count}', String(turns));
 }
 
 /**
- * A ChatGPT preparation with the progress pill. The earlier DOM has no crawl,
- * so it gets no pill.
+ * A ChatGPT preparation with crawl progress. The earlier DOM has no crawl, so
+ * it shows none.
  */
 export async function prepareChatGptExportWithProgress(
   preparer: ChatGptThreadPreparer,
@@ -84,18 +37,22 @@ export async function prepareChatGptExportWithProgress(
   const forward = () => crawl.abort();
   if (options.signal?.aborted) crawl.abort();
   options.signal?.addEventListener('abort', forward, { once: true });
-  const pill = showCrawlProgress(t, () => crawl.abort());
+  const progress = showExportProgress({
+    message: t('export_reading_conversation_title'),
+    detail: crawlTurnsText(t, 0),
+    action: { label: t('pm_cancel'), run: () => crawl.abort() },
+  });
   try {
     return await preparer.prepare({
       ...options,
       signal: crawl.signal,
       onProgress: (turns) => {
-        pill.update(turns);
+        progress.update({ detail: crawlTurnsText(t, turns) });
         options.onProgress?.(turns);
       },
     });
   } finally {
-    pill.dispose();
+    progress.hide();
     options.signal?.removeEventListener('abort', forward);
   }
 }

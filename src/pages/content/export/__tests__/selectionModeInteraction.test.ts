@@ -3,26 +3,16 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('selection mode interaction', () => {
-  it('pins selection bar to top and uses top-center compact progress toast styles', () => {
+  it('pins the selection bar to the top', () => {
     const css = readFileSync(resolve(process.cwd(), 'public/contentStyle.css'), 'utf8');
-    const overlayBlock = css.match(/\.gv-export-progress-overlay\s*{([\s\S]*?)}/)?.[1] ?? '';
-    const cardBlock = css.match(/\.gv-export-progress-card\s*{([\s\S]*?)}/)?.[1] ?? '';
 
     expect(css).toMatch(/\.gv-export-select-bar\s*{[\s\S]*top:\s*12px;/);
-    expect(overlayBlock).toContain('position: fixed;');
-    expect(overlayBlock).toContain('left: 50%;');
-    expect(overlayBlock).toContain('transform: translateX(-50%);');
-    expect(overlayBlock).toContain('top: 12px;');
-    expect(overlayBlock).toContain('pointer-events: none;');
-    expect(cardBlock).toContain('border-radius: 999px;');
-    expect(cardBlock).toContain('backdrop-filter: blur(10px);');
   });
 
-  it('supports dark-theme selectors for export dialog and progress toast', () => {
+  it('supports dark-theme selectors for the export dialog', () => {
     const css = readFileSync(resolve(process.cwd(), 'public/contentStyle.css'), 'utf8');
 
     expect(css).toContain("html[data-gv-scheme='dark'] .gv-export-dialog");
-    expect(css).toContain("html[data-gv-scheme='dark'] .gv-export-progress-card");
   });
 
   it('styles the Markdown prompt heading switch for dark and RTL layouts', () => {

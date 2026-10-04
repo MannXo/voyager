@@ -3,7 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toastDriver } from '@/tests/toastDriver';
 
 import { ExportFormat } from '../../types/export';
-import { reportFinishedExport, showExportAlert, showExportNotice } from '../exportToasts';
+import {
+  exportingProgressText,
+  hideExportProgress,
+  reportFinishedExport,
+  showExportAlert,
+  showExportNotice,
+  showExportProgress,
+} from '../exportToasts';
 
 const SAFARI_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
@@ -27,6 +34,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  hideExportProgress();
   vi.useRealTimers();
   vi.restoreAllMocks();
   document.body.innerHTML = '';
@@ -93,6 +101,48 @@ describe('reportFinishedExport', () => {
     useBrowser(CHROME_UA, 'Google Inc.');
 
     reportFinishedExport({}, ExportFormat.PDF, translate);
+
+    expect(toastDriver.all()).toEqual([]);
+  });
+});
+
+describe('export progress toast', () => {
+  const t = (key: string) => ({ pm_export: 'Export', loading: 'Loading' })[key] ?? key;
+
+  it('stays up as one pending toast however long the export runs', () => {
+    const progress = showExportProgress(exportingProgressText(t));
+
+    vi.advanceTimersByTime(60_000);
+
+    expect(toastDriver.all()).toMatchObject([
+      { title: 'Export...', message: 'Loading', pending: true, role: 'status' },
+    ]);
+    progress.hide();
+    expect(toastDriver.all()).toEqual([]);
+  });
+
+  it('leaves a newer step up when an older one finishes late', () => {
+    const older = showExportProgress({ message: 'Exporting' });
+    showExportProgress({ message: 'Collecting messages' });
+
+    older.hide();
+
+    expect(toastDriver.messages()).toEqual(['Collecting messages']);
+  });
+
+  it('keeps an outcome beside the progress rather than replacing it', () => {
+    showExportProgress({ message: 'Exporting' });
+    showExportNotice('Copied');
+
+    expect(toastDriver.messages()).toEqual(['Exporting', 'Copied']);
+  });
+
+  it('closes every step at once when the selection takes over', () => {
+    const outer = showExportProgress({ message: 'Exporting' });
+    showExportProgress({ message: 'Reading conversation' });
+
+    hideExportProgress();
+    outer.hide();
 
     expect(toastDriver.all()).toEqual([]);
   });

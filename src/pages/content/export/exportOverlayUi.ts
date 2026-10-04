@@ -1,14 +1,11 @@
 /**
- * Floating export UI (progress pill, selection bar) centred over the conversation.
+ * Centres the export selection bar over the conversation.
  *
  * Gemini's conversation column is offset by the sidebar, so a plain
- * `left: 50%` would centre these elements over the whole window. Alignment
+ * `left: 50%` would centre the bar over the whole window. Alignment
  * finds the visible conversation canvas instead and keeps tracking resizes
  * until the returned cleanup runs.
  */
-import type { ExportTranslate } from './exportLocale';
-
-export const EXPORT_PROGRESS_OVERLAY_CLASS = 'gv-export-progress-overlay';
 
 /** Conversation landmarks used when no chat canvas or composer is visible. */
 export interface ConversationAnchors {
@@ -183,57 +180,5 @@ export function alignToConversationCenter(
   return () => {
     window.removeEventListener('resize', resizeHandler);
     window.clearTimeout(timeoutId);
-  };
-}
-
-/** Remove every export progress pill currently on the page. */
-export function removeExportProgressOverlays(): void {
-  document
-    .querySelectorAll<HTMLElement>(`.${EXPORT_PROGRESS_OVERLAY_CLASS}`)
-    .forEach((overlay) => overlay.remove());
-}
-
-/**
- * Show the progress pill, replacing any pill already shown (they never stack).
- * Defaults to "Export..." / "Loading". Returns a function that hides it.
- */
-export function showExportProgressOverlay(
-  anchors: ConversationAnchors,
-  t: ExportTranslate,
-  options?: { title?: string; desc?: string },
-): () => void {
-  // Never stack duplicate progress pills (e.g. export dialog progress followed
-  // by the scroll-collection banner) on top of each other.
-  removeExportProgressOverlays();
-
-  const overlay = document.createElement('div');
-  overlay.className = EXPORT_PROGRESS_OVERLAY_CLASS;
-
-  const card = document.createElement('div');
-  card.className = 'gv-export-progress-card';
-
-  const spinner = document.createElement('div');
-  spinner.className = 'gv-export-progress-spinner';
-
-  const title = document.createElement('div');
-  title.className = 'gv-export-progress-title';
-  title.textContent = options?.title ?? `${t('pm_export')}...`;
-
-  const desc = document.createElement('div');
-  desc.className = 'gv-export-progress-desc';
-  desc.textContent = options?.desc ?? t('loading');
-
-  card.appendChild(spinner);
-  card.appendChild(title);
-  card.appendChild(desc);
-  overlay.appendChild(card);
-  document.body.appendChild(overlay);
-  const unbindAlignment = alignToConversationCenter(overlay, anchors);
-
-  return () => {
-    unbindAlignment();
-    try {
-      overlay.remove();
-    } catch {}
   };
 }

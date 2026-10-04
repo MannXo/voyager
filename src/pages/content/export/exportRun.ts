@@ -21,7 +21,13 @@ import type {
   ExportSpeakerLabels,
 } from '../../../features/export/types/export';
 import { resolveExportErrorMessage } from '../../../features/export/ui/ExportErrorMessage';
-import { reportFinishedExport, showExportAlert } from '../../../features/export/ui/exportToasts';
+import {
+  exportingProgressText,
+  hideExportProgress,
+  reportFinishedExport,
+  showExportAlert,
+  showExportProgress,
+} from '../../../features/export/ui/exportToasts';
 import { removeCanvasExportSections } from './conversationCollector';
 import { waitForAnyElement, waitForElement } from './domWait';
 import { isAbortError, throwIfExportCancelled } from './exportCancellation';
@@ -33,7 +39,6 @@ import {
   loadExportDictionaries,
   readExportLanguage,
 } from './exportLocale';
-import { removeExportProgressOverlays, showExportProgressOverlay } from './exportOverlayUi';
 import {
   type ExportSelectionConfirmation,
   startExportSelectionSession,
@@ -269,8 +274,9 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
     request: ExportRunRequest | PendingExportState,
     locale: ExportRunLocale,
   ): Promise<void> {
-    const t = createExportTranslator(locale.dict, locale.lang);
-    const hideProgress = showExportProgressOverlay(collector, t);
+    const progress = showExportProgress(
+      exportingProgressText(createExportTranslator(locale.dict, locale.lang)),
+    );
     try {
       throwIfExportCancelled(activeExportController?.signal);
       const resumed = 'attempt' in request;
@@ -281,7 +287,7 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
         : createPendingExportState(request.format, location.href, Date.now(), request);
       await executeExportSequence(state, locale);
     } finally {
-      hideProgress();
+      progress.hide();
       collector.releaseCanvasDocs();
       removeGeneratedUiScreenshotSections();
     }
@@ -310,15 +316,15 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
       showExportAlert(t('export_dialog_warning'), 'warning');
       return;
     }
-    removeExportProgressOverlays();
+    hideExportProgress();
 
     const selectionUrl = location.href;
     const selectionTitle = site.title();
     const showCollectingBanner = () =>
-      showExportProgressOverlay(collector, t, {
+      showExportProgress({
         title: t('export_collecting_title'),
-        desc: t('export_collecting_desc'),
-      });
+        message: t('export_collecting_desc'),
+      }).hide;
 
     const exportSelection = async ({ takeSelection }: ExportSelectionConfirmation) => {
       let hideProgress: (() => void) | null = null;
@@ -380,7 +386,7 @@ export function createExportRunner(deps: ExportRunnerDeps): ExportRunner {
           }
         }
 
-        hideProgress = showExportProgressOverlay(collector, t);
+        hideProgress = showExportProgress(exportingProgressText(t)).hide;
         const resultPromise = exportPendingConversation(
           state,
           turnsForExport,

@@ -17,9 +17,13 @@ import type {
 } from '@/features/export/types/export';
 import { ExportDialog } from '@/features/export/ui/ExportDialog';
 import { resolveExportErrorMessage } from '@/features/export/ui/ExportErrorMessage';
-import { reportFinishedExport, showExportAlert } from '@/features/export/ui/exportToasts';
+import {
+  exportingProgressText,
+  reportFinishedExport,
+  showExportAlert,
+  showExportProgress,
+} from '@/features/export/ui/exportToasts';
 import type { AppLanguage } from '@/utils/language';
-import type { TranslationKey } from '@/utils/translations';
 
 import { resolveExportAdapter } from '../export/adapter/platformAdapters';
 import { waitForElement } from '../export/domWait';
@@ -220,39 +224,6 @@ function buildReportFilename(format: ExportFormat, title: string): string {
   return `${base}.png`;
 }
 
-export function showDeepResearchExportProgressOverlay(
-  t: (key: TranslationKey) => string,
-): () => void {
-  const overlay = document.createElement('div');
-  overlay.className = 'gv-export-progress-overlay';
-
-  const card = document.createElement('div');
-  card.className = 'gv-export-progress-card';
-
-  const spinner = document.createElement('div');
-  spinner.className = 'gv-export-progress-spinner';
-
-  const title = document.createElement('div');
-  title.className = 'gv-export-progress-title';
-  title.textContent = `${t('pm_export')}...`;
-
-  const desc = document.createElement('div');
-  desc.className = 'gv-export-progress-desc';
-  desc.textContent = t('loading');
-
-  card.appendChild(spinner);
-  card.appendChild(title);
-  card.appendChild(desc);
-  overlay.appendChild(card);
-  document.body.appendChild(overlay);
-
-  return () => {
-    try {
-      overlay.remove();
-    } catch {}
-  };
-}
-
 function handleSaveReport(dict: ExportDictionaries, lang: AppLanguage): void {
   void (async () => {
     const reportRoot = findDeepResearchReportRoot();
@@ -282,7 +253,7 @@ function handleSaveReport(dict: ExportDictionaries, lang: AppLanguage): void {
     const dialog = new ExportDialog();
     dialog.show({
       onExport: async (format, fontSize, imageWidth) => {
-        const hideProgress = showDeepResearchExportProgressOverlay(t);
+        const progress = showExportProgress(exportingProgressText(t));
         try {
           if (format === 'image') {
             await saveImageExportWidth(imageWidth);
@@ -310,7 +281,7 @@ function handleSaveReport(dict: ExportDictionaries, lang: AppLanguage): void {
           console.error('[Gemini Voyager] Report export error:', error);
           showExportAlert(resolveExportErrorMessage(error, t));
         } finally {
-          hideProgress();
+          progress.hide();
         }
       },
       onCancel: () => {},

@@ -1,19 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { ExportTranslate } from '../exportLocale';
-import {
-  type ConversationAnchors,
-  alignToConversationCenter,
-  removeExportProgressOverlays,
-  showExportProgressOverlay,
-} from '../exportOverlayUi';
+import { type ConversationAnchors, alignToConversationCenter } from '../exportOverlayUi';
 
 const noAnchors: ConversationAnchors = {
   topUserElement: () => null,
   conversationRoot: () => document.body,
 };
-
-const t: ExportTranslate = (key) => `[${key}]`;
 
 function placeAt(el: HTMLElement, left: number, width: number, top = 0, height = 600): void {
   el.getBoundingClientRect = () =>
@@ -98,38 +90,5 @@ describe('alignToConversationCenter', () => {
     placeAt(canvas, 300, 600);
     window.dispatchEvent(new Event('resize'));
     expect(bar.style.left).toBe('400px');
-  });
-});
-
-describe('showExportProgressOverlay', () => {
-  afterEach(() => {
-    document.body.innerHTML = '';
-  });
-
-  it('shows one pill at a time and removes it when hidden', () => {
-    const hideFirst = showExportProgressOverlay(noAnchors, t);
-    const hideSecond = showExportProgressOverlay(noAnchors, t, {
-      title: 'Collecting',
-      desc: 'Scrolling',
-    });
-
-    const overlays = document.querySelectorAll('.gv-export-progress-overlay');
-    expect(overlays).toHaveLength(1);
-    expect(overlays[0].querySelector('.gv-export-progress-title')?.textContent).toBe('Collecting');
-    expect(overlays[0].querySelector('.gv-export-progress-desc')?.textContent).toBe('Scrolling');
-
-    hideFirst();
-    hideSecond();
-    expect(document.querySelector('.gv-export-progress-overlay')).toBeNull();
-  });
-
-  it('uses the export and loading texts by default', () => {
-    showExportProgressOverlay(noAnchors, t);
-
-    expect(document.querySelector('.gv-export-progress-title')?.textContent).toBe('[pm_export]...');
-    expect(document.querySelector('.gv-export-progress-desc')?.textContent).toBe('[loading]');
-
-    removeExportProgressOverlays();
-    expect(document.querySelector('.gv-export-progress-overlay')).toBeNull();
   });
 });

@@ -3,14 +3,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConversationExportService } from '@/features/export/services/ConversationExportService';
 import { toastDriver } from '@/tests/toastDriver';
 import type { AppLanguage } from '@/utils/language';
-import type { TranslationKey } from '@/utils/translations';
 
 import {
   applyDeepResearchDownloadButtonI18n,
   applyDeepResearchSaveReportButtonI18n,
   injectDownloadButton,
   isDeepResearchReportMenuPanel,
-  showDeepResearchExportProgressOverlay,
 } from '../menuButton';
 
 vi.mock('@/features/export/services/ImageExportPreferenceService', () => ({
@@ -372,38 +370,6 @@ describe('applyDeepResearchDownloadButtonI18n', () => {
     expect(panel.querySelector('.gv-deep-research-download')).toBeTruthy();
     expect(panel.querySelector('.gv-deep-research-save-report')).toBeTruthy();
   });
-
-  it('renders and removes deep research export progress overlay', () => {
-    const dict: Record<AppLanguage, Record<string, string>> = {
-      en: { pm_export: 'Export', loading: 'Loading' },
-      zh: { pm_export: '导出', loading: '加载中' },
-      zh_TW: { pm_export: '匯出', loading: '載入中' },
-      ja: { pm_export: 'エクスポート', loading: '読み込み中' },
-      fr: { pm_export: 'Exporter', loading: 'Chargement' },
-      es: { pm_export: 'Exportar', loading: 'Cargando' },
-      pt: { pm_export: 'Exportar', loading: 'Carregando' },
-      ar: { pm_export: 'تصدير', loading: 'جارٍ التحميل' },
-      ru: { pm_export: 'Экспорт', loading: 'Загрузка' },
-      ko: { pm_export: '내보내기', loading: '로딩 중' },
-    };
-
-    const t = (key: TranslationKey): string => {
-      if (key === 'pm_export' || key === 'loading') {
-        return dict.en[key];
-      }
-      return '';
-    };
-    const hide = showDeepResearchExportProgressOverlay(t);
-
-    const overlay = document.querySelector('.gv-export-progress-overlay');
-    expect(overlay).toBeTruthy();
-    expect(overlay?.textContent).toContain('Export...');
-    expect(overlay?.textContent).toContain('Loading');
-
-    hide();
-
-    expect(document.querySelector('.gv-export-progress-overlay')).toBeNull();
-  });
 });
 
 describe('saving a Deep Research report', () => {
@@ -433,6 +399,27 @@ describe('saving a Deep Research report', () => {
     radio.dispatchEvent(new Event('change'));
     document.querySelector<HTMLButtonElement>('.gv-export-dialog-btn-primary')!.click();
   }
+
+  it('shows a pending progress toast until the report export settles', async () => {
+    let finish: (
+      result: Awaited<ReturnType<typeof ConversationExportService.export>>,
+    ) => void = () => {};
+    vi.spyOn(ConversationExportService, 'export').mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+
+    await exportReportAs('json');
+
+    await vi.waitFor(() =>
+      expect(toastDriver.all()).toMatchObject([{ pending: true, role: 'status' }]),
+    );
+    finish({ success: true, format: 'json' } as Awaited<
+      ReturnType<typeof ConversationExportService.export>
+    >);
+    await vi.waitFor(() => expect(toastDriver.all()).toEqual([]));
+  });
 
   it('shows why the report export failed', async () => {
     vi.spyOn(ConversationExportService, 'export').mockResolvedValue({

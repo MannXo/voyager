@@ -7,7 +7,7 @@
  * the live DOM only while an export runs; callers remove them afterwards.
  */
 
-import { EXPORT_PROGRESS_OVERLAY_CLASS } from './exportOverlayUi';
+import { LAYER_ATTR } from '@/core/ui/layer';
 
 const GENERATED_UI_FRAME_SELECTOR = 'iframe[src*="gemini-code-immersive"]';
 const GENERATED_UI_SCREENSHOT_MESSAGE_TYPE = 'gv.generatedUi.captureVisibleTab';
@@ -119,8 +119,8 @@ export async function ensureGeneratedUiScreenshotPermission(): Promise<void> {
 /**
  * Replace any earlier screenshots with fresh ones for every generated-UI frame.
  *
- * Scrolls each frame into view and hides export progress overlays while
- * capturing so they are not in the shot. Never throws: a failed capture leaves
+ * Scrolls each frame into view and hides Voyager's layers (the export progress
+ * toast among them) while capturing so they are not in the shot. Never throws: a failed capture leaves
  * the frame's link/text fallback for the exporter.
  */
 export async function captureGeneratedUiScreenshots(): Promise<void> {
@@ -130,13 +130,9 @@ export async function captureGeneratedUiScreenshots(): Promise<void> {
   );
   if (frames.length === 0) return;
 
-  const hiddenOverlays = Array.from(
-    document.querySelectorAll<HTMLElement>(`.${EXPORT_PROGRESS_OVERLAY_CLASS}`),
-  );
-  const previousDisplay = hiddenOverlays.map((overlay) => overlay.style.display);
-  hiddenOverlays.forEach((overlay) => {
-    overlay.style.display = 'none';
-  });
+  const hiddenLayers = Array.from(document.querySelectorAll<HTMLElement>(`[${LAYER_ATTR}]`));
+  // Visibility, not display: a layer host's own `display` is `!important` inside its shadow root.
+  hiddenLayers.forEach((layer) => layer.style.setProperty('visibility', 'hidden', 'important'));
 
   try {
     for (const frame of frames) {
@@ -165,8 +161,6 @@ export async function captureGeneratedUiScreenshots(): Promise<void> {
     console.warn('[Gemini Voyager] Generated UI screenshot export failed:', error);
     // Link/text fallback still exports if screenshot capture is unavailable.
   } finally {
-    hiddenOverlays.forEach((overlay, index) => {
-      overlay.style.display = previousDisplay[index] || '';
-    });
+    hiddenLayers.forEach((layer) => layer.style.removeProperty('visibility'));
   }
 }

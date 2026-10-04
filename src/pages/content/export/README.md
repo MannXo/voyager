@@ -13,10 +13,10 @@ from the page beforehand (`extractTurnContent` with an extractor from `createCon
 | Read turns and selectable messages from the page, Canvas snapshots, message ids      | `conversationCollector.ts` (+ `conversationDom.ts`, shared with fork)                |
 | One export run: preload, resume, preparation/release, final export, operation abort  | `exportRun.ts` (+ `preparedExport.ts`, `pendingExportState.ts`, `topNodePreload.ts`) |
 | Selection mode: checkboxes, bar, role filters, lazy-load refresh, Cancel/Escape      | `exportSelectionSession.ts`                                                          |
-| ChatGPT crawl progress and cancellation                                              | `chatgptCrawlProgress.ts`                                                            |
+| ChatGPT crawl progress (turns read) and its Cancel                                   | `chatgptCrawlProgress.ts`                                                            |
 | Export turn anchor health after collection                                           | `exportRun.ts`, `exportHealth.ts`                                                    |
 | Shared cancellation checks                                                           | `exportCancellation.ts`                                                              |
-| Progress pill and centring floating UI over the conversation                         | `exportOverlayUi.ts`                                                                 |
+| Centring the selection bar over the conversation                                     | `exportOverlayUi.ts`                                                                 |
 | Generated-UI iframe screenshots and their permission prompt                          | `generatedUiScreenshots.ts`                                                          |
 | Export item in Gemini conversation / sidebar / response menus                        | `conversationMenuExportObserver.ts` (+ `conversationMenuInjection.ts`)               |
 | Opening a sidebar conversation before exporting it                                   | `sidebarConversationNavigation.ts`                                                   |
@@ -24,6 +24,7 @@ from the page beforehand (`extractTurnContent` with an extractor from `createCon
 | Logo dropdown button (old Gemini layout) and its re-creation after re-renders        | `logoExportButton.ts`                                                                |
 | Always-visible toolbar (lr26 Gemini, ChatGPT and other plugin hosts)                 | `persistentExportToolbar.ts`, `exportEntryGate.ts`                                   |
 | Dictionaries, language reads and the `t()` used by every export surface              | `exportLocale.ts`                                                                    |
+| Progress, outcome and problem toasts of every export surface                         | `src/features/export/ui/exportToasts.ts`                                             |
 
 Each owner takes its dependencies explicitly (site, translator, callbacks) and keeps
 its listeners, observers and timers beside the code that installs them. Page-wide observers
