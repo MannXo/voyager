@@ -54,7 +54,7 @@ function notifyResult(
   const partialMessage = t('batch_delete_partial')
     .replace('{success}', String(successCount))
     .replace('{failed}', String(failedCount));
-  feedback.showNotification(partialMessage, 'info');
+  feedback.showNotification(partialMessage, 'warning');
 }
 
 /**

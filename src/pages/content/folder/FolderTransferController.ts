@@ -1,3 +1,4 @@
+import { askConfirm } from '@/core/ui/confirm';
 import { cloneFolderData } from '@/features/folder/model/folderData';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
 import type {
@@ -60,7 +61,23 @@ export class FolderTransferController {
     return validated.data;
   }
 
-  async import(source: ImportSource, strategy: ImportStrategy): Promise<boolean> {
+  /** Whether the user chose to replace every folder, asked beside `anchor`. */
+  private async confirmOverwrite(anchor: HTMLElement): Promise<boolean> {
+    const answer = await askConfirm({
+      message: t('folder_import_confirm_overwrite'),
+      anchor,
+      tone: 'danger',
+      choices: [{ id: 'overwrite', label: t('folder_import_overwrite') }],
+    });
+    return answer === 'overwrite';
+  }
+
+  /** `anchor` is the control that asked for the import; an overwrite confirms beside it. */
+  async import(
+    source: ImportSource,
+    strategy: ImportStrategy,
+    anchor: HTMLElement,
+  ): Promise<boolean> {
     const context = this.host.getContext();
     const { session } = context;
     if (!session?.ready) return false;
@@ -78,15 +95,15 @@ export class FolderTransferController {
           this.host.notify(t('folder_import_invalid_format'), 'error');
           return false;
         }
-        if (strategy === 'overwrite' && !window.confirm(t('folder_import_confirm_overwrite')))
-          return false;
+        if (strategy === 'overwrite' && !(await this.confirmOverwrite(anchor))) return false;
+        if (!this.isCurrent(context)) return false;
       } else {
         if (!source.file) {
           this.host.notify(t('folder_import_select_file'), 'error');
           return false;
         }
-        if (strategy === 'overwrite' && !window.confirm(t('folder_import_confirm_overwrite')))
-          return false;
+        if (strategy === 'overwrite' && !(await this.confirmOverwrite(anchor))) return false;
+        if (!this.isCurrent(context)) return false;
         parsed = await FolderImportExportService.readJSONFile(source.file);
         if (!this.isCurrent(context)) return false;
         if (!parsed.success) {
@@ -169,7 +186,7 @@ export class FolderTransferController {
     if (this.activeImportDialog) return;
 
     const overlay = createImportDialog({
-      submit: (source, strategy) => this.import(source, strategy),
+      submit: (source, strategy, anchor) => this.import(source, strategy, anchor),
       isActive: (dialog) => this.activeImportDialog === dialog,
       close: () => this.closeImportDialog(),
     });

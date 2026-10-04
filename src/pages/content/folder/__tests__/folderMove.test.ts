@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import { toastDriver } from '@/tests/toastDriver';
 
 import { fakeTransfer } from '../floatingTree/__tests__/treeDriver';
 import type { ConversationReference, DragData, Folder, FolderData } from '../types';
@@ -214,9 +215,7 @@ describe('folder movement', () => {
     expect(dragAt(target, 'dragover', 35, dragData).defaultPrevented).toBe(true);
     dragAt(target, 'drop', 35, dragData);
 
-    expect(document.querySelector('.gv-notification')?.textContent).toBe(
-      'folder_sort_recent_drag_hint',
-    );
+    expect(toastDriver.messages()).toEqual(['folder_sort_recent_drag_hint']);
     expect(harness.store.data).toEqual(original);
     expect(harness.adapter.saveData).not.toHaveBeenCalled();
   });

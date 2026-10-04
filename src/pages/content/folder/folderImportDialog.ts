@@ -4,8 +4,8 @@ import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 import type { ImportSource } from './folderTransferHost';
 
 interface ImportDialogActions {
-  /** Run the import; resolves true once the data is saved. */
-  submit: (source: ImportSource, strategy: ImportStrategy) => Promise<boolean>;
+  /** Run the import, asking beside `anchor` if needed; resolves true once the data is saved. */
+  submit: (source: ImportSource, strategy: ImportStrategy, anchor: HTMLElement) => Promise<boolean>;
   /** Whether `overlay` is still the dialog its owner tracks as open. */
   isActive: (overlay: HTMLElement) => boolean;
   close: () => void;
@@ -141,6 +141,7 @@ export function createImportDialog(actions: ImportDialogActions): HTMLElement {
     const saved = await actions.submit(
       pasteText ? { text: pasteText } : { file: file.fileInput.files?.[0] ?? null },
       selected,
+      importBtn,
     );
     if (saved && actions.isActive(overlay)) actions.close();
     else importBtn.disabled = false;

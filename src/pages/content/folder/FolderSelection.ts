@@ -1,4 +1,5 @@
 import { extractRouteUserIdFromPath } from '@/core/services/AccountIsolationService';
+import { askConfirm } from '@/core/ui/confirm';
 import type { FolderCommands } from '@/features/folder/commands/folderCommands';
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
@@ -57,16 +58,14 @@ export interface FolderSelectionOptions {
 
 /**
  * Voyager's own body-level layers: shadow surfaces (folder menus, pickers,
- * panels) and the folder dialogs. A press in one belongs to the selection.
+ * panels, confirms and toasts) and the folder dialogs. A press in one belongs
+ * to the selection.
  */
 const VOYAGER_LAYER_SELECTOR = [
   '[data-gv-shadow-surface]',
   '.gv-folder-menu',
-  '.gv-folder-confirm-dialog',
   '.gv-folder-dialog-overlay',
   '.gv-color-picker-dialog',
-  '.gv-notification',
-  '.gv-batch-delete-progress',
 ].join(', ');
 
 const LONG_PRESS_MS = 500;
@@ -94,6 +93,8 @@ export class FolderSelection {
   private outsideClickHandler: ((e: MouseEvent) => void) | null = null;
   private releaseEscape: (() => void) | null = null;
   private batchDeleteController: AbortController | null = null;
+  /** Aborted when multi-select ends, which answers its open confirm with null. */
+  private selectionSession = new AbortController();
   private readonly timers = new Set<number>();
   private readonly dragImages = new Set<HTMLElement>();
   private readonly toolbar: SelectionToolbarHost;
@@ -195,30 +196,41 @@ export class FolderSelection {
     );
   }
 
-  private batchDeleteConversations(): void {
-    if (!this.multiSelectFolderId || this.selectedConversations.size === 0) return;
+  /** Whether multi-select still holds exactly `ids` from `source`, as when a confirm opened. */
+  private holdsSelection(source: 'folder' | 'native', ids: readonly string[]): boolean {
+    return (
+      this.isMultiSelectMode &&
+      this.multiSelectSource === source &&
+      ids.length === this.selectedConversations.size &&
+      ids.every((id) => this.selectedConversations.has(id))
+    );
+  }
 
-    const count = this.selectedConversations.size;
-    const confirmed = confirm(t('folder_batch_remove_confirm').replace('{count}', String(count)));
-
-    if (!confirmed) return;
+  private async batchDeleteConversations(anchor: HTMLElement): Promise<void> {
+    const folderId = this.multiSelectFolderId;
+    if (!folderId || this.selectedConversations.size === 0) return;
+    const ids = [...this.selectedConversations];
+    const answer = await askConfirm({
+      message: t('folder_batch_remove_confirm').replace('{count}', String(ids.length)),
+      anchor,
+      tone: 'danger',
+      choices: [{ id: 'remove', label: t('folder_remove_conversation_action') }],
+      signal: this.selectionSession.signal,
+    });
+    if (answer !== 'remove' || this.options.getContext().isDestroyed) return;
+    if (!this.holdsSelection('folder', ids) || this.multiSelectFolderId !== folderId) return;
 
     // Remove all selected conversations from the folder
-    const folderId = this.multiSelectFolderId;
     if (!this.options.store.data.folderContents[folderId]) return;
 
-    void this.options.commands.run({
-      kind: 'removeConversations',
-      folderId,
-      ids: [...this.selectedConversations],
-    });
+    void this.options.commands.run({ kind: 'removeConversations', folderId, ids });
 
     // Exit multi-select mode and refresh
     this.exitMultiSelectMode();
-    debug('log', `Batch deleted ${count} conversations from folder ${folderId}`);
+    debug('log', `Batch deleted ${ids.length} conversations from folder ${folderId}`);
   }
 
-  private async batchDeleteNativeConversations(): Promise<void> {
+  private async batchDeleteNativeConversations(anchor: HTMLElement): Promise<void> {
     const native = this.options.nativeDelete;
     if (!native || this.options.getContext().isDestroyed) return;
     if (this.batchDeleteController) {
@@ -226,23 +238,31 @@ export class FolderSelection {
       return;
     }
 
-    const count = this.selectedConversations.size;
-    if (count === 0) return;
-    if (!confirm(t('batch_delete_confirm').replace('{count}', String(count)))) return;
-
-    const controller = new AbortController();
-    this.batchDeleteController = controller;
+    const ids = Array.from(this.selectedConversations);
+    if (ids.length === 0) return;
     const activation = native.activation();
     const routeUserId = extractRouteUserIdFromPath(window.location.pathname) ?? '0';
-    const isCurrent = () =>
-      !controller.signal.aborted &&
+    const sameContext = () =>
       !this.options.getContext().isDestroyed &&
       native.activation() === activation &&
       (extractRouteUserIdFromPath(window.location.pathname) ?? '0') === routeUserId;
+    const answer = await askConfirm({
+      message: t('batch_delete_confirm').replace('{count}', String(ids.length)),
+      anchor,
+      tone: 'danger',
+      choices: [{ id: 'delete', label: t('pm_delete') }],
+      signal: this.selectionSession.signal,
+    });
+    if (answer !== 'delete' || this.batchDeleteController || !sameContext()) return;
+    if (!this.holdsSelection('native', ids)) return;
+
+    const controller = new AbortController();
+    this.batchDeleteController = controller;
+    const isCurrent = () => !controller.signal.aborted && sameContext();
 
     try {
       const deleted = await deleteNativeConversations({
-        conversationIds: Array.from(this.selectedConversations),
+        conversationIds: ids,
         signal: controller.signal,
         isCurrent,
         deleteConversation: (id, signal) => native.menus.deleteConversation(id, signal),
@@ -320,6 +340,8 @@ export class FolderSelection {
   ): void {
     debug('log', 'Entering multi-select mode', { source, folderId });
     this.isMultiSelectMode = true;
+    this.selectionSession.abort();
+    this.selectionSession = new AbortController();
     this.multiSelectSource = source;
     this.multiSelectFolderId = folderId || null;
 
@@ -344,6 +366,7 @@ export class FolderSelection {
   private exitMultiSelectMode(): void {
     debug('log', 'Exiting multi-select mode');
     this.isMultiSelectMode = false;
+    this.selectionSession.abort();
     this.multiSelectSource = null;
     this.multiSelectFolderId = null;
     this.removeOutsideClickHandler();
@@ -435,9 +458,9 @@ export class FolderSelection {
       active: this.isMultiSelectMode,
       count: this.selectedConversations.size,
       source,
-      onDelete: () => {
-        if (source === 'folder') this.batchDeleteConversations();
-        else void this.batchDeleteNativeConversations();
+      onDelete: (anchor) => {
+        if (source === 'folder') void this.batchDeleteConversations(anchor);
+        else void this.batchDeleteNativeConversations(anchor);
       },
       onExit: () => this.exitMultiSelectMode(),
     });

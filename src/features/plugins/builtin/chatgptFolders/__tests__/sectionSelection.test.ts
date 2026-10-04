@@ -17,6 +17,7 @@ import {
   isShown,
   treeDriver,
 } from '@/pages/content/folder/floatingTree/__tests__/treeDriver';
+import { confirmDriver } from '@/tests/confirmDriver';
 import { initI18n, getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
 import { activateChatGptFolders } from '../index';
@@ -226,23 +227,22 @@ describe('ChatGPT folder section: multi-select', () => {
   it('removes the selected chats from their folder after the batch confirm', async () => {
     const section = await activate();
     await selectAlphaAndBeta(section);
-    const confirm = vi
-      .spyOn(window, 'confirm')
-      .mockReturnValueOnce(false)
-      .mockReturnValueOnce(true);
     const remove = () =>
       toolbar(section)!
         .querySelector<HTMLButtonElement>(`button[aria-label="${t('batch_delete_button')}"]`)!
         .click();
 
     remove();
+    expect(confirmDriver.message()).toBe(t('folder_batch_remove_confirm').replace('{count}', '2'));
+    expect(confirmDriver.focusedLabel()).toBe(t('pm_cancel'));
+    confirmDriver.answer(t('pm_cancel'));
     await nextPass();
     expect(titles('work')).toEqual(['Alpha', 'Beta', 'Gamma']);
     expect(selectedTitles(section)).toEqual(['Alpha', 'Beta']);
 
     remove();
+    confirmDriver.answer(t('folder_remove_conversation_action'));
     await nextPass();
-    expect(confirm).toHaveBeenCalledTimes(2);
     expect(titles('work')).toEqual(['Gamma']);
     expect(toolbar(section)).toBeNull();
   });

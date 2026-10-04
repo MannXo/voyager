@@ -811,10 +811,9 @@ it('Gemini discards an import result that completes after switching accounts', a
     createBackup: false,
   });
   const pending = deferred<typeof result>();
-  vi.spyOn(FolderImportExportService, 'importFromPayload').mockImplementationOnce(
-    () => pending.promise,
-  );
-  const imported = harness.manager.transfer.import({ text: JSON.stringify(payload) }, 'merge');
+  vi.spyOn(FolderImportExportService, 'importFromPayload').mockReturnValueOnce(pending.promise);
+  const text = JSON.stringify(payload);
+  const imported = harness.manager.transfer.import({ text }, 'merge', document.body);
   await harness.switchTo('b');
   await harness.load();
   pending.resolve(result);
@@ -861,10 +860,9 @@ it('Gemini does not revive an import after returning to its still-saving account
     createBackup: false,
   });
   const pending = deferred<typeof result>();
-  vi.spyOn(FolderImportExportService, 'importFromPayload').mockImplementationOnce(
-    () => pending.promise,
-  );
-  const imported = harness.manager.transfer.import({ text: JSON.stringify(payload) }, 'merge');
+  vi.spyOn(FolderImportExportService, 'importFromPayload').mockReturnValueOnce(pending.promise);
+  const text = JSON.stringify(payload);
+  const imported = harness.manager.transfer.import({ text }, 'merge', document.body);
   await harness.switchTo('b');
   await harness.load();
   await harness.switchTo('a');

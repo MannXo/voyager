@@ -61,7 +61,8 @@ export class FolderManager {
     applyData: async (data) =>
       isSaved(await this.commands.runBulk({ kind: 'commitPreparedData', data })),
     refresh: () => this.refresh(),
-    notify: (message, type) => this.feedback.showNotification(message, type),
+    // One transfer notice at a time: a result replaces its "in progress" notice.
+    notify: (message, type) => this.feedback.showNotification(message, type, 'transfer'),
   });
   private readonly dialogs = createFolderDialogs();
   private readonly feedback = new FolderFeedback();

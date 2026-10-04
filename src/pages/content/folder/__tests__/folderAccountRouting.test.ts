@@ -7,6 +7,7 @@ import {
 } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
+import { toastDriver } from '@/tests/toastDriver';
 
 import { FolderStore } from '../FolderStore';
 import { FolderManager } from '../manager';
@@ -234,7 +235,7 @@ describe('FolderManager account routes across mounted surfaces', () => {
     expect(instance.getFolders().map((folder) => folder.name)).toEqual(['Private a', 'Imported A']);
     expect(sidebarFolders()).toContain('Imported A');
     expect(sidebarFolders()).not.toContain('Private b');
-    expect(document.querySelector('.gv-notification-success')).toBeNull();
+    expect(toastDriver.all().filter(({ tone }) => tone === 'success')).toEqual([]);
   });
 
   it.each(['floating', 'fab'] as const)(

@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StorageKeys } from '@/core/types/common';
 import type { FolderData } from '@/core/types/folder';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
+import { confirmDriver } from '@/tests/confirmDriver';
+import { toastDriver } from '@/tests/toastDriver';
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
 import { historyTimestampStore } from '../../timestamp/historyTimestamps';
@@ -70,7 +72,6 @@ describe('FolderManager import persistence through the sidebar UI', () => {
     );
     vi.mocked(chrome.storage.local.set).mockResolvedValue();
     vi.mocked(chrome.storage.sync.set).mockResolvedValue();
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     original = folderData('existing');
     persisted = structuredClone(original);
     adapter = {
@@ -118,6 +119,7 @@ describe('FolderManager import persistence through the sidebar UI', () => {
       .mockResolvedValueOnce(false); // The store retries a failed adapter write once.
 
     submit.click();
+    if (strategy === 'overwrite') confirmDriver.answer(t('folder_import_overwrite'));
     await vi.waitFor(() => expect(adapter.saveData).toHaveBeenCalledTimes(1));
     expect.soft(manager.getFolders()).toEqual(original.folders);
     expect(persisted).toEqual(original);
@@ -127,10 +129,9 @@ describe('FolderManager import persistence through the sidebar UI', () => {
     expect(adapter.saveData).toHaveBeenCalledTimes(2);
     expect(input.isConnected).toBe(true);
     expect(input.value).toBe(text);
-    expect(document.querySelector('.gv-notification-error')?.textContent).toBe(
-      t('folder_save_error'),
-    );
-    expect(document.querySelector('.gv-notification-success')).toBeNull();
+    expect(toastDriver.all().map(({ message, tone }) => ({ message, tone }))).toEqual([
+      { message: t('folder_save_error'), tone: 'error' },
+    ]);
     return { dialog, submit };
   }
 
@@ -169,8 +170,14 @@ describe('FolderManager import persistence through the sidebar UI', () => {
       folderData('imported').folderContents.imported,
     );
     expect(manager.getFolders()).toEqual(persisted.folders);
-    expect(document.querySelector('.gv-notification-success')?.textContent).toBe(
-      t('folder_import_success').replace('{folders}', '1').replace('{conversations}', '1'),
-    );
+    // The result takes the failure notice's place.
+    expect(toastDriver.all().map(({ message, tone }) => ({ message, tone }))).toEqual([
+      {
+        message: t('folder_import_success')
+          .replace('{folders}', '1')
+          .replace('{conversations}', '1'),
+        tone: 'success',
+      },
+    ]);
   });
 });

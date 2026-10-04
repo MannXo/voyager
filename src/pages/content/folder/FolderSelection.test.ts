@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { confirmDriver } from '@/tests/confirmDriver';
+
 import {
   createFolderViewHarness,
   resetFolderViewBrowserMocks,
@@ -87,6 +89,37 @@ describe('FolderSelection toolbar lifetime', () => {
     pointer(document, 'mouseup', 70, 90);
     expect(toolbar.style.transform).not.toBe(position);
     expect(harness.adapter.saveData).not.toHaveBeenCalled();
+  });
+
+  it('removes the selected folder chats only once the batch confirm is answered', async () => {
+    await selectFolderConversation();
+    const panel = harness.runtime.panel!;
+    const remove = () => panel.querySelector<HTMLButtonElement>('.gv-multi-select-delete-btn')!;
+
+    remove().click();
+    expect(confirmDriver.message()).toBe('folder_batch_remove_confirm');
+    // The chats stay in Gemini; only the folder entries go.
+    expect(confirmDriver.labels()).toEqual(['pm_cancel', 'folder_remove_conversation_action']);
+    expect(confirmDriver.focusedLabel()).toBe('pm_cancel');
+    confirmDriver.answer('pm_cancel');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(harness.store.data.folderContents.root).toHaveLength(1);
+    expect(panel.querySelector('[data-selection-count="true"]')?.textContent).toBe('1 selected');
+
+    remove().click();
+    confirmDriver.answer('folder_remove_conversation_action');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(harness.store.data.folderContents.root).toEqual([]);
+    expect(panel.classList.contains('gv-multi-select-mode')).toBe(false);
+  });
+
+  it('keeps the folder chats when multi-select ends while the batch confirm asks', async () => {
+    await selectFolderConversation();
+    harness.runtime.panel!.querySelector<HTMLButtonElement>('.gv-multi-select-delete-btn')!.click();
+    harness.selection.reset();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(confirmDriver.isOpen()).toBe(false);
+    expect(harness.store.data.folderContents.root).toHaveLength(1);
   });
 
   it('ends multi-select on Escape', async () => {

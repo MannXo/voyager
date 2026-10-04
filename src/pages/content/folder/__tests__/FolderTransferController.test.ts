@@ -1,15 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
+import { confirmDriver } from '@/tests/confirmDriver';
 
 import { FolderDataSession } from '../FolderDataSession';
 import { FolderTransferController } from '../FolderTransferController';
+import type { ImportSource } from '../folderTransferHost';
 import type { FolderData } from '../types';
 
 const { sendMessage } = vi.hoisted(() => ({ sendMessage: vi.fn() }));
 let localGet: ReturnType<typeof vi.fn<(keys: unknown) => Promise<Record<string, unknown>>>>;
 vi.mock('webextension-polyfill', () => ({ default: { runtime: { sendMessage } } }));
-vi.mock('@/utils/i18n', () => ({ getTranslationSyncUnsafe: (key: string) => key }));
+vi.mock('@/utils/i18n', () => ({
+  getTranslationSync: (key: string) => key,
+  getTranslationSyncUnsafe: (key: string) => key,
+}));
 
 const emptyData = (): FolderData => ({ folders: [], folderContents: {} });
 const importedData = (): FolderData => ({
@@ -42,6 +47,18 @@ function deferred<T>() {
     resolve = done;
   });
   return { promise, resolve };
+}
+
+/** Runs an overwrite import from the page, answering its confirm with `answer`. */
+async function overwrite(
+  h: ReturnType<typeof harness>,
+  source: ImportSource,
+  answer = 'folder_import_overwrite',
+): Promise<boolean> {
+  const run = h.transfer.import(source, 'overwrite', document.body);
+  expect(confirmDriver.message()).toBe('folder_import_confirm_overwrite');
+  confirmDriver.answer(answer);
+  return run;
 }
 
 function harness(data = emptyData()) {
@@ -100,7 +117,7 @@ describe('folder transfer commands', () => {
       const text = JSON.stringify(FolderImportExportService.exportToPayload(importedData()));
       const file = new File([text], 'folders.json', { type: 'application/json' });
       Object.defineProperty(file, 'text', { value: async () => text });
-      await h.transfer.import(kind === 'text' ? { text } : { file }, 'merge');
+      await h.transfer.import(kind === 'text' ? { text } : { file }, 'merge', document.body);
 
       expect(h.session.data.folders.map((folder) => folder.id)).toEqual(['local', 'coding']);
       expect(h.session.data.folders[1].instructions).toBe('Use TypeScript.');
@@ -118,7 +135,6 @@ describe('folder transfer commands', () => {
   it.each(['merge', 'overwrite'] as const)(
     'refuses to %s a folder file ChatGPT exported',
     async (strategy) => {
-      vi.spyOn(window, 'confirm').mockReturnValue(true);
       const h = harness(importedData());
       const chatgpt = {
         conversationId: 'chatgpt:conv:abc',
@@ -134,7 +150,11 @@ describe('folder transfer commands', () => {
         platform: 'chatgpt',
       });
 
-      expect(await h.transfer.import({ text }, strategy)).toBe(false);
+      const imported =
+        strategy === 'overwrite'
+          ? overwrite(h, { text })
+          : h.transfer.import({ text }, strategy, document.body);
+      expect(await imported).toBe(false);
 
       expect(h.notify).toHaveBeenCalledWith('folder_import_wrong_site', 'error');
       expect(h.session.data).toEqual(importedData());
@@ -152,7 +172,7 @@ describe('folder transfer commands', () => {
       }),
     );
 
-    expect(await h.transfer.import({ text }, 'merge')).toBe(false);
+    expect(await h.transfer.import({ text }, 'merge', document.body)).toBe(false);
 
     expect(h.session.data).toEqual(importedData());
     expect(h.applyData).not.toHaveBeenCalled();
@@ -189,25 +209,23 @@ describe('folder transfer commands', () => {
   ] as const)(
     'imports a file where a folder is inside itself through %s, with that folder at the root',
     async (_kind, links, cutId) => {
-      vi.spyOn(window, 'confirm').mockReturnValue(true);
       const file = cyclic(links);
       const text = JSON.stringify(FolderImportExportService.exportToPayload(file));
 
       const merging = harness(importedData());
-      expect(await merging.transfer.import({ text }, 'merge')).toBe(true);
+      expect(await merging.transfer.import({ text }, 'merge', document.body)).toBe(true);
       expect(merging.session.data).toEqual({
         folders: [...importedData().folders, ...cut(file, cutId).folders],
         folderContents: { ...importedData().folderContents, ...file.folderContents },
       });
 
       const replacing = harness(importedData());
-      expect(await replacing.transfer.import({ text }, 'overwrite')).toBe(true);
+      expect(await overwrite(replacing, { text })).toBe(true);
       expect(replacing.session.data).toEqual(cut(file, cutId));
     },
   );
 
   it('imports its own export of stored data whose parents form a cycle', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const stored = cyclic([
       ['a', 'b'],
       ['b', 'a'],
@@ -219,19 +237,51 @@ describe('folder transfer commands', () => {
 
     h.transfer.exportFolders();
     const [exported] = download.mock.calls[0];
-    expect(await h.transfer.import({ text: JSON.stringify(exported) }, 'overwrite')).toBe(true);
+    expect(await overwrite(h, { text: JSON.stringify(exported) })).toBe(true);
 
     expect(h.session.data).toEqual(cut(stored, 'a'));
   });
 
   it('cancels an overwrite without changing the current data or backup', async () => {
     const h = harness(importedData());
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
-    await h.transfer.import(
-      { text: JSON.stringify(FolderImportExportService.exportToPayload(emptyData())) },
-      'overwrite',
-    );
+    const text = JSON.stringify(FolderImportExportService.exportToPayload(emptyData()));
+    expect(confirmDriver.isOpen()).toBe(false);
+    expect(await overwrite(h, { text }, 'pm_cancel')).toBe(false);
     expect(h.session.data).toEqual(importedData());
+    expect(h.applyData).not.toHaveBeenCalled();
+    expect(FolderImportExportService.hasBackup()).toBe(false);
+  });
+
+  it('asks beside the Import button before an overwrite, and keeps the dialog open on Cancel', async () => {
+    const h = harness(importedData());
+    h.transfer.showImportDialog();
+    document.querySelector<HTMLInputElement>('input[value="overwrite"]')!.checked = true;
+    document.querySelector<HTMLTextAreaElement>('.gv-folder-import-paste-area')!.value =
+      JSON.stringify(FolderImportExportService.exportToPayload(emptyData()));
+    const save = document.querySelector<HTMLButtonElement>('.gv-folder-dialog-btn-primary')!;
+    save.click();
+
+    expect(confirmDriver.message()).toBe('folder_import_confirm_overwrite');
+    expect(confirmDriver.focusedLabel()).toBe('pm_cancel');
+    confirmDriver.answer('pm_cancel');
+    await vi.waitFor(() => expect(save.disabled).toBe(false));
+    expect(h.applyData).not.toHaveBeenCalled();
+
+    save.click();
+    confirmDriver.answer('folder_import_overwrite');
+    await vi.waitFor(() => expect(h.applyData).toHaveBeenCalledOnce());
+    expect(h.session.data).toEqual(emptyData());
+    expect(document.querySelector('.gv-folder-dialog-overlay')).toBeNull();
+  });
+
+  it('drops an overwrite whose account changed while it asked', async () => {
+    const h = harness(importedData());
+    const text = JSON.stringify(FolderImportExportService.exportToPayload(emptyData()));
+    const run = h.transfer.import({ text }, 'overwrite', document.body);
+    h.leaveAndReturn();
+    confirmDriver.answer('folder_import_overwrite');
+
+    expect(await run).toBe(false);
     expect(h.applyData).not.toHaveBeenCalled();
     expect(FolderImportExportService.hasBackup()).toBe(false);
   });
@@ -255,13 +305,13 @@ describe('folder transfer commands', () => {
     const pending = deferred<string>();
     const file = new File([], 'folders.json');
     Object.defineProperty(file, 'text', { value: () => pending.promise });
-    const first = h.transfer.import({ file }, 'merge');
-    await h.transfer.import({ text }, 'merge');
+    const first = h.transfer.import({ file }, 'merge', document.body);
+    await h.transfer.import({ text }, 'merge', document.body);
     expect(h.applyData).not.toHaveBeenCalled();
     expect(h.notify).toHaveBeenCalledWith('folder_import_in_progress', 'info');
     pending.resolve(text);
     await first;
-    await h.transfer.import({ text }, 'merge');
+    await h.transfer.import({ text }, 'merge', document.body);
     expect(h.applyData).toHaveBeenCalledTimes(2);
     expect(h.session.data.folderContents.coding).toHaveLength(1);
   });

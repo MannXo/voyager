@@ -37,7 +37,8 @@ export type SelectionToolbarState = {
   count: number;
   /** Where multi-select began: folder rows remove from the folder, native rows delete chats. */
   source: 'folder' | 'native' | null;
-  onDelete: () => void;
+  /** `anchor` is where the delete button sits, for a confirm beside it. */
+  onDelete: (anchor: HTMLElement) => void;
   onExit: () => void;
 };
 
@@ -240,7 +241,7 @@ function renderSelectionToolbar(
     );
   }
 
-  const actionsContainer = host?.querySelector('[data-multi-select-actions="true"]');
+  const actionsContainer = host?.querySelector<HTMLElement>('[data-multi-select-actions="true"]');
   if (!actionsContainer) return;
   actionsContainer.innerHTML = '';
   if (!state.active) return;
@@ -251,7 +252,8 @@ function renderSelectionToolbar(
         'gv-multi-select-delete-btn',
         icon('delete'),
         'batch_delete_button',
-        state.onDelete,
+        // The row outlives its buttons, which every count change redraws.
+        () => state.onDelete(actionsContainer),
       ),
     );
   }
