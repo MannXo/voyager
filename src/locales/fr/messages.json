@@ -1014,6 +1014,18 @@
     "message": "⚠️ Attention : Échec du chargement des données. Vos dossiers peuvent être corrompus. Vérifiez la console et essayez de restaurer une sauvegarde.",
     "description": "Warning shown when folder data fails to load"
   },
+  "folderManager_dataRecovered": {
+    "message": "Les données des dossiers ont été restaurées depuis une sauvegarde.",
+    "description": "Notice when folder data was recovered from backup"
+  },
+  "folderManager_dataKept": {
+    "message": "Impossible de charger les données des dossiers. Vos dossiers actuels ont été conservés.",
+    "description": "Notice when current folder data is kept after a failed load"
+  },
+  "folderManager_readFailure": {
+    "message": "Impossible de charger les données des dossiers. Ils sont temporairement en lecture seule.",
+    "description": "Notice when folder storage is unreadable and editing is disabled"
+  },
   "backupOptions": {
     "message": "Sauvegarde auto",
     "description": "Backup options section label"

@@ -41,15 +41,7 @@ export class FolderManager {
     }),
     onChange: (reason) => this.handleStoreChange(reason),
     onArchive: () => this.hideArchivedNudge.maybeShow(),
-    onRecovery: (result) => {
-      if (result === 'recovered')
-        this.feedback.showNotificationByLevel(
-          'Folder data has been recovered from a backup.',
-          'warning',
-        );
-      else if (result === 'unreadable') this.feedback.showReadFailureNotification();
-      else this.feedback.showDataLossNotification();
-    },
+    onRecovery: (result) => this.feedback.showRecoveryNotification(result),
   });
   private readonly commands = createLegacyFolderCommands(this.store);
   private readonly transfer = new FolderTransferController({

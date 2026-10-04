@@ -1014,6 +1014,18 @@
     "message": "⚠️ تحذير: فشل تحميل بيانات المجلد. ربما تكون مجلداتك تالفة. يرجى التحقق من وحدة تحكم المتصفح للحصول على التفاصيل ومحاولة الاستعادة من النسخة الاحتياطية إذا كانت متوفرة.",
     "description": "Warning shown when folder data fails to load"
   },
+  "folderManager_dataRecovered": {
+    "message": "تمت استعادة بيانات المجلدات من نسخة احتياطية.",
+    "description": "Notice when folder data was recovered from backup"
+  },
+  "folderManager_dataKept": {
+    "message": "تعذّر تحميل بيانات المجلدات. تم الاحتفاظ بمجلداتك الحالية.",
+    "description": "Notice when current folder data is kept after a failed load"
+  },
+  "folderManager_readFailure": {
+    "message": "تعذّر تحميل بيانات المجلدات. المجلدات متاحة للقراءة فقط مؤقتًا.",
+    "description": "Notice when folder storage is unreadable and editing is disabled"
+  },
   "backupOptions": {
     "message": "نسخ احتياطي تلقائي",
     "description": "Backup options section label"

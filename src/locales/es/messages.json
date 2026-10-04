@@ -1014,6 +1014,18 @@
     "message": "⚠️ Advertencia: Error al cargar datos de carpetas. Tus carpetas pueden estar corruptas. Por favor revisa la consola del navegador para más detalles e intenta restaurar desde una copia de seguridad si está disponible.",
     "description": "Warning shown when folder data fails to load"
   },
+  "folderManager_dataRecovered": {
+    "message": "Se han recuperado los datos de las carpetas desde una copia de seguridad.",
+    "description": "Notice when folder data was recovered from backup"
+  },
+  "folderManager_dataKept": {
+    "message": "No se han podido cargar los datos de las carpetas. Se han conservado las carpetas actuales.",
+    "description": "Notice when current folder data is kept after a failed load"
+  },
+  "folderManager_readFailure": {
+    "message": "No se han podido cargar los datos de las carpetas. Por ahora, solo se pueden consultar.",
+    "description": "Notice when folder storage is unreadable and editing is disabled"
+  },
   "backupOptions": {
     "message": "Respaldo Automático",
     "description": "Backup options section label"

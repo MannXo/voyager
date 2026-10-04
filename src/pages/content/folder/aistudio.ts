@@ -45,18 +45,13 @@ import { AIStudioTransfer, createSyncMessageListener } from './aistudioTransfer'
 import { type AIStudioTree, aistudioTreeActions, mountAIStudioTree } from './aistudioTree';
 import type { TreeActions } from './floatingTree/shared';
 import { createFolderDialogs } from './folderDialogs';
+import { getFolderRecoveryNotice } from './folderRecoveryNotice';
 import { createLegacyAIStudioCommands } from './legacyAIStudioCommands';
 import { AISTUDIO_FOLDER_CONFIG } from './platformFolderConfig';
 import { AIStudioFolderStorageAdapter } from './storage/AIStudioFolderStorageAdapter';
 import type { FolderData } from './types';
 
 const VALID_PATH = /^\/(prompts|library)(\/|$)/;
-const RECOVERY_MESSAGES = {
-  recovered: 'Folder data recovered from backup',
-  kept: 'Failed to load folder data, using cached version',
-  lost: 'Failed to load folder data. All folders have been reset.',
-  unreadable: 'Failed to load folder data, folders are read-only for now',
-} as const;
 /** Errors and warnings stay longer than a confirmation. */
 const NOTICE_MS: Record<ToastTone, number> = {
   info: 3000,
@@ -85,8 +80,10 @@ export class AIStudioFolderManager {
       onChange: (reason) => {
         if (reason === 'loaded' || reason === 'data' || reason === 'availability') this.render();
       },
-      onRecovery: (result) =>
-        this.notify(RECOVERY_MESSAGES[result], result === 'recovered' ? 'warning' : 'error'),
+      onRecovery: (result) => {
+        const { message, tone } = getFolderRecoveryNotice(result);
+        this.notify(message, tone);
+      },
       onExternalChange: () => {
         // Sidebar rendering leaves /library rows untouched; refresh their archive classes too.
         if (this.folderEnabled) void this.load().then(() => this.applyHideArchived());

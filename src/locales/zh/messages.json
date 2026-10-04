@@ -1014,6 +1014,18 @@
     "message": "⚠️ 警告：无法加载文件夹数据。您的文件夹可能已损坏。请检查浏览器控制台以获取详细信息，并在可用时尝试从备份恢复。",
     "description": "文件夹数据加载失败时显示的警告"
   },
+  "folderManager_dataRecovered": {
+    "message": "已从备份恢复文件夹数据。",
+    "description": "Notice when folder data was recovered from backup"
+  },
+  "folderManager_dataKept": {
+    "message": "无法加载文件夹数据，已保留当前文件夹。",
+    "description": "Notice when current folder data is kept after a failed load"
+  },
+  "folderManager_readFailure": {
+    "message": "无法加载文件夹数据，暂时只能查看，无法编辑。",
+    "description": "Notice when folder storage is unreadable and editing is disabled"
+  },
   "backupOptions": {
     "message": "自动备份",
     "description": "备份选项区域标签"

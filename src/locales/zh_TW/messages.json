@@ -974,6 +974,18 @@
     "message": "⚠️ 警告：無法載入資料夾資料。您的資料夾可能已損壞。請檢查瀏覽器主控台以取得詳細資訊，並在可用時嘗試從備份還原。",
     "description": "資料夾資料載入失敗時顯示的警告"
   },
+  "folderManager_dataRecovered": {
+    "message": "已從備份還原資料夾資料。",
+    "description": "Notice when folder data was recovered from backup"
+  },
+  "folderManager_dataKept": {
+    "message": "無法載入資料夾資料，已保留目前的資料夾。",
+    "description": "Notice when current folder data is kept after a failed load"
+  },
+  "folderManager_readFailure": {
+    "message": "無法載入資料夾資料，目前只能檢視，無法編輯。",
+    "description": "Notice when folder storage is unreadable and editing is disabled"
+  },
   "backupOptions": {
     "message": "自動備份",
     "description": "備份選項區域標籤"

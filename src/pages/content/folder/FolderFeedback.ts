@@ -1,6 +1,8 @@
 import { createToaster } from '@/core/ui/toast/toaster';
 import type { ToastHandle, ToastTone } from '@/core/ui/toast/types';
-import { getTranslationSync, getTranslationSyncUnsafe } from '@/utils/i18n';
+import { getTranslationSyncUnsafe } from '@/utils/i18n';
+
+import { getFolderRecoveryNotice } from './folderRecoveryNotice';
 
 const BATCH_DELETE_CHANNEL = 'batch-delete';
 const NOTICE_MS = 3000;
@@ -64,19 +66,17 @@ export class FolderFeedback {
   }
 
   showDataLossNotification(): void {
-    this.showNotificationByLevel(
-      getTranslationSync('folderManager_dataLossWarning') ||
-        'Warning: Failed to load folder data. Please check your browser console for details.',
-      'error',
-    );
+    this.showRecoveryNotification('lost');
   }
 
   /** Storage could not be read: nothing was reset, and editing waits for a read. */
   showReadFailureNotification(): void {
-    this.showNotificationByLevel(
-      'Failed to load folder data, folders are read-only for now.',
-      'error',
-    );
+    this.showRecoveryNotification('unreadable');
+  }
+
+  showRecoveryNotification(result: Parameters<typeof getFolderRecoveryNotice>[0]): void {
+    const { message, tone } = getFolderRecoveryNotice(result);
+    this.showNotificationByLevel(message, tone);
   }
 
   showNotificationByLevel(message: string, level: 'info' | 'warning' | 'error' = 'error'): void {

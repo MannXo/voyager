@@ -1014,6 +1014,18 @@
     "message": "⚠️ Warning: Failed to load folder data. Your folders may have been corrupted. Please check the browser console for details and try restoring from backup if available.",
     "description": "Warning shown when folder data fails to load"
   },
+  "folderManager_dataRecovered": {
+    "message": "Folder data recovered from backup.",
+    "description": "Notice when folder data was recovered from backup"
+  },
+  "folderManager_dataKept": {
+    "message": "Could not load folder data. Your current folders have been kept.",
+    "description": "Notice when current folder data is kept after a failed load"
+  },
+  "folderManager_readFailure": {
+    "message": "Could not load folder data. Folders are read-only for now.",
+    "description": "Notice when folder storage is unreadable and editing is disabled"
+  },
   "backupOptions": {
     "message": "Auto Backup",
     "description": "Backup options section label"

@@ -1014,6 +1014,18 @@
     "message": "⚠️ 警告：フォルダデータの読み込みに失敗しました。データが破損している可能性があります。ブラウザのコンソールで詳細を確認し、可能であればバックアップから復元してください。",
     "description": "Warning shown when folder data fails to load"
   },
+  "folderManager_dataRecovered": {
+    "message": "バックアップからフォルダのデータを復元しました。",
+    "description": "Notice when folder data was recovered from backup"
+  },
+  "folderManager_dataKept": {
+    "message": "フォルダのデータを読み込めませんでした。現在のフォルダは保持されています。",
+    "description": "Notice when current folder data is kept after a failed load"
+  },
+  "folderManager_readFailure": {
+    "message": "フォルダのデータを読み込めませんでした。現在、フォルダは読み取り専用です。",
+    "description": "Notice when folder storage is unreadable and editing is disabled"
+  },
   "backupOptions": {
     "message": "自動バックアップ",
     "description": "Backup options section label"

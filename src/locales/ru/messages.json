@@ -1014,6 +1014,18 @@
     "message": "⚠️ Внимание: не удалось загрузить данные папок. Ваши папки могут быть повреждены. Пожалуйста, проверьте консоль браузера для получения подробной информации и попробуйте восстановить из резервной копии, если она доступна.",
     "description": "Warning shown when folder data fails to load"
   },
+  "folderManager_dataRecovered": {
+    "message": "Данные папок восстановлены из резервной копии.",
+    "description": "Notice when folder data was recovered from backup"
+  },
+  "folderManager_dataKept": {
+    "message": "Не удалось загрузить данные папок. Текущие папки сохранены.",
+    "description": "Notice when current folder data is kept after a failed load"
+  },
+  "folderManager_readFailure": {
+    "message": "Не удалось загрузить данные папок. Пока папки доступны только для чтения.",
+    "description": "Notice when folder storage is unreadable and editing is disabled"
+  },
   "backupOptions": {
     "message": "Авто-резервное копирование",
     "description": "Backup options section label"

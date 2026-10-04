@@ -1014,6 +1014,18 @@
     "message": "⚠️ Aviso: Falha ao carregar dados da pasta. Suas pastas podem ter sido corrompidas. Verifique o console do navegador para detalhes e tente restaurar do backup, se disponível.",
     "description": "Warning shown when folder data fails to load"
   },
+  "folderManager_dataRecovered": {
+    "message": "Os dados das pastas foram restaurados a partir de um backup.",
+    "description": "Notice when folder data was recovered from backup"
+  },
+  "folderManager_dataKept": {
+    "message": "Não foi possível carregar os dados das pastas. As pastas atuais foram mantidas.",
+    "description": "Notice when current folder data is kept after a failed load"
+  },
+  "folderManager_readFailure": {
+    "message": "Não foi possível carregar os dados das pastas. Por enquanto, elas estão disponíveis apenas para leitura.",
+    "description": "Notice when folder storage is unreadable and editing is disabled"
+  },
   "backupOptions": {
     "message": "Backup Automático",
     "description": "Backup options section label"
