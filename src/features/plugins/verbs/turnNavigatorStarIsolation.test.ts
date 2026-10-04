@@ -57,11 +57,20 @@ function context(adapter: SiteAdapter | null, settings = {}) {
   return { ctx, counters };
 }
 
+let scope: PluginScope;
+
+// Advance route refreshes and long presses without racing a loaded machine's clock.
+async function settle(ms = 700): Promise<void> {
+  await vi.advanceTimersByTimeAsync(ms);
+}
+
 async function flush(): Promise<void> {
   for (let i = 0; i < 30; i += 1) await Promise.resolve();
 }
 
 beforeEach(() => {
+  vi.useFakeTimers();
+  scope = new PluginScope();
   document.body.innerHTML = '';
   history.replaceState({}, '', '/a/chat/s/abc123');
   addStarredMessage.mockClear();
@@ -70,14 +79,16 @@ beforeEach(() => {
   window.scrollTo = vi.fn();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await scope.dispose();
   document.body.innerHTML = '';
+  vi.clearAllTimers();
+  vi.useRealTimers();
 });
 
 describe('turnNavigator async star isolation', () => {
   it('ignores a delayed old-conversation result after the new conversation has loaded', async () => {
     document.body.innerHTML = '<div class="ds-user">same prompt</div>';
-    const scope = new PluginScope();
     getStarredMessagesForConversation.mockResolvedValue([]);
     let release!: (value: StarredMessage[]) => void;
     getStarredMessagesForConversation.mockImplementationOnce(
@@ -105,24 +116,21 @@ describe('turnNavigator async star isolation', () => {
         textContent: 'same prompt',
       }),
     );
-    await vi.waitFor(() =>
-      expect(getStarredMessagesForConversation).toHaveBeenCalledWith('deepseek:conv:new-chat'),
-    );
-    await vi.waitFor(() =>
-      expect(document.querySelector('.timeline-dot')?.getAttribute('aria-pressed')).toBe('true'),
-    );
+    await settle();
+    expect(getStarredMessagesForConversation).toHaveBeenCalledWith('deepseek:conv:new-chat');
+    await settle();
+    expect(document.querySelector('.timeline-dot')?.getAttribute('aria-pressed')).toBe('true');
     release([]);
     await flush();
     expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1);
     expect(document.querySelector('.timeline-dot')?.getAttribute('aria-pressed')).toBe('true');
-    await scope.dispose();
   });
 
   it('cannot star the previous thread after a far scroll replaced every mounted turn', async () => {
     document.body.innerHTML = '<div class="ds-user">prompt A1</div>';
-    const scope = new PluginScope();
     turnNavigatorPrimitive.activate(scope, {}, context(deepseek).ctx);
-    await vi.waitFor(() => expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1));
+    await settle();
+    expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1);
     // Virtualization: a far scroll unmounts every turn on screen and mounts others.
     document.querySelector('.ds-user')!.replaceWith(
       Object.assign(document.createElement('div'), {
@@ -130,28 +138,27 @@ describe('turnNavigator async star isolation', () => {
         textContent: 'prompt A2',
       }),
     );
-    await vi.waitFor(() => expect(document.querySelectorAll('.timeline-dot')).toHaveLength(2));
+    await settle();
+    expect(document.querySelectorAll('.timeline-dot')).toHaveLength(2);
 
     // The URL changes first; this thread is still on screen.
     history.pushState({}, '', '/a/chat/s/other');
-    await vi.waitFor(() =>
-      expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('deepseek:conv:other'),
-    );
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await settle();
+    expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('deepseek:conv:other');
+    await settle(200);
     document
       .querySelector('.timeline-dot')!
       .dispatchEvent(new Event('pointerdown', { bubbles: true }));
-    await new Promise((resolve) => setTimeout(resolve, 700));
+    await settle(700);
 
     expect(addStarredMessage).not.toHaveBeenCalled();
-    await scope.dispose();
   });
 
   it('cannot star a turn that mounted before the URL named the next conversation', async () => {
     document.body.innerHTML = '<div class="ds-user">prompt A1</div>';
-    const scope = new PluginScope();
     turnNavigatorPrimitive.activate(scope, {}, context(deepseek).ctx);
-    await vi.waitFor(() => expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1));
+    await settle();
+    expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1);
 
     // A far scroll mounts other turns of this thread, and the user leaves
     // before the navigator's debounced refresh has seen them.
@@ -164,23 +171,21 @@ describe('turnNavigator async star isolation', () => {
     // The scroll and the click that leaves are separate tasks.
     await flush();
     history.pushState({}, '', '/a/chat/s/other');
-    await vi.waitFor(() =>
-      expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('deepseek:conv:other'),
-    );
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await settle();
+    expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('deepseek:conv:other');
+    await settle(200);
     const dots = Array.from(document.querySelectorAll('.timeline-dot'));
     dots[dots.length - 1].dispatchEvent(new Event('pointerdown', { bubbles: true }));
-    await new Promise((resolve) => setTimeout(resolve, 700));
+    await settle(700);
 
     expect(addStarredMessage).not.toHaveBeenCalled();
-    await scope.dispose();
   });
 
   it('stars a turn that mounted after the URL named the conversation, once the previous thread left', async () => {
     document.body.innerHTML = '<div class="ds-user">prompt A</div>';
-    const scope = new PluginScope();
     turnNavigatorPrimitive.activate(scope, {}, context(deepseek).ctx);
-    await vi.waitFor(() => expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1));
+    await settle();
+    expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1);
 
     history.pushState({}, '', '/a/chat/s/other');
     document.querySelector('.ds-user')!.replaceWith(
@@ -189,31 +194,28 @@ describe('turnNavigator async star isolation', () => {
         textContent: 'prompt B',
       }),
     );
-    await vi.waitFor(() =>
-      expect(
-        Array.from(document.querySelectorAll('.timeline-dot')).map((dot) =>
-          dot.getAttribute('aria-label'),
-        ),
-      ).toEqual(['prompt B']),
-    );
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await settle();
+    expect(
+      Array.from(document.querySelectorAll('.timeline-dot')).map((dot) =>
+        dot.getAttribute('aria-label'),
+      ),
+    ).toEqual(['prompt B']);
+    await settle(200);
     document
       .querySelector('.timeline-dot')!
       .dispatchEvent(new Event('pointerdown', { bubbles: true }));
 
-    await vi.waitFor(() =>
-      expect(addStarredMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ conversationId: 'deepseek:conv:other', content: 'prompt B' }),
-      ),
+    await settle();
+    expect(addStarredMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: 'deepseek:conv:other', content: 'prompt B' }),
     );
-    await scope.dispose();
   });
 
   it('keeps the next conversation starrable while the previous thread stays hidden in the page', async () => {
     document.body.innerHTML = '<div id="page-a"><div class="ds-user">prompt A</div></div>';
-    const scope = new PluginScope();
     turnNavigatorPrimitive.activate(scope, {}, context(deepseek).ctx);
-    await vi.waitFor(() => expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1));
+    await settle();
+    expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1);
     const labels = () =>
       Array.from(document.querySelectorAll('.timeline-dot')).map((dot) =>
         dot.getAttribute('aria-label'),
@@ -226,39 +228,38 @@ describe('turnNavigator async star isolation', () => {
     const pageB = document.createElement('div');
     pageB.innerHTML = '<div class="ds-user">prompt B</div>';
     document.body.append(pageB);
-    await vi.waitFor(() => expect(labels()).toEqual(['prompt B']));
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await settle();
+    expect(labels()).toEqual(['prompt B']);
+    await settle(200);
     document
       .querySelector('.timeline-dot')!
       .dispatchEvent(new Event('pointerdown', { bubbles: true }));
-    await vi.waitFor(() =>
-      expect(addStarredMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ conversationId: 'deepseek:conv:other', content: 'prompt B' }),
-      ),
+    await settle();
+    expect(addStarredMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: 'deepseek:conv:other', content: 'prompt B' }),
     );
 
     // Going back shows the cached page again, after the route refresh, with no turn inserted.
     history.pushState({}, '', '/a/chat/s/abc123');
-    await new Promise((resolve) => setTimeout(resolve, 700));
+    await settle(700);
     pageB.style.display = 'none';
     pageA.style.display = '';
-    await vi.waitFor(() => expect(labels()).toEqual(['prompt A']));
-    await scope.dispose();
+    await settle();
+    expect(labels()).toEqual(['prompt A']);
   });
 
   it('cannot star the previous thread when its turns remount after the DOM briefly empties', async () => {
     document.body.innerHTML = '<div class="ds-user">prompt A</div>';
-    const scope = new PluginScope();
     turnNavigatorPrimitive.activate(scope, {}, context(deepseek).ctx);
-    await vi.waitFor(() => expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1));
+    await settle();
+    expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1);
 
     history.pushState({}, '', '/a/chat/s/other');
-    await vi.waitFor(() =>
-      expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('deepseek:conv:other'),
-    );
+    await settle();
+    expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('deepseek:conv:other');
     document.querySelector('.ds-user')!.remove();
     // Let a refresh see the empty thread.
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await settle(300);
     // The previous thread re-renders with fresh elements.
     document.body.append(
       Object.assign(document.createElement('div'), {
@@ -266,24 +267,24 @@ describe('turnNavigator async star isolation', () => {
         textContent: 'prompt A',
       }),
     );
-    await vi.waitFor(() => expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1));
+    await settle();
+    expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1);
     // Let a refresh see the re-rendered turn, so the press targets it.
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await settle(200);
     document
       .querySelector('.timeline-dot')!
       .dispatchEvent(new Event('pointerdown', { bubbles: true }));
-    await new Promise((resolve) => setTimeout(resolve, 700));
+    await settle(700);
 
     expect(addStarredMessage).not.toHaveBeenCalled();
-    await scope.dispose();
   });
 
   it('stars a new chat re-rendered under the id it was given', async () => {
     history.replaceState({}, '', '/');
     document.body.innerHTML = '<div class="ds-user">first prompt</div>';
-    const scope = new PluginScope();
     turnNavigatorPrimitive.activate(scope, {}, context(deepseek).ctx);
-    await vi.waitFor(() => expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1));
+    await settle();
+    expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1);
 
     history.replaceState({}, '', '/a/chat/s/given');
     document.querySelector('.ds-user')!.replaceWith(
@@ -292,26 +293,23 @@ describe('turnNavigator async star isolation', () => {
         textContent: 'first prompt',
       }),
     );
-    await vi.waitFor(() =>
-      expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('deepseek:conv:given'),
-    );
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await settle();
+    expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('deepseek:conv:given');
+    await settle(200);
     document
       .querySelector('.timeline-dot')!
       .dispatchEvent(new Event('pointerdown', { bubbles: true }));
-    await vi.waitFor(() =>
-      expect(addStarredMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ conversationId: 'deepseek:conv:given', content: 'first prompt' }),
-      ),
+    await settle();
+    expect(addStarredMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: 'deepseek:conv:given', content: 'first prompt' }),
     );
-    await scope.dispose();
   });
 
   it("drops the previous conversation's dots when a star change lands mid-switch", async () => {
     document.body.innerHTML = '<div class="ds-user">prompt A</div>';
-    const scope = new PluginScope();
     turnNavigatorPrimitive.activate(scope, {}, context(deepseek).ctx);
-    await vi.waitFor(() => expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1));
+    await settle();
+    expect(document.querySelectorAll('.timeline-dot')).toHaveLength(1);
 
     history.pushState({}, '', '/a/chat/s/other');
     // Another tab starred something before this tab refreshed for the new route.
@@ -325,13 +323,11 @@ describe('turnNavigator async star isolation', () => {
       }),
     );
 
-    await vi.waitFor(() =>
-      expect(
-        Array.from(document.querySelectorAll('.timeline-dot')).map((dot) =>
-          dot.getAttribute('aria-label'),
-        ),
-      ).toEqual(['prompt B']),
-    );
-    await scope.dispose();
+    await settle();
+    expect(
+      Array.from(document.querySelectorAll('.timeline-dot')).map((dot) =>
+        dot.getAttribute('aria-label'),
+      ),
+    ).toEqual(['prompt B']);
   });
 });
