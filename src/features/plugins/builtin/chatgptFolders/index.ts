@@ -33,6 +33,7 @@ import {
   bindRootDropZone,
   dropOnSidebar,
 } from '@/pages/content/folder/sidebarDrops';
+import { watchRouteChanges } from '@/pages/content/utils/routeWatcher';
 import { getTranslationSyncUnsafe as t, initI18n } from '@/utils/i18n';
 
 import { isTemporaryChat } from '../chatgptTemporaryHandoff/handoff';
@@ -212,7 +213,7 @@ class ChatGptFoldersView {
 
   /**
    * Keeps the sidebar section in ChatGPT's sidebar, marking the conversation the
-   * page has open; called after every sidebar change, a route change included.
+   * page has open; called after every sidebar change and every route change.
    */
   placeSection(sidebar: HTMLElement | null): void {
     const openId = readChatGptConversation(location.href)?.conversationId ?? null;
@@ -515,6 +516,8 @@ export async function activateChatGptFolders(
     if (moveMenu.check(nav)) sidebar.schedule();
   });
   scope.effect(() => store.subscribe(() => sidebar.schedule()), 'chatgpt-folders:sidebar-sync');
+  // A chat older than the loaded Recents opens without any sidebar change.
+  scope.effect(() => watchRouteChanges(() => sidebar.schedule()), 'chatgpt-folders:route');
   if (hideFiled) {
     scope.effect(
       () => store.subscribe(() => hideFiled.update(store.filedIds())),

@@ -372,6 +372,38 @@ describe('ChatGPT folder section: opening a filed chat', () => {
     expect(view.outline().slice(0, 4)).toEqual(['Work', '  · Beta plan', '  · Gamma', '  · Alpha']);
   });
 
+  it('records the open of a filed chat with no row in ChatGPT’s sidebar, and marks it open', async () => {
+    memory.values.local.set(PREFS_KEY, { collapsed: false, sortMode: 'recent' });
+    const data = structuredClone(DATA);
+    data.folders = data.folders.map((f) => ({ ...f, isExpanded: true }));
+    // Older than every row ChatGPT has loaded, so its sidebar never shows it.
+    data.folderContents.work.push({
+      conversationId: 'chatgpt:conv:unloaded',
+      title: 'Older chat',
+      url: 'https://chatgpt.com/c/unloaded',
+      addedAt: 0,
+      sortIndex: 3,
+    });
+    memory.values.local.set(KEY, data);
+    const view = await activate();
+    expect(view.outline().slice(1, 5)).toEqual([
+      '  · Gamma',
+      '  · Beta plan',
+      '  · Alpha',
+      '  · Older chat',
+    ]);
+    const before = Date.now();
+
+    view.openConversation('work', 'Older chat');
+    await nextPass();
+
+    expect(location.pathname).toBe('/c/unloaded');
+    const older = stored().folderContents.work.find((c) => c.title === 'Older chat')!;
+    expect(older.lastOpenedAt).toBeGreaterThanOrEqual(before);
+    expect(view.outline()[1]).toBe('  · Older chat');
+    expect(view.titleButton('work', 'Older chat').getAttribute('aria-current')).toBe('page');
+  });
+
   it('writes nothing when the open chat is not filed', async () => {
     await activate();
     const writes = folderWrites();
