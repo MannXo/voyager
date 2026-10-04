@@ -406,13 +406,21 @@ export function normalizeFolderData(data: FolderData): FolderData {
   return changed ? { ...data, folders, folderContents } : data;
 }
 
-/** Shallow structural check shared by load, migration and backup recovery. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Structural check shared by load, migration and backup recovery; legacy metadata stays optional. */
 export function validateFolderData(data: unknown): boolean {
-  if (typeof data !== 'object' || data === null) return false;
-  const d = data as Record<string, unknown>;
-  // `typeof null` is 'object': null contents would pass and break every bucket lookup.
+  if (!isRecord(data) || !Array.isArray(data.folders) || !isRecord(data.folderContents))
+    return false;
+  const contents = data.folderContents;
+  const prototype = Object.getPrototypeOf(contents);
+  // Unusable containers must enter recovery before normalization can erase saved references.
   return (
-    Array.isArray(d.folders) && typeof d.folderContents === 'object' && d.folderContents !== null
+    (prototype === Object.prototype || prototype === null) &&
+    data.folders.every((folder: unknown) => isRecord(folder) && typeof folder.id === 'string') &&
+    Object.values(contents).every((bucket) => Array.isArray(bucket) && bucket.every(isRecord))
   );
 }
 

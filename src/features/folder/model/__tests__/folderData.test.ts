@@ -11,6 +11,7 @@ import {
   removeFolder,
   reorderConversations,
   sortFolders,
+  validateFolderData,
 } from '../folderData';
 
 function folder(id: string, parentId: string | null = null, sortIndex = 0): Folder {
@@ -457,5 +458,24 @@ describe('folder data integrity', () => {
       sortIndex: 1,
     });
     expect(data.folders[0].sortIndex).toBeUndefined();
+  });
+});
+
+describe('stored folder structure', () => {
+  it.each([
+    { symptom: 'null folder', folders: [null] },
+    { symptom: 'array folder', folders: [[]] },
+    { symptom: 'missing folder id', folders: [{ name: 'Legacy' }] },
+    { symptom: 'numeric folder id', folders: [{ id: 1 }] },
+  ])('refuses a $symptom before it can replace recoverable memory', ({ folders }) => {
+    expect(validateFolderData({ folders, folderContents: {} })).toBe(false);
+  });
+
+  it('accepts string IDs and object references without imposing metadata requirements', () => {
+    const folderContents = Object.create(null) as Record<string, unknown[]>;
+    folderContents.legacy = [{ title: '' }, {}];
+    expect(validateFolderData({ folders: [{ id: '' }, { id: '__proto__' }], folderContents })).toBe(
+      true,
+    );
   });
 });

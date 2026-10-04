@@ -66,8 +66,12 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-async function ready(config: PlatformFolderConfig, onRecovery = vi.fn()) {
-  memory.values.local.set(config.storageKey, data('Initial'));
+async function ready(
+  config: PlatformFolderConfig,
+  onRecovery = vi.fn(),
+  initial = data('Initial'),
+) {
+  memory.values.local.set(config.storageKey, initial);
   repository = new FolderRepository(
     config,
     config.platform === 'gemini'
@@ -96,10 +100,25 @@ async function resume() {
 }
 
 describe.each([
-  { site: 'Gemini', config: GEMINI_FOLDER_CONFIG },
-  { site: 'AI Studio', config: AISTUDIO_FOLDER_CONFIG },
-  { site: 'ChatGPT', config: CHATGPT_FOLDER_CONFIG },
-])('$site repository resumption', ({ config }) => {
+  {
+    site: 'Gemini',
+    config: GEMINI_FOLDER_CONFIG,
+    conversationId: 'gemini:conv:c1',
+    url: 'https://gemini.google.com/app/c1',
+  },
+  {
+    site: 'AI Studio',
+    config: AISTUDIO_FOLDER_CONFIG,
+    conversationId: 'c1',
+    url: 'https://aistudio.google.com/prompts/c1',
+  },
+  {
+    site: 'ChatGPT',
+    config: CHATGPT_FOLDER_CONFIG,
+    conversationId: 'c1',
+    url: 'https://chatgpt.com/c/c1',
+  },
+])('$site repository resumption', ({ config, conversationId, url }) => {
   it('drains accepted active and trailing saves before refreshing the resumed memory', async () => {
     await ready(config);
     const set = memory.api.local.set.bind(memory.api.local);
@@ -379,6 +398,83 @@ describe.each([
     expect(repository.data).toEqual(data('Mine'));
     await expect(repository.saveData()).resolves.toBe(true);
     expect(memory.values.local.get(config.storageKey)).toEqual(data('Mine'));
+  });
+
+  it.each([
+    { corruption: 'array contents', contents: [] },
+    { corruption: 'null contents', contents: null },
+    { corruption: 'non-plain contents', contents: new Date(0) },
+    { corruption: 'non-array bucket', contents: { folder: { conversationId: 'c1' } } },
+    { corruption: 'null reference', contents: { folder: [null] } },
+    { corruption: 'array reference', contents: { folder: [[]] } },
+  ])(
+    'keeps the failed rename and saved conversations when resumed storage has $corruption',
+    async ({ contents }) => {
+      const initial = data('Initial');
+      initial.folderContents.folder = [
+        { conversationId, title: 'Saved conversation', url, addedAt: 1, sortIndex: 0 },
+      ];
+      const recovery = vi.fn();
+      await ready(config, recovery, initial);
+      const edited = structuredClone(initial);
+      edited.folders[0].name = 'Mine';
+      const set = memory.api.local.set.bind(memory.api.local);
+      const writes = vi.spyOn(memory.api.local, 'set').mockImplementation(async (items) => {
+        if (config.storageKey in items) throw new Error('Rename failed');
+        await set(items);
+      });
+      repository.data = edited;
+      await expect(repository.saveData()).resolves.toBe(false);
+      enabled = false;
+      repository.suspend();
+      memory.external('local', config.storageKey, { ...initial, folderContents: contents });
+      await settle(30);
+      writes.mockRestore();
+      await resume();
+      expect(repository.canEdit).toBe(true);
+      expect(recovery).toHaveBeenCalledWith('kept');
+      expect(repository.data).toEqual(edited);
+      await expect(repository.saveData()).resolves.toBe(true);
+      expect(memory.values.local.get(config.storageKey)).toEqual(edited);
+    },
+  );
+
+  it('loads and saves legacy records with empty titles and missing optional metadata', async () => {
+    const legacy: FolderData = {
+      folders: [
+        {
+          id: 'folder',
+          name: 'Legacy',
+          parentId: null,
+          isExpanded: true,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          id: 'empty',
+          name: 'Empty',
+          parentId: null,
+          isExpanded: false,
+          createdAt: 2,
+          updatedAt: 2,
+        },
+      ],
+      folderContents: {
+        folder: [{ conversationId, title: '', url, addedAt: 1 }],
+        [config.rootBucketId]: [{ conversationId: 'root', title: '', url, addedAt: 2 }],
+      },
+    };
+    const recovery = vi.fn();
+    await ready(config, recovery, legacy);
+    enabled = false;
+    repository.suspend();
+    await resume();
+    expect(repository.canEdit).toBe(true);
+    expect(recovery).not.toHaveBeenCalled();
+    expect(repository.data).toMatchObject(legacy);
+    await expect(repository.saveData()).resolves.toBe(true);
+    expect(memory.values.local.get(config.storageKey)).toEqual(repository.data);
+    expect(memory.values.local.get(config.storageKey)).toMatchObject(legacy);
   });
 
   it('a restored folder survives resume while an earlier committed write is still settling', async () => {
