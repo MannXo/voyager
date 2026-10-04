@@ -89,7 +89,7 @@ describe('FolderFeedback', () => {
   it('disposes every pending feedback surface on destruction and shows nothing later', () => {
     feedback.showBatchDeleteProgress(1, 4);
     feedback.showNotification('Pending');
-    feedback.showDataLossNotification();
+    feedback.showRecoveryNotification('lost');
     feedback.showTooltip(document.createElement('span'), 'Pending title', true);
 
     feedback.destroy();

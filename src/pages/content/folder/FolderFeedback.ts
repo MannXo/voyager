@@ -65,15 +65,6 @@ export class FolderFeedback {
     this.batchDeleteProgress = null;
   }
 
-  showDataLossNotification(): void {
-    this.showRecoveryNotification('lost');
-  }
-
-  /** Storage could not be read: nothing was reset, and editing waits for a read. */
-  showReadFailureNotification(): void {
-    this.showRecoveryNotification('unreadable');
-  }
-
   showRecoveryNotification(result: Parameters<typeof getFolderRecoveryNotice>[0]): void {
     const { message, tone } = getFolderRecoveryNotice(result);
     this.showNotificationByLevel(message, tone);
