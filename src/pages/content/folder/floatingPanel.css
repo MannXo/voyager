@@ -735,10 +735,16 @@
 .gv-floating-folder-panel__folder-header:hover .gv-floating-folder-panel__icon-button--add-child,
 .gv-floating-folder-panel__folder-header:focus-within
   .gv-floating-folder-panel__icon-button--add-child,
+.gv-floating-folder-panel__folder-header[data-gv-confirm-anchor]
+  .gv-floating-folder-panel__icon-button--add-child,
 .gv-floating-folder-panel__conv:hover .gv-floating-folder-panel__icon-button--star,
 .gv-floating-folder-panel__conv:focus-within .gv-floating-folder-panel__icon-button--star,
+.gv-floating-folder-panel__conv[data-gv-confirm-anchor]
+  .gv-floating-folder-panel__icon-button--star,
 .gv-floating-folder-panel__conv:hover .gv-floating-folder-panel__icon-button--remove,
 .gv-floating-folder-panel__conv:focus-within .gv-floating-folder-panel__icon-button--remove,
+.gv-floating-folder-panel__conv[data-gv-confirm-anchor]
+  .gv-floating-folder-panel__icon-button--remove,
 .gv-floating-folder-panel__icon-button--active {
   opacity: 1;
 }
@@ -1081,6 +1087,14 @@
   background: var(--gv-floating-folder-panel__surface-hover);
 }
 
+/* The row an open removal confirm asks about (`data-gv-confirm-anchor`, set
+ * by askConfirm): lit as an active row, so it stays marked while the pointer
+ * hovers another row. Prefixed like the hover rules above so it outranks them. */
+:host([data-gv-scheme]) .gv-floating-folder-panel__folder-header[data-gv-confirm-anchor],
+:host([data-gv-scheme]) .gv-floating-folder-panel__conv[data-gv-confirm-anchor] {
+  background: var(--gv-floating-folder-panel__surface-active);
+}
+
 :host([data-gv-scheme='light']) .gv-floating-folder-panel__count {
   background: rgba(95, 99, 104, 0.1);
   color: var(--gv-floating-folder-panel__text-muted);
@@ -1109,7 +1123,9 @@
 }
 
 .gv-floating-folder-panel__folder-header:hover .gv-floating-folder-panel__icon-button--menu,
-.gv-floating-folder-panel__folder-header:focus-within .gv-floating-folder-panel__icon-button--menu {
+.gv-floating-folder-panel__folder-header:focus-within .gv-floating-folder-panel__icon-button--menu,
+.gv-floating-folder-panel__folder-header[data-gv-confirm-anchor]
+  .gv-floating-folder-panel__icon-button--menu {
   opacity: 1;
 }
 

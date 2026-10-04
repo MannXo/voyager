@@ -166,7 +166,10 @@ export function ConversationRow({
           onClick={(e) => {
             e.stopPropagation();
             const confirm = actions.confirmConversationRemoval;
-            if (confirm) confirm(conv.title || untitled, e.currentTarget as HTMLElement, remove);
+            const button = e.currentTarget as HTMLElement;
+            // The row, not the button: the confirm marks what it removes and lines up with the row.
+            const row = button.closest<HTMLElement>(`.${cls('conv')}`) ?? button;
+            if (confirm) confirm(conv.title || untitled, row, remove);
             else remove();
           }}
         />

@@ -6,7 +6,13 @@
 import { getTranslationSync } from '@/utils/i18n';
 
 import confirmCss from './confirm.css?raw';
-import { type Popover, type PopoverSide, openPopover } from './layer';
+import { type Popover, type PopoverAlign, type PopoverSide, openPopover } from './layer';
+
+/**
+ * On the anchor while its confirm is open, so the row being asked about can
+ * look selected; the pointer is usually over another row by then.
+ */
+export const CONFIRM_ANCHOR_ATTR = 'data-gv-confirm-anchor';
 
 export type ConfirmChoice<C extends string> = {
   readonly id: C;
@@ -24,6 +30,11 @@ export type ConfirmRequest<C extends string> = {
   readonly anchor?: HTMLElement;
   /** Default `below`; it flips when the viewport has no room. */
   readonly side?: PopoverSide;
+  /**
+   * Default `start`. `end` lines the card up with the anchor's inline end, where
+   * a row's trailing action sits, so its buttons land under that action.
+   */
+  readonly align?: PopoverAlign;
   /** An owning panel may use a different theme from the page. */
   readonly scheme?: 'light' | 'dark';
   /** A danger confirm focuses Cancel, so Enter right after opening it never destroys. */
@@ -56,6 +67,7 @@ export function askConfirm<C extends string = 'confirm'>(
     const settle = (answer: C | null): void => {
       if (settled) return;
       settled = true;
+      request.anchor?.removeAttribute(CONFIRM_ANCHOR_ATTR);
       if (current?.popover === popover) current = null;
       resolve(answer);
     };
@@ -63,6 +75,7 @@ export function askConfirm<C extends string = 'confirm'>(
     const popover = openPopover({
       anchor: request.anchor,
       side: request.side ?? 'below',
+      align: request.align,
       css: confirmCss,
       signal: request.signal,
       onDismiss: () => settle(null),
@@ -109,6 +122,7 @@ export function askConfirm<C extends string = 'confirm'>(
     card.append(message, actions);
     popover.root.append(card);
     popover.place();
+    request.anchor?.setAttribute(CONFIRM_ANCHOR_ATTR, '');
 
     current = { popover, settle };
     const primary = [...choices]

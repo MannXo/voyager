@@ -199,7 +199,7 @@ describe('floating panel parity with the sidebar tree', () => {
     expect(onRemoveConversation).not.toHaveBeenCalled();
     expect(confirmConversationRemoval).toHaveBeenCalledWith(
       'Conversation A',
-      remove,
+      remove.closest(`.${FLOATING_PANEL_CLASS}__conv`),
       expect.any(Function),
     );
     confirmConversationRemoval.mock.calls[0][2]();

@@ -432,8 +432,9 @@
   display: none;
 }
 
-/* The count is quiet trailing text; on hover or focus the folder's actions
- * take its place, as ChatGPT's own row actions do. */
+/* The count is quiet trailing text; on hover or focus, or while a removal
+ * confirm asks about the row, the folder's actions take its place, as
+ * ChatGPT's own row actions do. */
 :host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__count {
   min-width: 0;
   padding: 0 4px;
@@ -459,20 +460,20 @@
 }
 
 :host(.gv-chatgpt-folder-section[data-gv-scheme])
-  .gv-floating-folder-panel__folder-header:is(:hover, :focus-within)
+  .gv-floating-folder-panel__folder-header:is(:hover, :focus-within, [data-gv-confirm-anchor])
   :is(
     .gv-floating-folder-panel__icon-button--add-child,
     .gv-floating-folder-panel__icon-button--menu
   ),
 :host(.gv-chatgpt-folder-section[data-gv-scheme])
-  .gv-floating-folder-panel__conv:is(:hover, :focus-within)
+  .gv-floating-folder-panel__conv:is(:hover, :focus-within, [data-gv-confirm-anchor])
   :is(.gv-floating-folder-panel__icon-button--star, .gv-floating-folder-panel__icon-button--remove),
 :host(.gv-chatgpt-folder-section[data-gv-scheme]) .gv-floating-folder-panel__icon-button--active {
   display: inline-flex;
 }
 
 :host(.gv-chatgpt-folder-section[data-gv-scheme])
-  .gv-floating-folder-panel__folder-header:is(:hover, :focus-within)
+  .gv-floating-folder-panel__folder-header:is(:hover, :focus-within, [data-gv-confirm-anchor])
   .gv-floating-folder-panel__count {
   display: none;
 }

@@ -55,11 +55,15 @@ export function mountLayerHost(kind: LayerKind, css: string): LayerHost {
 
 /** Where an anchored popover opens; `beside` means the anchor's inline-end side. */
 export type PopoverSide = 'below' | 'above' | 'beside';
+/** Which inline edge of the anchor a `below`/`above` popover lines up with. */
+export type PopoverAlign = 'start' | 'end';
 
 export type PopoverOptions = {
   /** Omitted when no control asked: the popover then sits centred in the viewport. */
   anchor?: HTMLElement;
   side: PopoverSide;
+  /** Default `start`; `beside` ignores it. */
+  align?: PopoverAlign;
   css: string;
   /** The owner's lifetime; aborting dismisses the popover. */
   signal?: AbortSignal;
@@ -199,6 +203,7 @@ function placeNear(
   anchor: DOMRect,
   size: { width: number; height: number },
   side: PopoverSide,
+  align: PopoverAlign,
   rtl: boolean,
 ): { left: number; top: number } {
   const { width: viewWidth, height: viewHeight } = viewportSize();
@@ -212,7 +217,8 @@ function placeNear(
     left = fitsAfter ? after : before;
     top = anchor.top + anchor.height / 2 - size.height / 2;
   } else {
-    left = rtl ? anchor.right - size.width : anchor.left;
+    const alignRight = (align === 'end') !== rtl;
+    left = alignRight ? anchor.right - size.width : anchor.left;
     const below = anchor.bottom + GAP;
     const above = anchor.top - GAP - size.height;
     const fitsBelow = below + size.height <= viewHeight - VIEWPORT_PAD;
@@ -273,6 +279,7 @@ export function openPopover(options: PopoverOptions): Popover & { place: () => v
           options.anchor.getBoundingClientRect(),
           size,
           options.side,
+          options.align ?? 'start',
           layer.host.hasAttribute(SHADOW_RTL_ATTR),
         )
       : placeCentred(size);

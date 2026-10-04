@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { CONFIRM_ANCHOR_ATTR } from '@/core/ui/confirm';
 import { confirmDriver } from '@/tests/confirmDriver';
 
 import { FOLDER_COLORS } from './folderColors';
@@ -389,6 +390,35 @@ describe('folder dialogs', () => {
     await Promise.resolve();
     expect(onConfirm).not.toHaveBeenCalled();
     expect(confirmDriver.isOpen()).toBe(false);
+  });
+
+  it('opens a removal question under its row, ending where the row ends, with the row marked', async () => {
+    Object.defineProperty(document.documentElement, 'clientWidth', {
+      value: 1000,
+      configurable: true,
+    });
+    Object.defineProperty(document.documentElement, 'clientHeight', {
+      value: 700,
+      configurable: true,
+    });
+    const row = document.createElement('div');
+    document.body.appendChild(row);
+    const rowRect = { left: 20, top: 100, right: 300, bottom: 132, width: 280, height: 32 };
+    const cardRect = { left: 0, top: 0, right: 220, bottom: 90, width: 220, height: 90 };
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+      function (this: HTMLElement) {
+        return (this === row ? rowRect : cardRect) as DOMRect;
+      },
+    );
+
+    dialogs.confirmFolderRemoval(row, vi.fn());
+    const host = query('[data-gv-layer="popover"]');
+    expect({ left: host.style.left, top: host.style.top }).toEqual({ left: '80px', top: '140px' });
+    expect(row.hasAttribute(CONFIRM_ANCHOR_ATTR)).toBe(true);
+
+    dialogs.closeTransient();
+    await Promise.resolve();
+    expect(row.hasAttribute(CONFIRM_ANCHOR_ATTR)).toBe(false);
   });
 
   it('drops an open removal question on a panel remount, and asks again afterwards', async () => {

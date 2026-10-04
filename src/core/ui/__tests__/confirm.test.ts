@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { confirmDriver } from '@/tests/confirmDriver';
 
-import { askConfirm } from '../confirm';
+import { CONFIRM_ANCHOR_ATTR, askConfirm } from '../confirm';
 import { isVoyagerLayerEvent } from '../layer';
 
 const host = () => document.querySelector<HTMLElement>('[data-gv-layer="popover"]');
@@ -185,6 +185,66 @@ describe('askConfirm', () => {
     await answer;
   });
 
+  describe('anchor mark', () => {
+    const marked = (element: HTMLElement = anchor) => element.hasAttribute(CONFIRM_ANCHOR_ATTR);
+
+    it('marks the anchor while open and clears it on an answer or Cancel', async () => {
+      const answered = ask();
+      expect(marked()).toBe(true);
+      confirmDriver.answer('Delete');
+      await answered;
+      expect(marked()).toBe(false);
+
+      const cancelled = ask();
+      expect(marked()).toBe(true);
+      confirmDriver.answer('Cancel');
+      await cancelled;
+      expect(marked()).toBe(false);
+    });
+
+    it('clears the mark on Escape and on an outside press', async () => {
+      const escaped = ask();
+      confirmDriver.pressEscape();
+      await escaped;
+      expect(marked()).toBe(false);
+
+      const pressed = ask();
+      confirmDriver.pressOutside();
+      await pressed;
+      expect(marked()).toBe(false);
+    });
+
+    it('clears the mark when the owner aborts or the anchor leaves the page', async () => {
+      const owner = new AbortController();
+      const aborted = ask({ signal: owner.signal });
+      owner.abort();
+      await aborted;
+      expect(marked()).toBe(false);
+
+      const detached = ask();
+      document.querySelector('#scroller')!.remove();
+      await detached;
+      expect(marked()).toBe(false);
+    });
+
+    it('moves the mark to the newer confirm, and keeps it when both share an anchor', async () => {
+      const other = document.createElement('button');
+      document.body.append(other);
+      const first = ask();
+      const second = ask({ anchor: other });
+      await first;
+      expect(marked()).toBe(false);
+      expect(marked(other)).toBe(true);
+
+      const third = ask({ anchor: other });
+      await second;
+      expect(marked(other)).toBe(true);
+      confirmDriver.answer('Cancel');
+      await third;
+      expect(marked(other)).toBe(false);
+    });
+  });
+
   describe('placement', () => {
     const box = rect(0, 0, 200, 80);
 
@@ -274,6 +334,42 @@ describe('askConfirm', () => {
       expect(confirmDriver.isOpen()).toBe(true);
       confirmDriver.answer('Delete');
       await expect(answer).resolves.toBe('confirm');
+    });
+
+    it('lines up with the anchor end when asked: the right edge in LTR, the left in RTL', async () => {
+      placeWith(rect(100, 100, 300, 20));
+      const ltr = ask({ align: 'end' });
+      expect(position()).toEqual({ left: '200px', top: '128px' });
+      confirmDriver.answer('Cancel');
+      await ltr;
+
+      document.body.classList.add('gv-rtl');
+      placeWith(rect(500, 100, 300, 20));
+      const rtl = ask({ align: 'end' });
+      expect(position()).toEqual({ left: '500px', top: '128px' });
+      confirmDriver.answer('Cancel');
+      await rtl;
+    });
+
+    it('keeps an end-aligned card inside the viewport and flips it above at the bottom', async () => {
+      placeWith(rect(0, 100, 120, 20));
+      const narrowLtr = ask({ align: 'end' });
+      expect(position()).toEqual({ left: '8px', top: '128px' });
+      confirmDriver.answer('Cancel');
+      await narrowLtr;
+
+      placeWith(rect(500, 650, 300, 20));
+      const bottom = ask({ align: 'end' });
+      expect(position()).toEqual({ left: '600px', top: '562px' });
+      confirmDriver.answer('Cancel');
+      await bottom;
+
+      document.body.classList.add('gv-rtl');
+      placeWith(rect(900, 100, 100, 20));
+      const edgeRtl = ask({ align: 'end' });
+      expect(position()).toEqual({ left: '792px', top: '128px' });
+      confirmDriver.answer('Cancel');
+      await edgeRtl;
     });
 
     it('stays inside the viewport at the right edge', async () => {

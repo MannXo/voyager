@@ -36,7 +36,10 @@ export type FolderDialogs = {
     instructions: string | undefined,
     onSave: (instructions: string | undefined) => Promise<boolean>,
   ) => void;
-  /** Asks next to `anchor`; `onConfirm` runs only if the answer arrives before a close. */
+  /**
+   * Asks under `anchor`, the row being removed, lined up with its inline end;
+   * `onConfirm` runs only if the answer arrives before a close.
+   */
   confirmFolderRemoval: (anchor: HTMLElement, onConfirm: () => void) => void;
   confirmConversationRemoval: (title: string, anchor: HTMLElement, onConfirm: () => void) => void;
   openMenu: (
@@ -69,6 +72,8 @@ export function createFolderDialogs(): FolderDialogs {
     const answer = await askConfirm({
       message,
       anchor,
+      // The row's menu or remove button sits at its inline end: answer under it.
+      align: 'end',
       tone: 'danger',
       choices: [{ id: 'confirm', label }],
       signal,
