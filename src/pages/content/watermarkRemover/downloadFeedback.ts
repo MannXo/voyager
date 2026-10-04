@@ -40,6 +40,7 @@ export function createDownloadFeedback({
     id: number;
     token: string;
     download: ToastHandle | null;
+    downloadDismissed: boolean;
     warning: ToastHandle | null;
     processing: ToastHandle | null;
     processingTimer: ReturnType<typeof setTimeout> | null;
@@ -50,14 +51,26 @@ export function createDownloadFeedback({
   const open = (handle: ToastHandle | null): ToastHandle | null => (handle?.isOpen ? handle : null);
 
   // Dismissing feedback must remain possible while the native image download continues.
-  const showPending = (message: string, durationMs: number): ToastHandle =>
+  const showPending = (message: string, durationMs: number, onDismiss?: () => void): ToastHandle =>
     toaster.show({
       message,
       tone: 'info',
       pending: true,
       durationMs,
       dismissLabel: t('floatingPanelClose', 'Close'),
+      onDismiss,
     });
+
+  function showDownloadPending(
+    sequence: DownloadToastSequence,
+    message: string,
+  ): ToastHandle | null {
+    // A late status must not reopen a downloading phase the user already closed.
+    if (sequence.downloadDismissed) return null;
+    return showPending(message, DOWNLOADING_MS, () => {
+      sequence.downloadDismissed = true;
+    });
+  }
 
   function clearActiveDownloadSequence(): void {
     if (!activeSequence) return;
@@ -95,15 +108,22 @@ export function createDownloadFeedback({
     previewFingerprintsByIntent.set(token, capturePreview(button));
     markDownloadIntent(token);
     toaster.setAnchor(button, ANCHOR_TTL_MS);
-    let download: ToastHandle | null = null;
-    let processingTimer: ReturnType<typeof setTimeout> | null = null;
+    const sequence: DownloadToastSequence = {
+      id: sequenceId,
+      token,
+      download: null,
+      downloadDismissed: false,
+      warning: null,
+      processing: null,
+      processingTimer: null,
+    };
 
     if (isRemovalEnabled()) {
       const downloadMessage = t('downloadingOriginal', '正在下载原始图片');
       const processingMessage = t('downloadProcessing', '正在处理水印中');
-      download = showPending(downloadMessage, DOWNLOADING_MS);
+      sequence.download = showDownloadPending(sequence, downloadMessage);
 
-      processingTimer = setTimeout(() => {
+      sequence.processingTimer = setTimeout(() => {
         if (!activeSequence || activeSequence.id !== sequenceId) return;
         activeSequence.download?.dismiss();
         activeSequence.download = null;
@@ -113,14 +133,7 @@ export function createDownloadFeedback({
       }, DOWNLOADING_MS);
     }
 
-    activeSequence = {
-      id: sequenceId,
-      token,
-      download,
-      warning: null,
-      processing: null,
-      processingTimer,
-    };
+    activeSequence = sequence;
   }
 
   function setupDownloadButtonTracking(): void {
@@ -167,7 +180,7 @@ export function createDownloadFeedback({
   function showDownloading(sequence: DownloadToastSequence, message: string): void {
     sequence.warning?.dismiss();
     sequence.warning = null;
-    if (!open(sequence.download)) sequence.download = showPending(message, DOWNLOADING_MS);
+    if (!open(sequence.download)) sequence.download = showDownloadPending(sequence, message);
   }
 
   function showLargeDownload(
@@ -177,7 +190,7 @@ export function createDownloadFeedback({
   ): void {
     const download = open(sequence.download);
     if (download) download.update({ message, tone: 'info' });
-    else sequence.download = showPending(message, DOWNLOADING_MS);
+    else sequence.download = showDownloadPending(sequence, message);
     if (!open(sequence.warning)) {
       sequence.warning = toaster.show({
         message: warning,

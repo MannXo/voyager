@@ -103,6 +103,73 @@ describe('watermark download notice dismissal', () => {
     },
   );
 
+  it('a delayed downloading status does not reopen a dismissed download notice', async () => {
+    const bridge = await startDownload();
+    const token = bridge.dataset.downloadIntentToken;
+    const expiresAt = bridge.dataset.downloadIntentExpiresAt;
+    toastDriver.press(toastDriver.all()[0], 'Close');
+
+    await status(bridge, 'DOWNLOADING');
+    expect(toastDriver.all()).toEqual([]);
+    expect(bridge.dataset.downloadIntentToken).toBe(token);
+    expect(bridge.dataset.downloadIntentExpiresAt).toBe(expiresAt);
+  });
+
+  it('a large-file status does not reopen the dismissed downloading phase', async () => {
+    const bridge = await startDownload();
+    toastDriver.press(toastDriver.all()[0], 'Close');
+
+    await status(bridge, 'DOWNLOADING_LARGE');
+    expect(toastDriver.all().map((notice) => notice.tone)).toEqual(['warning']);
+  });
+
+  it.each([
+    { type: 'SUCCESS', tone: 'success' },
+    { type: 'ERROR', tone: 'error' },
+    { type: 'GOOGLE_IMAGE_CORRUPTED', tone: 'warning' },
+  ])('closing the download notice still allows the $type outcome', async ({ type, tone }) => {
+    const bridge = await startDownload();
+    toastDriver.press(toastDriver.all()[0], 'Close');
+
+    await status(bridge, type);
+    expect(toastDriver.all()).toHaveLength(1);
+    expect(toastDriver.all()[0]).toMatchObject({ tone, pending: false });
+  });
+
+  it('closing one download notice still allows processing and a new download', async () => {
+    const bridge = await startDownload();
+    const token = bridge.dataset.downloadIntentToken;
+    toastDriver.press(toastDriver.all()[0], 'Close');
+
+    vi.advanceTimersByTime(3000);
+    expect(toastDriver.all()).toHaveLength(1);
+    expect(toastDriver.all()[0]).toMatchObject({ tone: 'info', pending: true });
+    toastDriver.press(toastDriver.all()[0], 'Close');
+
+    document.querySelector<HTMLButtonElement>('generated-image button')!.click();
+    expect(bridge.dataset.downloadIntentToken).not.toBe(token);
+    expect(toastDriver.all()).toHaveLength(1);
+    await status(bridge, 'DOWNLOADING');
+    expect(toastDriver.all()).toHaveLength(1);
+  });
+
+  it('closing an older download notice does not suppress a newer download', async () => {
+    const bridge = await startDownload();
+    const [olderNotice] = toastDriver.all();
+    vi.advanceTimersByTime(301);
+    document.querySelector<HTMLButtonElement>('generated-image button')!.click();
+    const newerNotice = toastDriver.all().find((notice) => notice.element !== olderNotice.element)!;
+    toastDriver.press(olderNotice, 'Close');
+
+    // Expiry is not user dismissal; a matching status can renew the new notice.
+    vi.advanceTimersByTime(3001);
+    expect(newerNotice.element.isConnected).toBe(false);
+    expect(toastDriver.all()).toHaveLength(1); // The processing phase has started.
+    await status(bridge, 'DOWNLOADING');
+    expect(toastDriver.all()).toHaveLength(2);
+    expect(toastDriver.all()[0]).toMatchObject({ tone: 'info', pending: true });
+  });
+
   it('uses the localized close button while downloading', async () => {
     setCachedLanguage('zh');
     await startDownload();
