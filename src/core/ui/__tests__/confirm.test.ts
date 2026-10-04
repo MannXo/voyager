@@ -263,6 +263,19 @@ describe('askConfirm', () => {
       await expect(answer).resolves.toBeNull();
     });
 
+    it('sits centred without an anchor and stays open through a page scroll', async () => {
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(box);
+      const answer = ask({ anchor: undefined, tone: 'neutral' });
+      expect(position()).toEqual({ left: '400px', top: '310px' });
+
+      document.dispatchEvent(new Event('scroll'));
+      document.querySelector('#scroller')!.remove();
+
+      expect(confirmDriver.isOpen()).toBe(true);
+      confirmDriver.answer('Delete');
+      await expect(answer).resolves.toBe('confirm');
+    });
+
     it('stays inside the viewport at the right edge', async () => {
       placeWith(rect(960, 100, 30, 20));
       const answer = ask();

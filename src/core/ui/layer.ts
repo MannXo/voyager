@@ -57,7 +57,8 @@ export function mountLayerHost(kind: LayerKind, css: string): LayerHost {
 export type PopoverSide = 'below' | 'above' | 'beside';
 
 export type PopoverOptions = {
-  anchor: HTMLElement;
+  /** Omitted when no control asked: the popover then sits centred in the viewport. */
+  anchor?: HTMLElement;
   side: PopoverSide;
   css: string;
   /** The owner's lifetime; aborting dismisses the popover. */
@@ -78,7 +79,7 @@ export type Popover = {
 
 type Entry = {
   layer: LayerHost;
-  anchor: HTMLElement;
+  anchor: HTMLElement | null;
   place: () => void;
   close: () => void;
   dismiss: () => void;
@@ -139,6 +140,10 @@ function viewportSize(): { width: number; height: number } {
 
 /** Re-place the popover beside its anchor, or dismiss it once the anchor is out of sight. */
 function follow(entry: Entry): void {
+  if (!entry.anchor) {
+    entry.place();
+    return;
+  }
   const rect = entry.anchor.getBoundingClientRect();
   const view = viewportSize();
   const visible =
@@ -171,7 +176,7 @@ function onResize(): void {
 // confirm whose anchor left the page would otherwise answer for the wrong one.
 function onMutations(): void {
   for (const entry of [...stack].reverse()) {
-    if (!entry.anchor.isConnected) entry.dismiss();
+    if (entry.anchor && !entry.anchor.isConnected) entry.dismiss();
   }
 }
 
@@ -223,6 +228,14 @@ function placeNear(
   };
 }
 
+function placeCentred(size: { width: number; height: number }): { left: number; top: number } {
+  const { width: viewWidth, height: viewHeight } = viewportSize();
+  return {
+    left: Math.round(Math.max(VIEWPORT_PAD, (viewWidth - size.width) / 2)),
+    top: Math.round(Math.max(VIEWPORT_PAD, (viewHeight - size.height) / 2)),
+  };
+}
+
 /**
  * Open a popover next to `anchor` and push it on the stack. The caller renders
  * into `root`, then calls the returned `place()` once the content is in.
@@ -239,7 +252,7 @@ export function openPopover(options: PopoverOptions): Popover & { place: () => v
     const active = document.activeElement;
     const heldFocus = active === layer.host || active === document.body || active === null;
     layer.remove();
-    if (heldFocus && options.anchor.isConnected) options.anchor.focus({ preventScroll: true });
+    if (heldFocus && options.anchor?.isConnected) options.anchor.focus({ preventScroll: true });
   };
 
   const dismiss = (): void => {
@@ -250,17 +263,20 @@ export function openPopover(options: PopoverOptions): Popover & { place: () => v
 
   const place = (): void => {
     const rect = layer.host.getBoundingClientRect();
-    const { left, top } = placeNear(
-      options.anchor.getBoundingClientRect(),
-      { width: rect.width, height: rect.height },
-      options.side,
-      layer.host.hasAttribute(SHADOW_RTL_ATTR),
-    );
+    const size = { width: rect.width, height: rect.height };
+    const { left, top } = options.anchor
+      ? placeNear(
+          options.anchor.getBoundingClientRect(),
+          size,
+          options.side,
+          layer.host.hasAttribute(SHADOW_RTL_ATTR),
+        )
+      : placeCentred(size);
     layer.host.style.left = `${left}px`;
     layer.host.style.top = `${top}px`;
   };
 
-  const entry: Entry = { layer, anchor: options.anchor, place, close, dismiss };
+  const entry: Entry = { layer, anchor: options.anchor ?? null, place, close, dismiss };
   if (stack.length === 0) listen(true);
   stack.push(entry);
   options.signal?.addEventListener('abort', dismiss, { once: true });

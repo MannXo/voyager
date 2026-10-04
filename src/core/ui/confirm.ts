@@ -1,7 +1,7 @@
 /**
  * Voyager's one confirm: a card with the message above the actions, opened next
- * to the control that asked. It answers the question and nothing more; what
- * happened afterwards is reported through the toast.
+ * to the control that asked, or centred when none did. It answers the question
+ * and nothing more; what happened afterwards is reported through the toast.
  */
 import { getTranslationSync } from '@/utils/i18n';
 
@@ -17,7 +17,11 @@ export type ConfirmChoice<C extends string> = {
 
 export type ConfirmRequest<C extends string> = {
   readonly message: string;
-  readonly anchor: HTMLElement;
+  /**
+   * The control that asked. Leave it out only when no control did, such as a
+   * step of a running export: the card then sits centred in the viewport.
+   */
+  readonly anchor?: HTMLElement;
   /** Default `below`; it flips when the viewport has no room. */
   readonly side?: PopoverSide;
   /** An owning panel may use a different theme from the page. */
