@@ -177,6 +177,7 @@ function createActions(options: SidebarTreeOptions): TreeActions {
   const { store, dialogs, navigation, selection, drops, onRenameNative } = options;
   // The row clicked last, for a record replaced in storage since the tree drew it.
   let clicked: { conversation: ConversationReference; bucketId: string } | null = null;
+  const selecting = selection.treeActions();
   return {
     ...createFloatingTreeStoreActions(options.commands, dialogs),
     // Opens the folder's latest stored record, so the route uses current data.
@@ -203,20 +204,11 @@ function createActions(options: SidebarTreeOptions): TreeActions {
         'conversation',
       ),
     folderMenuItems: (folder) => projectMenuItems(options, folder),
-    onConversationPress: (e, conversation, bucketId) =>
-      selection.pressFolderConversation(e, conversation.conversationId, bucketId),
-    interceptConversationClick: (_e, conversation, bucketId, row) => {
+    ...selecting,
+    interceptConversationClick: (e, conversation, bucketId, row) => {
       clicked = { conversation, bucketId };
-      return selection.clickFolderConversation(conversation.conversationId, bucketId, row);
+      return selecting.interceptConversationClick(e, conversation, bucketId, row);
     },
-    onConversationDragStart: (e, conversation, bucketId) =>
-      selection.startFolderConversationDrag(
-        e,
-        conversation.conversationId,
-        bucketId,
-        conversation.title,
-      ),
-    onConversationDragEnd: () => selection.endFolderConversationDrag(),
   };
 }
 

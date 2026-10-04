@@ -29,6 +29,7 @@ import { createLegacyFolderCommands } from './legacyFolderCommands';
 import { NativeArchivedRows } from './nativeArchivedRows';
 import { extractNativeConversationTitle } from './nativeConversationTitles';
 import { findNativeConversationElement, getNativeConversationElements } from './nativeSidebarDom';
+import { ligatureIcon } from './selectionToolbar';
 import type { ConversationReference, Folder } from './types';
 
 export class FolderManager {
@@ -191,10 +192,18 @@ export class FolderManager {
     runtime: this.sidebarRuntime,
     navigation: this.navigation,
     feedback: this.feedback,
-    nativeMenus: this.nativeConversationMenus,
+    toolbar: {
+      host: () => this.sidebarRuntime.panel,
+      placement: 'floating',
+      icon: ligatureIcon,
+    },
+    nativeDelete: {
+      activation: () => this.store.activation,
+      menus: this.nativeConversationMenus,
+      feedback: this.feedback,
+    },
     onFolderSelectionChange: () => this.treeView.refreshSite(),
     getContext: () => ({
-      sortMode: this.treeView.sortMode,
       accountIsolationEnabled: this.store.accountIsolationEnabled,
       isDestroyed: this.isDestroyed,
     }),

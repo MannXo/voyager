@@ -2,8 +2,35 @@ import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
 const ICON_CLASS = 'mat-icon notranslate google-symbols mat-ligature-font mat-icon-no-color';
 
-/** The floating multi-select toolbar and the listeners its drag handle holds. */
+/** The multi-select toolbar and the listeners its drag handle holds. */
 export type SelectionToolbar = { indicator: HTMLElement; cleanup: () => void };
+
+export type SelectionToolbarIconName = 'check_circle' | 'delete' | 'close';
+
+/** Draws one toolbar icon; each site draws them in its own icon style. */
+export type SelectionToolbarIcon = (name: SelectionToolbarIconName) => Element;
+
+/** Gemini's Google Symbols ligature. */
+export function ligatureIcon(name: SelectionToolbarIconName): Element {
+  const icon = document.createElement('mat-icon');
+  icon.className = ICON_CLASS;
+  icon.setAttribute('role', 'img');
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = name;
+  return icon;
+}
+
+export type SelectionToolbarOptions = {
+  /** The element that holds the toolbar and carries the mode class while selecting. */
+  host: () => HTMLElement | null | undefined;
+  /**
+   * `floating`: a draggable pill fixed over the page, shown in a body-level
+   * host while `host` is out of the page (Gemini). `inline`: in `host`'s own
+   * flow, and nowhere while `host` is out of the page.
+   */
+  placement: 'floating' | 'inline';
+  icon: SelectionToolbarIcon;
+};
 
 export type SelectionToolbarState = {
   active: boolean;
@@ -65,17 +92,11 @@ function makeToolbarDraggable(indicator: HTMLElement): () => void {
   };
 }
 
-function createToolbarContent(): HTMLElement {
+function createToolbarContent(icon: Element): HTMLElement {
   const content = document.createElement('div');
   content.className = 'gv-multi-select-indicator-content';
   // Ensure content (text/icon) doesn't capture drag events aggressively
   content.style.pointerEvents = 'none';
-
-  const icon = document.createElement('mat-icon');
-  icon.className = ICON_CLASS;
-  icon.setAttribute('role', 'img');
-  icon.setAttribute('aria-hidden', 'true');
-  icon.textContent = 'check_circle';
 
   const text = document.createElement('span');
   text.className = 'gv-multi-select-indicator-text';
@@ -86,10 +107,22 @@ function createToolbarContent(): HTMLElement {
   return content;
 }
 
-export function createSelectionToolbar(): SelectionToolbar {
+function createSelectionToolbar({
+  placement,
+  icon,
+}: Pick<SelectionToolbarOptions, 'placement' | 'icon'>): SelectionToolbar {
   const indicator = document.createElement('div');
   indicator.className = 'gv-multi-select-indicator';
   indicator.dataset.multiSelectIndicator = 'true';
+  indicator.setAttribute('role', 'toolbar');
+
+  const actionsContainer = document.createElement('div');
+  actionsContainer.className = 'gv-multi-select-actions';
+  actionsContainer.dataset.multiSelectActions = 'true';
+  if (placement === 'inline') {
+    indicator.append(createToolbarContent(icon('check_circle')), actionsContainer);
+    return { indicator, cleanup: () => {} };
+  }
 
   Object.assign(indicator.style, {
     position: 'fixed',
@@ -112,12 +145,7 @@ export function createSelectionToolbar(): SelectionToolbar {
   });
 
   const cleanup = makeToolbarDraggable(indicator);
-  indicator.appendChild(createToolbarContent());
-
-  // Actions container (populated by renderSelectionToolbar)
-  const actionsContainer = document.createElement('div');
-  actionsContainer.className = 'gv-multi-select-actions';
-  actionsContainer.dataset.multiSelectActions = 'true';
+  indicator.appendChild(createToolbarContent(icon('check_circle')));
   // Re-enable pointer events for buttons
   actionsContainer.style.pointerEvents = 'auto';
   indicator.appendChild(actionsContainer);
@@ -126,17 +154,19 @@ export function createSelectionToolbar(): SelectionToolbar {
 }
 
 /**
- * Places the toolbar: in the folder panel while it is mounted, otherwise in a
- * floating host on the page. Owns the drag listeners of every toolbar it made.
+ * Places the toolbar: in its host while that is mounted, otherwise (floating
+ * placement only) in a floating host on the page. Owns the drag listeners of
+ * every toolbar it made.
  */
 export class SelectionToolbarHost {
   private floatingHost: HTMLElement | null = null;
   private readonly cleanups = new Map<HTMLElement, () => void>();
 
-  constructor(private readonly getPanel: () => HTMLElement | null | undefined) {}
+  constructor(private readonly options: SelectionToolbarOptions) {}
 
+  /** A toolbar for the host to hold, drawn in this site's placement and icons. */
   createIndicator(): HTMLElement {
-    const { indicator, cleanup } = createSelectionToolbar();
+    const { indicator, cleanup } = createSelectionToolbar(this.options);
     this.cleanups.set(indicator, cleanup);
     return indicator;
   }
@@ -162,10 +192,16 @@ export class SelectionToolbarHost {
     return !!this.floatingHost?.contains(target);
   }
 
+  /** Shows the mode, the selected count and the actions for `state`. */
+  render(state: SelectionToolbarState): void {
+    renderSelectionToolbar(this.find(state.active), state, this.options.icon);
+  }
+
   /** The host showing the toolbar; with `create`, a floating one is made when none is shown. */
-  find(create: boolean): HTMLElement | null {
-    const panel = this.getPanel();
-    if (panel?.isConnected) return panel;
+  private find(create: boolean): HTMLElement | null {
+    const host = this.options.host();
+    if (host?.isConnected) return host;
+    if (this.options.placement === 'inline') return null;
     if (create && !this.floatingHost?.isConnected) {
       const host = document.createElement('div');
       host.className = 'gv-folder-container gv-multi-select-floating-host';
@@ -178,17 +214,22 @@ export class SelectionToolbarHost {
   }
 }
 
-function actionButton(modifier: string, icon: string, titleKey: string, onClick: () => void) {
+function actionButton(modifier: string, icon: Element, titleKey: string, onClick: () => void) {
   const button = document.createElement('button');
+  button.type = 'button';
   button.className = `gv-multi-select-action-btn ${modifier}`;
-  button.innerHTML = `<mat-icon role="img" class="${ICON_CLASS}" aria-hidden="true">${icon}</mat-icon>`;
+  button.append(icon);
   button.title = t(titleKey);
+  button.setAttribute('aria-label', t(titleKey));
   button.addEventListener('click', onClick);
   return button;
 }
 
-/** Shows the mode, the selected count and the actions for `state` in `host`'s toolbar. */
-export function renderSelectionToolbar(host: HTMLElement | null, state: SelectionToolbarState) {
+function renderSelectionToolbar(
+  host: HTMLElement | null,
+  state: SelectionToolbarState,
+  icon: SelectionToolbarIcon,
+) {
   host?.classList.toggle('gv-multi-select-mode', state.active);
 
   const countElement = host?.querySelector('[data-selection-count="true"]');
@@ -206,11 +247,21 @@ export function renderSelectionToolbar(host: HTMLElement | null, state: Selectio
   // Folder multi-select removes from the folder; native multi-select deletes from Gemini.
   if (state.source) {
     actionsContainer.appendChild(
-      actionButton('gv-multi-select-delete-btn', 'delete', 'batch_delete_button', state.onDelete),
+      actionButton(
+        'gv-multi-select-delete-btn',
+        icon('delete'),
+        'batch_delete_button',
+        state.onDelete,
+      ),
     );
   }
   actionsContainer.appendChild(
-    actionButton('gv-multi-select-exit-btn', 'close', 'folder_multi_select_exit', state.onExit),
+    actionButton(
+      'gv-multi-select-exit-btn',
+      icon('close'),
+      'folder_multi_select_exit',
+      state.onExit,
+    ),
   );
 }
 

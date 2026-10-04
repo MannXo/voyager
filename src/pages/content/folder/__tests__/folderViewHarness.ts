@@ -15,6 +15,7 @@ import { NativeSidebarObserver } from '../NativeSidebarObserver';
 import { createFolderDialogs } from '../folderDialogs';
 import { createFolderHeaderMenus } from '../headerMenus';
 import { createLegacyFolderCommands } from '../legacyFolderCommands';
+import { ligatureIcon } from '../selectionToolbar';
 import type { IFolderStorageAdapter } from '../storage/FolderStorageAdapter';
 import type { FolderData } from '../types';
 import { mountSidebar, setLayout } from './sidebarRuntimeHarness';
@@ -145,10 +146,10 @@ export async function createFolderViewHarness(data: FolderData) {
     runtime,
     navigation,
     feedback,
-    nativeMenus,
+    toolbar: { host: () => runtime.panel, placement: 'floating', icon: ligatureIcon },
+    nativeDelete: { activation: () => store.activation, menus: nativeMenus, feedback },
     onFolderSelectionChange: () => treeView.refreshSite(),
     getContext: () => ({
-      sortMode: treeView.sortMode,
       accountIsolationEnabled: store.accountIsolationEnabled,
       isDestroyed: destroyed,
     }),

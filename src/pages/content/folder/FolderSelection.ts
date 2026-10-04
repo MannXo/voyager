@@ -1,6 +1,5 @@
 import { extractRouteUserIdFromPath } from '@/core/services/AccountIsolationService';
 import type { FolderCommands } from '@/features/folder/commands/folderCommands';
-import type { ConversationSortMode } from '@/features/folder/model/folderData';
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 
 import type { FolderFeedback } from './FolderFeedback';
@@ -8,6 +7,7 @@ import type { FolderNavigation } from './FolderNavigation';
 import type { FolderSidebarRuntime } from './FolderSidebarRuntime';
 import type { FolderStore } from './FolderStore';
 import type { NativeConversationMenus } from './NativeConversationMenus';
+import type { TreeActions } from './floatingTree/shared';
 import { deleteNativeConversations } from './nativeBatchDelete';
 import {
   type NativeRowSelection,
@@ -19,20 +19,35 @@ import { extractConversationId } from './nativeConversationIds';
 import { getNativeConversationElements } from './nativeSidebarDom';
 import {
   SelectionToolbarHost,
+  type SelectionToolbarOptions,
   flashInvalidSelection,
-  renderSelectionToolbar,
 } from './selectionToolbar';
 import type { ConversationReference } from './types';
 
-interface FolderSelectionOptions {
-  store: FolderStore;
+export interface FolderSelectionOptions {
+  store: Pick<FolderStore, 'data'>;
   commands: FolderCommands;
-  runtime: FolderSidebarRuntime;
-  navigation: FolderNavigation;
-  feedback: FolderFeedback;
-  nativeMenus: NativeConversationMenus;
+  /** `panel`: the folder tree's host; `sidebar`: the page's own sidebar, whose rows may join. */
+  runtime: Pick<FolderSidebarRuntime, 'panel' | 'sidebar'>;
+  navigation: Pick<FolderNavigation, 'highlightActiveConversation'>;
+  feedback: Pick<FolderFeedback, 'showNotification'>;
+  toolbar: SelectionToolbarOptions;
+  /**
+   * Deletes the page's own selected chats in a batch. Only a site whose native
+   * rows join the selection (`makeConversationDraggable`) has it.
+   */
+  nativeDelete?: {
+    activation: () => number;
+    menus: Pick<NativeConversationMenus, 'deleteConversation'>;
+    feedback: Pick<
+      FolderFeedback,
+      | 'showBatchDeleteProgress'
+      | 'updateBatchDeleteProgress'
+      | 'hideBatchDeleteProgress'
+      | 'showNotification'
+    >;
+  };
   getContext(): {
-    sortMode: ConversationSortMode;
     accountIsolationEnabled: boolean;
     isDestroyed: boolean;
   };
@@ -70,7 +85,7 @@ export class FolderSelection {
   private readonly nativeRows: NativeRowSelection;
 
   constructor(private readonly options: FolderSelectionOptions) {
-    this.toolbar = new SelectionToolbarHost(() => options.runtime.panel);
+    this.toolbar = new SelectionToolbarHost(options.toolbar);
     this.nativeRows = this.createNativeRowSelection();
   }
 
@@ -108,7 +123,7 @@ export class FolderSelection {
     if (this.batchDeleteController) {
       this.batchDeleteController.abort();
       this.batchDeleteController = null;
-      this.options.feedback.hideBatchDeleteProgress();
+      this.options.nativeDelete?.feedback.hideBatchDeleteProgress();
     }
     for (const timer of this.timers) window.clearTimeout(timer);
     this.timers.clear();
@@ -189,7 +204,8 @@ export class FolderSelection {
   }
 
   private async batchDeleteNativeConversations(): Promise<void> {
-    if (this.options.getContext().isDestroyed) return;
+    const native = this.options.nativeDelete;
+    if (!native || this.options.getContext().isDestroyed) return;
     if (this.batchDeleteController) {
       debug('log', 'Batch delete already in progress');
       return;
@@ -201,12 +217,12 @@ export class FolderSelection {
 
     const controller = new AbortController();
     this.batchDeleteController = controller;
-    const activation = this.options.store.activation;
+    const activation = native.activation();
     const routeUserId = extractRouteUserIdFromPath(window.location.pathname) ?? '0';
     const isCurrent = () =>
       !controller.signal.aborted &&
       !this.options.getContext().isDestroyed &&
-      this.options.store.activation === activation &&
+      native.activation() === activation &&
       (extractRouteUserIdFromPath(window.location.pathname) ?? '0') === routeUserId;
 
     try {
@@ -214,8 +230,8 @@ export class FolderSelection {
         conversationIds: Array.from(this.selectedConversations),
         signal: controller.signal,
         isCurrent,
-        deleteConversation: (id, signal) => this.options.nativeMenus.deleteConversation(id, signal),
-        feedback: this.options.feedback,
+        deleteConversation: (id, signal) => native.menus.deleteConversation(id, signal),
+        feedback: native.feedback,
       });
       if (deleted === null) return;
       this.exitMultiSelectMode();
@@ -229,7 +245,7 @@ export class FolderSelection {
     } finally {
       if (this.batchDeleteController === controller) {
         this.batchDeleteController = null;
-        this.options.feedback.hideBatchDeleteProgress();
+        native.feedback.hideBatchDeleteProgress();
       }
     }
   }
@@ -373,9 +389,8 @@ export class FolderSelection {
   }
 
   private updateMultiSelectModeUI(): void {
-    const host = this.toolbar.find(this.isMultiSelectMode);
     const source = this.multiSelectSource;
-    renderSelectionToolbar(host, {
+    this.toolbar.render({
       active: this.isMultiSelectMode,
       count: this.selectedConversations.size,
       source,
@@ -400,6 +415,32 @@ export class FolderSelection {
       }
     }
     return result;
+  }
+
+  /** The folder tree's gestures that select: long press, clicks while selecting, and drags. */
+  treeActions(): Required<
+    Pick<
+      TreeActions,
+      | 'onConversationPress'
+      | 'interceptConversationClick'
+      | 'onConversationDragStart'
+      | 'onConversationDragEnd'
+    >
+  > {
+    return {
+      onConversationPress: (e, conversation, bucketId) =>
+        this.pressFolderConversation(e, conversation.conversationId, bucketId),
+      interceptConversationClick: (_e, conversation, bucketId, row) =>
+        this.clickFolderConversation(conversation.conversationId, bucketId, row),
+      onConversationDragStart: (e, conversation, bucketId) =>
+        this.startFolderConversationDrag(
+          e,
+          conversation.conversationId,
+          bucketId,
+          conversation.title,
+        ),
+      onConversationDragEnd: () => this.endFolderConversationDrag(),
+    };
   }
 
   /** Whether a folder chat shows as selected: in folder multi-select, in its scoped folder. */
