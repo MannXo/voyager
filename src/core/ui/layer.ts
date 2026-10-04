@@ -241,6 +241,10 @@ function placeCentred(size: { width: number; height: number }): { left: number; 
  * into `root`, then calls the returned `place()` once the content is in.
  */
 export function openPopover(options: PopoverOptions): Popover & { place: () => void } {
+  // Without an anchor, focus goes back where it was: a centred popover must not strand it on body.
+  const opener = document.activeElement;
+  const returnFocus =
+    options.anchor ?? (opener instanceof HTMLElement && opener !== document.body ? opener : null);
   const layer = mountLayerHost('popover', options.css);
 
   const close = (): void => {
@@ -252,7 +256,7 @@ export function openPopover(options: PopoverOptions): Popover & { place: () => v
     const active = document.activeElement;
     const heldFocus = active === layer.host || active === document.body || active === null;
     layer.remove();
-    if (heldFocus && options.anchor?.isConnected) options.anchor.focus({ preventScroll: true });
+    if (heldFocus && returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
   };
 
   const dismiss = (): void => {

@@ -265,6 +265,38 @@ describe('createExportRunner', () => {
       expect(toastDriver.all()).toEqual([]);
     });
 
+    it.each([
+      ['Escape', () => confirmDriver.pressEscape()],
+      ['Cancel', () => confirmDriver.answer('Cancel')],
+    ])('gives focus back to the composer after %s drops the export', async (_, dismiss) => {
+      const collector = collectorWithSearchImages();
+      const site = fakeSite(collector);
+      let finishBuild: (turns: ChatTurn[]) => void = () => {};
+      const build = () =>
+        new Promise<ChatTurn[]>((resolve) => {
+          finishBuild = resolve;
+        });
+      const runner = createExportRunner({ site: { ...site, turns: { ...site.turns, build } } });
+      const running = runner.run({ format: ExportFormat.MARKDOWN }, { dict, lang: 'en' });
+      await until(() => selectionBar() !== null);
+      clickBarAction('selectAll');
+      clickBarAction('export');
+      await until(() => selectionBar() === null);
+      const composer = document.createElement('textarea');
+      composer.value = 'unfinished draft';
+      document.body.append(composer);
+      composer.focus();
+
+      finishBuild(collector.turnsForMessageIds(new Set(['1:u', '1:a'])));
+      await until(() => confirmDriver.isOpen());
+      dismiss();
+      await settle(running);
+
+      expect(mocks.exportPendingConversation).not.toHaveBeenCalled();
+      expect(composer.value).toBe('unfinished draft');
+      expect(document.activeElement).toBe(composer);
+    });
+
     it('drops the answer when the conversation changed while it was open', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
       const { running } = await exportAll();
