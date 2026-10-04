@@ -2549,10 +2549,6 @@
     "message": "削除",
     "description": "Floating folder panel delete folder action"
   },
-  "floatingPanelDeleteConfirm": {
-    "message": "このフォルダとすべての内容を削除しますか？",
-    "description": "Floating folder panel delete folder confirmation"
-  },
   "floatingPanelCancel": {
     "message": "キャンセル",
     "description": "Floating folder panel cancel action"

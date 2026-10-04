@@ -2549,10 +2549,6 @@
     "message": "Excluir",
     "description": "Floating folder panel delete folder action"
   },
-  "floatingPanelDeleteConfirm": {
-    "message": "Excluir esta pasta e todo o conteúdo?",
-    "description": "Floating folder panel delete folder confirmation"
-  },
   "floatingPanelCancel": {
     "message": "Cancelar",
     "description": "Floating folder panel cancel action"

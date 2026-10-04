@@ -2553,10 +2553,6 @@
     "message": "删除",
     "description": "Floating folder panel delete folder action"
   },
-  "floatingPanelDeleteConfirm": {
-    "message": "删除此文件夹及其所有内容？",
-    "description": "Floating folder panel delete folder confirmation"
-  },
   "floatingPanelCancel": {
     "message": "取消",
     "description": "Floating folder panel cancel action"

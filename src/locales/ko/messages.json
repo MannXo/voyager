@@ -2549,10 +2549,6 @@
     "message": "삭제",
     "description": "Floating folder panel delete folder action"
   },
-  "floatingPanelDeleteConfirm": {
-    "message": "이 폴더와 모든 내용을 삭제할까요?",
-    "description": "Floating folder panel delete folder confirmation"
-  },
   "floatingPanelCancel": {
     "message": "취소",
     "description": "Floating folder panel cancel action"

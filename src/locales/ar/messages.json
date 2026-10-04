@@ -2549,10 +2549,6 @@
     "message": "حذف",
     "description": "Floating folder panel delete folder action"
   },
-  "floatingPanelDeleteConfirm": {
-    "message": "هل تريد حذف هذا المجلد وكل محتوياته؟",
-    "description": "Floating folder panel delete folder confirmation"
-  },
   "floatingPanelCancel": {
     "message": "إلغاء",
     "description": "Floating folder panel cancel action"

@@ -2549,10 +2549,6 @@
     "message": "Удалить",
     "description": "Floating folder panel delete folder action"
   },
-  "floatingPanelDeleteConfirm": {
-    "message": "Удалить эту папку и все ее содержимое?",
-    "description": "Floating folder panel delete folder confirmation"
-  },
   "floatingPanelCancel": {
     "message": "Отмена",
     "description": "Floating folder panel cancel action"
