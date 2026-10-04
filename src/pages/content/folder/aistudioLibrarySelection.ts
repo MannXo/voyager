@@ -249,7 +249,10 @@ export class LibrarySelection {
       this.deleting = false;
     });
     if (failedCount === 0) {
-      this.notify(this.t('batch_delete_success').replace('{count}', String(successCount)), 'info');
+      this.notify(
+        this.t('batch_delete_success').replace('{count}', String(successCount)),
+        'success',
+      );
     } else {
       const message = this.t('batch_delete_partial')
         .replace('{success}', String(successCount))

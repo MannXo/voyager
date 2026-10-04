@@ -162,7 +162,7 @@ export class AIStudioTransfer {
         },
       })) as { ok?: boolean; error?: string } | undefined;
       if (!current()) return;
-      if (response?.ok) this.host.notify(this.host.t('uploadSuccess'), 'info');
+      if (response?.ok) this.host.notify(this.host.t('uploadSuccess'), 'success');
       else this.notifySyncError(response?.error || 'Unknown error');
     } catch (error) {
       if (!current()) return;
@@ -197,7 +197,7 @@ export class AIStudioTransfer {
         mergePrompts(localPrompts, cloudPrompts),
       );
       if (!current() || !saved) return;
-      this.host.notify(this.host.t('downloadMergeSuccess'), 'info');
+      this.host.notify(this.host.t('downloadMergeSuccess'), 'success');
     } catch (error) {
       if (!current()) return;
       console.error('[AIStudioFolderManager] Cloud sync failed:', error);
