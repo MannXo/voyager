@@ -1,5 +1,3 @@
-import type { MarkerLevel } from './types';
-
 const DENSE_MAX_GAP_PX = 8;
 const DENSE_MAX_SPAN_PX = 160;
 
@@ -14,21 +12,18 @@ export function denseMarkerOffsets(count: number): number[] {
 }
 
 const RULER_WAVE_SIGMA = 1.2;
+const RULER_RESTING_SCALE = 0.29;
 const RULER_QUIET_OPACITY = 0.42;
 const RULER_CREST_OPACITY_GAIN = 0.5;
 
 /**
  * The ruler's Gaussian crest: ticks `distance` markers from the reading position
- * grow from their level's resting scale and quiet opacity toward full size.
+ * grow from a resting scale and quiet opacity toward full size.
  */
-export function rulerWaveTick(
-  distance: number,
-  level: MarkerLevel = 1,
-): { scale: number; opacity: number } {
-  const baseScale = level === 3 ? 0.54 : level === 2 ? 0.42 : 0.29;
+export function rulerWaveTick(distance: number): { scale: number; opacity: number } {
   const crest = Math.exp(-(distance * distance) / (2 * RULER_WAVE_SIGMA * RULER_WAVE_SIGMA));
   return {
-    scale: baseScale + (1 - baseScale) * crest,
+    scale: RULER_RESTING_SCALE + (1 - RULER_RESTING_SCALE) * crest,
     opacity: RULER_QUIET_OPACITY + RULER_CREST_OPACITY_GAIN * crest,
   };
 }

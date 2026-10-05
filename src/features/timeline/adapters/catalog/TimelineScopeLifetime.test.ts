@@ -9,6 +9,8 @@ import { requireBundledSiteAdapter } from '@/features/plugins/catalog/sites';
 import { PluginScope } from '@/features/plugins/runtime/pluginScope';
 import type { PluginSettings } from '@/features/plugins/types';
 import { turnNavigatorPrimitive } from '@/features/plugins/verbs/turnNavigator';
+import type { PrimitiveHandle } from '@/features/plugins/verbs/types';
+import { showTimelineStyleCoachmark } from '@/pages/content/timeline/timelineStyleCoachmark';
 
 vi.mock('@/utils/i18n', () => ({
   initI18n: vi.fn().mockResolvedValue(undefined),
@@ -59,9 +61,13 @@ afterEach(async () => {
 });
 
 function enable(settings: PluginSettings = {}): PluginScope {
+  return activate(settings).scope;
+}
+
+function activate(settings: PluginSettings = {}) {
   const scope = new PluginScope();
   scopes.push(scope);
-  turnNavigatorPrimitive.activate(
+  const handle = turnNavigatorPrimitive.activate(
     scope,
     {},
     {
@@ -72,7 +78,8 @@ function enable(settings: PluginSettings = {}): PluginScope {
       setTargetCounter: () => {},
     },
   );
-  return scope;
+  // The timeline activates synchronously and returns its settings handle.
+  return { scope, handle: handle as PrimitiveHandle };
 }
 
 describe('timeline scope lifetime', () => {
@@ -119,6 +126,40 @@ describe('timeline marker levels', () => {
     await vi.waitFor(() => expect(document.querySelector('.timeline-dot')).not.toBeNull());
     rightClick();
     expect(document.querySelector('.timeline-context-menu [data-level="2"]')).not.toBeNull();
+  });
+});
+
+describe('timeline marker levels outside the dots style', () => {
+  it('a ChatGPT compact or ruler timeline with node levels on offers no level menu and renders flat', async () => {
+    vi.mocked(showTimelineStyleCoachmark).mockClear();
+    const { handle } = activate({ timelineStyle: 'dots', markerLevel: true });
+    await flush();
+    releaseRead?.();
+    await vi.waitFor(() => expect(document.querySelector('.timeline-dot')).not.toBeNull());
+    const dot = () => document.querySelector<HTMLElement>('.timeline-dot')!;
+    const levelMenuItem = (level: number) => {
+      dot().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, button: 2 }));
+      return document.querySelector<HTMLButtonElement>(
+        `.timeline-context-menu [data-level="${level}"]`,
+      );
+    };
+    levelMenuItem(2)!.click();
+    await flush();
+    expect(dot().dataset.level).toBe('2');
+    // The compact guide would switch the style away from dots.
+    expect(showTimelineStyleCoachmark).not.toHaveBeenCalled();
+
+    for (const timelineStyle of ['compact', 'ruler']) {
+      handle.updateSettings!({ timelineStyle, markerLevel: true });
+      await flush();
+      expect(dot().dataset.level).toBe('1');
+      expect(levelMenuItem(2)).toBeNull();
+    }
+
+    handle.updateSettings!({ timelineStyle: 'dots', markerLevel: true });
+    await flush();
+    expect(dot().dataset.level).toBe('2');
+    expect(levelMenuItem(3)).not.toBeNull();
   });
 });
 

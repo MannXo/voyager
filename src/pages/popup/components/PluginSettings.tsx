@@ -1,6 +1,7 @@
 import {
   compatibleSettingWrite,
   resolvePluginSettings,
+  unavailableChoices,
 } from '@/features/plugins/runtime/resolvePluginSettings';
 import type { PluginManifest, PluginSettingValue } from '@/features/plugins/types';
 
@@ -70,6 +71,7 @@ export function PluginSettings({
         }
 
         if (field.type === 'select') {
+          const unavailable = unavailableChoices(plugin, resolved, key);
           return (
             <label key={key} className="flex items-center justify-between gap-3">
               <span className="text-muted-foreground text-[11px]">{settingText.label}</span>
@@ -79,7 +81,11 @@ export function PluginSettings({
                 className="bg-background border-border focus:ring-primary/50 min-w-0 rounded-md border px-2 py-1 text-[11px] transition-all focus:ring-2"
               >
                 {settingText.options?.map((option) => (
-                  <option key={option.value} value={option.value}>
+                  <option
+                    key={option.value}
+                    value={option.value}
+                    disabled={unavailable.has(option.value)}
+                  >
                     {option.label}
                   </option>
                 ))}

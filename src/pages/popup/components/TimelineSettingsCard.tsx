@@ -73,10 +73,12 @@ export function TimelineSettingsCard({
             {TIMELINE_STYLE_OPTIONS.map((option) => (
               <button
                 key={option.value}
-                className={`relative z-10 rounded-lg px-2 py-2 text-sm font-bold transition-all duration-200 ${
+                // Node levels have a shape only on the dots rail.
+                disabled={values.markerLevelEnabled && option.value !== 'dots'}
+                className={`relative z-10 rounded-lg px-2 py-2 text-sm font-bold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40 ${
                   values.timelineStyle === option.value
                     ? 'text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
+                    : 'text-muted-foreground enabled:hover:text-foreground'
                 }`}
                 onClick={() => onChange({ timelineStyle: option.value })}
               >

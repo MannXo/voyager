@@ -30,6 +30,7 @@ export class TimelineEngine {
   private readonly lifetime = new AbortController();
   private recalcTimer: number | null = null;
   private pluginSettings: Record<string, unknown> | null = null;
+  private markerLevelSwitch = false;
   // A scope aborts before awaiting pending startup, so old teardown cannot touch a newly mounted rail.
   constructor(
     private readonly adapter: TimelineAdapter,
@@ -137,6 +138,12 @@ export class TimelineEngine {
     this.tooltip?.refreshCurrent();
   }
   private setMarkerLevelEnabled(enabled: boolean): void {
+    this.markerLevelSwitch = enabled;
+    this.applyMarkerLevel();
+  }
+  // Levels have a shape only on the dots rail; compact and ruler stay flat and keep saved levels.
+  private applyMarkerLevel(): void {
+    const enabled = this.markerLevelSwitch && this.view.timelineStyle === 'dots';
     this.geometry.markerLevelEnabled = enabled;
     if (!enabled) this.interactions?.closeMenu();
     this.onStateChange();
@@ -294,6 +301,7 @@ export class TimelineEngine {
           if (isTimelineStyle(nextStyle)) {
             this.view.timelineStyle = nextStyle;
             this.view.applyTimelineStyle();
+            this.applyMarkerLevel();
           }
         }
         if (changes?.[this.settingKey('HideContainer')]) {

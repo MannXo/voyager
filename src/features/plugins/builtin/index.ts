@@ -3,13 +3,15 @@ import { type PluginManifest, hasNativeOps } from '../types';
 /** ChatGPT stamps the owning conversation id on each rendered reply. */
 export const CHATGPT_CONVERSATION_ID_ATTRIBUTE = 'data-chatgpt-selection-conversation-id';
 
-/** Same experimental, default-off switch and wording as Gemini's native timeline setting. */
+/** Same experimental, default-off switch, wording and dots-only rule as Gemini's native timeline setting. */
 const MARKER_LEVEL_SETTING = {
   type: 'boolean',
   label: 'Enable node levels',
   default: false,
   experimental: true,
   messageKeys: { label: 'enableMarkerLevel', hint: 'enableMarkerLevelHint' },
+  // Levels have a shape only on the dots rail.
+  requiresChoice: { setting: 'timelineStyle', value: 'dots' },
 } as const;
 
 /**

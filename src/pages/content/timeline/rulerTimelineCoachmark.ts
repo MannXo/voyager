@@ -33,12 +33,16 @@ const t = (key: TranslationKey, fallback: string): string => {
   }
 };
 
-async function loadRulerTimelineEnabled(): Promise<boolean> {
+/** Ruler users need no intro, and node levels rule out the ruler the intro switches to. */
+async function loadRulerIntroUnneeded(): Promise<boolean> {
   try {
     const got = (await browser.storage.sync.get({
       [StorageKeys.TIMELINE_STYLE]: 'dots',
+      [StorageKeys.TIMELINE_MARKER_LEVEL]: false,
     })) as Record<string, unknown>;
-    return got[StorageKeys.TIMELINE_STYLE] === 'ruler';
+    return (
+      got[StorageKeys.TIMELINE_STYLE] === 'ruler' || got[StorageKeys.TIMELINE_MARKER_LEVEL] === true
+    );
   } catch {
     return false;
   }
@@ -72,8 +76,7 @@ export async function maybeShowRulerTimelineCoachmark(
   opts: { force?: boolean; progress?: CoachmarkProgress } = {},
 ): Promise<CoachmarkResult> {
   if (location.hostname !== 'gemini.google.com') return 'skipped';
-  const enabled = await loadRulerTimelineEnabled();
-  if (enabled && !opts.force) return 'skipped';
+  if (!opts.force && (await loadRulerIntroUnneeded())) return 'skipped';
 
   try {
     await initI18n();
@@ -138,7 +141,7 @@ export async function maybeShowRulerTimelineCoachmark(
 export const rulerTimelineCoachmarkStep: CoachmarkSequenceStep = {
   id: RULER_TIMELINE_COACHMARK_ID,
   isEligible: async () =>
-    location.hostname === 'gemini.google.com' && !(await loadRulerTimelineEnabled()),
+    location.hostname === 'gemini.google.com' && !(await loadRulerIntroUnneeded()),
   show: (progress) => maybeShowRulerTimelineCoachmark({ progress }),
 };
 

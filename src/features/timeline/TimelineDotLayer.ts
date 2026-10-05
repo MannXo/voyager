@@ -379,10 +379,7 @@ export class TimelineDotLayer {
       if (!marker) continue;
       const dot = this.dots.get(marker.id);
       if (!dot) continue;
-      const { scale, opacity } = rulerWaveTick(
-        Math.abs(index - focusIndex),
-        this.geometry.getMarkerLevel(marker.id),
-      );
+      const { scale, opacity } = rulerWaveTick(Math.abs(index - focusIndex));
       dot.style.setProperty('--gv-timeline-ruler-scale', scale.toFixed(3));
       dot.style.setProperty('--gv-timeline-ruler-opacity', opacity.toFixed(3));
     }

@@ -59,6 +59,14 @@ export function compatibleSettingWrite(
   manifest: PluginManifest,
   write: PluginSettingWrite,
 ): { readonly checked: PluginSettingWrite; readonly stored: Record<string, PluginSettingValue> } {
+  const required = manifest.contributes.settings?.[write.key]?.requiresChoice;
+  if (required && write.value === true) {
+    const choice = compatibleSettingWrite(manifest, {
+      key: required.setting,
+      value: required.value,
+    });
+    return { checked: write, stored: { ...choice.stored, [write.key]: true } };
+  }
   const style = legacyTimelineStyle(manifest);
   if (!style || manifest.contributes.settings?.compactView) {
     return { checked: write, stored: { [write.key]: write.value } };
@@ -78,4 +86,22 @@ export function compatibleSettingWrite(
     checked,
     stored: { timelineStyle: checked.value, compactView: checked.value === 'compact' },
   };
+}
+
+/** Choices of the select `key` ruled out while a `requiresChoice` boolean is on. */
+export function unavailableChoices(
+  manifest: PluginManifest,
+  resolved: PluginSettings,
+  key: string,
+): ReadonlySet<string> {
+  const schema = manifest.contributes.settings ?? {};
+  const unavailable = new Set<string>();
+  for (const [name, field] of Object.entries(schema)) {
+    const rule = field.requiresChoice;
+    if (rule?.setting !== key || resolved[name] !== true) continue;
+    for (const option of schema[key]?.options ?? []) {
+      if (option.value !== rule.value) unavailable.add(option.value);
+    }
+  }
+  return unavailable;
 }

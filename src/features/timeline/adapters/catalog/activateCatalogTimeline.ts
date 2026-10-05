@@ -75,6 +75,8 @@ export function activateCatalogTimeline(
   }
   if (
     !yieldGuide &&
+    // The guide switches to compact, which node levels rule out.
+    currentSettings.markerLevel !== true &&
     currentSettings.compactView !== true &&
     currentSettings.timelineStyle !== 'compact' &&
     currentSettings.timelineStyle !== 'ruler'

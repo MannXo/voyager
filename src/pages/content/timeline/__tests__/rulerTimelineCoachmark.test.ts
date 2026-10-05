@@ -98,6 +98,20 @@ describe('ruler timeline coachmark', () => {
     expect(mocks.showCoachmark).not.toHaveBeenCalled();
   });
 
+  it('waits while node levels are on instead of switching their dots rail to ruler', async () => {
+    mocks.storageGet.mockImplementation(async (defaults?: Record<string, unknown>) => ({
+      ...defaults,
+      [StorageKeys.TIMELINE_MARKER_LEVEL]: true,
+    }));
+    const { maybeShowRulerTimelineCoachmark, rulerTimelineCoachmarkStep } =
+      await import('../rulerTimelineCoachmark');
+
+    expect(await rulerTimelineCoachmarkStep.isEligible!()).toBe(false);
+    expect(await maybeShowRulerTimelineCoachmark()).toBe('skipped');
+    expect(mocks.showCoachmark).not.toHaveBeenCalled();
+    expect(mocks.storageSet).not.toHaveBeenCalled();
+  });
+
   it('can be forced from the page console through its debug event', async () => {
     const { RULER_TIMELINE_COACHMARK_DEBUG_EVENT } = await import('../rulerTimelineCoachmark');
 

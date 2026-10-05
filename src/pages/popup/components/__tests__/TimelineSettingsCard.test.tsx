@@ -123,6 +123,23 @@ describe('TimelineSettingsCard', () => {
     expect(hideRow().hidden).toBe(false);
   });
 
+  it('with node levels on, only the dots style can be chosen', () => {
+    const styleButton = (label: string) =>
+      Array.from(container.querySelectorAll('button')).find((b) => b.textContent === label)!;
+    const props = render({
+      values: { ...values, timelineStyle: 'dots', markerLevelEnabled: true },
+    });
+    expect(styleButton('timelineStyleCompact').disabled).toBe(true);
+    expect(styleButton('timelineStyleRuler').disabled).toBe(true);
+    expect(styleButton('timelineStyleDots').disabled).toBe(false);
+    act(() => styleButton('timelineStyleRuler').click());
+    expect(props.onChange).not.toHaveBeenCalled();
+
+    render({ values: { ...values, markerLevelEnabled: false } });
+    expect(styleButton('timelineStyleCompact').disabled).toBe(false);
+    expect(styleButton('timelineStyleRuler').disabled).toBe(false);
+  });
+
   it('marks the experimental rows with the shared badge', () => {
     render();
     const badges = Array.from(container.querySelectorAll('[title="experimentalLabel"]'));

@@ -151,6 +151,26 @@ describe('validateManifest', () => {
     expect(result.data.contributes.settings?.width.max).toBe(120);
   });
 
+  it('drops first-party-only setting rules from catalog data', () => {
+    const result = validateManifest({
+      ...valid,
+      contributes: {
+        ...valid.contributes,
+        settings: {
+          locked: {
+            type: 'boolean',
+            label: 'Locked',
+            default: false,
+            requiresChoice: { setting: 'mode', value: 'a' },
+          },
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.contributes.settings?.locked).not.toHaveProperty('requiresChoice');
+  });
+
   it('rejects invalid setting endpoint labels', () => {
     const result = validateManifest({
       ...valid,

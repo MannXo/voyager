@@ -210,18 +210,6 @@ html[data-gv-scheme] .gemini-timeline-bar:not(.timeline-no-container)::before {
     opacity 110ms ease-out;
 }
 
-.gemini-timeline-bar.gv-timeline-style-ruler .timeline-dot[data-level]::before {
-  display: none;
-}
-
-.gemini-timeline-bar.gv-timeline-style-ruler .timeline-dot[data-level='2'] {
-  --gv-timeline-ruler-scale: 0.42;
-}
-
-.gemini-timeline-bar.gv-timeline-style-ruler .timeline-dot[data-level='3'] {
-  --gv-timeline-ruler-scale: 0.54;
-}
-
 .gemini-timeline-bar.gv-timeline-style-ruler .timeline-dot:hover::after {
   opacity: 0.9;
   transform: translateY(-50%) scaleX(1);

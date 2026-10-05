@@ -173,6 +173,32 @@ describe('timeline marker levels', () => {
   });
 });
 
+describe('timeline marker levels outside the dots style', () => {
+  const ext = useTimelinePage();
+
+  it('a compact or ruler rail with node levels on offers no level menu and shows every turn flat', async () => {
+    ext().seed('sync', { geminiTimelineMarkerLevel: true });
+    new GeminiPage(TURNS);
+    await startTimelineOnPage();
+    await outlineChapterOne();
+    chooseFromLevelMenu(CHAPTER_ONE.prompt, 'collapse');
+    await settle();
+
+    for (const style of ['compact', 'ruler']) {
+      ext().external('sync', { geminiTimelineStyle: style });
+      await settle();
+      expect(dotLabels()).toEqual(TURNS.map((turn) => turn.prompt));
+      expect(dotFor(DETAIL_A.prompt).dataset.level).toBe('1');
+      expect(openLevelMenu(dotFor(DETAIL_A.prompt))).toBeNull();
+    }
+
+    ext().external('sync', { geminiTimelineStyle: 'dots' });
+    await settle();
+    expect(dotLabels()).toEqual([CHAPTER_ONE.prompt, CHAPTER_TWO.prompt]);
+    expect(openLevelMenu(dotFor(CHAPTER_ONE.prompt))).not.toBeNull();
+  });
+});
+
 describe('timeline marker levels on multi-account routes', () => {
   const ext = useTimelinePage('/u/1/app/abc123');
 

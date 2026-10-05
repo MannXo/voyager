@@ -125,8 +125,42 @@ describe.each(BUILTIN_PLUGINS.filter((plugin) => plugin.id.endsWith('-timeline')
       expect(row.textContent).toContain('enableMarkerLevelHint');
 
       act(() => input.click());
-      expect(setPluginSettings).toHaveBeenCalledWith(plugin.id, { markerLevel: true });
+      expect(setPluginSettings).toHaveBeenCalledWith(plugin.id, {
+        markerLevel: true,
+        timelineStyle: 'dots',
+        compactView: false,
+      });
     });
+
+    it('with node levels on, only the nodes style can be chosen', async () => {
+      pluginState.current = {
+        [plugin.id]: { enabled: true, installedAt: 0, settings: { markerLevel: true } },
+      };
+      await render(plugin);
+      const select = container.querySelector('select')!;
+      const disabled = Array.from(select.options, (option) => [option.value, option.disabled]);
+      expect(Object.fromEntries(disabled)).toEqual({ dots: false, compact: true, ruler: true });
+    });
+
+    it.each(['compact', 'ruler'])(
+      'turning node levels on from %s switches to nodes in the same write',
+      async (timelineStyle) => {
+        pluginState.current = {
+          [plugin.id]: { enabled: true, installedAt: 0, settings: { timelineStyle } },
+        };
+        await render(plugin);
+        const input = container.querySelector<HTMLInputElement>(
+          'input[aria-label="enableMarkerLevel"]',
+        )!;
+        act(() => input.click());
+        expect(setPluginSettings).toHaveBeenCalledExactlyOnceWith(plugin.id, {
+          markerLevel: true,
+          timelineStyle: 'dots',
+          compactView: false,
+        });
+        expect(container.querySelector('select')!.value).toBe('dots');
+      },
+    );
   },
 );
 

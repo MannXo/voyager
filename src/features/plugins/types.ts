@@ -164,6 +164,12 @@ export interface SettingField {
    * native setting's wording. The manifest validator drops it from catalog and remote data.
    */
   readonly messageKeys?: { readonly label: TranslationKey; readonly hint?: TranslationKey };
+  /**
+   * First-party only: a boolean that works only with one choice of a select. While it is on, the
+   * select's other choices are disabled, and turning it on writes that choice in the same write.
+   * The manifest validator drops it from catalog and remote data.
+   */
+  readonly requiresChoice?: { readonly setting: string; readonly value: string };
 }
 export type SettingsSchema = Readonly<Record<string, SettingField>>;
 
