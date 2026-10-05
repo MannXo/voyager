@@ -1,7 +1,7 @@
 /**
  * The popup's writes for a Drive restore, in order: plugin state, synced
- * settings, then folders (plus shared prompts, and the timeline hierarchy on Gemini),
- * followed by the background-owned star merge. There is no transaction across
+ * settings, folders (plus the timeline hierarchy on Gemini), then the
+ * background-owned prompt and star merges. There is no transaction across
  * them, and the background has already restored highlights by the time they
  * run, so a failure partway reports which parts were restored and which were
  * not instead of a bare "sync failed".
@@ -54,9 +54,10 @@ export interface CloudRestoreInput {
   /** The Drive plugin-state payload, or undefined when absent or another format. */
   readonly plugins: unknown;
   readonly settings: unknown;
-  /** Folders, plus shared prompts and Gemini's hierarchy: one storage write. */
+  /** Folders, plus Gemini's hierarchy: one storage write. */
   readonly storageUpdate: Record<string, unknown>;
-  readonly includesPrompts: boolean;
+  /** Restores the shared prompts through their owner; absent where a site has none. */
+  readonly restorePrompts?: () => Promise<boolean>;
   /** Resolves true when a present cloud star payload merged successfully. */
   readonly mergeStarred?: () => Promise<boolean>;
   /** The backup has no folder data; an overwrite then writes nothing. */
@@ -93,13 +94,15 @@ export async function applyCloudRestore(input: CloudRestoreInput): Promise<void>
         .length > 0,
   });
   steps.push({
-    parts: input.includesPrompts ? ['folders', 'prompts'] : ['folders'],
+    parts: ['folders'],
     run: async () => {
       await chrome.storage.local.set(input.storageUpdate);
       return true;
     },
   });
-
+  if (input.restorePrompts) {
+    steps.push({ parts: ['prompts'], run: input.restorePrompts });
+  }
   if (input.mergeStarred) {
     steps.push({ parts: ['starred'], run: input.mergeStarred });
   }

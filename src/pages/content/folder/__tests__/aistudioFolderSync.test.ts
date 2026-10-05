@@ -14,6 +14,8 @@ import {
 } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 import type { PromptItem } from '@/core/types/sync';
+import { handlePromptLibraryApplyMessage } from '@/features/prompt/library/promptLibraryMessages';
+import { createPromptLibraryOwner } from '@/features/prompt/library/promptLibraryOwner';
 import { useCloudSyncTransfer } from '@/pages/popup/components/useCloudSyncTransfer';
 import { toastDriver } from '@/tests/toastDriver';
 
@@ -422,6 +424,15 @@ describe('AI Studio folder sync across contexts', () => {
         if ((message as { type: string }).type === 'gv.sync.requestData') responses.push(response);
         return response;
       }) as typeof chrome.tabs.sendMessage);
+      // The popup restores the shared prompts through the background prompt owner.
+      const prompts = createPromptLibraryOwner({
+        area: {
+          get: (key) => mockBrowser.storage.local.get(key),
+          set: (items) => mockBrowser.storage.local.set(items),
+        },
+      });
+      vi.spyOn(chrome.runtime, 'sendMessage').mockImplementation(((message: unknown) =>
+        handlePromptLibraryApplyMessage(message, prompts)) as typeof chrome.runtime.sendMessage);
       let transfer!: ReturnType<typeof useCloudSyncTransfer>;
       function Harness() {
         const current = useCloudSyncTransfer(

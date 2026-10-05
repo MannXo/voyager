@@ -16,6 +16,7 @@ import { StorageKeys } from '@/core/types/common';
 import { getPromptNameComparisonKey, getPromptNameConflictIds } from '@/core/utils/promptName';
 import type { PromptItem } from '@/features/backup/types/backup';
 import { type Serialize, createWriteQueue } from '@/features/storage/writeQueue';
+import { mergePromptsWithStats } from '@/utils/merge';
 
 import { type PromptImportStats, mergeImportedPrompts } from './mergeImportedPrompts';
 
@@ -44,6 +45,11 @@ export type PromptLibraryOp =
   | { kind: 'reorder'; ids: string[] }
   /** The prompts import: merge by id or text, as `mergeImportedPrompts` does. */
   | { kind: 'import'; items: PromptItem[] }
+  /**
+   * A Drive restore: merge keeps every stored prompt and lets a newer same-id
+   * cloud copy win (`mergePromptsWithStats`); overwrite stores the backup's list.
+   */
+  | { kind: 'restore'; mode: 'merge' | 'overwrite'; items: PromptItem[] }
   /**
    * The one-time copy of a page's legacy localStorage library: stored as given,
    * and only while the key holds nothing at all.
@@ -76,6 +82,22 @@ export interface PromptLibraryOwner {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Whether a stored library holds only prompts a merge can key and keep. */
+export function isPromptItemArray(value: unknown): value is PromptItem[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) =>
+        isRecord(item) &&
+        typeof item.id === 'string' &&
+        typeof item.text === 'string' &&
+        Array.isArray(item.tags) &&
+        item.tags.every((tag) => typeof tag === 'string') &&
+        typeof item.createdAt === 'number',
+    )
+  );
 }
 
 /** How Prompt Manager tells two prompt bodies apart: trimmed, ignoring case. */
@@ -180,6 +202,17 @@ function importPrompts(stored: unknown[], incoming: PromptItem[]) {
   };
 }
 
+function restorePrompts(stored: unknown[], mode: 'merge' | 'overwrite', incoming: PromptItem[]) {
+  if (mode === 'overwrite') {
+    return { items: incoming, result: summarize(incoming, incoming.length, 0) };
+  }
+  // Merging into an unreadable base would drop it; refuse rather than treat it as empty.
+  if (!isPromptItemArray(stored)) throw new Error('The prompt library holds an invalid prompt');
+  const { items } = mergePromptsWithStats(stored, incoming);
+  const added = items.length - stored.length;
+  return { items, result: summarize(items, added, incoming.length - added) };
+}
+
 /** Applies an op to a library. Pure: every time an op stores travels in the op. */
 export function applyPromptLibraryOp(
   stored: unknown[],
@@ -196,6 +229,8 @@ export function applyPromptLibraryOp(
       return reorderPrompts(stored, op.ids);
     case 'import':
       return importPrompts(stored, op.items);
+    case 'restore':
+      return restorePrompts(stored, op.mode, op.items);
     case 'seed':
       // Only reached for an empty library; the owner checks the raw value first.
       return stored.length === 0

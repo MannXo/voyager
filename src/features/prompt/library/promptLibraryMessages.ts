@@ -97,8 +97,9 @@ function parsePromptItem(value: unknown): PromptItem | null {
   return item;
 }
 
-function parseItems(value: unknown): PromptItem[] | null {
-  if (!Array.isArray(value) || value.length === 0 || value.length > LIMITS.maxItems) return null;
+function parseItems(value: unknown, allowEmpty = false): PromptItem[] | null {
+  if (!Array.isArray(value) || value.length > LIMITS.maxItems) return null;
+  if (value.length === 0 && !allowEmpty) return null;
   const items = value.map(parsePromptItem);
   return items.every((item): item is PromptItem => item !== null) ? items : null;
 }
@@ -137,6 +138,13 @@ export function parsePromptLibraryOp(value: unknown): PromptLibraryOp | null {
     case 'import': {
       const items = parseItems(value.items);
       return items ? { kind: value.kind, items } : null;
+    }
+    case 'restore': {
+      // An overwrite from a backup without prompts stores an empty library.
+      const items = parseItems(value.items, true);
+      return items && (value.mode === 'merge' || value.mode === 'overwrite')
+        ? { kind: 'restore', mode: value.mode, items }
+        : null;
     }
     case 'update': {
       const changes = parseChanges(value.changes);

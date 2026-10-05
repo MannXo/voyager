@@ -7,6 +7,11 @@ import { LanguageProvider } from '@/contexts/LanguageContext';
 import { StorageKeys } from '@/core/types/common';
 import type { FolderData } from '@/core/types/folder';
 import { type SyncState, DEFAULT_SYNC_STATE } from '@/core/types/sync';
+import {
+  handlePromptLibraryApplyMessage,
+  isPromptLibraryApplyMessage,
+} from '@/features/prompt/library/promptLibraryMessages';
+import { createPromptLibraryOwner } from '@/features/prompt/library/promptLibraryOwner';
 import { TRANSLATIONS } from '@/utils/translations';
 
 import { CloudSyncSettings } from '../CloudSyncSettings';
@@ -110,7 +115,12 @@ function installChrome(tabUrl: string, download = downloadedData()) {
   const syncSet = vi.fn(async (values: Record<string, unknown>) => {
     Object.assign(sync, values);
   });
-  const sendMessage = vi.fn(async (message: Message) => {
+  const localGet = get(local);
+  const prompts = createPromptLibraryOwner({ area: { get: localGet, set: localSet } });
+  const sendMessage = vi.fn(async (message: Message): Promise<unknown> => {
+    if (isPromptLibraryApplyMessage(message)) {
+      return handlePromptLibraryApplyMessage(message, prompts);
+    }
     if (message.type === 'gv.sync.download') return { ok: true, state, data: download };
     return { ok: true, state };
   });
@@ -133,7 +143,7 @@ function installChrome(tabUrl: string, download = downloadedData()) {
       sendMessage: tabSendMessage,
     },
     storage: {
-      local: { get: get(local), set: localSet, remove: vi.fn() },
+      local: { get: localGet, set: localSet, remove: vi.fn() },
       sync: { get: get(sync), set: syncSet, remove: vi.fn() },
       onChanged: { addListener: vi.fn(), removeListener: vi.fn() },
     },

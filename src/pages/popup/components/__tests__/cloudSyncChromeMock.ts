@@ -1,6 +1,11 @@
 import { vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import {
+  handlePromptLibraryApplyMessage,
+  isPromptLibraryApplyMessage,
+} from '@/features/prompt/library/promptLibraryMessages';
+import { createPromptLibraryOwner } from '@/features/prompt/library/promptLibraryOwner';
 import { createStarStore } from '@/features/savedLibrary/starStore';
 
 type RuntimeRequest = { type?: string; payload?: unknown };
@@ -35,6 +40,9 @@ export function createCloudSyncChromeMock(
     get: (keys) => local.get(keys),
     set: (items) => local.set(items),
   });
+  const prompts = createPromptLibraryOwner({
+    area: { get: (key) => local.get(key), set: (items) => local.set(items) },
+  });
   return {
     runtime: {
       id: 'test-extension-id',
@@ -46,6 +54,9 @@ export function createCloudSyncChromeMock(
             (error: Error) => reply({ ok: false, error: error.message }),
           );
           return;
+        }
+        if (isPromptLibraryApplyMessage(message)) {
+          return handlePromptLibraryApplyMessage(message, prompts);
         }
         return sendSyncMessage(message);
       }),

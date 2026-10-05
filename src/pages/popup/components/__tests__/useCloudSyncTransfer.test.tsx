@@ -10,6 +10,14 @@ import {
 import { StorageKeys } from '@/core/types/common';
 import type { FolderData } from '@/core/types/folder';
 import type { SyncAccountScope, SyncPlatform } from '@/core/types/sync';
+import {
+  handlePromptLibraryApplyMessage,
+  isPromptLibraryApplyMessage,
+} from '@/features/prompt/library/promptLibraryMessages';
+import {
+  createPromptLibraryOwner,
+  type PromptLibraryOwner,
+} from '@/features/prompt/library/promptLibraryOwner';
 import { createStarStore, type StarStore } from '@/features/savedLibrary/starStore';
 import { getTimelineHierarchyStorageKey } from '@/pages/content/timeline/hierarchyStorage';
 
@@ -50,6 +58,7 @@ describe('popup cloud sync transfer operations', () => {
   let transfer: Transfer;
   let stored: Record<string, unknown>;
   let starStore: StarStore;
+  let promptOwner: PromptLibraryOwner;
   const tabMessage = vi.fn<(tabId: number, message: { type: string }) => Promise<unknown>>();
   const localGet = vi.fn<(keys: unknown) => Promise<Record<string, unknown>>>();
   const localSet = vi.fn<(items: Record<string, unknown>) => Promise<void>>();
@@ -87,14 +96,19 @@ describe('popup cloud sync transfer operations', () => {
       Object.assign(stored, structuredClone(items));
     });
     starStore = createStarStore({ get: localGet, set: localSet });
+    promptOwner = createPromptLibraryOwner({ area: { get: localGet, set: localSet } });
     vi.stubGlobal('chrome', {
       runtime: {
         id: 'test',
-        sendMessage: (_message: { payload?: unknown }, reply: (response: unknown) => void) => {
-          void starStore.mergeCloud(_message.payload).then(
-            (result) => reply({ ok: true, ...result }),
-            (error: Error) => reply({ ok: false, error: error.message }),
+        sendMessage: (message: { payload?: unknown }, reply?: (response: unknown) => void) => {
+          if (isPromptLibraryApplyMessage(message)) {
+            return handlePromptLibraryApplyMessage(message, promptOwner);
+          }
+          void starStore.mergeCloud(message.payload).then(
+            (result) => reply?.({ ok: true, ...result }),
+            (error: Error) => reply?.({ ok: false, error: error.message }),
           );
+          return undefined;
         },
       },
       tabs: { sendMessage: tabMessage },
@@ -161,11 +175,11 @@ describe('popup cloud sync transfer operations', () => {
     });
     tabMessage.mockResolvedValue({ ok: true, data: emptyFolders, accountScope: tabScope });
     await download.restore({ folders: { data: folders } }, 'overwrite', false);
-    expect(localSet).toHaveBeenCalledExactlyOnceWith({
+    expect(localSet).toHaveBeenCalledWith({
       [buildScopedStorageKey(StorageKeys.FOLDER_DATA, 'tab')]: folders,
-      [StorageKeys.PROMPT_ITEMS]: [],
       [getTimelineHierarchyStorageKey('page')]: { conversations: {} },
     });
+    expect(stored[StorageKeys.PROMPT_ITEMS]).toEqual([]);
     expect(tabMessage).toHaveBeenLastCalledWith(7, { type: 'gv.folders.reload' });
   });
 
@@ -258,6 +272,69 @@ describe('popup cloud sync transfer operations', () => {
     expect((await upload).folders).toEqual(folders);
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it.each(['gemini', 'aistudio'] as const)(
+    'keeps a prompt another tab saves during a restore on %s',
+    async (platform) => {
+      const localPrompt = { id: 'local', text: 'Local', tags: [], createdAt: 1 };
+      const otherTab = { id: 'other', text: 'Other tab', tags: [], createdAt: 3 };
+      const cloudPrompt = { id: 'cloud', text: 'Cloud', tags: [], createdAt: 2 };
+      stored[StorageKeys.PROMPT_ITEMS] = [localPrompt];
+      let saved = false;
+      localSet.mockImplementation(async (items) => {
+        // Prompt Manager saves through the owner while the popup writes folders.
+        if (!saved && !(StorageKeys.PROMPT_ITEMS in items)) {
+          saved = true;
+          await promptOwner.apply({ kind: 'add', items: [otherTab] });
+        }
+        Object.assign(stored, structuredClone(items));
+      });
+      await render(platform, false);
+      const download = await transfer.prepareDownload();
+      await download.restore(
+        { folders: { data: folders }, prompts: { items: [cloudPrompt] } },
+        'merge',
+        false,
+      );
+      expect(saved).toBe(true);
+      expect(stored[StorageKeys.PROMPT_ITEMS]).toEqual([otherTab, localPrompt, cloudPrompt]);
+    },
+  );
+
+  it.each([
+    ['gemini', 'fails'],
+    ['gemini', 'is invalid'],
+    ['aistudio', 'fails'],
+    ['aistudio', 'is invalid'],
+  ] as const)(
+    'does not replace prompts on %s with the backup when the local prompt read %s',
+    async (platform, failure) => {
+      const localPrompts = failure === 'is invalid' ? [{ id: 'broken' }] : [];
+      stored[StorageKeys.PROMPT_ITEMS] = localPrompts;
+      if (failure === 'fails') {
+        localGet.mockImplementation(async (keys) => {
+          if (keys === StorageKeys.PROMPT_ITEMS) throw new Error('read failed');
+          const names = Array.isArray(keys) ? keys : [keys];
+          return Object.fromEntries(names.map((name) => [String(name), stored[String(name)]]));
+        });
+      }
+      await render(platform, false);
+      const download = await transfer.prepareDownload();
+      const restore = download.restore(
+        {
+          folders: { data: folders },
+          prompts: { items: [{ id: 'cloud', text: 'Cloud', tags: [], createdAt: 2 }] },
+        },
+        'merge',
+        false,
+      );
+      await expect(restore).rejects.toMatchObject({
+        restored: ['folders'],
+        failed: ['prompts'],
+      });
+      expect(stored[StorageKeys.PROMPT_ITEMS]).toEqual(localPrompts);
+    },
+  );
 
   it('restores the prompts an AI Studio upload saved, without Gemini-only data', async () => {
     vi.mocked(accountIsolationService.isIsolationEnabled).mockResolvedValue(false);

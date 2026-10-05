@@ -14,12 +14,13 @@ import type {
   SyncAccountScope,
   SyncPlatform,
 } from '@/core/types/sync';
-import { getPromptNameConflictIds } from '@/core/utils/promptName';
 import {
   FOLDER_PLATFORMS,
   getFolderPlatformForHost,
   supportsAccountIsolation,
 } from '@/features/folder/platforms';
+import { createRuntimePromptLibraryClient } from '@/features/prompt/library/promptLibraryMessages';
+import { isPromptItemArray } from '@/features/prompt/library/promptLibraryOwner';
 import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
 import {
   getTimelineHierarchyStorageKey,
@@ -28,11 +29,7 @@ import {
 } from '@/pages/content/timeline/hierarchyStorage';
 import type { TimelineHierarchyData } from '@/pages/content/timeline/hierarchyTypes';
 
-import {
-  mergeFolderData,
-  mergePromptsWithStats,
-  mergeTimelineHierarchy,
-} from '../../../utils/merge';
+import { mergeFolderData, mergeTimelineHierarchy } from '../../../utils/merge';
 import { applyCloudRestore, CloudRestoreError, type CloudRestoreMode } from './cloudRestore';
 
 function isFolderData(value: unknown): value is FolderData {
@@ -55,23 +52,6 @@ function parseStoredFolderData(value: unknown): FolderData | null {
   } catch {
     return null;
   }
-}
-
-function isPromptItemArray(value: unknown): value is PromptItem[] {
-  return (
-    Array.isArray(value) &&
-    value.every((item) => {
-      if (typeof item !== 'object' || item === null) return false;
-      const prompt = item as Record<string, unknown>;
-      return (
-        typeof prompt.id === 'string' &&
-        typeof prompt.text === 'string' &&
-        Array.isArray(prompt.tags) &&
-        prompt.tags.every((tag) => typeof tag === 'string') &&
-        typeof prompt.createdAt === 'number'
-      );
-    })
-  );
 }
 
 function isTimelineHierarchyData(value: unknown): value is TimelineHierarchyData {
@@ -257,7 +237,8 @@ async function readLocalSyncData(
   try {
     const storageResult = await chrome.storage.local.get([
       folderStorageKey,
-      ...(definition.syncsSharedData ? [StorageKeys.PROMPT_ITEMS] : []),
+      // A restore leaves prompts to their owner, which reads them in its own turn.
+      ...(definition.syncsSharedData && purpose === 'upload' ? [StorageKeys.PROMPT_ITEMS] : []),
       ...(definition.syncsSharedData && purpose === 'restore'
         ? getTimelineHierarchyStorageKeysToRead(timelineHierarchyAccountScope?.accountKey)
         : []),
@@ -312,18 +293,14 @@ async function restoreCloudDownload(
   const cloudHierarchy = data.timelineHierarchy?.data || { conversations: {} };
   const shouldOverwrite = mode === 'overwrite';
   const nextFolders = shouldOverwrite ? cloudFolders : mergeFolderData(local.folders, cloudFolders);
-  const promptMerge = shouldOverwrite
-    ? { items: cloudPrompts, nameConflicts: getPromptNameConflictIds(cloudPrompts).size }
-    : mergePromptsWithStats(local.prompts, cloudPrompts);
   const nextHierarchy = shouldOverwrite
     ? cloudHierarchy
     : mergeTimelineHierarchy(local.timelineHierarchy, cloudHierarchy);
   const storageUpdate: Record<string, unknown> = { [local.folderStorageKey]: nextFolders };
-  // AI Studio uploads the shared prompts too; only the timeline hierarchy is Gemini's alone.
-  if (definition.syncsSharedData) storageUpdate[StorageKeys.PROMPT_ITEMS] = promptMerge.items;
   if (context.payload.platform === 'gemini') {
     storageUpdate[context.timelineHierarchyStorageKey] = nextHierarchy;
   }
+  let nameConflicts = 0;
   await applyCloudRestore({
     mode,
     highlightsRestored,
@@ -333,7 +310,19 @@ async function restoreCloudDownload(
         : undefined,
     settings: definition.syncsSharedData ? data.settings?.data : undefined,
     storageUpdate,
-    includesPrompts: definition.syncsSharedData,
+    // AI Studio uploads the shared prompts too. The owner merges them with the library as
+    // stored at that moment, so a prompt another tab saves meanwhile is kept.
+    restorePrompts: definition.syncsSharedData
+      ? async () => {
+          const result = await createRuntimePromptLibraryClient().apply({
+            kind: 'restore',
+            mode,
+            items: cloudPrompts,
+          });
+          nameConflicts = result.nameConflicts;
+          return true;
+        }
+      : undefined,
     foldersMissing: !hasCloudFolderData,
     // Both restore modes merge stars so this tab cannot erase other sites or accounts.
     mergeStarred:
@@ -347,7 +336,7 @@ async function restoreCloudDownload(
   } catch (error) {
     console.warn('[CloudSyncSettings] Could not notify content script:', error);
   }
-  return { foldersMissing: !hasCloudFolderData, nameConflicts: promptMerge.nameConflicts };
+  return { foldersMissing: !hasCloudFolderData, nameConflicts };
 }
 
 /** Capture each operation's scope; the download's restore keeps that captured context. */
