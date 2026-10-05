@@ -218,7 +218,7 @@ export class TimelineState {
     const marker = this.markerMap.get(id);
     // A press captures its message before an initial read can yield to a route or DOM change.
     const summary = marker?.summary;
-    const text = this.isMarkerStarred(id) ? undefined : this.starText.capture(marker);
+    const text = this.starText.capture(marker); // Only an add uses it, decided after the queue.
     const conversationTitle = this.policy.getConversationTitle(this.markers);
     // Resolve from the header at the press, before hydration or queued writes can yield to another page.
     const accountRead = this.policy.stars.resolveAccount().then(

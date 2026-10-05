@@ -207,6 +207,34 @@ it('recalculating an unchanged conversation reads no computed styles', async () 
   expect((await store.getForConversation(conversationId))[1]?.text).toBeUndefined();
 });
 
+it('rapidly re-starring a prompt keeps the text it had when pressed', async () => {
+  const { state, store, mount } = fixture([{ ...star(), text: 'First line\nSecond line' }]);
+  await state.init();
+  const [marker] = mount();
+  const unstarring = state.toggleStar(turnId);
+  const restarring = state.toggleStar(turnId);
+  marker!.element.textContent = 'Changed after second press';
+  await Promise.all([unstarring, restarring]);
+  expect(await store.getForConversation(conversationId)).toEqual([
+    expect.objectContaining({ turnId, text: 'First line\nSecond line' }),
+  ]);
+});
+
+it('a newer synced star for an edited prompt still gets its full text', async () => {
+  const edited = { ...star(), content: 'Old prompt before an edit' };
+  const { state, store, area, mount } = fixture([edited]);
+  await state.init();
+  mount();
+  expect(area.set).not.toHaveBeenCalled();
+  const newer = { ...edited, content: 'First line', starredAt: 2 };
+  await store.mergeCloud({ data: { messages: { [conversationId]: [newer] } } });
+  await vi.waitFor(async () =>
+    expect(await store.getForConversation(conversationId)).toEqual([
+      { ...newer, text: 'First line\nSecond line' },
+    ]),
+  );
+});
+
 it('opening an old conversation fills in the full text of its stars once', async () => {
   const { state, store, area, mount, values } = fixture([star()]);
   await state.init();

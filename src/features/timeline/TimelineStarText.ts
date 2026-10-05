@@ -10,8 +10,8 @@ export class TimelineStarText {
   private markers: readonly TimelineMarker[] = [];
   private messages: readonly StarredMessage[] = [];
   private revision = 0;
-  /** Turns whose text did not match their star, by markup, so recalculation does not re-read styles. */
-  private readonly attempts = new Map<string, { element: HTMLElement; markup: string }>();
+  /** Star instances whose turn text did not match, so recalculation does not re-read styles. */
+  private readonly attempts = new Map<string, { element: HTMLElement; inputs: string }>();
   private pending = false;
   private stopped = false;
   private readonly route = location.href.split('#')[0];
@@ -86,12 +86,13 @@ export class TimelineStarText {
             this.policy.getStoredTurnIdAliases(item.id).includes(message.turnId)),
       );
       if (!marker) return [];
-      const markup = marker.element.outerHTML;
+      // A newer or re-previewed star is a different decision input and must retry.
+      const inputs = JSON.stringify([message.content, message.starredAt, marker.element.outerHTML]);
       const attempt = this.attempts.get(message.turnId);
-      if (attempt?.element === marker.element && attempt.markup === markup) return [];
+      if (attempt?.element === marker.element && attempt.inputs === inputs) return [];
       const text = getBackfillStarText(message, userTurnText(marker.element));
       if (text === undefined) {
-        this.attempts.set(message.turnId, { element: marker.element, markup });
+        this.attempts.set(message.turnId, { element: marker.element, inputs });
         return [];
       }
       return [{ turnId: message.turnId, text }];
