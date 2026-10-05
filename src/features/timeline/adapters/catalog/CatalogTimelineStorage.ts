@@ -38,9 +38,12 @@ export function createCatalogTimelineStoragePolicy(
       extensionKey: `${StorageKeys.CATALOG_TIMELINE_HIERARCHY_PREFIX}${config.siteId}`,
       legacyLevelsKey: null,
       legacyCollapsedKey: null,
+      adoptUnscopedHierarchy: false,
+      // A site with account attributes never stores an outline it cannot attribute to an account.
       resolveAccountScope: async () => {
+        if (!config.accountIdAttributes?.length) return null;
         const accountKey = await resolveCatalogAccountKey(config);
-        return accountKey ? { accountKey, routeUserId: null } : null;
+        return accountKey ? { accountKey, routeUserId: null } : 'unknown';
       },
     },
     resolveMountedTurnId: extractTurnHash,

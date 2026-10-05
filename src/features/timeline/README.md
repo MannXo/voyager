@@ -35,7 +35,8 @@ The [catalog adapter](adapters/catalog/CatalogTimelineAdapter.ts) receives seman
 across virtualized DOM windows. Its [storage policy](adapters/catalog/CatalogTimelineStorage.ts)
 stores hierarchy in extension storage, one `gvCatalogTimelineHierarchy:<siteId>` blob per site in the
 Gemini blob shape. A site that declares `accountIdAttributes` (ChatGPT) scopes that blob and its star
-annotations to the hashed account; other sites stay unscoped. Catalog hierarchy is in local backups
+annotations to the hashed account and stores no outline while that account is unknown; other sites
+stay unscoped. Only Gemini's migration reads an unscoped blob behind a missing scoped one. Catalog hierarchy is in local backups
 but has no Drive file yet. Stars for every site come from the Saved Library through its
 [client](../savedLibrary/StarredMessagesService.ts), whose requests use the background store as the
 single write owner. Every edit requires evidence that the turn belongs to the current conversation.

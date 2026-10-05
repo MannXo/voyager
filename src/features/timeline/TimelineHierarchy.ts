@@ -38,14 +38,21 @@ export class TimelineHierarchy {
   private get unscopedKey(): string {
     return this.policy.hierarchy.extensionKey;
   }
+  /** Only Gemini's pre-isolation migration may read the unscoped blob behind a missing scoped one. */
+  private get readsOnlyOwnKey(): boolean {
+    return (
+      this.timelineHierarchyStorageKey === this.unscopedKey ||
+      !this.policy.hierarchy.adoptUnscopedHierarchy
+    );
+  }
   private get extensionKeysToRead(): string[] {
-    return this.timelineHierarchyStorageKey === this.unscopedKey
-      ? [this.unscopedKey]
+    return this.readsOnlyOwnKey
+      ? [this.timelineHierarchyStorageKey]
       : [this.timelineHierarchyStorageKey, this.unscopedKey];
   }
   private resolveStoredHierarchy(values: Record<string, unknown>) {
     if (
-      this.timelineHierarchyStorageKey === this.unscopedKey ||
+      this.readsOnlyOwnKey ||
       Object.prototype.hasOwnProperty.call(values, this.timelineHierarchyStorageKey)
     )
       return normalizeTimelineHierarchyData(values[this.timelineHierarchyStorageKey]);
@@ -198,7 +205,7 @@ export class TimelineHierarchy {
     if (this.timelineHierarchyStorageKey) return true;
     try {
       const scope = await this.policy.hierarchy.resolveAccountScope();
-      if (!this.isCurrent) return false;
+      if (!this.isCurrent || scope === 'unknown') return false;
       this.timelineHierarchyAccountScope = scope;
       this.timelineHierarchyStorageKey = scope?.accountKey
         ? buildScopedStorageKey(this.unscopedKey, scope.accountKey)

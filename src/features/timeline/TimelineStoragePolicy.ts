@@ -15,10 +15,12 @@ export interface TimelineStoragePolicy {
     readonly extensionKey: string;
     readonly legacyLevelsKey: string | null;
     readonly legacyCollapsedKey: string | null;
-    readonly resolveAccountScope: () => Promise<Pick<
-      AccountScope,
-      'accountKey' | 'routeUserId'
-    > | null>;
+    /** Gemini only: a missing scoped blob adopts the pre-isolation unscoped blob once. */
+    readonly adoptUnscopedHierarchy: boolean;
+    /** null stores unscoped; 'unknown' reads and writes nothing until a later edit retries. */
+    readonly resolveAccountScope: () => Promise<
+      Pick<AccountScope, 'accountKey' | 'routeUserId'> | null | 'unknown'
+    >;
   };
   /** Full-history aliases belong to stored records, never to DOM-window positions. */
   readonly resolveMountedTurnId: (id: string) => string | null;

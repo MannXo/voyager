@@ -63,6 +63,7 @@ function create(
       extensionKey: 'gvCatalogTimelineHierarchy:site',
       legacyLevelsKey: null,
       legacyCollapsedKey: null,
+      adoptUnscopedHierarchy: false,
       resolveAccountScope: async () => null,
     },
     isCurrent: () => route === capturedRoute,

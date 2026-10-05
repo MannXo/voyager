@@ -336,4 +336,27 @@ describe('catalog hierarchy storage boundaries', () => {
     expect(hierarchyKeys()).toHaveLength(2);
     expect(storage.values.local.has('gvCatalogTimelineHierarchy:chatgpt')).toBe(false);
   });
+
+  it('a ChatGPT outline saved before the account was known never appears for another account', async () => {
+    const unknown = await fixture('chatgpt', accountAttributes);
+    await unknown.hierarchy.setMarkerLevel('c-turn', 2);
+    await settle();
+    expect(hierarchyKeys()).toEqual([]);
+    unknown.destroy();
+
+    setAccount('user-account-b', 'workspace-b');
+    const onB = await fixture('chatgpt', accountAttributes);
+    expect(onB.hierarchy.getMarkerLevel('c-turn')).toBe(1);
+  });
+
+  it('a ChatGPT edit made once the account appears is saved under that account', async () => {
+    const state = await fixture('chatgpt', accountAttributes);
+    setAccount('user-account-a', 'workspace-a');
+    await state.hierarchy.setMarkerLevel('c-turn', 2);
+    await settle();
+    expect(state.hierarchy.getMarkerLevel('c-turn')).toBe(2);
+    expect(hierarchyKeys()).toEqual([
+      expect.stringMatching(/^gvCatalogTimelineHierarchy:chatgpt:acct:/),
+    ]);
+  });
 });
