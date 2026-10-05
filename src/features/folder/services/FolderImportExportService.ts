@@ -15,6 +15,13 @@ import {
 
 import { SESSION_BACKUP_KEY, SESSION_BACKUP_TIMESTAMP_KEY } from '../constants';
 import {
+  cutFolderCycles,
+  findInheritedFolderKey,
+  findRepeatedFolderId,
+  ownBucket,
+  setBucket,
+} from '../model/folderData';
+import {
   type FolderExportPayload,
   type ImportOptions,
   type ImportResult,
@@ -42,6 +49,16 @@ export class FolderImportExportService {
         folderContents: data.folderContents,
       },
     };
+  }
+
+  /**
+   * The site a folder file says it came from, or null for an unmarked file.
+   * Gemini and AI Studio write unmarked files; ChatGPT marks its own.
+   */
+  static exportedPlatform(payload: unknown): string | null {
+    if (!payload || typeof payload !== 'object') return null;
+    const platform = (payload as { platform?: unknown }).platform;
+    return typeof platform === 'string' && platform ? platform : null;
   }
 
   /**
@@ -165,6 +182,32 @@ export class FolderImportExportService {
       }
     }
 
+    // An id such as `__proto__` cannot hold a bucket in a plain object, so the
+    // folder would be saved without one and break every later render.
+    const inherited = findInheritedFolderKey(data.folders as Folder[], data.folderContents);
+    if (inherited !== null) {
+      return {
+        success: false,
+        error: {
+          type: ValidationErrorType.CORRUPTED_DATA,
+          message: `Invalid folder id "${inherited}"`,
+          details: inherited,
+        },
+      };
+    }
+
+    const repeated = findRepeatedFolderId(data.folders as Folder[]);
+    if (repeated !== null) {
+      return {
+        success: false,
+        error: {
+          type: ValidationErrorType.CORRUPTED_DATA,
+          message: `Folder id "${repeated}" appears more than once`,
+          details: repeated,
+        },
+      };
+    }
+
     // Per-entry validation of folderContents — lenient: malformed conversation
     // entries are dropped (and counted) instead of rejecting the whole import.
     const { contents: sanitizedContents, skipped } = this.sanitizeFolderContents(
@@ -182,7 +225,9 @@ export class FolderImportExportService {
       data: {
         ...(payload as FolderExportPayload),
         data: {
-          folders: data.folders as Folder[],
+          // Stored data can hold a parent cycle (a Drive merge of two moves),
+          // so its own export must import. The cut folder lands at the root.
+          folders: cutFolderCycles(data.folders as Folder[]),
           folderContents: sanitizedContents,
         },
       },
@@ -204,7 +249,7 @@ export class FolderImportExportService {
 
     for (const [folderId, value] of Object.entries(raw)) {
       if (!Array.isArray(value)) {
-        contents[folderId] = [];
+        setBucket(contents, folderId, []);
         skipped++;
         continue;
       }
@@ -224,7 +269,7 @@ export class FolderImportExportService {
           skipped++;
         }
       }
-      contents[folderId] = valid;
+      setBucket(contents, folderId, valid);
     }
 
     return { contents, skipped };
@@ -260,7 +305,7 @@ export class FolderImportExportService {
     let duplicatesConversationsSkipped = 0;
 
     for (const [folderId, conversations] of Object.entries(imported.folderContents)) {
-      const target = [...(mergedContents[folderId] ?? [])];
+      const target = [...(ownBucket(mergedContents, folderId) ?? [])];
       const existingConvIds = new Set(target.map((c) => c.conversationId));
 
       for (const conv of conversations) {
@@ -272,7 +317,7 @@ export class FolderImportExportService {
         }
       }
 
-      mergedContents[folderId] = target;
+      setBucket(mergedContents, folderId, target);
     }
 
     const merged: FolderData = {

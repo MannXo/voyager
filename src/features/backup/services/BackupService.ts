@@ -210,6 +210,29 @@ export class BackupService implements IBackupService {
         ),
       });
 
+      const catalogHierarchyResult = await this.loadCatalogTimelineHierarchyBuckets();
+      if (!catalogHierarchyResult.success) {
+        return {
+          success: false,
+          error: catalogHierarchyResult.error,
+        };
+      }
+
+      // Catalog buckets keep their storage key: a ChatGPT account hash exists nowhere else.
+      files.push({
+        name: 'catalog-timeline-hierarchy.json',
+        content: JSON.stringify(
+          {
+            format: 'gemini-voyager.catalog-timeline-hierarchy.v1',
+            exportedAt: new Date().toISOString(),
+            version: EXTENSION_VERSION,
+            data: catalogHierarchyResult.data,
+          },
+          null,
+          2,
+        ),
+      });
+
       // Generate metadata file
       const metadata: BackupMetadata = {
         version: EXTENSION_VERSION,
@@ -372,6 +395,33 @@ export class BackupService implements IBackupService {
         error: new AppError(
           ErrorCode.STORAGE_READ_FAILED,
           'Failed to load folder data',
+          {},
+          error instanceof Error ? error : undefined,
+        ),
+      };
+    }
+  }
+
+  private async loadCatalogTimelineHierarchyBuckets(): Promise<
+    Result<Record<string, TimelineHierarchyData>>
+  > {
+    try {
+      if (typeof chrome === 'undefined' || !chrome.storage?.local?.get) {
+        return { success: true, data: {} };
+      }
+      const storageItems = (await chrome.storage.local.get(null)) as Record<string, unknown>;
+      const buckets = Object.fromEntries(
+        Object.entries(storageItems)
+          .filter(([key]) => key.startsWith(StorageKeys.CATALOG_TIMELINE_HIERARCHY_PREFIX))
+          .map(([key, value]) => [key, normalizeTimelineHierarchyData(value)]),
+      );
+      return { success: true, data: buckets };
+    } catch (error) {
+      return {
+        success: false,
+        error: new AppError(
+          ErrorCode.STORAGE_READ_FAILED,
+          'Failed to load catalog timeline hierarchy data',
           {},
           error instanceof Error ? error : undefined,
         ),

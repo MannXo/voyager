@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { StorageKeys } from '@/core/types/common';
+import { PLUGIN_CATALOG_REFRESH_MESSAGE } from '@/features/plugins/runtime/messages';
 import { TRANSLATIONS } from '@/utils/translations';
 
 import Popup from '../Popup';
@@ -218,6 +219,114 @@ describe('Popup settings integration', () => {
     expect(container.querySelectorAll('button[aria-pressed="true"]')).toHaveLength(1);
   });
 
+  it('reaches local plugins from a Gemini tab without any catalog request', async () => {
+    local[StorageKeys.PLUGIN_LOCAL_MANIFESTS] = {
+      'local.me.gemini-tweak': {
+        manifest: {
+          id: 'local.me.gemini-tweak',
+          name: 'My Gemini tweak',
+          version: '1.0.0',
+          description: 'd',
+          author: 'me',
+          category: 'layout',
+          license: 'MIT',
+          engine: '>=1.0.0',
+          tier: 'declarative',
+          matches: ['https://gemini.google.com/*'],
+          contributes: { styles: [{ css: '.gv-x{color:red}' }] },
+        },
+        importedAt: 1,
+        updatedAt: 1,
+      },
+    };
+    await mount();
+    // The page targets a local plugin, so the entry opens with its toggle and the import card.
+    expect(container.textContent).toContain('My Gemini tweak');
+    expect(container.textContent).toContain(TRANSLATIONS.en.localPluginsTitle);
+    expect(container.querySelector('#folder-enabled')).not.toBeNull();
+    const messageTypes = extensionApi.runtime.sendMessage.mock.calls.map(
+      ([message]) => (message as { type?: string } | undefined)?.type ?? '',
+    );
+    expect(messageTypes).not.toContain(PLUGIN_CATALOG_REFRESH_MESSAGE);
+  });
+
+  it('keeps the native local plugins entry off plugin sites, which have their own plugin page', async () => {
+    await mount();
+    expect(container.textContent).toContain(TRANSLATIONS.en.localPluginsNativeHint);
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    extensionApi.tabs.query.mockResolvedValue([{ id: 9, url: 'https://claude.ai/new' }]);
+    await mount();
+    expect(container.textContent).not.toContain(TRANSLATIONS.en.localPluginsNativeHint);
+    expect(container.textContent).toContain(TRANSLATIONS.en.localPluginsTitle);
+  });
+
+  it('reaches starred history from a timeline plugin site, even after a remembered native search', async () => {
+    const shown = (element: Element | null | undefined) =>
+      !!element && !element.closest('[hidden]');
+    const button = (label: string) =>
+      [...container.querySelectorAll('button')].find(
+        (candidate) => candidate.textContent === label,
+      );
+    const starredHistoryEntry = () => button(TRANSLATIONS.en.viewStarredHistory);
+    const remount = async (url: string) => {
+      await act(async () => root.unmount());
+      root = createRoot(container);
+      extensionApi.tabs.query.mockResolvedValue([{ id: 10, url }]);
+      await mount();
+    };
+    extensionApi.tabs.query.mockResolvedValue([{ id: 10, url: 'https://chatgpt.com/c/abc' }]);
+    await mount();
+    expect(shown(starredHistoryEntry())).toBe(true);
+    // Catalog timelines do not read the Gemini keys these controls write.
+    expect(shown(container.querySelector('#hide-container'))).toBe(false);
+    expect(shown(button(TRANSLATIONS.en.resetTimelinePosition))).toBe(false);
+    await act(async () => starredHistoryEntry()!.click());
+    expect(container.textContent).not.toContain(TRANSLATIONS.en.timelineOptions);
+
+    local[StorageKeys.GV_POPUP_SETTINGS_SEARCH_QUERY] = 'Mermaid';
+    await remount('https://chatgpt.com/c/abc');
+    expect(shown(starredHistoryEntry())).toBe(true);
+
+    await remount('https://example.com/');
+    expect(starredHistoryEntry()).toBeUndefined();
+  });
+
+  it('shows ChatGPT Cloud Sync while keeping Gemini folders and isolation off the tab', async () => {
+    extensionApi.tabs.query.mockResolvedValue([{ id: 10, url: 'https://chatgpt.com/c/abc' }]);
+    local[StorageKeys.FOLDER_DATA] = { folders: [], folderContents: {} };
+    sync[StorageKeys.GV_ACCOUNT_ISOLATION_ENABLED_GEMINI] = true;
+    await mount();
+    expect(container.querySelector('#prompt-manager-site-enabled')).not.toBeNull();
+    expect(container.textContent).toContain(TRANSLATIONS.en.cloudSync);
+    // Flex order, then DOM order, decides what the user sees first.
+    const promptCard = container
+      .querySelector('#prompt-manager-site-enabled')!
+      .closest('[style*="order"]')!;
+    const blocks = Array.from(promptCard.parentElement!.children) as HTMLElement[];
+    const shownBefore = (a: HTMLElement, b: HTMLElement) =>
+      Number(a.style.order || 0) < Number(b.style.order || 0) ||
+      (a.style.order === b.style.order && blocks.indexOf(a) < blocks.indexOf(b));
+    const syncBlock = blocks.find(
+      (block) => block !== promptCard && block.textContent?.includes(TRANSLATIONS.en.cloudSync),
+    )!;
+    const pluginList = blocks.find((block) => block.style.order === '-1')!;
+    expect(shownBefore(syncBlock, promptCard as HTMLElement)).toBe(true);
+    expect(shownBefore(syncBlock, pluginList)).toBe(true);
+    expect(container.querySelector('#account-isolation-enabled')).toBeNull();
+    expect(container.querySelector('#folder-enabled')).toBeNull();
+    const requestedLocalKeys = extensionApi.storage.local.get.mock.calls.flatMap(([keys]) =>
+      typeof keys === 'string' ? [keys] : Array.isArray(keys) ? keys : Object.keys(keys ?? {}),
+    );
+    expect(requestedLocalKeys).not.toContain(StorageKeys.FOLDER_DATA);
+    const messageTypes = extensionApi.runtime.sendMessage.mock.calls.map(
+      ([message]) => (message as { type?: string } | undefined)?.type,
+    );
+    expect(messageTypes).not.toContain('gv.sync.upload');
+    expect(messageTypes).not.toContain('gv.sync.download');
+    expect(extensionApi.storage.sync.set).not.toHaveBeenCalled();
+  });
+
   it('retains dependent input settings when search hides and then restores their card', async () => {
     await mount();
     await act(async () =>
@@ -251,5 +360,42 @@ describe('Popup settings integration', () => {
         keys && typeof keys === 'object' && Object.hasOwn(keys, StorageKeys.MERMAID_ENABLED),
     );
     expect(bulkReads).toHaveLength(1);
+  });
+
+  it('keeps ChatGPT Cloud Sync visible when a remembered native search has no clear control', async () => {
+    local[StorageKeys.GV_POPUP_SETTINGS_SEARCH_QUERY] = 'Mermaid';
+    await mount();
+    expect(container.querySelector<HTMLInputElement>('input[type="search"]')!.value).toBe(
+      'Mermaid',
+    );
+    expect(container.querySelector('#mermaid-enabled')).not.toBeNull();
+    expect(container.textContent).not.toContain(TRANSLATIONS.en.cloudSync);
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    extensionApi.tabs.query.mockResolvedValue([{ id: 10, url: 'https://chatgpt.com/c/abc' }]);
+    await mount();
+    expect(container.querySelector('input[type="search"]')).toBeNull();
+    expect(
+      container.querySelector(`button[aria-label="${TRANSLATIONS.en.popupSettingsSearchClear}"]`),
+    ).toBeNull();
+    expect(container.querySelector('#prompt-manager-site-enabled')).not.toBeNull();
+    expect(container.textContent).toContain(TRANSLATIONS.en.cloudSync);
+    expect(container.querySelector('#mermaid-enabled')).toBeNull();
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    extensionApi.tabs.query.mockResolvedValue([{ id: 7, url: 'https://gemini.google.com/app' }]);
+    await mount();
+    expect(container.querySelector<HTMLInputElement>('input[type="search"]')!.value).toBe(
+      'Mermaid',
+    );
+    expect(container.textContent).not.toContain(TRANSLATIONS.en.cloudSync);
+    const clear = container.querySelector<HTMLButtonElement>(
+      `button[aria-label="${TRANSLATIONS.en.popupSettingsSearchClear}"]`,
+    )!;
+    await act(async () => clear.click());
+    expect(container.textContent).toContain(TRANSLATIONS.en.cloudSync);
+    expect(local[StorageKeys.GV_POPUP_SETTINGS_SEARCH_QUERY]).toBe('');
   });
 });

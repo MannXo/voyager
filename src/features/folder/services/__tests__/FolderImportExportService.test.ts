@@ -276,3 +276,92 @@ describe('FolderImportExportService.validatePayload folderContents entries (L10)
     }
   });
 });
+
+describe('FolderImportExportService.validatePayload inherited object keys', () => {
+  it.each([
+    ['a folder id', '{"folders":[{"id":"__proto__","name":"P"}],"folderContents":{}}'],
+    ['a folder id', '{"folders":[{"id":"constructor","name":"C"}],"folderContents":{}}'],
+    ['a bucket key', '{"folders":[],"folderContents":{"__proto__":[]}}'],
+  ])('rejects %s that every object inherits', (_kind, data) => {
+    const payload = JSON.parse(
+      `{"format":"gemini-voyager.folders.v1","exportedAt":"1970-01-01T00:00:00.000Z","version":"1.0.0","data":${data}}`,
+    );
+    const result = FolderImportExportService.validatePayload(payload);
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('FolderImportExportService.validatePayload repeated folder ids', () => {
+  const payloadOf = (folders: unknown[]) => ({
+    format: 'gemini-voyager.folders.v1',
+    exportedAt: '1970-01-01T00:00:00.000Z',
+    version: '1.0.0',
+    data: { folders, folderContents: {} },
+  });
+  const folderOf = (id: string, parentId: string | null) => ({
+    id,
+    name: `Name ${id}`,
+    parentId,
+    isExpanded: true,
+    createdAt: 1,
+    updatedAt: 1,
+  });
+
+  it.each([
+    ['twice at the root', [folderOf('x', null), folderOf('x', null)]],
+    ['once as its own parent', [folderOf('x', null), folderOf('x', 'x')]],
+    ['under a different parent', [folderOf('a', null), folderOf('x', null), folderOf('x', 'a')]],
+  ])('rejects a file holding a folder id %s', (_kind, folders) => {
+    const result = FolderImportExportService.validatePayload(payloadOf(folders));
+    expect(result.success).toBe(false);
+  });
+
+  it.each([
+    ['its own parent', [folderOf('a', null), folderOf('x', 'x')], { x: null }],
+    ['a pair of folders', [folderOf('a', 'b'), folderOf('b', 'a')], { a: null }],
+    [
+      'three folders',
+      [folderOf('r', null), folderOf('a', 'c'), folderOf('b', 'a'), folderOf('c', 'b')],
+      { a: null },
+    ],
+    [
+      'folders below a sound tree',
+      [folderOf('r', null), folderOf('a', 'r'), folderOf('b', 'c'), folderOf('c', 'b')],
+      { b: null },
+    ],
+  ] as const)(
+    'accepts a file where a folder is inside itself through %s, moving the cut folder to the root',
+    (_kind, folders, cut) => {
+      const payload = payloadOf([...folders]);
+      const before = structuredClone(payload);
+      const result = FolderImportExportService.validatePayload(payload);
+
+      const expected = folders.map((folder) =>
+        folder.id in cut ? { ...folder, parentId: null } : folder,
+      );
+      expect(result.success && result.data.data.folders).toEqual(expected);
+      expect(payload).toEqual(before);
+    },
+  );
+
+  it('keeps accepting siblings and parents the file does not hold', () => {
+    const folders = [
+      folderOf('a', null),
+      folderOf('b', 'a'),
+      folderOf('c', 'a'),
+      folderOf('d', 'gone'),
+    ];
+    const result = FolderImportExportService.validatePayload(payloadOf(folders));
+    expect(result.success).toBe(true);
+  });
+
+  it('keeps accepting a tree three levels deep', () => {
+    const folders = [folderOf('a', null), folderOf('b', 'a'), folderOf('c', 'b')];
+    const result = FolderImportExportService.validatePayload(payloadOf(folders));
+    expect(result.success && result.data.data.folders.map((folder) => folder.id)).toEqual([
+      'a',
+      'b',
+      'c',
+    ]);
+  });
+});

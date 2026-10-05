@@ -9,6 +9,8 @@
  *               ├─ span.cdk-visually-hidden  ("你说" / "You said")
  *               └─ p.query-text-line.ng-star-inserted  ← processed here
  */
+import { ensureKatexStyles } from '@/core/utils/katexStyles';
+
 /** Selector for user message text paragraph elements. */
 const USER_MSG_SELECTOR = 'p.query-text-line';
 
@@ -44,6 +46,7 @@ export const _setUserLatexKatexLoaderForTest = (
 };
 
 const loadKatex = async (): Promise<typeof katexInstance> => {
+  ensureKatexStyles();
   if (katexInstance) return katexInstance;
   if (katexLoadFailed) return null;
 

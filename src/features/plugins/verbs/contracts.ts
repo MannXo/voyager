@@ -16,12 +16,18 @@
  */
 import type { SemanticSelectorKey } from '../sites/semanticKeys';
 
-export type PrimitiveParamType = 'string' | 'number' | 'boolean' | 'selector';
+export type PrimitiveParamType = 'string' | 'string[]' | 'number' | 'boolean' | 'selector';
 
 export interface PrimitiveParamSpec {
   readonly type: PrimitiveParamType;
   readonly required: boolean;
   readonly description: string;
+  /**
+   * Engine version that added the param, when later than its primitive's
+   * `sinceEngine`. An older engine rejects an unknown param and skips the whole
+   * op, so a manifest setting it needs an `engine` floor at least this high.
+   */
+  readonly sinceEngine?: string;
 }
 
 export interface PrimitiveContract {
@@ -69,6 +75,27 @@ export const PRIMITIVE_CONTRACTS: readonly PrimitiveContract[] = [
         required: false,
         description: "User-turn elements to index; defaults to the site adapter's userTurn.",
       },
+      conversationIdAttribute: {
+        type: 'string',
+        required: false,
+        sinceEngine: '1.5.0',
+        description:
+          'Attribute holding the conversation id that conversationIdPattern captures from the URL, on an ancestor of each turn or inside its turnItem. When set, it is the only thing that lets a turn be starred: the id must name the current conversation; a turn without one stays unstarrable.',
+      },
+      accountIdAttributes: {
+        type: 'string[]',
+        required: false,
+        sinceEngine: '1.5.0',
+        description:
+          'Ordered attributes on document.documentElement identifying the loaded account. Stars hash their values together; missing values leave the star untagged.',
+      },
+      turnItem: {
+        type: 'selector',
+        required: false,
+        sinceEngine: '1.5.0',
+        description:
+          'Element wrapping one exchange (prompt and reply). conversationIdAttribute is looked up inside it when no ancestor of the turn carries it.',
+      },
       conversationIdPattern: {
         type: 'string',
         required: false,
@@ -78,7 +105,8 @@ export const PRIMITIVE_CONTRACTS: readonly PrimitiveContract[] = [
       scrollContainer: {
         type: 'selector',
         required: false,
-        description: 'Element that scrolls the conversation; auto-detected when absent.',
+        description:
+          "Element that scrolls the conversation; defaults to the site adapter's scrollContainer, else auto-detected.",
       },
       yieldWhen: {
         type: 'selector',

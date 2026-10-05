@@ -22,6 +22,7 @@ import type {
   ShortcutMatch,
 } from '@/core/types/keyboardShortcut';
 import { isMac } from '@/core/utils/browser';
+import { composedEventTarget, deepActiveElement } from '@/core/utils/composedTarget';
 
 /**
  * Timeout for key sequence detection (e.g., gg, GG)
@@ -282,7 +283,10 @@ export class KeyboardShortcutService {
    * Prevents shortcuts from interfering with text input
    */
   private isTypingInInputField(event: KeyboardEvent): boolean {
-    return this.isEditableElement(event.target) || this.isEditableElement(document.activeElement);
+    return (
+      this.isEditableElement(composedEventTarget(event)) ||
+      this.isEditableElement(deepActiveElement())
+    );
   }
 
   private isEditableElement(target: EventTarget | Element | null): boolean {
@@ -306,6 +310,9 @@ export class KeyboardShortcutService {
    * Attach storage change listener for cross-tab sync
    */
   private attachStorageListener(): void {
+    // Timeline remounts reuse this singleton; keep the one handler destroy() can remove.
+    if (this.storageChangeHandler) return;
+
     if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
       this.storageChangeHandler = (changes, areaName) => {
         if (areaName !== 'sync') return;

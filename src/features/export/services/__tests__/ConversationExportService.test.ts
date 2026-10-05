@@ -11,7 +11,7 @@ import { resolveExportAdapter } from '@/pages/content/export/adapter/platformAda
 import type { ChatTurn, ConversationMetadata, ExportLayout } from '../../types/export';
 import { ExportFormat } from '../../types/export';
 import { ConversationExportService } from '../ConversationExportService';
-import { DOMContentExtractor } from '../DOMContentExtractor';
+import { createContentExtractor, extractTurnContent } from '../DOMContentExtractor';
 import { DeepResearchPDFPrintService } from '../DeepResearchPDFPrintService';
 import { ImageExportService } from '../ImageExportService';
 import { MarkdownFormatter } from '../MarkdownFormatter';
@@ -28,7 +28,9 @@ vi.mock('html-to-image', () => {
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
 global.document = dom.window.document as unknown as Document;
 global.window = dom.window as unknown as Window & typeof globalThis;
-DOMContentExtractor.setExportAdapter(resolveExportAdapter());
+const extractor = createContentExtractor(resolveExportAdapter());
+const extracted = (turns: ChatTurn[]): ChatTurn[] =>
+  turns.map((turn) => extractTurnContent(turn, extractor));
 
 function setUserAgentVendor(userAgent: string, vendor: string): void {
   Object.defineProperty(global.navigator, 'userAgent', {
@@ -300,12 +302,6 @@ describe('ConversationExportService', () => {
       const deepResearchPdfSpy = vi
         .spyOn(DeepResearchPDFPrintService as unknown as { export: () => Promise<void> }, 'export')
         .mockResolvedValue(undefined);
-      const pdfDocumentSpy = vi
-        .spyOn(
-          PDFPrintService as unknown as { exportDocument: () => Promise<void> },
-          'exportDocument',
-        )
-        .mockResolvedValue(undefined);
 
       const result = await ConversationExportService.export(mockTurns, mockMetadata, {
         format: ExportFormat.PDF,
@@ -324,7 +320,6 @@ describe('ConversationExportService', () => {
         }),
         { fontSize: 15 },
       );
-      expect(pdfDocumentSpy).not.toHaveBeenCalled();
     });
 
     it('should use document image export path when layout is document', async () => {
@@ -534,7 +529,7 @@ describe('ConversationExportService', () => {
       );
 
       const result = await ConversationExportService.export(
-        [{ user: '', assistant: 'Done', starred: false, userElement }],
+        extracted([{ user: '', assistant: 'Done', starred: false, userElement }]),
         mockMetadata,
         { format: ExportFormat.JSON },
       );

@@ -2,8 +2,9 @@
  * Sync-related type definitions for Google Drive sync feature
  * Provides type safety for sync state management and data transfer
  */
+import type { FolderPlatform } from '@/features/folder/platforms';
 import type { PluginStateMap } from '@/features/plugins/storage/pluginState';
-import type { StarredMessagesData } from '@/pages/content/timeline/starredTypes';
+import type { StarredMessagesData } from '@/features/savedLibrary/starTypes';
 
 import type { FolderData } from './folder';
 import type { HighlightExportPayloadV1 } from './highlight';
@@ -19,11 +20,10 @@ export type SyncMode = 'disabled' | 'manual' | 'auto';
 export type SyncProvider = 'googleDrive' | 'icloud';
 
 /**
- * Platform identifier for sync operations
- * - gemini: Main Gemini website (gemini.google.com)
- * - aistudio: AI Studio website (aistudio.google.com, aistudio.google.cn)
+ * Platform identifier for folder sync operations. Hosts, storage keys, Drive files and sync
+ * timestamps for each platform live in `FOLDER_PLATFORMS` (`src/features/folder/platforms.ts`).
  */
-export type SyncPlatform = 'gemini' | 'aistudio';
+export type SyncPlatform = FolderPlatform;
 
 export interface SyncAccountScope {
   accountKey: string;
@@ -47,6 +47,8 @@ export interface SyncState {
   lastSyncTimeAIStudio: number | null;
   /** Timestamp of last successful upload for AI Studio */
   lastUploadTimeAIStudio: number | null;
+  lastSyncTimeChatGPT: number | null;
+  lastUploadTimeChatGPT: number | null;
   /** Whether a sync operation is currently in progress */
   isSyncing: boolean;
   /** Last error message (null if no error) */
@@ -67,16 +69,19 @@ export interface PromptItem {
   /** Optional only for prompts created before names became required. */
   name?: string;
   /**
-   * When the prompt was pinned. Absent means unpinned — see promptPinning.ts.
-   * Pinning bumps `updatedAt` so the cloud merge carries it.
+   * When the prompt was pinned; `null` means it was unpinned. Absent also shows
+   * as unpinned, but a merge reads it as "no pin information", because 1.9.0 and
+   * earlier drop the field on every unpinned prompt — see promptPinning.ts.
+   * Pinning and unpinning bump `updatedAt` so the cloud merge carries them.
    */
-  pinnedAt?: number;
+  pinnedAt?: number | null;
 }
 
 /**
  * Folder export payload format (matches existing export format)
  */
 export interface FolderExportPayload {
+  platform?: 'chatgpt';
   format: 'gemini-voyager.folders.v1';
   exportedAt: string;
   version: string;
@@ -117,7 +122,7 @@ export interface PluginStateExportPayload {
 export type {
   StarredMessage as StarredMessageSync,
   StarredMessagesData as StarredMessagesDataSync,
-} from '@/pages/content/timeline/starredTypes';
+} from '@/features/savedLibrary/starTypes';
 
 /**
  * Starred messages export payload format
@@ -189,6 +194,8 @@ export interface SyncData {
   plugins?: PluginStateExportPayload;
   /** Starred messages in export format */
   starred?: StarredExportPayload;
+  starredAccountHash?: string;
+  stars?: import('@/features/savedLibrary/starSyncPayload').StarsExportPayloadV2;
   /** Fork metadata in export format */
   forks?: ForkExportPayload;
   /** Timeline hierarchy data in export format */
@@ -216,6 +223,8 @@ export const DEFAULT_SYNC_STATE: SyncState = {
   lastUploadTime: null,
   lastSyncTimeAIStudio: null,
   lastUploadTimeAIStudio: null,
+  lastSyncTimeChatGPT: null,
+  lastUploadTimeChatGPT: null,
   isSyncing: false,
   error: null,
   isAuthenticated: false,

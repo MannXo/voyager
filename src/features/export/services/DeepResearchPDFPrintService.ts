@@ -1,9 +1,16 @@
 import { isSafari } from '@/core/utils/browser';
 
-import type { PrintableDocumentContent } from './PDFPrintService';
 import { buildKatexExportStyles } from './katexExportStyles';
 import { buildMermaidExportStyles } from './mermaidExportStyles';
 import { isolateMermaidSvgImages } from './mermaidSvgImage';
+
+export interface PrintableDocumentContent {
+  title: string;
+  url: string;
+  exportedAt: string;
+  markdown: string;
+  html: string;
+}
 
 /**
  * Dedicated PDF print path for Deep Research reports.

@@ -1,0 +1,83 @@
+# Shared timeline ownership
+
+`TimelineEngine` composes one captured conversation through `TimelineAdapter`. The adapter supplies
+a turn source, viewport discovery, mount, route identity and storage policy. The engine owns state,
+hierarchy geometry, the rail,
+preview, tooltips, interactions, navigation and settings application. The same owners render Gemini,
+ChatGPT, Claude and DeepSeek.
+
+| Behavior                                                            | Owner                                               |
+| ------------------------------------------------------------------- | --------------------------------------------------- |
+| Rail composition, styles, preview and viewport synchronization      | `TimelineView`                                      |
+| Dot geometry, dense/virtual dots, ruler wave and runner             | `TimelineDotLayer`                                  |
+| Slider scroll dragging and fade                                     | `TimelineSlider`                                    |
+| Width/position restore, migration and dragging                      | `TimelineRailPlacement`                             |
+| Preview search, pinning and hover bridge                            | `TimelinePreviewPanel`, `TimelinePreviewPress`      |
+| Tooltip delay, content and visibility                               | `TimelineTooltip`                                   |
+| Marker navigation, star long press and hierarchy menu               | `TimelineMarkerInteractions`                        |
+| Shortcuts, active turn and navigation cancellation                  | `TimelineNavigation`                                |
+| Virtualized turn homing, reversed scrollers and remembered geometry | `VirtualizedTimelineNavigation`, `scrollMotion`     |
+| Marker snapshot, star display, aliases and Library hydration        | `TimelineState`                                     |
+| Persisted stars, migration, serialized writes and cloud merges      | [Saved Library store](../savedLibrary/starStore.ts) |
+| Hierarchy edits and persistence                                     | `TimelineHierarchy`                                 |
+| Store readiness, read settlement and snapshot ordering              | `TimelineHydration`                                 |
+| Collapse layout                                                     | `TimelineHierarchyGeometry`                         |
+
+The [Gemini adapter](../../pages/content/timeline/GeminiTimelineAdapter.ts) retains Gemini selector
+priority, stable identities and timestamps. Its small
+[storage policy](../../pages/content/timeline/GeminiTimelineStorage.ts) retains hierarchy account scope,
+legacy hierarchy keys and serialized formats, and verifies stored turn aliases. New Gemini stars
+can include an opaque account annotation captured at the press; this annotation does not filter
+Library reads. All sites use the same `TimelineState` and hierarchy owner.
+
+The [catalog adapter](adapters/catalog/CatalogTimelineAdapter.ts) receives semantic selectors from
+`site.json` and optional `turnNavigator` manifest parameters. It retains identity and ownership
+across virtualized DOM windows. Its [storage policy](adapters/catalog/CatalogTimelineStorage.ts)
+stores hierarchy in extension storage, one `gvCatalogTimelineHierarchy:<siteId>` blob per site in the
+Gemini blob shape. A site that declares `accountIdAttributes` (ChatGPT) scopes that blob to the hashed
+account; the hierarchy watches those attributes, rehydrates from the new account when they change,
+and while the account is unknown shows no outline and refuses edits. Other sites stay unscoped, and
+only Gemini's migration reads an unscoped blob behind a missing scoped one. Each accepted edit
+is a per-turn change (one turn's level or collapse) captured with its bucket and conversation. The
+page-wide `outlineSaveQueue` applies it to the entry freshly read from storage, so it never writes a
+remembered entry, and the save completes even if the timeline is torn down. The displayed outline is
+the latest storage snapshot, always accepted, with the page's unwritten changes for that bucket and
+conversation overlaid; a remounted timeline therefore sees an earlier session's pending edits. Each
+successful write reads the bucket back and publishes that read as the snapshot, which retires the
+change without relying on its own storage event. Every snapshot (read, event or read-back) claims a
+page-wide order when it starts, and an owner ignores one older than the last it took. A Gemini
+localStorage outline with no extension-storage entry is the snapshot until extension storage has
+held the conversation; a failed migration changes nothing, and once extension storage held it, its
+absence is a deletion that also clears the legacy keys, which only mirror extension-storage outlines. Local backups export catalog buckets in
+`catalog-timeline-hierarchy.json`, keyed by storage key; catalog hierarchy has no Drive file yet.
+ChatGPT stars carry the same hashed account annotation. Stars for every site come from the Saved
+Library through its
+[client](../savedLibrary/StarredMessagesService.ts), whose requests use the background store as the
+single write owner. Every edit requires evidence that the turn belongs to the current conversation.
+Old page star arrays are neither read, imported, written nor purged.
+
+Viewport replacement rebinds scroll and intersection observation while retaining conversation state.
+Path/query replacement destroys the engine and creates a fresh conversation adapter. Gemini's shared
+history timestamp store has page lifetime: conversation teardown unsubscribes without stopping it.
+Plugin scope abort immediately destroys the engine before pending startup settles, so an old cleanup
+cannot remove a newly enabled rail.
+
+A star edit requires a successful Saved Library read or a complete external Library snapshot.
+Failed reads reject at the background/service boundary and leave persisted stars intact.
+`TimelineState` owns separate `TimelineHydration` instances for Library stars and hierarchy, applying
+the same readiness, in-flight read settlement and snapshot ordering rules independently. Failed attempts release the
+read; the next edit retries, and writes remain refused until hydration succeeds. A complete external
+snapshot for the resolved active scope also restores readiness and takes precedence over older
+pending reads. Hierarchy loads independently of Library stars. Level/collapse edits before or during
+the first read are refused; ready edits stay synchronous, while an edit after a settled failure
+waits for a successful retry. Stored aliases and mounted identity use separate policy resolvers: an
+unverified Gemini DOM-window `u-N` cannot receive a stored full-history turn’s star or deep link.
+
+Rail and preview styles are injected from `timeline.css` and `timelinePreview.css` by the view and removed on teardown. Shared theme tokens and
+coachmark replicas remain in `public/contentStyle.css` because other features use them. Existing
+`.gemini-timeline-bar`, `.timeline-track-content` and `.timeline-style-compact` classes remain the
+highlight marker DOM contract. New DOM ownership metadata is `gv-` prefixed.
+
+The packaged `turnNavigator` primitive remains the compatibility entry point for old remote catalogs.
+Its name, parameter validator and engine floor are unchanged; both bundled and cached remote manifests
+run the shared engine. Older extension builds can continue reading these unchanged manifests.

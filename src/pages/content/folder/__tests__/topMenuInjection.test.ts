@@ -6,9 +6,10 @@ import type { FolderData } from '@/core/types/folder';
 import type { FolderSidebarRuntime } from '../FolderSidebarRuntime';
 import type { FolderStore } from '../FolderStore';
 import { FolderManager } from '../manager';
-import { extractConversationInfoFromPage } from '../nativeSidebarDom';
+import { extractConversationInfoFromPage } from '../nativeConversationTitles';
 import * as storageAdapters from '../storage/FolderStorageAdapter';
 import { mountSidebar, setLayout } from './sidebarRuntimeHarness';
+import { sidebarTree } from './sidebarTreeDriver';
 
 vi.mock('@/utils/i18n', () => ({
   getTranslationSync: (key: string) => key,
@@ -177,12 +178,13 @@ describe('native move menu → folder command', () => {
     return move!;
   }
 
-  function selectFolder(): void {
+  async function selectFolder(): Promise<void> {
     const target = document.querySelector<HTMLButtonElement>(
       '.gv-folder-dialog-item[data-folder-id="f1"]',
     );
     expect(target).not.toBeNull();
     target!.click();
+    await vi.advanceTimersByTimeAsync(0);
   }
 
   it.each([
@@ -218,7 +220,7 @@ describe('native move menu → folder command', () => {
     await vi.advanceTimersByTimeAsync(80);
     expect(menu.querySelectorAll('.gv-move-to-folder-btn')).toHaveLength(1);
     menu.querySelector<HTMLElement>('.gv-move-to-folder-btn')!.click();
-    selectFolder();
+    await selectFolder();
 
     expect(owners.store.data.folderContents.f1).toEqual([
       expect.objectContaining({
@@ -242,7 +244,7 @@ describe('native move menu → folder command', () => {
     row.querySelector('.title-text')!.textContent = 'Renamed sidebar title';
 
     move.click();
-    selectFolder();
+    await selectFolder();
 
     expect(owners.store.data.folderContents.f1).toEqual([
       expect.objectContaining({
@@ -253,9 +255,9 @@ describe('native move menu → folder command', () => {
     ]);
     expect(writes).toHaveLength(1);
     expect(writes[0].folderContents.f1).toEqual(owners.store.data.folderContents.f1);
-    expect(owners.sidebarRuntime.panel?.querySelector('.gv-conversation-title')?.textContent).toBe(
-      'Renamed sidebar title',
-    );
+    expect(
+      sidebarTree(owners.sidebarRuntime.panel).bucketsShowing('Renamed sidebar title'),
+    ).toEqual(['f1']);
     expect(document.querySelector('.gv-folder-dialog-overlay')).toBeNull();
   });
 
@@ -263,7 +265,7 @@ describe('native move menu → folder command', () => {
     const move = await openMenu(document.body);
 
     move.click();
-    selectFolder();
+    await selectFolder();
 
     expect(owners.store.data.folderContents.f1).toEqual([
       expect.objectContaining({

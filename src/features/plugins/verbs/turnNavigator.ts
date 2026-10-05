@@ -4,19 +4,22 @@
  * usually needs no more than `{ "op": "native", "handler": "turnNavigator" }`.
  */
 import { logger } from '@/core/services/LoggerService';
+import { activateCatalogTimeline } from '@/features/timeline/adapters/catalog/activateCatalogTimeline';
+import {
+  TIMELINE_STYLE_COACHMARK_ID,
+  type CatalogTimelineConfig,
+} from '@/features/timeline/adapters/catalog/config';
 
 import type { ManifestIssue } from '../manifest/validate';
 import { isSafeRegexSource } from '../sites/safeRegex';
 import { getPrimitiveContract } from './contracts';
-import {
-  TIMELINE_STYLE_COACHMARK_ID,
-  type TurnNavigatorConfig,
-  activateTurnNavigator,
-} from './turnNavigator/TurnNavigator';
 import type { Primitive } from './types';
 
 export interface TurnNavigatorParams {
   readonly turn?: string;
+  readonly conversationIdAttribute?: string;
+  readonly accountIdAttributes?: readonly string[];
+  readonly turnItem?: string;
   readonly conversationIdPattern?: string;
   readonly scrollContainer?: string;
   readonly yieldWhen?: string;
@@ -24,7 +27,9 @@ export interface TurnNavigatorParams {
 }
 
 const MAX_SELECTOR_LENGTH = 2_000;
-const SELECTOR_PARAMS = ['turn', 'scrollContainer', 'yieldWhen'] as const;
+/** A plain lower-case attribute name: it is interpolated into `[name]`. */
+const ATTRIBUTE_NAME = /^[a-z][a-z0-9-]{0,63}$/;
+const SELECTOR_PARAMS = ['turn', 'turnItem', 'scrollContainer', 'yieldWhen'] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -46,6 +51,9 @@ export const turnNavigatorPrimitive: Primitive<TurnNavigatorParams> = {
     const issues: ManifestIssue[] = [];
     const params: {
       turn?: string;
+      conversationIdAttribute?: string;
+      accountIdAttributes?: string[];
+      turnItem?: string;
       conversationIdPattern?: string;
       scrollContainer?: string;
       yieldWhen?: string;
@@ -79,6 +87,26 @@ export const turnNavigatorPrimitive: Primitive<TurnNavigatorParams> = {
         }
         continue;
       }
+      if (key === 'conversationIdAttribute') {
+        if (typeof value === 'string' && ATTRIBUTE_NAME.test(value)) params[key] = value;
+        else issues.push({ path: `params.${key}`, message: 'must be a lower-case attribute name' });
+        continue;
+      }
+      if (key === 'accountIdAttributes') {
+        if (
+          Array.isArray(value) &&
+          value.every(
+            (attribute) => typeof attribute === 'string' && ATTRIBUTE_NAME.test(attribute),
+          )
+        )
+          params.accountIdAttributes = value;
+        else
+          issues.push({
+            path: `params.${key}`,
+            message: 'must be an array of lower-case attribute names',
+          });
+        continue;
+      }
       if (key === 'position') {
         if (value === 'left' || value === 'right') params.position = value;
         else issues.push({ path: 'params.position', message: 'must be "left" or "right"' });
@@ -106,17 +134,21 @@ export const turnNavigatorPrimitive: Primitive<TurnNavigatorParams> = {
         return 0;
       }
     });
-    const config: TurnNavigatorConfig = {
+    const config: CatalogTimelineConfig = {
       siteId: adapter?.id ?? 'site',
       siteLabel: adapter?.label ?? 'Conversation',
       turnSelector,
+      assistantTurnSelector: adapter?.selectors.assistantTurn,
+      conversationIdAttribute: params.conversationIdAttribute,
+      accountIdAttributes: params.accountIdAttributes,
+      turnItemSelector: params.turnItem,
       conversationIdPattern: params.conversationIdPattern ?? adapter?.conversationIdPattern,
-      scrollContainerSelector: params.scrollContainer,
+      scrollContainerSelector: params.scrollContainer ?? adapter?.selectors.scrollContainer,
       yieldWhenSelector: params.yieldWhen,
       position: params.position ?? 'right',
       pluginId: context.pluginId,
       coachmarkId: TIMELINE_STYLE_COACHMARK_ID,
     };
-    return activateTurnNavigator(scope, config, context.settings);
+    return activateCatalogTimeline(scope, config, context.settings);
   },
 };

@@ -19,8 +19,8 @@ export interface PromptItem {
    * preserve the field on round-trip.
    */
   name?: string;
-  /** Pin timestamp; kept in sync with the content-script PromptItem. */
-  pinnedAt?: number;
+  /** Pin timestamp, or `null` once unpinned; kept in sync with the content-script PromptItem. */
+  pinnedAt?: number | null;
 }
 
 /**

@@ -40,6 +40,7 @@ const files = [];
 const symlinks = [];
 
 function isExpectedEmbeddedProfile(path) {
+  // Only native separators are boundaries; POSIX filenames can contain literal backslashes.
   return /\.app\/Contents\/(?:PlugIns\/[^/]+\.appex\/Contents\/)?embedded\.provisionprofile$/.test(
     path.split(sep).join('/'),
   );

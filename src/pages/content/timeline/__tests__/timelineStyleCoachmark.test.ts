@@ -95,6 +95,49 @@ describe('compact timeline coachmark', () => {
     expect(liveTimeline.classList.contains('gv-coach-timeline-hidden')).toBe(false);
   });
 
+  async function mountGuideOver(liveTimeline: HTMLElement): Promise<CapturedCoachmarkConfig> {
+    document.body.appendChild(liveTimeline);
+    const { maybeShowTimelineStyleCoachmark } = await import('../timelineStyleCoachmark');
+    await maybeShowTimelineStyleCoachmark({ force: true });
+    return mocks.showCoachmark.mock.calls[0]![0] as CapturedCoachmarkConfig;
+  }
+
+  it('previews the rail where the user placed it, at its width, without a hidden container', async () => {
+    const liveTimeline = document.createElement('div');
+    liveTimeline.className =
+      'gemini-timeline-bar timeline-no-container gv-timeline-ruler-inward-right';
+    liveTimeline.style.top = '90px';
+    liveTimeline.style.left = '40px';
+    liveTimeline.style.setProperty('--timeline-bar-width', '10px');
+
+    const preview = (await mountGuideOver(liveTimeline)).reveal.mount();
+
+    expect(preview.style.top).toBe('90px');
+    expect(preview.style.left).toBe('40px');
+    expect(preview.style.getPropertyValue('--timeline-bar-width')).toBe('10px');
+    expect(preview.classList.contains('gv-no-rail')).toBe(true);
+    expect(preview.classList.contains('gv-inward-right')).toBe(true);
+  });
+
+  it("the guide's rail stays on screen when the window narrows", async () => {
+    const liveTimeline = document.createElement('div');
+    liveTimeline.className = 'gemini-timeline-bar';
+    liveTimeline.style.top = '120px';
+    liveTimeline.style.left = '1376px';
+    const config = await mountGuideOver(liveTimeline);
+    const preview = config.reveal.mount();
+    expect(preview.style.left).toBe('1376px');
+
+    // The hidden live rail re-places itself for the narrower viewport.
+    liveTimeline.style.left = '936px';
+    await vi.waitFor(() => expect(preview.style.left).toBe('936px'));
+
+    config.reveal.unmount(preview);
+    liveTimeline.style.left = '500px';
+    await Promise.resolve();
+    expect(preview.style.left).toBe('936px');
+  });
+
   it('does not interrupt users who already use the compact style', async () => {
     mocks.storageGet.mockResolvedValue({ [StorageKeys.TIMELINE_STYLE]: 'compact' });
     const { maybeShowTimelineStyleCoachmark } = await import('../timelineStyleCoachmark');

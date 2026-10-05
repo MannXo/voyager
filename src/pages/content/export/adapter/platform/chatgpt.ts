@@ -1,14 +1,8 @@
-import {
-  DOMContentExtractor,
-  type ExtractedContent,
-} from '@/features/export/services/DOMContentExtractor';
+import type { ExtractedContent } from '@/features/export/services/DOMContentExtractor';
+import { escapeHtml, escapeHtmlAttribute } from '@/features/export/services/exportDomPolicy';
 import type { SiteAdapter } from '@/features/plugins/types';
 
-import {
-  buildChatGptTurnsForSelection,
-  chatgptCollectTurnContainers,
-  resolveChatGptSelectionRoles,
-} from '../chatgpt';
+import { TURN_ITEM_SELECTOR, resolveVisibleConversationRoot } from '../chatgptThread';
 import type { ExportPlatformAdapter } from './contract';
 
 function extractTitle(): string {
@@ -29,13 +23,16 @@ function extractId(): string | null {
   return window.location.pathname.match(/\/c\/([^/?#]+)/)?.[1] ?? null;
 }
 
-const ROOT_CANDIDATES = ['main', '[role="main"]'];
-
 /** `/c/<id>` or `/g/<gpt>/c/<id>`, optionally under `/u/<index>/`. */
 const CONVERSATION_ROUTE = /^(?:\/u\/[^/]+)?(?:\/g\/[^/]+)?\/c\/[^/?#]+/;
 /** A turn ChatGPT has actually rendered, whatever the route says. */
-const MOUNTED_TURN_SELECTOR =
-  '[data-turn-id-container] [data-message-author-role], [data-turn-id-container][data-turn], section[data-turn]';
+const MOUNTED_TURN_SELECTOR = [
+  TURN_ITEM_SELECTOR,
+  // The earlier DOM, for accounts ChatGPT has not moved yet.
+  '[data-turn-id-container] [data-message-author-role]',
+  '[data-turn-id-container][data-turn]',
+  'section[data-turn]',
+].join(', ');
 
 /**
  * ChatGPT serves Codex, settings and other non-chat pages from the same
@@ -52,12 +49,9 @@ export function chatgptIsConversationPage(doc: Document, url: string): boolean {
   return CONVERSATION_ROUTE.test(pathname) || doc.querySelector(MOUNTED_TURN_SELECTOR) !== null;
 }
 
+/** The visible conversation's `main`: ChatGPT keeps earlier pages in hidden ones. */
 function resolveRoot(_userSelectors: string[], doc: Document = document): HTMLElement {
-  for (const selector of ROOT_CANDIDATES) {
-    const element = doc.querySelector<HTMLElement>(selector);
-    if (element) return element;
-  }
-  return doc.body as HTMLElement;
+  return resolveVisibleConversationRoot(doc);
 }
 
 function extractUserImage(element: HTMLElement): NodeListOf<HTMLImageElement> {
@@ -151,9 +145,7 @@ function extractAssistantImage(
     processedImageSrcs?.add(src);
     flags.hasImages = true;
     const alt = image.getAttribute('alt')?.trim() || 'Image';
-    htmlParts.push(
-      `<img src="${DOMContentExtractor.escapeHtmlAttribute(src)}" alt="${DOMContentExtractor.escapeHtmlAttribute(alt)}" />`,
-    );
+    htmlParts.push(`<img src="${escapeHtmlAttribute(src)}" alt="${escapeHtmlAttribute(alt)}" />`);
     textParts.push(`\n![${alt.replace(/\]/g, '\\]')}](${src})\n`);
   }
   return true;
@@ -176,7 +168,7 @@ export function chatgptExtractFormula(
 
   flags.hasFormulas = true;
   htmlParts.push(
-    `<div class="math-block" data-math="${DOMContentExtractor.escapeHtmlAttribute(latex)}">${child.outerHTML}</div>`,
+    `<div class="math-block" data-math="${escapeHtmlAttribute(latex)}">${child.outerHTML}</div>`,
   );
   textParts.push(`\n$$\n${latex}\n$$\n`);
   return true;
@@ -196,9 +188,7 @@ function extractCodeBlock(
   const language = className.match(/language-([a-z0-9]+)/i)?.[1] ?? '';
   if (code.trim()) {
     flags.hasCode = true;
-    htmlParts.push(
-      `<pre><code class="language-${language}">${DOMContentExtractor.escapeHtml(code)}</code></pre>`,
-    );
+    htmlParts.push(`<pre><code class="language-${language}">${escapeHtml(code)}</code></pre>`);
     textParts.push(`\n\`\`\`${language}\n${code}\n\`\`\`\n`);
     (child as Element & { processedByGV?: boolean }).processedByGV = true;
     if (codeElement !== child) {
@@ -225,7 +215,7 @@ export function chatgptExtractInlineFormula(
   const display =
     element.classList.contains('katex-display') || element.closest('.katex-display') != null;
   htmlParts.push(
-    `<span class="${display ? 'math-block' : 'math-inline'}" data-math="${DOMContentExtractor.escapeHtmlAttribute(latex)}">${element.outerHTML}</span>`,
+    `<span class="${display ? 'math-block' : 'math-inline'}" data-math="${escapeHtmlAttribute(latex)}">${element.outerHTML}</span>`,
   );
   textParts.push(display ? `\n$$\n${latex}\n$$\n` : `$${latex}$`);
   return true;
@@ -236,11 +226,8 @@ export function buildChatGptAdapter(site: SiteAdapter): ExportPlatformAdapter {
     site,
     getUserSelectors: () => [site.selectors.userTurn],
     getAssistantSelectors: () => [site.selectors.assistantTurn],
-    getConversationRootCandidates: () => ROOT_CANDIDATES,
     extractConversationTitle: extractTitle,
     extractConversationIdFromUrl: extractId,
-    shouldPreloadHistory: () => false,
-    isConversationPage: chatgptIsConversationPage,
     resolveConversationRoot: resolveRoot,
     extractUserImage,
     extractUserText: chatgptExtractUserText,
@@ -249,8 +236,5 @@ export function buildChatGptAdapter(site: SiteAdapter): ExportPlatformAdapter {
     extractFormula: chatgptExtractFormula,
     extractCodeBlock,
     extractInlineFormula: chatgptExtractInlineFormula,
-    collectTurnContainers: chatgptCollectTurnContainers,
-    buildTurnsForSelection: buildChatGptTurnsForSelection,
-    resolveSelectionRoles: resolveChatGptSelectionRoles,
   };
 }
