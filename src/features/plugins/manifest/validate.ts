@@ -103,6 +103,43 @@ function readOptionalString(
   return undefined;
 }
 
+/**
+ * A select's options and default, which the popup and the host both resolve
+ * against: non-empty unique string options and a default that is one of them.
+ * Undefined, with issues, otherwise.
+ */
+function readSelectOptions(
+  rawField: Record<string, unknown>,
+  path: string,
+  issues: ManifestIssue[],
+): { value: string; label: string }[] | undefined {
+  const raw = rawField.options;
+  if (!Array.isArray(raw) || raw.length === 0) {
+    issues.push({ path: `${path}.options`, message: 'required non-empty array' });
+    return undefined;
+  }
+  const options: { value: string; label: string }[] = [];
+  for (const [index, option] of raw.entries()) {
+    if (!isRecord(option) || !nonEmptyString(option.value) || !nonEmptyString(option.label)) {
+      issues.push({
+        path: `${path}.options[${index}]`,
+        message: 'required { value, label } non-empty strings',
+      });
+      return undefined;
+    }
+    if (options.some((seen) => seen.value === option.value)) {
+      issues.push({ path: `${path}.options[${index}].value`, message: 'duplicate option value' });
+      return undefined;
+    }
+    options.push({ value: option.value, label: option.label });
+  }
+  if (!options.some((option) => option.value === rawField.default)) {
+    issues.push({ path: `${path}.default`, message: 'must be one of the declared options' });
+    return undefined;
+  }
+  return options;
+}
+
 function normalizeLocalizedSetting(raw: unknown): LocalizedSettingField | undefined {
   if (!isRecord(raw)) return undefined;
   const label = readOptionalString(raw, 'label', 'label');
@@ -368,6 +405,9 @@ function normalizeContributions(raw: unknown, issues: ManifestIssue[]): PluginCo
           issues.push({ path: `${path}.default`, message: 'required boolean | number | string' });
           continue;
         }
+        const selectOptions =
+          rawField.type === 'select' ? readSelectOptions(rawField, path, issues) : undefined;
+        if (rawField.type === 'select' && !selectOptions) continue;
         const minLabel = readOptionalString(rawField, 'minLabel', `${path}.minLabel`, issues);
         const maxLabel = readOptionalString(rawField, 'maxLabel', `${path}.maxLabel`, issues);
         settings[key] = {
@@ -378,14 +418,16 @@ function normalizeContributions(raw: unknown, issues: ManifestIssue[]): PluginCo
           ...(maxLabel ? { maxLabel } : {}),
           ...(typeof rawField.min === 'number' ? { min: rawField.min } : {}),
           ...(typeof rawField.max === 'number' ? { max: rawField.max } : {}),
-          ...(Array.isArray(rawField.options)
-            ? {
-                options: rawField.options.filter(
-                  (option): option is { value: string; label: string } =>
-                    isRecord(option) && isString(option.value) && isString(option.label),
-                ),
-              }
-            : {}),
+          ...(selectOptions
+            ? { options: selectOptions }
+            : Array.isArray(rawField.options)
+              ? {
+                  options: rawField.options.filter(
+                    (option): option is { value: string; label: string } =>
+                      isRecord(option) && isString(option.value) && isString(option.label),
+                  ),
+                }
+              : {}),
         };
       }
       result.settings = settings;

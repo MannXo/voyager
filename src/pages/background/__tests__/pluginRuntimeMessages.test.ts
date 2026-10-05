@@ -313,6 +313,72 @@ describe('plugin setting writes checked against the real plugin listing', () => 
     expect(response).toEqual({ ok: true });
   });
 
+  it('an open DeepSeek guide from the previous version still saves Compact', async () => {
+    memory[STATE] = { 'voyager.deepseek-timeline': { enabled: true, installedAt: 1 } };
+    const response = await handlePluginRuntimeMessage(
+      setSetting({ id: 'voyager.deepseek-timeline', key: 'compactView', value: true }),
+      deepseekSender(),
+      noFinder(),
+    );
+    expect(response).toEqual({ ok: true });
+    expect(memory[STATE]).toEqual({
+      'voyager.deepseek-timeline': {
+        enabled: true,
+        installedAt: 1,
+        settings: { timelineStyle: 'compact' },
+      },
+    });
+  });
+
+  it('an open DeepSeek guide from the previous version switching Compact off saves the default style', async () => {
+    const timeline = await bundledTimeline();
+    memory[STATE] = {
+      'voyager.deepseek-timeline': {
+        enabled: true,
+        installedAt: 1,
+        settings: { timelineStyle: 'compact' },
+      },
+    };
+    const response = await handlePluginRuntimeMessage(
+      setSetting({ id: 'voyager.deepseek-timeline', key: 'compactView', value: false }),
+      deepseekSender(),
+      noFinder(),
+    );
+    expect(response).toEqual({ ok: true });
+    expect(memory[STATE]).toMatchObject({
+      'voyager.deepseek-timeline': {
+        settings: { timelineStyle: timeline.contributes.settings!.timelineStyle.default },
+      },
+    });
+  });
+
+  it('still refuses an old Compact write when the timeline no longer offers compact', async () => {
+    const timeline = await bundledTimeline();
+    const style = timeline.contributes.settings!.timelineStyle;
+    cacheCatalog('chat.deepseek.com', [
+      {
+        ...timeline,
+        version: '9.0.0',
+        contributes: {
+          ...timeline.contributes,
+          settings: {
+            ...timeline.contributes.settings,
+            timelineStyle: {
+              ...style,
+              options: style.options!.filter((option) => option.value !== 'compact'),
+            },
+          },
+        },
+      },
+    ]);
+    const response = await handlePluginRuntimeMessage(
+      setSetting({ id: 'voyager.deepseek-timeline', key: 'compactView', value: true }),
+      deepseekSender(),
+      noFinder(),
+    );
+    expect(response).toEqual({ ok: false, error: 'invalid_payload' });
+  });
+
   it('validates against the remote-updated settings schema', async () => {
     const timeline = await bundledTimeline();
     cacheCatalog('chat.deepseek.com', [

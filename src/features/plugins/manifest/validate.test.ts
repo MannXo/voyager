@@ -175,6 +175,58 @@ describe('validateManifest', () => {
     expect(result.success).toBe(false);
   });
 
+  describe('select settings', () => {
+    const withSelect = (field: Record<string, unknown>) =>
+      validateManifest({
+        ...valid,
+        contributes: {
+          ...valid.contributes,
+          settings: { style: { type: 'select', label: 'Style', ...field } },
+        },
+      });
+    const choices = [
+      { value: 'dots', label: 'Dots' },
+      { value: 'ruler', label: 'Ruler' },
+    ];
+    const issuePaths = (result: ReturnType<typeof validateManifest>) =>
+      result.success ? [] : result.error.map((issue) => issue.path);
+
+    it('a select default outside its choices is rejected', () => {
+      expect(issuePaths(withSelect({ default: 'unknown', options: choices }))).toContain(
+        'contributes.settings.style.default',
+      );
+    });
+
+    it('a select without choices is rejected', () => {
+      expect(issuePaths(withSelect({ default: 'dots' }))).toContain(
+        'contributes.settings.style.options',
+      );
+      expect(issuePaths(withSelect({ default: 'dots', options: [] }))).toContain(
+        'contributes.settings.style.options',
+      );
+    });
+
+    it('a select offering the same choice twice is rejected', () => {
+      const result = withSelect({ default: 'dots', options: [...choices, choices[0]] });
+      expect(issuePaths(result)).toContain('contributes.settings.style.options[2].value');
+    });
+
+    it('a select with a malformed choice is rejected', () => {
+      const result = withSelect({ default: 'dots', options: [...choices, { value: 3 }] });
+      expect(issuePaths(result)).toContain('contributes.settings.style.options[2]');
+    });
+
+    it('keeps a select whose default is one of its choices', () => {
+      const result = withSelect({ default: 'ruler', options: choices });
+      expect(result.success && result.data.contributes.settings?.style).toEqual({
+        type: 'select',
+        label: 'Style',
+        default: 'ruler',
+        options: choices,
+      });
+    });
+  });
+
   it('rejects CSS that uses @import', () => {
     const result = validateManifest({
       ...valid,

@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { BUILTIN_PLUGINS } from '@/features/plugins/builtin';
 import deepseekTimeline from '@/features/plugins/catalog/sites/deepseek/plugins/timeline/plugin.json';
 import { validateManifest } from '@/features/plugins/manifest/validate';
+import { resolvePluginSettings } from '@/features/plugins/runtime/resolvePluginSettings';
+import type { PluginManifest, PluginSettings } from '@/features/plugins/types';
 
 import {
   container,
@@ -61,6 +63,44 @@ describe.each(timelines)('$name style setting', (plugin) => {
     });
     expect(select.value).toBe('dots');
     expect(setPluginSetting).toHaveBeenCalledWith(plugin.id, 'timelineStyle', 'dots');
+  });
+});
+
+describe.each(timelines)('$name style no longer offered', (plugin) => {
+  const withoutChoice = (removed: string): PluginManifest => {
+    const style = plugin.contributes.settings!.timelineStyle;
+    return {
+      ...plugin,
+      contributes: {
+        ...plugin.contributes,
+        settings: {
+          ...plugin.contributes.settings,
+          timelineStyle: {
+            ...style,
+            options: style.options!.filter((option) => option.value !== removed),
+          },
+        },
+      },
+    };
+  };
+  const stored = (settings: PluginSettings) => {
+    pluginState.current = { [plugin.id]: { enabled: true, installedAt: 0, settings } };
+  };
+
+  it("a style removed from a plugin's choices shows and runs its default", async () => {
+    const updated = withoutChoice('ruler');
+    stored({ timelineStyle: 'ruler' });
+    await render(updated);
+    expect(container.querySelector('select')!.value).toBe('dots');
+    expect(resolvePluginSettings(updated, { timelineStyle: 'ruler' }).timelineStyle).toBe('dots');
+  });
+
+  it('an old compact preference shows and runs the default when compact is not offered', async () => {
+    const updated = withoutChoice('compact');
+    stored({ compactView: true });
+    await render(updated);
+    expect(container.querySelector('select')!.value).toBe('dots');
+    expect(resolvePluginSettings(updated, { compactView: true }).timelineStyle).toBe('dots');
   });
 });
 

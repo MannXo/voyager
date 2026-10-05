@@ -152,6 +152,9 @@ setting.
 
 Select settings render their declared value/label options in the popup. Localize
 each option under `i18n.<locale>.settings.<key>.options.<value>` (engine 1.6.0+).
+A select needs non-empty, unique options and a default among them; a stored
+choice the manifest no longer offers resolves to that default in both the popup
+and the host (`runtime/resolvePluginSettings.ts`).
 
 `target` is a CSS selector string, or `{ "kind": "semantic", "key": "userTurn" }`
 to use the site adapter's stable selector for one of the nine semantic keys in

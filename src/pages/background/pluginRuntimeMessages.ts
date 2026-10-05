@@ -9,6 +9,7 @@ import {
   PLUGIN_CONTENT_SCRIPT_SYNC_MESSAGE,
   PLUGIN_SET_SETTING_MESSAGE,
 } from '@/features/plugins/runtime/messages';
+import { translateLegacySettingWrite } from '@/features/plugins/runtime/resolvePluginSettings';
 import { matchesAnyPattern } from '@/features/plugins/sites/matchPattern';
 import { listPluginManifests } from '@/features/plugins/sources/defaultSources';
 import {
@@ -56,10 +57,12 @@ async function setSettingFromContent(
   const pageUrl = getSenderPageUrl(sender);
   if (sender.id !== chrome.runtime.id || !sender.tab || !pageUrl) return UNTRUSTED_SENDER;
   const manifest = await (deps.findPluginManifest ?? findListedManifest)(request.id, pageUrl);
-  if (!manifest || !isDeclaredPluginSetting(manifest, request)) return INVALID_PAYLOAD;
+  if (!manifest) return INVALID_PAYLOAD;
+  const write = { ...request, ...translateLegacySettingWrite(manifest, request) };
+  if (!isDeclaredPluginSetting(manifest, write)) return INVALID_PAYLOAD;
   const frameUrls = [pageUrl, sender.url].filter((url): url is string => Boolean(url));
   if (!frameUrls.some((url) => matchesAnyPattern(url, manifest.matches))) return UNTRUSTED_SENDER;
-  const stored = await setPluginSetting(request.id, request.key, request.value);
+  const stored = await setPluginSetting(write.id, write.key, write.value);
   return stored ? { ok: true } : WRITE_FAILED;
 }
 
