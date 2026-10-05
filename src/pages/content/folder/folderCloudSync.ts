@@ -11,6 +11,7 @@ import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesS
 import { getTranslationSyncUnsafe as t } from '@/utils/i18n';
 import { mergeFolderData, mergePrompts, mergeTimelineHierarchy } from '@/utils/merge';
 
+import { ForkNodesService } from '../fork/ForkNodesService';
 import {
   getTimelineHierarchyStorageKey,
   getTimelineHierarchyStorageKeysToRead,
@@ -29,6 +30,7 @@ type SyncDownloadResponse =
         folders?: { data?: FolderData };
         prompts?: { items?: PromptItem[] };
         starred?: unknown;
+        forks?: unknown;
         timelineHierarchy?: { data?: TimelineHierarchyData };
       };
     }
@@ -194,7 +196,7 @@ function mergeCloudSnapshot(
 
 /**
  * Download the cloud copy and merge it into local data. Folders save through the host first,
- * then prompts and hierarchy save before the background merges stars.
+ * then prompts and hierarchy save before the background merges stars and forks.
  */
 export async function syncFolders(host: FolderTransferHost): Promise<void> {
   const context = host.getContext();
@@ -255,23 +257,38 @@ export async function syncFolders(host: FolderTransferHost): Promise<void> {
     });
     if (!isCurrentTransfer(host, context)) return;
 
-    try {
-      const starred = await StarredMessagesService.mergeCloud(response.data.starred);
-      if (!isCurrentTransfer(host, context)) return;
-      debugTransfer(`Merged starred messages: ${starred.count}`);
-    } catch (error) {
-      if (!isCurrentTransfer(host, context)) return;
-      host.notify(
-        t('syncRestorePartial')
-          .replace(
-            '{restored}',
-            [t('folder_title'), t('promptDataMigration')].join(t('syncRestoreListSeparator')),
-          )
-          .replace('{failed}', t('savedLibraryStars'))
-          .replace('{error}', () => (error instanceof Error ? error.message : 'Unknown error')),
-        'error',
-      );
-      return;
+    const { starred, forks } = response.data;
+    const restored = [t('folder_title'), t('promptDataMigration')];
+    // Only parts the backup has can fail, so an absent fork file is not reported as unrestored.
+    const merges = [
+      {
+        payload: starred,
+        label: t('savedLibraryStars'),
+        run: async () => (await StarredMessagesService.mergeCloud(starred)).status,
+      },
+      {
+        payload: forks,
+        label: t('syncRestoreForks'),
+        run: () => ForkNodesService.mergeCloud(forks),
+      },
+    ].filter((merge) => merge.payload !== null && typeof merge.payload === 'object');
+    for (const [index, merge] of merges.entries()) {
+      try {
+        const status = await merge.run();
+        if (!isCurrentTransfer(host, context)) return;
+        if (status === 'merged') restored.push(merge.label);
+      } catch (error) {
+        if (!isCurrentTransfer(host, context)) return;
+        const failed = merges.slice(index).map((pending) => pending.label);
+        host.notify(
+          t('syncRestorePartial')
+            .replace('{restored}', restored.join(t('syncRestoreListSeparator')))
+            .replace('{failed}', failed.join(t('syncRestoreListSeparator')))
+            .replace('{error}', () => (error instanceof Error ? error.message : 'Unknown error')),
+          'error',
+        );
+        return;
+      }
     }
 
     host.refresh();

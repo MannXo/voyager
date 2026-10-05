@@ -321,6 +321,36 @@ describe('CloudSyncSettings restore failures', () => {
     );
   });
 
+  it('names forks as not restored when the fork owner write fails after stars merged', async () => {
+    const sendMessage = downloadResponder(
+      {
+        folders: { data: { folders: [], folderContents: {} } },
+        prompts: { items: [] },
+        starred: { format: 'gemini-voyager.starred.v1', data: { messages: {} } },
+        forks: { format: 'gemini-voyager.forks.v1', data: { nodes: {}, groups: {} } },
+      },
+      false,
+    );
+    const mocked = createChromeMock(sendMessage);
+    vi.mocked(mocked.storage.local.get).mockImplementation(async (keys) => {
+      if (Array.isArray(keys) && keys.includes(StorageKeys.FORK_NODES)) {
+        throw new Error('forks read failed');
+      }
+      return {};
+    });
+    (globalThis as { chrome: MockedChrome }).chrome = mocked;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<CloudSyncSettings />);
+    });
+    await flushMicrotasks();
+    await clickRestore(container, 'syncMerge');
+    expect(container.textContent).toContain(
+      'Restored: folder_title、promptDataMigration、savedLibraryStars. ' +
+        'Not restored: syncRestoreForks (forks read failed)',
+    );
+  });
+
   it('keeps the plain missing-folders message when nothing was restored', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const sendMessageMock = downloadResponder(

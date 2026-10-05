@@ -7,6 +7,7 @@ import {
 } from '@/features/prompt/library/promptLibraryMessages';
 import { createPromptLibraryOwner } from '@/features/prompt/library/promptLibraryOwner';
 import { createStarStore } from '@/features/savedLibrary/starStore';
+import { createForkMessagesOwner } from '@/pages/background/forkMessages';
 
 type RuntimeRequest = { type?: string; payload?: unknown };
 
@@ -43,6 +44,7 @@ export function createCloudSyncChromeMock(
   const prompts = createPromptLibraryOwner({
     area: { get: (key) => local.get(key), set: (items) => local.set(items) },
   });
+  const forkOwner = createForkMessagesOwner(local);
   return {
     runtime: {
       id: 'test-extension-id',
@@ -57,6 +59,13 @@ export function createCloudSyncChromeMock(
         }
         if (isPromptLibraryApplyMessage(message)) {
           return handlePromptLibraryApplyMessage(message, prompts);
+        }
+        const forkResponse = forkOwner.handle(message);
+        if (forkResponse && reply) {
+          void forkResponse.then(reply, (error: Error) =>
+            reply({ ok: false, error: error.message }),
+          );
+          return;
         }
         return sendSyncMessage(message);
       }),

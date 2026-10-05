@@ -17,6 +17,32 @@ function isForkNodesData(value: unknown): value is ForkNodesData {
   );
 }
 
+function isForkNode(value: unknown): value is ForkNode {
+  if (typeof value !== 'object' || value === null) return false;
+  const node = value as Record<string, unknown>;
+  return (
+    typeof node.turnId === 'string' &&
+    typeof node.conversationId === 'string' &&
+    typeof node.conversationUrl === 'string' &&
+    typeof node.forkGroupId === 'string' &&
+    typeof node.forkIndex === 'number' &&
+    typeof node.createdAt === 'number'
+  );
+}
+
+/** Add `node` and its group index entry unless the same fork is already recorded. */
+function insertForkNode(data: ForkNodesData, node: ForkNode): boolean {
+  const nodes = (data.nodes[node.conversationId] ??= []);
+  if (nodes.some((n) => n.turnId === node.turnId && n.forkGroupId === node.forkGroupId)) {
+    return false;
+  }
+  nodes.push(node);
+  const group = (data.groups[node.forkGroupId] ??= []);
+  const groupKey = `${node.conversationId}:${node.turnId}`;
+  if (!group.includes(groupKey)) group.push(groupKey);
+  return true;
+}
+
 class ForkNodesManager {
   private operationQueue: Promise<unknown> = Promise.resolve();
 
@@ -28,11 +54,15 @@ class ForkNodesManager {
     return promise;
   }
 
+  private async readStored(): Promise<ForkNodesData> {
+    const result = await this.area.get([StorageKeys.FORK_NODES]);
+    const forkNodes = result[StorageKeys.FORK_NODES];
+    return isForkNodesData(forkNodes) ? forkNodes : { nodes: {}, groups: {} };
+  }
+
   private async getFromStorage(): Promise<ForkNodesData> {
     try {
-      const result = await this.area.get([StorageKeys.FORK_NODES]);
-      const forkNodes = result[StorageKeys.FORK_NODES];
-      return isForkNodesData(forkNodes) ? forkNodes : { nodes: {}, groups: {} };
+      return await this.readStored();
     } catch (error) {
       console.error('[Background] Failed to get fork nodes:', error);
       return { nodes: {}, groups: {} };
@@ -46,31 +76,34 @@ class ForkNodesManager {
   async addForkNode(node: ForkNode): Promise<boolean> {
     return this.serialize(async () => {
       const data = await this.getFromStorage();
+      if (!insertForkNode(data, node)) return false;
+      await this.saveToStorage(data);
+      return true;
+    });
+  }
 
-      if (!data.nodes[node.conversationId]) {
-        data.nodes[node.conversationId] = [];
+  /** Add the forks from a Drive envelope; restores never remove local forks. */
+  async mergeCloud(envelope: unknown): Promise<{ status: 'absent' | 'merged' }> {
+    return this.serialize(async () => {
+      if (envelope === null || typeof envelope !== 'object') return { status: 'absent' };
+      const cloud = 'data' in envelope ? envelope.data : undefined;
+      if (
+        ('format' in envelope && envelope.format !== 'gemini-voyager.forks.v1') ||
+        !isForkNodesData(cloud)
+      ) {
+        throw new Error('Invalid fork nodes envelope');
       }
-
-      const exists = data.nodes[node.conversationId].some(
-        (n) => n.turnId === node.turnId && n.forkGroupId === node.forkGroupId,
-      );
-
-      if (!exists) {
-        data.nodes[node.conversationId].push(node);
-
-        // Update group index
-        if (!data.groups[node.forkGroupId]) {
-          data.groups[node.forkGroupId] = [];
+      // A failed read must fail the restore: merging into an empty fallback would drop local forks.
+      const data = await this.readStored();
+      let changed = false;
+      for (const nodes of Object.values(cloud.nodes)) {
+        if (!Array.isArray(nodes)) continue;
+        for (const node of nodes) {
+          if (isForkNode(node) && insertForkNode(data, node)) changed = true;
         }
-        const groupKey = `${node.conversationId}:${node.turnId}`;
-        if (!data.groups[node.forkGroupId].includes(groupKey)) {
-          data.groups[node.forkGroupId].push(groupKey);
-        }
-
-        await this.saveToStorage(data);
-        return true;
       }
-      return false;
+      if (changed) await this.saveToStorage(data);
+      return { status: 'merged' };
     });
   }
 
@@ -139,6 +172,7 @@ type ForkMessageRequest =
   | { type: 'gv.fork.add'; payload: ForkNode }
   | { type: 'gv.fork.remove'; payload: Pick<ForkNode, 'conversationId' | 'turnId' | 'forkGroupId'> }
   | { type: 'gv.fork.getAll' }
+  | { type: 'gv.fork.mergeCloud'; payload: unknown }
   | { type: 'gv.fork.getForConversation'; payload: Pick<ForkNode, 'conversationId'> }
   | { type: 'gv.fork.getGroup'; payload: Pick<ForkNode, 'forkGroupId'> };
 
@@ -167,6 +201,8 @@ export function createForkMessagesOwner(area: StorageArea): ForkMessagesOwner {
             .then((removed) => ({ ok: true, removed }));
         case 'gv.fork.getAll':
           return manager.getAllForkNodes().then((data) => ({ ok: true, data }));
+        case 'gv.fork.mergeCloud':
+          return manager.mergeCloud(request.payload).then((result) => ({ ok: true, ...result }));
         case 'gv.fork.getForConversation':
           return manager
             .getForConversation(request.payload.conversationId)

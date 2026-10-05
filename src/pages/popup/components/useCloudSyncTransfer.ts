@@ -22,6 +22,7 @@ import {
 import { createRuntimePromptLibraryClient } from '@/features/prompt/library/promptLibraryMessages';
 import { isPromptItemArray } from '@/features/prompt/library/promptLibraryOwner';
 import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
+import { ForkNodesService } from '@/pages/content/fork/ForkNodesService';
 import {
   getTimelineHierarchyStorageKey,
   getTimelineHierarchyStorageKeysToRead,
@@ -69,6 +70,7 @@ export interface CloudDownloadData {
   settings?: SettingsExportPayload;
   plugins?: PluginStateExportPayload;
   starred?: unknown;
+  forks?: unknown;
   timelineHierarchy?: { data?: TimelineHierarchyData };
 }
 
@@ -328,6 +330,11 @@ async function restoreCloudDownload(
     mergeStarred:
       context.payload.platform === 'gemini' && data.starred && typeof data.starred === 'object'
         ? async () => (await StarredMessagesService.mergeCloud(data.starred)).status === 'merged'
+        : undefined,
+    // Forks only add, like stars, so a restore never drops forks made on this device.
+    mergeForks:
+      context.payload.platform === 'gemini' && data.forks && typeof data.forks === 'object'
+        ? async () => (await ForkNodesService.mergeCloud(data.forks)) === 'merged'
         : undefined,
   });
   try {

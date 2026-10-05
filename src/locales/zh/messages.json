@@ -1446,6 +1446,10 @@
     "message": "✗ 恢复未完成。已恢复：{restored}。未恢复：{failed}（{error}）",
     "description": "Drive restore stopped partway: which parts were restored and which were not"
   },
+  "syncRestoreForks": {
+    "message": "对话分叉",
+    "description": "Drive restore part: conversation fork links"
+  },
   "syncRestoreListSeparator": {
     "message": "、",
     "description": "Separator between restored or failed part names in the partial-restore message"

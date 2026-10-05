@@ -19,6 +19,8 @@ import {
   type PromptLibraryOwner,
 } from '@/features/prompt/library/promptLibraryOwner';
 import { createStarStore, type StarStore } from '@/features/savedLibrary/starStore';
+import { createForkMessagesOwner } from '@/pages/background/forkMessages';
+import type { ForkNode } from '@/pages/content/fork/forkTypes';
 import { getTimelineHierarchyStorageKey } from '@/pages/content/timeline/hierarchyStorage';
 
 import { useCloudSyncTransfer } from '../useCloudSyncTransfer';
@@ -59,6 +61,7 @@ describe('popup cloud sync transfer operations', () => {
   let stored: Record<string, unknown>;
   let starStore: StarStore;
   let promptOwner: PromptLibraryOwner;
+  let forkOwner: ReturnType<typeof createForkMessagesOwner>;
   const tabMessage = vi.fn<(tabId: number, message: { type: string }) => Promise<unknown>>();
   const localGet = vi.fn<(keys: unknown) => Promise<Record<string, unknown>>>();
   const localSet = vi.fn<(items: Record<string, unknown>) => Promise<void>>();
@@ -97,14 +100,18 @@ describe('popup cloud sync transfer operations', () => {
     });
     starStore = createStarStore({ get: localGet, set: localSet });
     promptOwner = createPromptLibraryOwner({ area: { get: localGet, set: localSet } });
+    forkOwner = createForkMessagesOwner({ get: localGet, set: localSet });
     vi.stubGlobal('chrome', {
       runtime: {
         id: 'test',
-        sendMessage: (message: { payload?: unknown }, reply?: (response: unknown) => void) => {
+        sendMessage: (
+          message: { type: string; payload?: unknown },
+          reply?: (response: unknown) => void,
+        ) => {
           if (isPromptLibraryApplyMessage(message)) {
             return handlePromptLibraryApplyMessage(message, promptOwner);
           }
-          void starStore.mergeCloud(message.payload).then(
+          void (forkOwner.handle(message) ?? starStore.mergeCloud(message.payload)).then(
             (result) => reply?.({ ok: true, ...result }),
             (error: Error) => reply?.({ ok: false, error: error.message }),
           );
@@ -250,6 +257,44 @@ describe('popup cloud sync transfer operations', () => {
       const download = await transfer.prepareDownload();
       await download.restore({ folders: { data: folders }, starred }, 'overwrite', false);
       expect((await starStore.getAll()).messages).toEqual({ one: [existing] });
+    },
+  );
+
+  it.each(['merge', 'overwrite'] as const)(
+    'a fork uploaded on one device is restored on another without dropping local forks (%s)',
+    async (mode) => {
+      const fork = (conversationId: string, forkIndex: number): ForkNode => ({
+        conversationId,
+        turnId: 'turn',
+        forkGroupId: 'group',
+        forkIndex,
+        createdAt: 1,
+        conversationUrl: `https://gemini.google.com/u/1/app/${conversationId}`,
+      });
+      const local = fork('local', 0);
+      const cloud = fork('cloud', 1);
+      stored[StorageKeys.FORK_NODES] = {
+        nodes: { local: [local] },
+        groups: { group: ['local:turn'] },
+      };
+      await render('gemini', false);
+      const download = await transfer.prepareDownload();
+      await download.restore(
+        {
+          folders: { data: folders },
+          forks: {
+            format: 'gemini-voyager.forks.v1',
+            exportedAt: '2026-10-05T00:00:00.000Z',
+            data: { nodes: { cloud: [cloud] }, groups: { group: ['cloud:turn'] } },
+          },
+        },
+        mode,
+        false,
+      );
+      expect(await forkOwner.getAllForkNodes()).toEqual({
+        nodes: { local: [local], cloud: [cloud] },
+        groups: { group: ['local:turn', 'cloud:turn'] },
+      });
     },
   );
 

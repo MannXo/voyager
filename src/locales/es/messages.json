@@ -1446,6 +1446,10 @@
     "message": "✗ Restauración incompleta. Restaurado: {restored}. Sin restaurar: {failed} ({error})",
     "description": "Drive restore stopped partway: which parts were restored and which were not"
   },
+  "syncRestoreForks": {
+    "message": "Bifurcaciones de conversación",
+    "description": "Drive restore part: conversation fork links"
+  },
   "syncRestoreListSeparator": {
     "message": ", ",
     "description": "Separator between restored or failed part names in the partial-restore message"

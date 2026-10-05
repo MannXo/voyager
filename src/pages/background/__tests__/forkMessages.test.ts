@@ -117,4 +117,43 @@ describe('fork messages owner', () => {
     expect(owner.handle({ type: 'gv.starred.getAll' })).toBeNull();
     expect(owner.handle(null)).toBeNull();
   });
+  it('a fork uploaded on one device merges into the forks already on another', async () => {
+    const local = node('a', '1');
+    const shared = node('b', '1', 'cloud', 0);
+    const cloudOnly = node('b', '2', 'cloud', 1);
+    const { owner, stored } = setup({
+      nodes: { a: [local], b: [shared] },
+      groups: { group: ['a:1'], cloud: ['b:1'] },
+    });
+    const envelope = {
+      format: 'gemini-voyager.forks.v1',
+      data: { nodes: { b: [shared, cloudOnly, { turnId: 'broken' }] }, groups: {} },
+    };
+    await expect(owner.handle({ type: 'gv.fork.mergeCloud', payload: envelope })).resolves.toEqual({
+      ok: true,
+      status: 'merged',
+    });
+    expect(stored()).toEqual({
+      nodes: { a: [local], b: [shared, cloudOnly] },
+      groups: { group: ['a:1'], cloud: ['b:1', 'b:2'] },
+    });
+  });
+
+  it('keeps local forks when a restore cannot read them or gets a foreign file', async () => {
+    const local = node('a', '1');
+    const { owner, area, stored } = setup({ nodes: { a: [local] }, groups: { group: ['a:1'] } });
+    const merge = (payload: unknown) => owner.handle({ type: 'gv.fork.mergeCloud', payload });
+    const cloud = {
+      format: 'gemini-voyager.forks.v1',
+      data: { nodes: { b: [node('b', '1')] }, groups: {} },
+    };
+    await expect(merge(undefined)).resolves.toEqual({ ok: true, status: 'absent' });
+    await expect(merge({ ...cloud, format: 'gemini-voyager.starred.v1' })).rejects.toThrow(
+      'Invalid fork nodes envelope',
+    );
+    area.get.mockRejectedValueOnce(new Error('unavailable'));
+    await expect(merge(cloud)).rejects.toThrow('unavailable');
+    expect(area.set).not.toHaveBeenCalled();
+    expect(stored()).toEqual({ nodes: { a: [local] }, groups: { group: ['a:1'] } });
+  });
 });

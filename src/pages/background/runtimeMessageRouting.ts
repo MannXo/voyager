@@ -134,6 +134,7 @@ const HANDLED_BACKGROUND_MESSAGE_TYPES = new Set([
   'gv.fork.add',
   'gv.fork.remove',
   'gv.fork.getAll',
+  'gv.fork.mergeCloud',
   'gv.fork.getForConversation',
   'gv.fork.getGroup',
   'gv.sync.authenticate',

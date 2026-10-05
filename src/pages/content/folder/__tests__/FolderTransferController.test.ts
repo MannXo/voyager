@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StorageKeys } from '@/core/types/common';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
 import { createStarStore, type StarStore } from '@/features/savedLibrary/starStore';
+import { createForkMessagesOwner } from '@/pages/background/forkMessages';
+import type { ForkNode } from '@/pages/content/fork/forkTypes';
 import { confirmDriver } from '@/tests/confirmDriver';
 
 import { FolderDataSession } from '../FolderDataSession';
@@ -13,6 +15,7 @@ import type { FolderData } from '../types';
 const { sendMessage } = vi.hoisted(() => ({ sendMessage: vi.fn() }));
 let stored: Record<string, unknown>;
 let owner: StarStore;
+let forkOwner: ReturnType<typeof createForkMessagesOwner>;
 let localGet: ReturnType<typeof vi.fn<(keys: unknown) => Promise<Record<string, unknown>>>>;
 vi.mock('webextension-polyfill', () => ({ default: { runtime: { sendMessage } } }));
 vi.mock('@/utils/i18n', () => ({
@@ -119,11 +122,15 @@ beforeEach(() => {
     get: (keys) => localGet(keys),
     set: (items) => chrome.storage.local.set(items),
   });
+  forkOwner = createForkMessagesOwner({
+    get: (keys) => localGet(keys),
+    set: (items) => chrome.storage.local.set(items),
+  });
   vi.spyOn(chrome.runtime, 'sendMessage').mockImplementation(((
-    message: { payload?: unknown },
+    message: { type: string; payload?: unknown },
     reply: (response: unknown) => void,
   ) => {
-    void owner.mergeCloud(message.payload).then(
+    void (forkOwner.handle(message) ?? owner.mergeCloud(message.payload)).then(
       (result) => reply({ ok: true, ...result }),
       (error: Error) => reply({ ok: false, error: error.message }),
     );
@@ -507,6 +514,80 @@ describe('folder transfer commands', () => {
     expect(stored[StorageKeys.PROMPT_ITEMS]).toEqual([]);
     expect(h.notify).toHaveBeenLastCalledWith(
       'Restored: folder_title、promptDataMigration. Not restored: savedLibraryStars (stars write failed)',
+      'error',
+    );
+    expect(h.refresh).not.toHaveBeenCalled();
+  });
+
+  it('a fork uploaded on one device is restored by the in-page sync on another', async () => {
+    const h = harness();
+    const fork = (conversationId: string, forkIndex: number): ForkNode => ({
+      conversationId,
+      turnId: 'turn',
+      forkGroupId: 'group',
+      forkIndex,
+      createdAt: 1,
+      conversationUrl: `https://gemini.google.com/u/1/app/${conversationId}`,
+    });
+    const local = fork('local', 0);
+    const cloud = fork('cloud', 1);
+    stored[StorageKeys.FORK_NODES] = {
+      nodes: { local: [local] },
+      groups: { group: ['local:turn'] },
+    };
+    sendMessage.mockResolvedValue({
+      ok: true,
+      data: {
+        folders: { data: importedData() },
+        forks: {
+          format: 'gemini-voyager.forks.v1',
+          data: { nodes: { cloud: [cloud] }, groups: { group: ['cloud:turn'] } },
+        },
+      },
+    });
+    await h.transfer.sync();
+    expect(await forkOwner.getAllForkNodes()).toEqual({
+      nodes: { local: [local], cloud: [cloud] },
+      groups: { group: ['local:turn', 'cloud:turn'] },
+    });
+    expect(h.notify).toHaveBeenLastCalledWith('downloadMergeSuccess', 'success');
+  });
+
+  it('names forks as not restored when the fork owner cannot persist', async () => {
+    const h = harness();
+    sendMessage.mockResolvedValue({
+      ok: true,
+      data: {
+        folders: { data: importedData() },
+        starred: { format: 'gemini-voyager.starred.v1', data: { messages: {} } },
+        forks: {
+          format: 'gemini-voyager.forks.v1',
+          data: {
+            nodes: {
+              c: [
+                {
+                  conversationId: 'c',
+                  turnId: 't',
+                  forkGroupId: 'g',
+                  forkIndex: 0,
+                  createdAt: 1,
+                  conversationUrl: 'https://gemini.google.com/app/c',
+                },
+              ],
+            },
+            groups: {},
+          },
+        },
+      },
+    });
+    vi.mocked(chrome.storage.local.set).mockImplementation(async (items) => {
+      if (StorageKeys.FORK_NODES in items) throw new Error('forks write failed');
+      Object.assign(stored, items);
+    });
+    await h.transfer.sync();
+    expect(h.notify).toHaveBeenLastCalledWith(
+      'Restored: folder_title、promptDataMigration、savedLibraryStars. ' +
+        'Not restored: syncRestoreForks (forks write failed)',
       'error',
     );
     expect(h.refresh).not.toHaveBeenCalled();
