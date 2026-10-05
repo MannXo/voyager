@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildScopedStorageKey } from '@/core/services/AccountIsolationService';
+import { StorageKeys } from '@/core/types/common';
 import {
   type MemoryStorage,
   createMemoryStorage,
   settle,
 } from '@/features/plugins/builtin/chatgptFolders/__tests__/memoryStorage';
+import { createGeminiTimelineStoragePolicy } from '@/pages/content/timeline/GeminiTimelineStorage';
 import type { TimelineHierarchyData } from '@/pages/content/timeline/hierarchyTypes';
 
 import { TimelineState } from '../TimelineState';
@@ -20,7 +22,7 @@ let current: Set<string>;
 let readsUntilHold: number;
 let release: (() => void) | null;
 /** Holds each write before it reaches storage, or holds its reply after it has. */
-let holdWrites: 'before-commit' | 'after-commit' | null;
+let holdWrites: 'before-commit' | 'after-commit' | 'fail' | null;
 const heldWrites: Array<() => void> = [];
 
 async function releaseWrites(): Promise<void> {
@@ -106,6 +108,7 @@ beforeEach(() => {
       return snapshot;
     },
     set: async (items: Record<string, unknown>) => {
+      if (holdWrites === 'fail') throw new Error('QUOTA_BYTES quota exceeded');
       if (holdWrites === 'before-commit') await hold();
       await set(items);
       if (holdWrites === 'after-commit') await hold();
@@ -127,6 +130,7 @@ afterEach(async () => {
   await releaseWrites();
   await settle();
   states.splice(0).forEach((state) => state.destroy());
+  localStorage.clear();
   vi.unstubAllGlobals();
 });
 
@@ -290,5 +294,55 @@ describe('timeline outline persistence', () => {
     await opening;
     expect(stored('a')?.levels).toEqual({ 'c-a': 3, 'c-b': 3 });
     expect(after.hierarchy.getMarkerLevel('c-b')).toBe(3);
+  });
+
+  it('a re-enabled timeline shows the newest outline after an old save settles', async () => {
+    const before = await open('a');
+    holdWrites = 'after-commit';
+    before.hierarchy.setMarkerLevel(TURN, 2);
+    before.destroy();
+    await settle(30);
+    expect(heldWrites).toHaveLength(1);
+    storage.external('local', KEY, { conversations: { 'claude:conv:a': outline('a', 3) } });
+    await settle(30);
+
+    const after = await open('a');
+    await releaseWrites();
+    expect(stored('a')?.levels).toEqual({ [TURN]: 3 });
+    expect(after.hierarchy.getMarkerLevel(TURN)).toBe(3);
+  });
+
+  it('a Gemini outline survives a failed move to extension storage', async () => {
+    history.replaceState({}, '', '/app/legacy');
+    const policy = createGeminiTimelineStoragePolicy(location.href);
+    const turn = 's-1111111111111111';
+    const levelsKey = policy.hierarchy.legacyLevelsKey!;
+    const collapsedKey = policy.hierarchy.legacyCollapsedKey!;
+    localStorage.setItem(levelsKey, JSON.stringify({ [turn]: 2 }));
+    localStorage.setItem(collapsedKey, JSON.stringify([turn]));
+    const mount = async () => {
+      const state = new TimelineState(() => {}, policy);
+      states.push(state);
+      await state.init();
+      await settle(30);
+      return state;
+    };
+
+    holdWrites = 'fail';
+    const failed = await mount();
+    expect(failed.hierarchy.getMarkerLevel(turn)).toBe(2);
+    expect(failed.hierarchy.isMarkerCollapsed(turn)).toBe(true);
+    failed.destroy();
+    expect(JSON.parse(localStorage.getItem(levelsKey)!)).toEqual({ [turn]: 2 });
+    expect(JSON.parse(localStorage.getItem(collapsedKey)!)).toEqual([turn]);
+
+    holdWrites = null;
+    const healthy = await mount();
+    expect(healthy.hierarchy.getMarkerLevel(turn)).toBe(2);
+    expect(healthy.hierarchy.isMarkerCollapsed(turn)).toBe(true);
+    expect(
+      (storage.values.local.get(StorageKeys.TIMELINE_HIERARCHY) as TimelineHierarchyData)
+        .conversations[policy.conversationId],
+    ).toMatchObject({ levels: { [turn]: 2 }, collapsed: [turn] });
   });
 });

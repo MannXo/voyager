@@ -5,11 +5,13 @@ type OutlineEntry = TimelineHierarchyConversationData | null;
 /** One accepted per-turn edit, applied to whatever entry storage holds when it is written. */
 export type OutlineChange = (entry: OutlineEntry) => OutlineEntry;
 
-interface QueuedChange {
-  readonly apply: OutlineChange;
-  /** queued → submitted (its storage write has started) → written. */
-  stage: 'queued' | 'submitted' | 'written';
+/** The conversation's entry as storage held it right after a successful write. */
+export interface SettledOutline {
+  readonly stored: OutlineEntry;
 }
+
+/** `published` carries a post-write snapshot; null means only the pending changes moved. */
+export type OutlineListener = (published: SettledOutline | null) => void;
 
 /**
  * Page-wide owner of accepted outline edits, keyed by storage bucket and conversation, so a
@@ -17,15 +19,15 @@ interface QueuedChange {
  */
 class OutlineSaveQueue {
   private tail: Promise<void> = Promise.resolve();
-  private readonly changes = new Map<string, QueuedChange[]>();
-  private readonly listeners = new Map<string, Set<() => void>>();
+  private readonly changes = new Map<string, OutlineChange[]>();
+  private readonly listeners = new Map<string, Set<OutlineListener>>();
 
   /** The stored entry as this page will leave it once its accepted changes are written. */
   overlay(key: string, entry: OutlineEntry): OutlineEntry {
-    return (this.changes.get(key) ?? []).reduce((current, change) => change.apply(current), entry);
+    return (this.changes.get(key) ?? []).reduce((current, change) => change(current), entry);
   }
 
-  subscribe(key: string, listener: () => void): () => void {
+  subscribe(key: string, listener: OutlineListener): () => void {
     const listeners = this.listeners.get(key) ?? new Set();
     listeners.add(listener);
     this.listeners.set(key, listeners);
@@ -36,54 +38,39 @@ class OutlineSaveQueue {
   }
 
   /**
-   * A storage event follows the write that caused it, so submitted changes are in that snapshot
-   * or about to be echoed by their own event; queued changes stay overlaid.
+   * Serializes every outline write in the page. `write` re-reads storage, applies its step and
+   * returns the entry read back afterwards, or null when it failed. A settled change leaves the
+   * overlay as that read is published, so no view depends on catching its own storage event.
+   * A `change` of null is a write that is not an edit and is never overlaid (legacy migration).
    */
-  retireOnStorageEvent(key: string): void {
-    this.remove(key, (change) => change.stage !== 'queued');
-  }
-
-  /** Call before a storage read: the returned function retires changes written before it began. */
-  beginRead(key: string): () => void {
-    const written = new Set(
-      (this.changes.get(key) ?? []).filter((change) => change.stage === 'written'),
-    );
-    return () => this.remove(key, (change) => written.has(change));
-  }
-
-  /** Serializes every outline write in the page; each re-reads storage before applying its change. */
   enqueue(
     key: string,
-    apply: OutlineChange,
-    write: (apply: OutlineChange, submit: () => void) => Promise<boolean>,
+    change: OutlineChange | null,
+    write: () => Promise<SettledOutline | null>,
   ): Promise<void> {
-    const change: QueuedChange = { apply, stage: 'queued' };
-    this.changes.set(key, [...(this.changes.get(key) ?? []), change]);
-    this.notify(key);
+    if (change) {
+      this.changes.set(key, [...(this.changes.get(key) ?? []), change]);
+      this.notify(key, null);
+    }
     const run = this.tail.then(async () => {
-      const written = await write(apply, () => {
-        change.stage = 'submitted';
-      });
-      if (written) {
-        change.stage = 'written';
-        return;
-      }
-      // A failed write is not in storage, so the outline must stop showing it.
-      this.remove(key, (queued) => queued === change);
-      this.notify(key);
+      const settled = await write();
+      if (change) this.remove(key, change);
+      if (settled) this.notify(key, settled);
+      // A failed edit is not in storage, so the outline must stop showing it.
+      else if (change) this.notify(key, null);
     });
     this.tail = run;
     return run;
   }
 
-  private remove(key: string, retire: (change: QueuedChange) => boolean): void {
-    const remaining = (this.changes.get(key) ?? []).filter((change) => !retire(change));
+  private remove(key: string, change: OutlineChange): void {
+    const remaining = (this.changes.get(key) ?? []).filter((queued) => queued !== change);
     if (remaining.length > 0) this.changes.set(key, remaining);
     else this.changes.delete(key);
   }
 
-  private notify(key: string): void {
-    this.listeners.get(key)?.forEach((listener) => listener());
+  private notify(key: string, published: SettledOutline | null): void {
+    this.listeners.get(key)?.forEach((listener) => listener(published));
   }
 }
 

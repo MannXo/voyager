@@ -42,7 +42,11 @@ is a per-turn change (one turn's level or collapse) captured with its bucket and
 page-wide `outlineSaveQueue` applies it to the entry freshly read from storage, so it never writes a
 remembered entry, and the save completes even if the timeline is torn down. The displayed outline is
 the latest storage snapshot, always accepted, with the page's unwritten changes for that bucket and
-conversation overlaid; a remounted timeline therefore sees an earlier session's pending edits. Local backups export catalog buckets in
+conversation overlaid; a remounted timeline therefore sees an earlier session's pending edits. Each
+successful write reads the bucket back and publishes that read as the snapshot, which retires the
+change without relying on its own storage event. A Gemini localStorage outline with no
+extension-storage entry is the snapshot until its migration write succeeds; a failed migration
+changes nothing, and the legacy keys only mirror outlines that came from extension storage. Local backups export catalog buckets in
 `catalog-timeline-hierarchy.json`, keyed by storage key; catalog hierarchy has no Drive file yet.
 ChatGPT stars carry the same hashed account annotation. Stars for every site come from the Saved
 Library through its

@@ -67,8 +67,12 @@ describe('TimelineState identity aliases', () => {
     history.replaceState({}, '', '/app/abc');
     localStorage.clear();
     vi.restoreAllMocks();
-    vi.mocked(chrome.storage.local.get).mockImplementation(async () => ({}));
-    vi.mocked(chrome.storage.local.set).mockResolvedValue();
+    // Saves read their result back, so this storage keeps what was set.
+    const stored: Record<string, unknown> = {};
+    vi.mocked(chrome.storage.local.get).mockImplementation(async () => structuredClone(stored));
+    vi.mocked(chrome.storage.local.set).mockImplementation(async (items) => {
+      Object.assign(stored, structuredClone(items));
+    });
     vi.spyOn(StarredMessagesService, 'getAllStarredMessages').mockResolvedValue({ messages: {} });
   });
   afterEach(() => {
