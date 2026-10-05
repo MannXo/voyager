@@ -7,6 +7,7 @@ import { LanguageProvider } from '@/contexts/LanguageContext';
 import { StorageKeys } from '@/core/types/common';
 import type { HighlightRecordV1 } from '@/core/types/highlight';
 import type { StarredMessage } from '@/features/savedLibrary/starTypes';
+import { TRANSLATIONS } from '@/utils/translations';
 
 import { Library } from '../Library';
 
@@ -199,6 +200,47 @@ afterEach(async () => {
 });
 
 describe('Saved Library page', () => {
+  it('full starred prompts expand independently and search finds words beyond the preview', async () => {
+    const text = `First user line\nSecond line with QUASAR and <em>plain text</em>\n${'x'.repeat(200)}`;
+    stars = [
+      star({ content: 'First user line', text }),
+      star({ turnId: 'turn-2', content: 'Another preview', text: 'Another preview\nMore details' }),
+      star({ turnId: 'legacy', content: 'Legacy preview' }),
+      star({ turnId: 'short', content: 'Short prompt', text: 'Short prompt' }),
+    ];
+    await mount();
+    vi.mocked(chrome.tabs.create).mockClear();
+    const toggles = [...container.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')];
+    expect(toggles).toHaveLength(2);
+    const full = document.getElementById(toggles[0].getAttribute('aria-controls')!)!;
+    const other = document.getElementById(toggles[1].getAttribute('aria-controls')!)!;
+    expect(full.hidden).toBe(true);
+    expect(other.hidden).toBe(true);
+    expect(toggles[0].getAttribute('aria-expanded')).toBe('false');
+    expect(toggles[0].textContent).toBe('Show full text');
+    await act(async () => toggles[0].click());
+    expect(full.hidden).toBe(false);
+    expect(full.textContent).toBe(text);
+    expect(full.querySelector('em')).toBeNull();
+    expect(toggles[0].getAttribute('aria-expanded')).toBe('true');
+    expect(toggles[0].textContent).toBe('Collapse text');
+    expect(other.hidden).toBe(true);
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+    expect(container.querySelector('button button')).toBeNull();
+    await act(async () => toggles[0].click());
+    expect(full.hidden).toBe(true);
+    await query('  quasar  ');
+    expect(container.querySelectorAll('[data-library-item-id]')).toHaveLength(1);
+    expect(container.querySelector('[data-library-open]')?.textContent).toContain(
+      'First user line',
+    );
+    expect(
+      container
+        .querySelector<HTMLButtonElement>('button[aria-expanded]')
+        ?.getAttribute('aria-expanded'),
+    ).toBe('false');
+  });
+
   it('shows stored previews and notes across sites without inventing full conversation text', async () => {
     stars.push(
       star({
@@ -216,6 +258,7 @@ describe('Saved Library page', () => {
     expect(container.textContent).toContain('Second preview line');
     expect(container.textContent).toContain('Annotation note');
     expect(container.textContent).toContain('Claude saved preview');
+    expect(container.querySelector('button[aria-expanded]')).toBeNull();
     expect(container.querySelectorAll('section')).toHaveLength(3);
     const groupLabels = Array.from(container.querySelectorAll('section p')).map(
       (label) => label.textContent,
@@ -389,9 +432,7 @@ describe('Saved Library page', () => {
     await act(async () => schemeChanged?.());
     expect(document.documentElement.classList.contains('dark')).toBe(true);
     expect(document.documentElement.dataset.gvScheme).toBe('dark');
-    const removeButton = container.querySelector<HTMLElement>(
-      '[data-library-item-id] button:last-child',
-    )!;
+    const removeButton = buttons(TRANSLATIONS.ar.removeFromStarred)[0];
     await act(async () => removeButton.click());
     const host = document.querySelector<HTMLElement>('[data-gv-layer="popover"]')!;
     expect(host.dataset.gvScheme).toBe('dark');

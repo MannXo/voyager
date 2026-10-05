@@ -3938,6 +3938,12 @@
   "savedLibraryOpenFailed": {
     "message": "라이브러리를 열 수 없습니다"
   },
+  "savedLibraryExpandText": {
+    "message": "전체 텍스트 보기"
+  },
+  "savedLibraryCollapseText": {
+    "message": "텍스트 접기"
+  },
   "savedLibraryConversationOpenFailed": {
     "message": "이 대화를 열 수 없습니다"
   },

@@ -3938,6 +3938,12 @@
   "savedLibraryOpenFailed": {
     "message": "无法打开收藏库"
   },
+  "savedLibraryExpandText": {
+    "message": "展开全文"
+  },
+  "savedLibraryCollapseText": {
+    "message": "收起全文"
+  },
   "savedLibraryConversationOpenFailed": {
     "message": "无法打开这段对话"
   },

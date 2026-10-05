@@ -58,6 +58,27 @@ describe('saved library model', () => {
     expect(filterSavedLibraryItems(items, 'all', 'not present')).toEqual([]);
   });
 
+  it('finds words beyond the preview and falls back to the preview for legacy stars', () => {
+    const fullText = 'A full user prompt\nOnly the full text mentions QUASAR';
+    const items = toSavedLibraryItems(
+      [
+        { ...starred, content: 'Old preview', text: fullText },
+        { ...starred, turnId: 'legacy' },
+      ],
+      [highlight],
+    );
+
+    expect(filterSavedLibraryItems(items, 'starred', '  quasar  ')).toMatchObject([
+      { text: fullText, content: 'Old preview' },
+    ]);
+    expect(filterSavedLibraryItems(items, 'starred', 'old preview')).toEqual([]);
+    expect(filterSavedLibraryItems(items, 'starred', 'starred response')).toMatchObject([
+      { turnId: 'legacy' },
+    ]);
+    expect(filterSavedLibraryItems(items, 'highlights', 'quasar')).toEqual([]);
+    expect(filterSavedLibraryItems(items, 'all', 'proof')[0]?.kind).toBe('highlight');
+  });
+
   it('builds account-preserving deep links for stars and highlights', () => {
     const [highlightItem, starredItem] = toSavedLibraryItems([starred], [highlight]);
 

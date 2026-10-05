@@ -1,3 +1,5 @@
+import { useId, useState } from 'react';
+
 import { Star, Trash2 } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
@@ -24,6 +26,9 @@ export function SavedLibraryItemCard({
   language,
   expanded = false,
 }: SavedLibraryItemCardProps) {
+  const [textExpanded, setTextExpanded] = useState(false);
+  const textId = useId();
+  const hasFullText = item.kind === 'starred' && (item.text?.length ?? 0) > item.content.length;
   const removeLabel = item.kind === 'starred' ? t('removeFromStarred') : t('pm_delete');
   return (
     <Card
@@ -33,61 +38,84 @@ export function SavedLibraryItemCard({
       )}
       data-library-item-id={savedLibraryItemKey(item)}
     >
-      <button
-        type="button"
-        onClick={() => onOpen(item)}
-        title={t('pm_starred_open')}
-        data-library-open
-        className="hover:bg-muted focus-visible:ring-ring flex min-w-0 flex-1 items-start gap-2.5 rounded-lg p-2 text-start focus-visible:ring-2"
-      >
-        <span
-          className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center"
-          aria-hidden="true"
+      <div className="min-w-0 flex-1">
+        <button
+          type="button"
+          onClick={() => onOpen(item)}
+          title={t('pm_starred_open')}
+          data-library-open
+          className="hover:bg-muted focus-visible:ring-ring flex w-full min-w-0 items-start gap-2.5 rounded-lg p-2 text-start focus-visible:ring-2"
         >
-          {item.kind === 'starred' ? (
-            <Star className="text-primary h-4 w-4 fill-current" />
-          ) : (
-            <span
-              className="h-3.5 w-3.5 rounded-sm"
-              style={{ backgroundColor: getHighlightColorHex(item.color ?? 'yellow') }}
-            />
-          )}
-        </span>
-        <span className="min-w-0 flex-1">
           <span
-            className={cn(
-              'block text-sm leading-relaxed font-medium break-words whitespace-pre-wrap',
-              !expanded && 'line-clamp-2',
-            )}
-            dir="auto"
+            className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center"
+            aria-hidden="true"
           >
-            {item.content}
+            {item.kind === 'starred' ? (
+              <Star className="text-primary h-4 w-4 fill-current" />
+            ) : (
+              <span
+                className="h-3.5 w-3.5 rounded-sm"
+                style={{ backgroundColor: getHighlightColorHex(item.color ?? 'yellow') }}
+              />
+            )}
           </span>
-          {item.note && (
+          <span className="min-w-0 flex-1">
             <span
               className={cn(
-                'text-muted-foreground mt-1 block text-xs leading-relaxed break-words whitespace-pre-wrap',
+                'block text-sm leading-relaxed font-medium break-words whitespace-pre-wrap',
                 !expanded && 'line-clamp-2',
               )}
               dir="auto"
             >
-              {item.note}
+              {item.content}
             </span>
-          )}
-          <span className="text-muted-foreground mt-2 flex flex-wrap items-center gap-2 text-[11px]">
-            <span className="truncate" dir="auto">
-              {item.conversationTitle || t('pm_starred_untitled')}
+            {item.note && (
+              <span
+                className={cn(
+                  'text-muted-foreground mt-1 block text-xs leading-relaxed break-words whitespace-pre-wrap',
+                  !expanded && 'line-clamp-2',
+                )}
+                dir="auto"
+              >
+                {item.note}
+              </span>
+            )}
+            <span className="text-muted-foreground mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+              <span className="truncate" dir="auto">
+                {item.conversationTitle || t('pm_starred_untitled')}
+              </span>
+              <span aria-hidden="true">·</span>
+              <time dateTime={new Date(item.savedAt).toISOString()}>
+                {new Intl.DateTimeFormat(language.replace('_', '-'), {
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                }).format(item.savedAt)}
+              </time>
             </span>
-            <span aria-hidden="true">·</span>
-            <time dateTime={new Date(item.savedAt).toISOString()}>
-              {new Intl.DateTimeFormat(language.replace('_', '-'), {
-                dateStyle: 'medium',
-                timeStyle: 'short',
-              }).format(item.savedAt)}
-            </time>
           </span>
-        </span>
-      </button>
+        </button>
+        {hasFullText && (
+          <div className="px-2 pb-2">
+            <button
+              type="button"
+              aria-expanded={textExpanded}
+              aria-controls={textId}
+              onClick={() => setTextExpanded(!textExpanded)}
+              className="text-primary hover:bg-muted focus-visible:ring-ring min-h-8 rounded-md px-2 text-start text-xs font-medium focus-visible:ring-2"
+            >
+              {t(textExpanded ? 'savedLibraryCollapseText' : 'savedLibraryExpandText')}
+            </button>
+            <p
+              id={textId}
+              hidden={!textExpanded}
+              dir="auto"
+              className="mt-2 text-sm leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap"
+            >
+              {item.text}
+            </p>
+          </div>
+        )}
+      </div>
       <button
         type="button"
         onClick={() => onDelete(item)}

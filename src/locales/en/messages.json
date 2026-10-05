@@ -3938,6 +3938,12 @@
   "savedLibraryOpenFailed": {
     "message": "Couldn’t open the library"
   },
+  "savedLibraryExpandText": {
+    "message": "Show full text"
+  },
+  "savedLibraryCollapseText": {
+    "message": "Collapse text"
+  },
   "savedLibraryConversationOpenFailed": {
     "message": "Couldn’t open this conversation"
   },

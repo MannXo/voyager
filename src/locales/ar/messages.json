@@ -3938,6 +3938,12 @@
   "savedLibraryOpenFailed": {
     "message": "تعذّر فتح المكتبة"
   },
+  "savedLibraryExpandText": {
+    "message": "عرض النص الكامل"
+  },
+  "savedLibraryCollapseText": {
+    "message": "طي النص"
+  },
   "savedLibraryConversationOpenFailed": {
     "message": "تعذّر فتح هذه المحادثة"
   },

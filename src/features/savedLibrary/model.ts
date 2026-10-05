@@ -17,6 +17,7 @@ export interface SavedLibraryItem {
   conversationTitle?: string;
   turnId: string;
   content: string;
+  text?: string;
   note?: string;
   color?: HighlightColor;
   account?: string;
@@ -70,6 +71,7 @@ export function toSavedLibraryItems(
     conversationTitle: message.conversationTitle,
     turnId: message.turnId,
     content: message.content,
+    text: message.text,
     account: message.account,
     savedAt: message.starredAt,
     firstSeenAt: message.starredAt,
@@ -113,7 +115,7 @@ export function filterSavedLibraryItems(
     if (!query) return true;
 
     const searchable = [
-      item.content,
+      item.text ?? item.content,
       item.note,
       item.conversationTitle,
       item.conversationUrl,

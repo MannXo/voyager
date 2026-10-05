@@ -3938,6 +3938,12 @@
   "savedLibraryOpenFailed": {
     "message": "ライブラリを開けませんでした"
   },
+  "savedLibraryExpandText": {
+    "message": "全文を表示"
+  },
+  "savedLibraryCollapseText": {
+    "message": "全文を折りたたむ"
+  },
   "savedLibraryConversationOpenFailed": {
     "message": "この会話を開けませんでした"
   },

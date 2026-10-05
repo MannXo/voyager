@@ -18,10 +18,12 @@ vi.mock('webextension-polyfill', () => ({ default: chrome }));
 let root: Root;
 let container: HTMLElement;
 let pageUrl: string;
+let starText: string | undefined;
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.clearAllMocks();
   pageUrl = 'https://claude.ai/chat/current';
+  starText = undefined;
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -50,6 +52,7 @@ beforeEach(() => {
                   conversationUrl: 'https://claude.ai/chat/saved',
                   turnId: 'turn-one',
                   content: 'Saved answer',
+                  text: starText,
                   starredAt: 100,
                 },
               ],
@@ -85,6 +88,34 @@ async function viewHighlights() {
   )!;
   await act(async () => button.click());
 }
+
+it('the popup can expand a full user prompt and find words missing from its preview', async () => {
+  starText = 'Saved user prompt\nHidden-only NEBULA\nAnother line';
+  await mount();
+  const toggle = container.querySelector<HTMLButtonElement>('button[aria-expanded]')!;
+  const full = document.getElementById(toggle.getAttribute('aria-controls')!)!;
+  expect(full.hidden).toBe(true);
+  expect(toggle.textContent).toBe('Show full text');
+  await act(async () => toggle.click());
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  expect(full.hidden).toBe(false);
+  expect(full.textContent).toBe(starText);
+  expect(chrome.tabs.update).not.toHaveBeenCalled();
+  expect(chrome.tabs.create).not.toHaveBeenCalled();
+  await act(async () => toggle.click());
+  expect(full.hidden).toBe(true);
+  expect(toggle.textContent).toBe('Show full text');
+  await act(async () => {
+    const input = container.querySelector<HTMLInputElement>('input[type="search"]')!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(
+      input,
+      'nebula',
+    );
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  expect(container.querySelectorAll('[data-library-item-id]')).toHaveLength(1);
+  expect(container.querySelector('[data-library-open]')?.textContent).toContain('Saved answer');
+});
 
 it.each([
   'https://claude.ai/chat/current',
