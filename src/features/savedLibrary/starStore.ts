@@ -1,7 +1,12 @@
 import { StorageKeys } from '@/core/types/common';
 
 import { mergeStarredMessages, normalizeStarredMessages } from './starData';
-import { mergeStarState, normalizeStarTombstones, type StarState } from './starSyncData';
+import {
+  mergeStarState,
+  normalizeStarTombstones,
+  starDeletionConversationIds,
+  type StarState,
+} from './starSyncData';
 import { getBackfillStarText, legacyStarProjection } from './starText';
 import type { StarredMessage, StarredMessagesData, StarTombstone } from './starTypes';
 
@@ -99,9 +104,13 @@ export function createStarStore(area: StorageArea): StarStore {
           item.conversationId
         ][0];
         if (!normalized) throw new Error('Invalid starred message');
+        const deletionIds = starDeletionConversationIds(
+          item.conversationId,
+          normalized.conversationUrl,
+        );
         const starredAt = rawTombstones.reduce(
           (timestamp, deletion) =>
-            deletion.conversationId === item.conversationId && deletion.turnId === item.turnId
+            deletionIds.includes(deletion.conversationId) && deletion.turnId === item.turnId
               ? Math.max(timestamp, deletion.starredAt + 1)
               : timestamp,
           normalized.starredAt,

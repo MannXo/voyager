@@ -1,3 +1,8 @@
+import {
+  buildConversationIdFromUrl,
+  extractConversationIdFromUrl,
+} from '@/core/utils/conversationIdentity';
+
 import { mergeStarredMessages, normalizeStarredMessages } from './starData';
 import type { StarredMessagesData, StarTombstone } from './starTypes';
 
@@ -13,6 +18,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 const RETENTION_MS = 180 * 24 * 60 * 60 * 1000;
 const identity = (conversationId: string, turnId: string): string =>
   JSON.stringify([conversationId, turnId]);
+
+export function starDeletionConversationIds(conversationId: string, url: string): string[] {
+  if (
+    !conversationId.startsWith('gemini:') ||
+    conversationId.startsWith('gemini:conv:') ||
+    !extractConversationIdFromUrl(url)
+  )
+    return [conversationId];
+  return [conversationId, buildConversationIdFromUrl(url)];
+}
 
 export function normalizeStarTombstones(value: unknown): StarTombstone[] {
   if (!Array.isArray(value)) return [];
@@ -34,7 +49,7 @@ export function normalizeStarTombstones(value: unknown): StarTombstone[] {
     ) {
       continue;
     }
-    records.push({
+    const record: StarTombstone = {
       conversationId: item.conversationId,
       turnId: item.turnId,
       conversationUrl: item.conversationUrl,
@@ -42,7 +57,11 @@ export function normalizeStarTombstones(value: unknown): StarTombstone[] {
       deletedAt: item.deletedAt,
       ...(item.account !== undefined ? { account: item.account } : {}),
       ...(item.movedTo !== undefined ? { movedTo: item.movedTo } : {}),
-    });
+    };
+    const ids = record.movedTo
+      ? [record.conversationId]
+      : starDeletionConversationIds(record.conversationId, record.conversationUrl);
+    records.push(...ids.map((conversationId) => ({ ...record, conversationId })));
   }
   return records;
 }
@@ -69,10 +88,12 @@ export function mergeStarState(
     normalizeStarredMessages(undefined),
   );
   for (const [conversationId, bucket] of Object.entries(data.messages)) {
-    const remaining = bucket.filter((item) => {
-      const deletion = tombstones.get(identity(conversationId, item.turnId));
-      return !deletion || item.starredAt > deletion.starredAt;
-    });
+    const remaining = bucket.filter((item) =>
+      starDeletionConversationIds(conversationId, item.conversationUrl).every((id) => {
+        const deletion = tombstones.get(identity(id, item.turnId));
+        return !deletion || item.starredAt > deletion.starredAt;
+      }),
+    );
     if (remaining.length !== bucket.length) {
       if (remaining.length) data.messages[conversationId] = remaining;
       else delete data.messages[conversationId];
