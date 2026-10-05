@@ -86,10 +86,13 @@ describe('timeline rail background', () => {
 
   it('paints a hairline-visible film when the outer container is shown', () => {
     expect(
-      rule("html[data-gv-scheme='dark'] .gemini-timeline-bar:not(.timeline-no-container)::before"),
-    ).toMatch(/rgba\(255,\s*255,\s*255,\s*0\.28\)/);
-    expect(
-      rule("html[data-gv-scheme='light'] .gemini-timeline-bar:not(.timeline-no-container)::before"),
-    ).toMatch(/rgba\(0,\s*0,\s*0,\s*0\.2\)/);
+      rule('html[data-gv-scheme] .gemini-timeline-bar:not(.timeline-no-container)::before'),
+    ).toMatch(/background-color:\s*var\(--timeline-rail-film\)/);
+    expect(rule("html[data-gv-scheme='dark']")).toMatch(
+      /--timeline-rail-film:\s*rgba\(255,\s*255,\s*255,\s*0\.28\)/,
+    );
+    expect(rule("html[data-gv-scheme='light']")).toMatch(
+      /--timeline-rail-film:\s*rgba\(0,\s*0,\s*0,\s*0\.2\)/,
+    );
   });
 });

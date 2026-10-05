@@ -3,11 +3,9 @@
  * rail is hidden. Markers carry both layouts (full-height dots and centred
  * ticks) so CSS can morph between styles by toggling one class.
  */
+import { denseMarkerOffsets } from '@/features/timeline/denseMarkerLayout';
 
 const PREVIEW_MARKER_COUNT = 14;
-/** Same spacing rule as TimelineDotLayer's dense (compact/ruler) layout. */
-const DENSE_MAX_GAP_PX = 8;
-const DENSE_MAX_SPAN_PX = 160;
 
 export const TIMELINE_STYLE_PREVIEW_ACTIVE_INDEX = Math.floor(PREVIEW_MARKER_COUNT / 2);
 
@@ -20,11 +18,11 @@ function createTimelineStylePreview(
   preview.setAttribute('aria-hidden', 'true');
 
   const last = PREVIEW_MARKER_COUNT - 1;
-  const gap = Math.min(DENSE_MAX_GAP_PX, DENSE_MAX_SPAN_PX / last);
+  const denseOffsets = denseMarkerOffsets(PREVIEW_MARKER_COUNT);
   for (let index = 0; index < PREVIEW_MARKER_COUNT; index += 1) {
     const marker = document.createElement('span');
     marker.style.setProperty('--gv-coach-n', String(index / last));
-    marker.style.setProperty('--gv-coach-offset', `${(index - last / 2) * gap}px`);
+    marker.style.setProperty('--gv-coach-offset', `${denseOffsets[index]}px`);
     if (index === TIMELINE_STYLE_PREVIEW_ACTIVE_INDEX) marker.className = 'active';
     decorateMarker?.(marker, index);
     preview.appendChild(marker);

@@ -1,22 +1,7 @@
-/* The rail's ground. A film over whatever the host paints behind it, not a
-   surface of its own: the old pair were opaque slabs picked when Gemini's dark
-   was a blue slate, and against today's near-black #0f0f0f the dark one sat at
-   a contrast ratio of 1.04 — measured on the page, which is to say invisible.
-
-   Default width is 4px, so the film has to read as a hairline. 0.12 / 0.08
-   alpha was measured findable on a 24px pill and gone on a 4px line, which
-   made unchecking "Hide outer container" look like a no-op.
-
-   NOTE the values live here and not in --timeline-bar-bg, which
-   .timeline-preview-toggle also reads as an opaque panel. */
-html[data-gv-scheme='dark'] .gemini-timeline-bar:not(.timeline-no-container)::before {
-  background-color: rgba(255, 255, 255, 0.28);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-}
-
-html[data-gv-scheme='light'] .gemini-timeline-bar:not(.timeline-no-container)::before {
-  background-color: rgba(0, 0, 0, 0.2);
+/* The rail's ground on sites that stamp a scheme: `--timeline-rail-film`
+   (public/contentStyle.css), shared with the style-guide replica. */
+html[data-gv-scheme] .gemini-timeline-bar:not(.timeline-no-container)::before {
+  background-color: var(--timeline-rail-film);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
 }

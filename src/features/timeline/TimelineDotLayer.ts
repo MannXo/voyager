@@ -2,6 +2,7 @@ import type { TimelineStyle } from '@/core/types/common';
 
 import type { TimelineHierarchyGeometry } from './TimelineHierarchyGeometry';
 import { getTimelineSpringProfile } from './TimelineNavigation';
+import { denseMarkerOffsets } from './denseMarkerLayout';
 import type { DotElement, TimelineMarker } from './types';
 
 /** Owns measured marker positions, keyed dot rendering and the runner lifetime. */
@@ -396,15 +397,8 @@ export class TimelineDotLayer {
       if (!hiddenIndices.has(index)) visibleIndices.push(index);
     }
 
-    const offsets = new Map<number, number>();
-    const count = visibleIndices.length;
-    if (count === 0) return offsets;
-    const gap = count > 1 ? Math.min(8, 160 / (count - 1)) : 0;
-    const center = (count - 1) / 2;
-    visibleIndices.forEach((markerIndex, rank) => {
-      offsets.set(markerIndex, (rank - center) * gap);
-    });
-    return offsets;
+    const rankOffsets = denseMarkerOffsets(visibleIndices.length);
+    return new Map(visibleIndices.map((markerIndex, rank) => [markerIndex, rankOffsets[rank]]));
   }
 
   private applyDotPosition(dot: DotElement, index: number, compactOffset?: number): void {

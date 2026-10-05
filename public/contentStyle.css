@@ -134,6 +134,15 @@ html[data-gv-scheme='dark'] {
   --timeline-tooltip-text: oklch(0.92 0.004 250);
   --timeline-tooltip-border: oklch(0.3 0.008 285 / 0.7);
   --timeline-bar-bg: rgba(2, 6, 23, 0.75);
+  /* The rail's ground: a film over whatever the host paints behind it, not a
+     surface of its own. The old opaque slabs were picked when Gemini's dark was
+     a blue slate; against today's near-black #0f0f0f the dark one measured a
+     contrast ratio of 1.04. The default rail is 4px, so the film has to read as
+     a hairline: 0.12 / 0.08 alpha was findable on a 24px pill and gone on a 4px
+     line, which made unchecking "Hide outer container" look like a no-op. Kept
+     apart from --timeline-bar-bg, which .timeline-preview-toggle reads as an
+     opaque panel. */
+  --timeline-rail-film: rgba(255, 255, 255, 0.28);
 }
 
 html[data-gv-scheme='light'] {
@@ -152,6 +161,7 @@ html[data-gv-scheme='light'] {
   --timeline-tooltip-text: oklch(0.14 0.004 285);
   --timeline-tooltip-border: oklch(0.92 0.004 250 / 0.7);
   --timeline-bar-bg: rgba(248, 250, 252, 0.88);
+  --timeline-rail-film: rgba(0, 0, 0, 0.2);
 }
 
 /* Quote Reply: keep raw Markdown for Gemini while grouping quoted context visually. */
@@ -245,12 +255,8 @@ html[data-gv-scheme='light'] {
 }
 
 /* Same film as the live rail on sites that stamp a scheme (timeline.css). */
-html[data-gv-scheme='dark'] .gv-timeline-style-preview::before {
-  background-color: rgba(255, 255, 255, 0.28);
-}
-
-html[data-gv-scheme='light'] .gv-timeline-style-preview::before {
-  background-color: rgba(0, 0, 0, 0.2);
+html[data-gv-scheme] .gv-timeline-style-preview::before {
+  background-color: var(--timeline-rail-film);
 }
 
 .gv-timeline-style-preview.is-compact::before,
