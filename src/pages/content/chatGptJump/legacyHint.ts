@@ -1,70 +1,78 @@
 import { createToaster } from '@/core/ui/toast/toaster';
+import { CHATGPT_CONVERSATION_ID_ATTRIBUTE } from '@/features/plugins/builtin';
 import { createTranslator, initI18n } from '@/utils/i18n';
 
 const REDIRECT_WINDOW_MS = 30000;
 const ROUTE_CHECK_MS = 200;
-const LOAD_FAILURE =
-  /(?:conversation|chat).*(?:not found|could not be found)|(?:unable|cannot|can't|couldn't|could not) (?:to )?load (?:conversation|chat)|(?:correct|different|another) account/i;
+const CONVERSATION_ROUTE = /^\/c\/([^/]+)\/?$/;
+const HOME_ROUTE = '/';
 
-/** A home redirect alone is normal navigation, so require the host's access/load error too. */
+function conversationInRoute(): string | undefined {
+  return CONVERSATION_ROUTE.exec(location.pathname)?.[1];
+}
+
+function targetTurnsRendered(conversationId: string): boolean {
+  return Array.from(document.querySelectorAll(`[${CHATGPT_CONVERSATION_ID_ATTRIBUTE}]`)).some(
+    (node) => node.getAttribute(CHATGPT_CONVERSATION_ID_ATTRIBUTE)?.trim() === conversationId,
+  );
+}
+
+/**
+ * A saved-turn link the host bounces home on its own suggests another account
+ * (or a deleted chat). The route alone is language-independent; user input,
+ * history navigation and a successful load all mean a later home route is the
+ * user's choice, not a bounce.
+ */
 export function startChatGptLegacyJumpHint(): () => void {
-  if (!/^\/c\/[^/]+\/?$/.test(location.pathname) || !location.hash.startsWith('#gv-turn-'))
-    return () => {};
+  const target = conversationInRoute();
+  if (!target || !location.hash.startsWith('#gv-turn-')) return () => {};
   const toaster = createToaster();
   const t = createTranslator();
-  let failureSeen = false;
   let stopped = false;
-  let shown = false;
-  const noteErrors = (node: Node): void => {
-    if (!(node instanceof Element)) return;
-    const alerts = [
-      ...(node.matches('[role="alert"]') ? [node] : []),
-      ...node.querySelectorAll('[role="alert"]'),
-    ];
-    if (alerts.some((alert) => LOAD_FAILURE.test(alert.textContent ?? ''))) failureSeen = true;
+  let armed = true;
+
+  const disarm = (): void => {
+    if (!armed) return;
+    armed = false;
+    window.removeEventListener('pointerdown', onUserInput, true);
+    window.removeEventListener('keydown', onUserInput, true);
+    window.removeEventListener('popstate', disarm);
+    clearInterval(interval);
+    clearTimeout(expiry);
+  };
+  const onUserInput = (event: Event): void => {
+    if (event.isTrusted) disarm();
+  };
+  const showHint = (): void => {
+    if (stopped) return;
+    toaster.show({
+      message: t('savedLibraryChatGptSwitchHint'),
+      tone: 'warning',
+      durationMs: null,
+      dismissLabel: t('changelog_close'),
+    });
   };
   const check = (): void => {
-    noteErrors(document.documentElement);
-    if (!shown && failureSeen && location.pathname === '/') {
-      shown = true;
-      observer.disconnect();
-      clearInterval(interval);
-      clearTimeout(expiry);
-      const showHint = (): void => {
-        if (stopped) return;
-        toaster.show({
-          message: t('savedLibraryChatGptSwitchHint'),
-          tone: 'warning',
-          durationMs: null,
-          dismissLabel: t('changelog_close'),
-        });
-      };
-      void initI18n().then(showHint, showHint);
+    if (!armed) return;
+    if (conversationInRoute() === target) {
+      if (targetTurnsRendered(target)) disarm();
+      return;
     }
+    const bouncedHome = location.pathname === HOME_ROUTE;
+    disarm();
+    if (bouncedHome) void initI18n().then(showHint, showHint);
   };
-  const observer = new MutationObserver((changes) => {
-    for (const change of changes) {
-      // Hosts remove the error while replacing the conversation with their home screen.
-      for (const removed of change.removedNodes) noteErrors(removed);
-    }
-    check();
-  });
-  observer.observe(document.documentElement, {
-    childList: true,
-    subtree: true,
-    characterData: true,
-  });
+
+  // Capture phase sees the click or shortcut before the host's router acts on it.
+  window.addEventListener('pointerdown', onUserInput, true);
+  window.addEventListener('keydown', onUserInput, true);
+  window.addEventListener('popstate', disarm);
   const interval = setInterval(check, ROUTE_CHECK_MS);
-  const expiry = setTimeout(() => {
-    observer.disconnect();
-    clearInterval(interval);
-  }, REDIRECT_WINDOW_MS);
+  const expiry = setTimeout(disarm, REDIRECT_WINDOW_MS);
   check();
   return () => {
     stopped = true;
-    observer.disconnect();
-    clearInterval(interval);
-    clearTimeout(expiry);
+    disarm();
     toaster.destroy();
   };
 }

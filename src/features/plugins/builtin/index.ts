@@ -1,5 +1,8 @@
 import { type PluginManifest, hasNativeOps } from '../types';
 
+/** ChatGPT stamps the owning conversation id on each rendered reply. */
+export const CHATGPT_CONVERSATION_ID_ATTRIBUTE = 'data-chatgpt-selection-conversation-id';
+
 /**
  * Built-in (bundled-in-the-extension) plugins — first-party data, NOT from the
  * remote marketplace.
@@ -399,7 +402,7 @@ export const BUILTIN_PLUGINS: readonly PluginManifest[] = [
           // conversation the URL is on.
           params: {
             turnItem: '[data-turn-key]',
-            conversationIdAttribute: 'data-chatgpt-selection-conversation-id',
+            conversationIdAttribute: CHATGPT_CONVERSATION_ID_ATTRIBUTE,
             accountIdAttributes: ['data-theme-user-id', 'data-theme-account-id'],
           },
         },
