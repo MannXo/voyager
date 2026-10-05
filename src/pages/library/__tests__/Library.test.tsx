@@ -214,21 +214,23 @@ describe('Saved Library page', () => {
     expect(toggles).toHaveLength(2);
     const full = document.getElementById(toggles[0].getAttribute('aria-controls')!)!;
     const other = document.getElementById(toggles[1].getAttribute('aria-controls')!)!;
-    expect(full.hidden).toBe(true);
-    expect(other.hidden).toBe(true);
+    expect(full.textContent).toBe('First user line');
+    expect(other.textContent).toBe('Another preview');
     expect(toggles[0].getAttribute('aria-expanded')).toBe('false');
     expect(toggles[0].textContent).toBe('Show full text');
     await act(async () => toggles[0].click());
-    expect(full.hidden).toBe(false);
     expect(full.textContent).toBe(text);
+    expect(
+      full.closest('[data-library-item-id]')?.textContent?.match(/First user line/g),
+    ).toHaveLength(1);
     expect(full.querySelector('em')).toBeNull();
     expect(toggles[0].getAttribute('aria-expanded')).toBe('true');
     expect(toggles[0].textContent).toBe('Collapse text');
-    expect(other.hidden).toBe(true);
+    expect(other.textContent).toBe('Another preview');
     expect(chrome.tabs.create).not.toHaveBeenCalled();
     expect(container.querySelector('button button')).toBeNull();
     await act(async () => toggles[0].click());
-    expect(full.hidden).toBe(true);
+    expect(full.textContent).toBe('First user line');
     await query('  quasar  ');
     expect(container.querySelectorAll('[data-library-item-id]')).toHaveLength(1);
     expect(container.querySelector('[data-library-open]')?.textContent).toContain(

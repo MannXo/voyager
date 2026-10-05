@@ -61,13 +61,15 @@ export function SavedLibraryItemCard({
           </span>
           <span className="min-w-0 flex-1">
             <span
+              id={textId}
               className={cn(
-                'block text-sm leading-relaxed font-medium break-words whitespace-pre-wrap',
-                !expanded && 'line-clamp-2',
+                'block text-sm leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap',
+                textExpanded ? 'font-normal' : 'font-medium',
+                !expanded && !textExpanded && 'line-clamp-2',
               )}
               dir="auto"
             >
-              {item.content}
+              {textExpanded ? item.text : item.content}
             </span>
             {item.note && (
               <span
@@ -95,24 +97,16 @@ export function SavedLibraryItemCard({
           </span>
         </button>
         {hasFullText && (
-          <div className="px-2 pb-2">
+          <div className="ms-7.5 px-2 pb-2">
             <button
               type="button"
               aria-expanded={textExpanded}
               aria-controls={textId}
               onClick={() => setTextExpanded(!textExpanded)}
-              className="text-primary hover:bg-muted focus-visible:ring-ring min-h-8 rounded-md px-2 text-start text-xs font-medium focus-visible:ring-2"
+              className="text-primary hover:bg-muted focus-visible:ring-ring min-h-8 rounded-md text-start text-xs font-medium focus-visible:ring-2"
             >
               {t(textExpanded ? 'savedLibraryCollapseText' : 'savedLibraryExpandText')}
             </button>
-            <p
-              id={textId}
-              hidden={!textExpanded}
-              dir="auto"
-              className="mt-2 text-sm leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap"
-            >
-              {item.text}
-            </p>
           </div>
         )}
       </div>
