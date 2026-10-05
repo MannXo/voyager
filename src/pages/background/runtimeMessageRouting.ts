@@ -37,9 +37,11 @@ export function isAllowedSyncContentSender(
 }
 
 export function isTrustedExtensionPageSender(sender: chrome.runtime.MessageSender): boolean {
-  if (sender.tab || sender.id !== chrome.runtime.id || typeof sender.url !== 'string') return false;
+  if (sender.id !== chrome.runtime.id || typeof sender.url !== 'string') return false;
   try {
-    return sender.url.startsWith(chrome.runtime.getURL(''));
+    const origin = chrome.runtime.getURL('');
+    // Pages opened as tabs (Library, options fallback) carry a tab; a web page framing ours does not pass.
+    return sender.url.startsWith(origin) && (!sender.tab || !!sender.tab.url?.startsWith(origin));
   } catch {
     return false;
   }

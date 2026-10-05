@@ -20,6 +20,7 @@ import {
   getSenderPageUrl,
   isAllowedSyncContentSender,
   isHandledBackgroundRuntimeMessage,
+  isTrustedExtensionPageSender,
   isTrustedSyncMessageSender,
   parseSyncPlatform,
 } from '../runtimeMessageRouting';
@@ -130,6 +131,28 @@ describe('background runtime message routing', () => {
         expect(canSenderPageUseSyncPlatform(url, platform), url).toBe(false);
       }
     }
+  });
+
+  it('trusts the Library page opened in its own tab but not when a website frames it', () => {
+    const library = `chrome-extension://${EXTENSION_ID}/src/pages/library/index.html`;
+    expect(isTrustedExtensionPageSender({ id: EXTENSION_ID, url: library })).toBe(true);
+    expect(
+      isTrustedExtensionPageSender({
+        id: EXTENSION_ID,
+        url: library,
+        tab: { id: 3, url: library } as chrome.tabs.Tab,
+      }),
+    ).toBe(true);
+    expect(
+      isTrustedExtensionPageSender({
+        id: EXTENSION_ID,
+        url: library,
+        tab: { id: 3, url: 'https://example.com/' } as chrome.tabs.Tab,
+      }),
+    ).toBe(false);
+    expect(isTrustedExtensionPageSender(contentSender('https://gemini.google.com/app'))).toBe(
+      false,
+    );
   });
 
   it('keeps folder sync available to native tabs and extension pages', () => {
