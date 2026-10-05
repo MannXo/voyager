@@ -65,13 +65,15 @@ export class TimelineStarText {
     const entries = this.messages.flatMap((message) => {
       const canonical = this.policy.resolveStoredTurnId(message.turnId);
       if (!canonical) return [];
-      const candidates = this.markers.filter(
-        (marker) =>
-          marker.element.isConnected &&
-          this.policy.canEdit(marker, marker.id) &&
-          this.policy.resolveMountedTurnId(marker.id) === canonical,
+      // A shared canonical id only says two turns look alike; text belongs to the stored occurrence or its verified alias.
+      const marker = this.markers.find(
+        (item) =>
+          item.element.isConnected &&
+          this.policy.canEdit(item, item.id) &&
+          this.policy.resolveMountedTurnId(item.id) === canonical &&
+          (item.id === message.turnId ||
+            this.policy.getStoredTurnIdAliases(item.id).includes(message.turnId)),
       );
-      const marker = candidates.find((item) => item.id === message.turnId) ?? candidates[0];
       if (marker?.text === undefined) return [];
       const text = getBackfillStarText(message, marker.text);
       return text === undefined ? [] : [{ turnId: message.turnId, text }];

@@ -9,6 +9,11 @@ import { createGeminiTimelineStoragePolicy } from '@/pages/content/timeline/Gemi
 import { TimelineTurns } from '@/pages/content/timeline/TimelineTurns';
 
 import { TimelineState } from '../TimelineState';
+import type { TimelineStoragePolicy } from '../TimelineStoragePolicy';
+import { CatalogTimelineAdapter } from '../adapters/catalog/CatalogTimelineAdapter';
+import { CatalogTurnOwnership } from '../adapters/catalog/CatalogTurnOwnership';
+import type { CatalogTimelineConfig } from '../adapters/catalog/config';
+import { starConversationId } from '../adapters/catalog/conversationId';
 
 const conversationId = 'gemini:conv:full-text';
 const url = 'https://gemini.google.com/app/full-text';
@@ -33,8 +38,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function fixture(messages: StarredMessage[] = []) {
-  const data: StarredMessagesData = { messages: { [conversationId]: messages } };
+function library(messages: StarredMessage[], id = conversationId) {
+  const data: StarredMessagesData = { messages: { [id]: messages } };
   const values: Record<string, unknown> = {
     [StorageKeys.SAVED_LIBRARY_STARS]: structuredClone(data),
     [StorageKeys.TIMELINE_STARRED_MESSAGES]: structuredClone(data),
@@ -63,6 +68,17 @@ function fixture(messages: StarredMessage[] = []) {
     if (!isHandledBackgroundRuntimeMessage(request)) throw new Error('Unregistered action');
     void handle(request)?.then(reply, (error: Error) => reply({ ok: false, error: error.message }));
   }) as typeof chrome.runtime.sendMessage);
+  return { store, area, values };
+}
+
+function timeline(policy: TimelineStoragePolicy): TimelineState {
+  const state = new TimelineState(() => {}, policy);
+  states.push(state);
+  return state;
+}
+
+function fixture(messages: StarredMessage[] = []) {
+  const { store, area, values } = library(messages);
   const policy = {
     ...createGeminiTimelineStoragePolicy(url, {
       resolveCanonicalTurnId: (_conversation, id) => (id === 'u-0' ? turnId : id),
@@ -71,11 +87,10 @@ function fixture(messages: StarredMessage[] = []) {
     hierarchy: { localKey: null },
     stars: { matchLegacyConversations: true, resolveAccount: async () => undefined },
   };
-  const state = new TimelineState(() => {}, policy);
-  states.push(state);
-  const mount = (id = turnId) => {
+  const state = timeline(policy);
+  const mount = (id = turnId, extra = '') => {
     document.body.innerHTML = `<main><user-query data-turn-id="${id}">First line
-Second line</user-query><model-response>Answer stays in the conversation</model-response></main>`;
+Second line${extra}</user-query><model-response>Answer stays in the conversation</model-response></main>`;
     const markers = new TimelineTurns().collect(document.querySelector('main')!, 'user-query');
     state.replaceMarkers(markers);
     return markers;
@@ -94,6 +109,26 @@ it('a starred prompt keeps its line breaks through the real timeline and Library
       text: 'First line\nSecond line',
     }),
   ]);
+});
+
+it("text hidden by the site's stylesheet never enters a starred prompt", async () => {
+  const { state, store, mount } = fixture();
+  const sheet = document.createElement('style');
+  sheet.textContent = '.host-internal { display: none } .host-alternative { visibility: hidden }';
+  document.head.append(sheet);
+  try {
+    await state.init();
+    mount(
+      turnId,
+      '<span class="host-internal">Internal label</span><span class="host-alternative">Other draft</span>',
+    );
+    await state.toggleStar(turnId);
+    expect((await store.getForConversation(conversationId))[0]?.text).toBe(
+      'First line\nSecond line',
+    );
+  } finally {
+    sheet.remove();
+  }
 });
 
 it('opening an old conversation fills in the full text of its stars once', async () => {
@@ -226,4 +261,55 @@ it('navigation during account lookup keeps a full-text star press on its capture
   expect(await store.getForConversation(conversationId)).toEqual([
     expect.objectContaining({ conversationUrl: url, text: 'First line\nSecond line' }),
   ]);
+});
+
+it("a repeated prompt's star gets its own text, not its twin's", async () => {
+  history.replaceState({}, '', '/c/repeated');
+  const config: CatalogTimelineConfig = {
+    siteId: 'chatgpt',
+    siteLabel: 'ChatGPT',
+    turnSelector: '[data-user-message-bubble]',
+    conversationIdPattern: '^/c/([^/?#]+)',
+    position: 'right',
+    pluginId: 'voyager.chatgpt-timeline',
+    coachmarkId: 'test',
+  };
+  document.body.innerHTML =
+    '<main><div data-user-message-bubble>First\nSecond</div><div data-user-message-bubble>First Second</div></main>';
+  const ownership = new CatalogTurnOwnership({
+    routeId: () => location.href.split('#')[0],
+    starId: () => starConversationId(config),
+  });
+  ownership.begin();
+  const adapter = new CatalogTimelineAdapter(config, ownership);
+  try {
+    const both = adapter.turns.read([]).markers;
+    const twin = both[1]!;
+    expect(twin.id).toBe(`${both[0]!.id}~2`);
+    const stored: StarredMessage = {
+      conversationId: adapter.storage.conversationId,
+      conversationUrl: adapter.storage.url,
+      turnId: twin.id,
+      content: twin.summary,
+      starredAt: 1,
+    };
+    const { store, area } = library([stored], adapter.storage.conversationId);
+    const state = timeline(adapter.storage);
+    twin.element.remove();
+    const firstOnly = adapter.turns.read(both).markers;
+    state.replaceMarkers(firstOnly);
+    await state.init();
+    expect(await store.getForConversation(stored.conversationId)).toEqual([stored]);
+    expect(area.set).not.toHaveBeenCalled();
+
+    document.querySelector('main')!.append(twin.element);
+    state.replaceMarkers(adapter.turns.read(firstOnly).markers);
+    await vi.waitFor(async () =>
+      expect(await store.getForConversation(stored.conversationId)).toEqual([
+        { ...stored, text: 'First Second' },
+      ]),
+    );
+  } finally {
+    adapter.turns.stop();
+  }
 });

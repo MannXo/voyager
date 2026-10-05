@@ -126,6 +126,20 @@ describe('Gemini full user text', () => {
     expect(geminiMarkers(turns)[0]?.text).toBe('Visible text');
   });
 
+  it('a host stylesheet hiding part of an unchanged turn updates its cached full text', () => {
+    const sheet = document.createElement('style');
+    sheet.textContent = 'main.drafts-hidden .draft { display: none }';
+    document.head.append(sheet);
+    try {
+      const turns = gemini('<p>Prompt<span class="draft"> draft</span></p>');
+      expect(geminiMarkers(turns)[0]?.text).toBe('Prompt draft');
+      document.querySelector('main')!.classList.add('drafts-hidden');
+      expect(geminiMarkers(turns)[0]?.text).toBe('Prompt');
+    } finally {
+      sheet.remove();
+    }
+  });
+
   it('full user text keeps authored newlines and preformatted indentation', () => {
     const turns = gemini('<pre>line one\n  indented\n\nlast</pre><p>Following paragraph</p>');
     expect(geminiMarkers(turns)[0]?.text).toBe('line one\n  indented\n\nlast\nFollowing paragraph');

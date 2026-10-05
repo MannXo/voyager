@@ -27,8 +27,12 @@ const BLOCK_TAGS = new Set([
   'UL',
 ]);
 
+const HIGHLIGHT_MARK_SELECTOR = 'mark.gv-highlight-mark';
+
 function excluded(element: Element): boolean {
-  return (
+  // Voyager highlight wrappers carry the user's authored text, not injected UI.
+  if (element.matches(HIGHLIGHT_MARK_SELECTOR)) return false;
+  if (
     element.matches(EXCLUDED_SELECTOR) ||
     element.hasAttribute('hidden') ||
     element.getAttribute('aria-hidden') === 'true' ||
@@ -38,20 +42,73 @@ function excluded(element: Element): boolean {
         name.includes('visually-hidden') ||
         name === 'sr-only' ||
         name === 'screen-reader-only',
-    ) ||
-    (element instanceof HTMLElement &&
-      (element.style.display === 'none' || element.style.visibility === 'hidden'))
-  );
+    )
+  )
+    return true;
+  // Host stylesheets hide alternatives and internal labels; only the connected original knows that.
+  return getComputedStyle(element).display === 'none';
+}
+
+export interface UserTurnCapture {
+  /** Changes whenever which nodes count as visible changes, even if the markup does not. */
+  readonly visibilityKey: string;
+  readonly read: () => string;
+}
+
+/** Decide hidden nodes on the connected original, before a detached clone loses computed styles. */
+export function captureUserTurn(element: HTMLElement): UserTurnCapture {
+  const dropped: number[] = [];
+  const invisible = new Map<Element, boolean>();
+  const hidesText = (parent: Element): boolean => {
+    let hidden = invisible.get(parent);
+    if (hidden === undefined) {
+      hidden = getComputedStyle(parent).visibility === 'hidden';
+      invisible.set(parent, hidden);
+    }
+    return hidden;
+  };
+  let index = 0;
+  const walk = (node: Node): void => {
+    const position = index++;
+    if (node.nodeType === Node.TEXT_NODE) {
+      const parent = node.parentElement;
+      if (parent && hidesText(parent)) dropped.push(position);
+      return;
+    }
+    if (node instanceof Element && excluded(node)) {
+      dropped.push(position);
+      return;
+    }
+    node.childNodes.forEach(walk);
+  };
+  if (excluded(element)) return { visibilityKey: 'root', read: () => '' };
+  index++;
+  element.childNodes.forEach(walk);
+  return {
+    visibilityKey: dropped.join(','),
+    read: () => extract(element, new Set(dropped)),
+  };
 }
 
 export function userTurnText(element: HTMLElement): string {
+  return captureUserTurn(element).read();
+}
+
+function extract(element: HTMLElement, dropped: ReadonlySet<number>): string {
   const clone = element.cloneNode(true) as HTMLElement;
-  if (excluded(clone)) return '';
-  clone.querySelectorAll('mark.gv-highlight-mark').forEach((mark) => {
+  const removals: Node[] = [];
+  let index = 1;
+  const walk = (node: Node): void => {
+    if (dropped.has(index++)) {
+      removals.push(node);
+      return;
+    }
+    if (node.nodeType !== Node.TEXT_NODE) node.childNodes.forEach(walk);
+  };
+  clone.childNodes.forEach(walk);
+  removals.forEach((node) => node.parentNode?.removeChild(node));
+  clone.querySelectorAll(HIGHLIGHT_MARK_SELECTOR).forEach((mark) => {
     mark.replaceWith(...mark.childNodes);
-  });
-  clone.querySelectorAll('*').forEach((node) => {
-    if (excluded(node)) node.remove();
   });
   const content = clone.matches(USER_CONTENT_SELECTOR)
     ? clone
