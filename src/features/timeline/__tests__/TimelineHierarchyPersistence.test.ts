@@ -402,4 +402,21 @@ describe('timeline outline persistence', () => {
     expect(reopened.hierarchy.isMarkerCollapsed(turn)).toBe(false);
     expect(storage.values.local.get(StorageKeys.TIMELINE_HIERARCHY)).toEqual({ conversations: {} });
   });
+
+  it('another tab’s change to the same turn shows once my older save settles', async () => {
+    storage.values.local.set(KEY, { conversations: { 'claude:conv:a': outline('a', 3) } });
+    const state = await open('a');
+    // The save reads the bucket, writes, then reads it back; hold that read-back.
+    readsUntilHold = 2;
+    state.hierarchy.setMarkerLevel(TURN, 2);
+    await settle(30);
+    expect(release).not.toBeNull();
+    storage.external('local', KEY, { conversations: { 'claude:conv:a': outline('a', 3) } });
+    await settle(30);
+
+    release?.();
+    await settle(30);
+    expect(stored('a')?.levels).toEqual({ [TURN]: 3 });
+    expect(state.hierarchy.getMarkerLevel(TURN)).toBe(3);
+  });
 });

@@ -183,7 +183,9 @@ export class TimelineHierarchy {
     if (!key) return;
     this.stopQueueListener = outlineSaveQueue.subscribe(key, (published) => {
       if (!this.isCurrent) return;
-      if (published) return this.acceptSnapshot(published.order, published.stored, 'write');
+      if (published && published.order > this.snapshotOrder)
+        return this.acceptSnapshot(published.order, published.stored, 'write');
+      // A retired change must leave the view even when its read-back is older than the snapshot.
       this.refresh();
       this.onChange();
     });
