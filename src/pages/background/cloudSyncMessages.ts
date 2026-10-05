@@ -204,6 +204,37 @@ function filterForkNodesByRouteScope(
   };
 }
 
+/**
+ * Point a scoped fork file at this device's `/u/<index>/` for the account it was read for:
+ * the same account can sit at another index on each device. A file whose forks span several
+ * routes was uploaded unfiltered, so its routes cannot be attributed and stay as stored.
+ */
+function retargetForkNodesToRoute(data: ForkNodesData, routeUserId: string): ForkNodesData {
+  const routeOf = (node: ForkNode) =>
+    typeof node?.conversationUrl === 'string'
+      ? extractRouteUserIdFromUrl(node.conversationUrl)
+      : null;
+  const lists = Object.values(data.nodes).filter((nodes) => Array.isArray(nodes));
+  const routes = new Set(lists.flatMap((nodes) => nodes.map(routeOf)).filter((r) => r !== null));
+  if (routes.size !== 1 || routes.has(routeUserId)) return data;
+
+  const retarget = (node: ForkNode): ForkNode => {
+    if (routeOf(node) === null) return node;
+    const url = new URL(node.conversationUrl);
+    url.pathname = url.pathname.replace(/^\/u\/\d+\//, `/u/${routeUserId}/`);
+    return { ...node, conversationUrl: url.toString() };
+  };
+  return {
+    ...data,
+    nodes: Object.fromEntries(
+      Object.entries(data.nodes).map(([id, nodes]) => [
+        id,
+        Array.isArray(nodes) ? nodes.map(retarget) : nodes,
+      ]),
+    ),
+  };
+}
+
 type SyncPayload = {
   interactive?: boolean;
   platform?: unknown;
@@ -383,6 +414,13 @@ export function createCloudSyncMessageHandler(readers: {
           accountScope,
           timelineHierarchyAccountScope,
         );
+        const routeUserId = accountScope?.routeUserId;
+        if (data?.forks?.data?.nodes && routeUserId) {
+          data.forks = {
+            ...data.forks,
+            data: retargetForkNodesToRoute(data.forks.data, routeUserId),
+          };
+        }
         let highlightSyncResult: { synced: boolean; count: number; empty: boolean } | undefined;
         if (shouldSyncHighlights && highlightAccountScope) {
           const highlightResult = await highlightDriveSyncCoordinator.pull(

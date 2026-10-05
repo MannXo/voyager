@@ -6,8 +6,10 @@ import type { FolderData } from '@/core/types/folder';
 import type { PromptItem, SyncAccountScope } from '@/core/types/sync';
 import { PromptImportExportService } from '@/features/backup/services/PromptImportExportService';
 import { FOLDER_PLATFORMS } from '@/features/folder/platforms';
+import type { ForkNode } from '@/pages/content/fork/forkTypes';
 
 import { createCloudSyncMessageHandler } from '../cloudSyncMessages';
+import { createForkMessagesOwner } from '../forkMessages';
 
 const mocks = vi.hoisted(() => ({
   drive: {
@@ -333,5 +335,61 @@ describe('cloud sync messages', () => {
       ),
     ).resolves.toEqual({ ok: false, error: 'unsupported_sync_platform' });
     expect(mocks.drive.download).not.toHaveBeenCalled();
+  });
+  it('a fork restored on a device where the same account has another /u/ index opens under that index', async () => {
+    const fork = (conversationId: string, route: string, forkIndex: number): ForkNode => ({
+      conversationId,
+      turnId: 'turn',
+      forkGroupId: 'group',
+      forkIndex,
+      createdAt: 1,
+      conversationUrl: `https://gemini.google.com/u/${route}/app/${conversationId}?hl=en`,
+    });
+    mocks.isolation.isIsolationEnabled.mockResolvedValue(true);
+    stored[buildScopedStorageKey(StorageKeys.FOLDER_DATA, scope.accountKey)] = folder('Gemini');
+    const deviceA = createCloudSyncMessageHandler({
+      ...readers(),
+      getAllForkNodes: vi.fn(async () => ({
+        nodes: { source: [fork('source', '0', 0)], branch: [fork('branch', '0', 1)] },
+        groups: { group: ['source:turn', 'branch:turn'] },
+      })),
+    });
+    const sameAccount = (routeUserId: string) => ({ ...scope, routeUserId });
+    await deviceA(
+      { type: 'gv.sync.upload', payload: { platform: 'gemini', accountScope: sameAccount('0') } },
+      sender('https://gemini.google.com/u/0/app'),
+    );
+    const uploaded = mocks.drive.upload.mock.calls[0][5];
+    mocks.drive.download.mockResolvedValue({
+      forks: { format: 'gemini-voyager.forks.v1', exportedAt: '', data: uploaded },
+    });
+
+    const download = async (accountScope: SyncAccountScope) =>
+      (await createCloudSyncMessageHandler(readers())(
+        { type: 'gv.sync.download', payload: { platform: 'gemini', accountScope } },
+        sender(`https://gemini.google.com/u/${accountScope.routeUserId}/app`),
+      )) as { data: { forks: unknown } };
+    let restored: unknown;
+    const deviceB = createForkMessagesOwner({
+      get: async () => ({}),
+      set: async (items) => {
+        restored = items[StorageKeys.FORK_NODES];
+      },
+    });
+    await deviceB.handle({
+      type: 'gv.fork.mergeCloud',
+      payload: (await download(sameAccount('1'))).data.forks,
+    });
+    expect(restored).toEqual({
+      nodes: { source: [fork('source', '1', 0)], branch: [fork('branch', '1', 1)] },
+      groups: { group: ['source:turn', 'branch:turn'] },
+    });
+
+    // An unfiltered upload mixes accounts, so its routes cannot be attributed.
+    const mixed = { nodes: { a: [fork('a', '0', 0)], b: [fork('b', '3', 1)] }, groups: {} };
+    mocks.drive.download.mockResolvedValue({
+      forks: { format: 'gemini-voyager.forks.v1', exportedAt: '', data: mixed },
+    });
+    expect((await download(sameAccount('1'))).data.forks).toMatchObject({ data: mixed });
   });
 });
