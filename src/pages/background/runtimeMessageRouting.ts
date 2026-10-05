@@ -47,14 +47,19 @@ export function isTrustedExtensionPageSender(sender: chrome.runtime.MessageSende
   }
 }
 
+/**
+ * An extension page, or this extension's content script on a page of `platform`. Safari and
+ * Firefox can omit the tab URL, so the page is read through `getSenderPageUrl`; content scripts
+ * run only in the top frame, so a sender reporting a subframe is refused.
+ */
 export function isTrustedSyncMessageSender(
   sender: chrome.runtime.MessageSender,
   platform: SyncPlatform,
 ): boolean {
-  return (
-    isTrustedExtensionPageSender(sender) ||
-    (sender.id === chrome.runtime.id && isAllowedSyncContentSender(sender.tab?.url, platform))
-  );
+  if (isTrustedExtensionPageSender(sender)) return true;
+  if (sender.id !== chrome.runtime.id) return false;
+  if (sender.frameId !== undefined && sender.frameId !== 0) return false;
+  return isAllowedSyncContentSender(getSenderPageUrl(sender), platform);
 }
 
 /**

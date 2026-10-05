@@ -195,6 +195,28 @@ describe('background runtime message routing', () => {
     expect(canSenderPageUseSyncPlatform('https://gemini.google.com/app', 'aistudio')).toBe(false);
   });
 
+  it('accepts a Safari folder upload from a content script whose tab URL is omitted', () => {
+    // Safari and Firefox can report only the sending frame's URL.
+    const topFrame = (url: string): chrome.runtime.MessageSender => ({
+      id: EXTENSION_ID,
+      url,
+      frameId: 0,
+      tab: { id: 7 } as chrome.tabs.Tab,
+    });
+    expect(isTrustedSyncMessageSender(topFrame('https://chatgpt.com/c/1'), 'chatgpt')).toBe(true);
+    expect(isTrustedSyncMessageSender(topFrame('https://gemini.google.com/app'), 'gemini')).toBe(
+      true,
+    );
+    expect(isTrustedSyncMessageSender(topFrame('https://chatgpt.com/c/1'), 'gemini')).toBe(false);
+    // Content scripts run only in the top frame: a subframe never passes as the page.
+    expect(
+      isTrustedSyncMessageSender(
+        { ...topFrame('https://gemini.google.com/app'), frameId: 3 },
+        'gemini',
+      ),
+    ).toBe(false);
+  });
+
   it('checks the frame URL when the browser omits the tab URL', () => {
     const chatgpt = getSenderPageUrl({ tab: {}, url: 'https://chatgpt.com/c/abc' });
     expect(canSenderPageUseSyncPlatform(chatgpt, 'gemini')).toBe(false);
