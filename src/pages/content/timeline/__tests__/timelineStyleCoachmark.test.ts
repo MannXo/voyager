@@ -95,6 +95,25 @@ describe('compact timeline coachmark', () => {
     expect(liveTimeline.classList.contains('gv-coach-timeline-hidden')).toBe(false);
   });
 
+  it('previews the rail where the user placed it, at its width, without a hidden container', async () => {
+    const { maybeShowTimelineStyleCoachmark } = await import('../timelineStyleCoachmark');
+    const liveTimeline = document.createElement('div');
+    liveTimeline.className = 'gemini-timeline-bar timeline-no-container';
+    liveTimeline.style.setProperty('--timeline-bar-width', '10px');
+    liveTimeline.getBoundingClientRect = () => new DOMRect(40, 90, 24, 500);
+    document.body.appendChild(liveTimeline);
+
+    await maybeShowTimelineStyleCoachmark({ force: true });
+    const config = mocks.showCoachmark.mock.calls[0]![0] as CapturedCoachmarkConfig;
+    const preview = config.reveal.mount();
+
+    expect(preview.style.top).toBe('90px');
+    expect(preview.style.left).toBe('40px');
+    expect(preview.style.height).toBe('500px');
+    expect(preview.style.getPropertyValue('--timeline-bar-width')).toBe('10px');
+    expect(preview.classList.contains('gv-no-rail')).toBe(true);
+  });
+
   it('does not interrupt users who already use the compact style', async () => {
     mocks.storageGet.mockResolvedValue({ [StorageKeys.TIMELINE_STYLE]: 'compact' });
     const { maybeShowTimelineStyleCoachmark } = await import('../timelineStyleCoachmark');

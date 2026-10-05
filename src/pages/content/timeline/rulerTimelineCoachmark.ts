@@ -11,10 +11,13 @@ import {
   type CoachmarkSequenceStep,
   showCoachmark,
 } from '../coachmark';
+import {
+  TIMELINE_STYLE_PREVIEW_ACTIVE_INDEX,
+  mountTimelineStylePreview,
+} from './timelineStylePreview';
 
 export const RULER_TIMELINE_COACHMARK_ID = 'timeline-ruler-style-intro-v1';
 export const RULER_TIMELINE_COACHMARK_DEBUG_EVENT = 'gv:debug:rulerTimelineCoachmark';
-const PREVIEW_TICK_COUNT = 14;
 
 const RULER_ICON =
   '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5h5M5 8.5h9M5 12h13M5 15.5h9M5 19h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
@@ -49,23 +52,12 @@ async function setRulerTimelineEnabled(on: boolean): Promise<void> {
   }
 }
 
-function buildRulerPreview(ruler: boolean): HTMLElement {
-  const preview = document.createElement('div');
-  preview.className = `gv-timeline-style-preview ${ruler ? 'is-ruler' : 'is-dots'}`;
-  preview.setAttribute('aria-hidden', 'true');
-
-  const crestIndex = Math.floor(PREVIEW_TICK_COUNT / 2);
-  for (let index = 0; index < PREVIEW_TICK_COUNT; index += 1) {
-    const tick = document.createElement('span');
-    const distance = Math.abs(index - crestIndex);
+function buildRulerPreview(liveBar: HTMLElement | null): HTMLElement {
+  return mountTimelineStylePreview('is-ruler', liveBar, (tick, index) => {
+    const distance = Math.abs(index - TIMELINE_STYLE_PREVIEW_ACTIVE_INDEX);
     const crest = Math.exp(-(distance * distance) / (2 * 1.25 * 1.25));
     tick.style.setProperty('--gv-coach-ruler-scale', (0.28 + 0.72 * crest).toFixed(3));
-    if (index === crestIndex) tick.className = 'active';
-    preview.appendChild(tick);
-  }
-
-  document.body.appendChild(preview);
-  return preview;
+  });
 }
 
 function setPreviewStyle(preview: HTMLElement | null, ruler: boolean): void {
@@ -109,7 +101,7 @@ export async function maybeShowRulerTimelineCoachmark(
         hiddenTimelineElements.forEach((element) =>
           element.classList.add('gv-coach-timeline-hidden'),
         );
-        preview = buildRulerPreview(true);
+        preview = buildRulerPreview(document.querySelector<HTMLElement>('.gemini-timeline-bar'));
         void setRulerTimelineEnabled(true);
         return preview;
       },

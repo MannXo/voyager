@@ -1,7 +1,7 @@
 /**
  * One-time guided intro for the compact timeline style.
  *
- * The guide reveals a static replica of the compact rail, temporarily hides the
+ * The guide reveals a static replica of the rail (see timelineStylePreview), hides the
  * live rail, and lets the user compare both styles without overlapping UI.
  */
 import browser from 'webextension-polyfill';
@@ -16,9 +16,9 @@ import {
   type CoachmarkSequenceStep,
   showCoachmark,
 } from '../coachmark';
+import { mountTimelineStylePreview } from './timelineStylePreview';
 
 export const TIMELINE_STYLE_COACHMARK_ID = 'timeline-compact-style-intro-v2';
-const PREVIEW_TICK_COUNT = 14;
 export const TIMELINE_STYLE_COACHMARK_DEBUG_EVENT = 'gv:debug:timelineStyleCoachmark';
 
 const TIMELINE_ICON =
@@ -62,22 +62,6 @@ interface TimelineStyleCoachmarkOptions {
   /** Abort to close the guide when the owning feature tears down. */
   signal?: AbortSignal;
   onStyleChange: (compact: boolean) => void | Promise<void>;
-}
-
-/** A non-interactive timeline replica that can morph between both styles. */
-function buildTimelineStylePreview(compact: boolean): HTMLElement {
-  const preview = document.createElement('div');
-  preview.className = `gv-timeline-style-preview ${compact ? 'is-compact' : 'is-dots'}`;
-  preview.setAttribute('aria-hidden', 'true');
-
-  for (let index = 0; index < PREVIEW_TICK_COUNT; index += 1) {
-    const tick = document.createElement('span');
-    if (index === Math.floor(PREVIEW_TICK_COUNT / 2)) tick.className = 'active';
-    preview.appendChild(tick);
-  }
-
-  document.body.appendChild(preview);
-  return preview;
 }
 
 function setPreviewStyle(preview: HTMLElement | null, compact: boolean): void {
@@ -125,7 +109,10 @@ export async function showTimelineStyleCoachmark({
         hiddenTimelineElements.forEach((element) =>
           element.classList.add('gv-coach-timeline-hidden'),
         );
-        preview = buildTimelineStylePreview(true);
+        preview = mountTimelineStylePreview(
+          'is-compact',
+          document.querySelector<HTMLElement>('.gemini-timeline-bar'),
+        );
         void Promise.resolve(onStyleChange(true)).catch(() => {});
         return preview;
       },
