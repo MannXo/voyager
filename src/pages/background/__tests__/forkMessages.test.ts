@@ -117,6 +117,19 @@ describe('fork messages owner', () => {
     expect(owner.handle({ type: 'gv.starred.getAll' })).toBeNull();
     expect(owner.handle(null)).toBeNull();
   });
+  it('adding a fork when storage cannot be read keeps the existing forks', async () => {
+    const existing = node('a', '1');
+    const { owner, area, stored } = setup({ nodes: { a: [existing] }, groups: { group: ['a:1'] } });
+    area.get.mockRejectedValueOnce(new Error('unavailable'));
+    await expect(owner.handle(add(node('b', '1')))).rejects.toThrow('unavailable');
+    area.get.mockRejectedValueOnce(new Error('unavailable'));
+    await expect(owner.handle({ type: 'gv.fork.remove', payload: existing })).rejects.toThrow(
+      'unavailable',
+    );
+    expect(area.set).not.toHaveBeenCalled();
+    expect(stored()).toEqual({ nodes: { a: [existing] }, groups: { group: ['a:1'] } });
+  });
+
   it('a fork uploaded on one device merges into the forks already on another', async () => {
     const local = node('a', '1');
     const shared = node('b', '1', 'cloud', 0);

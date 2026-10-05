@@ -54,6 +54,7 @@ class ForkNodesManager {
     return promise;
   }
 
+  // Writes read strictly: saving over an empty read-error fallback would erase the stored forks.
   private async readStored(): Promise<ForkNodesData> {
     const result = await this.area.get([StorageKeys.FORK_NODES]);
     const forkNodes = result[StorageKeys.FORK_NODES];
@@ -75,7 +76,7 @@ class ForkNodesManager {
 
   async addForkNode(node: ForkNode): Promise<boolean> {
     return this.serialize(async () => {
-      const data = await this.getFromStorage();
+      const data = await this.readStored();
       if (!insertForkNode(data, node)) return false;
       await this.saveToStorage(data);
       return true;
@@ -93,7 +94,6 @@ class ForkNodesManager {
       ) {
         throw new Error('Invalid fork nodes envelope');
       }
-      // A failed read must fail the restore: merging into an empty fallback would drop local forks.
       const data = await this.readStored();
       let changed = false;
       for (const nodes of Object.values(cloud.nodes)) {
@@ -113,7 +113,7 @@ class ForkNodesManager {
     forkGroupId: string,
   ): Promise<boolean> {
     return this.serialize(async () => {
-      const data = await this.getFromStorage();
+      const data = await this.readStored();
 
       if (data.nodes[conversationId]) {
         const initialLength = data.nodes[conversationId].length;
