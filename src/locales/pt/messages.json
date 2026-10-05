@@ -3941,6 +3941,15 @@
   "savedLibraryConversationOpenFailed": {
     "message": "Não foi possível abrir esta conversa"
   },
+  "savedLibraryChatGptSwitchAccount": {
+    "message": "Esta estrela foi salva em {account}. Mude para essa conta no ChatGPT e tente abrir novamente."
+  },
+  "savedLibraryChatGptSwitchHint": {
+    "message": "Não consegue abrir esta conversa? Mude para a conta que você usou no ChatGPT e tente abrir novamente."
+  },
+  "savedLibraryOpenAnyway": {
+    "message": "Abrir mesmo assim"
+  },
   "savedLibraryFilters": {
     "message": "Filtros da biblioteca"
   },

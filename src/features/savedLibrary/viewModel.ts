@@ -63,6 +63,9 @@ export function getSavedLibraryView(
     const site = itemSite(item, registry);
     return { item, site, account: itemAccount(item, site) };
   });
+  const accountSites = new Set(NATIVE_SITE_IDS);
+  if (located.some(({ site, account }) => site === 'chatgpt' && account !== UNASSIGNED_ACCOUNT))
+    accountSites.add('chatgpt');
   const siteIds = new Set(located.map(({ site }) => site));
   const sites = registry
     .all()
@@ -72,7 +75,7 @@ export function getSavedLibraryView(
 
   const firstSeenBySite = new Map<string, Map<string, number>>();
   for (const { item, site, account } of located) {
-    if (!NATIVE_SITE_IDS.has(site)) continue;
+    if (!accountSites.has(site)) continue;
     const firstSeen = firstSeenBySite.get(site) ?? new Map<string, number>();
     firstSeen.set(
       account,
@@ -102,7 +105,7 @@ export function getSavedLibraryView(
     if (!matches.has(item) || (selection.site !== ALL_FILTER && selection.site !== site)) continue;
     if (
       selection.account !== ALL_FILTER &&
-      NATIVE_SITE_IDS.has(selection.site) &&
+      accountSites.has(selection.site) &&
       selection.account !== account
     )
       continue;

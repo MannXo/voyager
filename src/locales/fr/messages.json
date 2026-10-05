@@ -3941,6 +3941,15 @@
   "savedLibraryConversationOpenFailed": {
     "message": "Impossible d’ouvrir cette conversation"
   },
+  "savedLibraryChatGptSwitchAccount": {
+    "message": "Cette étoile a été enregistrée dans {account}. Passez à ce compte dans ChatGPT, puis réessayez de l’ouvrir."
+  },
+  "savedLibraryChatGptSwitchHint": {
+    "message": "Impossible d’ouvrir cette conversation ? Passez au compte que vous utilisiez dans ChatGPT, puis réessayez de l’ouvrir."
+  },
+  "savedLibraryOpenAnyway": {
+    "message": "Ouvrir quand même"
+  },
   "savedLibraryFilters": {
     "message": "Filtres de la bibliothèque"
   },

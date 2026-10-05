@@ -2,6 +2,7 @@ import { CleanupPositions } from '@/core/types/cleanupPositions';
 import { StorageKeys } from '@/core/types/common';
 
 import { startAccountContextBridge } from './accountContext';
+import { startChatGptJump } from './chatGptJump';
 import { startInputVimMode } from './chatInput/vimMode';
 import { startCodeBlockCollapse } from './codeBlockCollapse';
 import { startDraftSave } from './draftSave/index';
@@ -37,6 +38,13 @@ export const NATIVE_FEATURES = {
     id: 'account-context-bridge',
     position: CleanupPositions.CleanupAccountContextBridge,
     start: startAccountContextBridge,
+  },
+  chatGptJump: {
+    id: 'chatgpt-jump',
+    position: CleanupPositions.CleanupChatGptJump,
+    start: startChatGptJump,
+    inertReason:
+      'Only top-level ChatGPT pages answer account checks and show inaccessible-star hints.',
   },
   brandTheme: {
     id: 'brand-theme',

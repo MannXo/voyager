@@ -281,6 +281,36 @@ describe('Saved Library page', () => {
     });
   });
 
+  it('the Library keeps a different-account ChatGPT star unopened until Open anyway', async () => {
+    vi.mocked(chrome.tabs.create).mockClear();
+    stars = [
+      star({
+        conversationId: 'chatgpt:conv:one',
+        conversationUrl: 'https://chatgpt.com/c/one',
+        account: `chatgpt:${'a'.repeat(64)}`,
+      }),
+    ];
+    highlights = [];
+    vi.mocked(chrome.tabs.query).mockImplementation(async () => [
+      { id: 7, url: 'https://chatgpt.com/' } as chrome.tabs.Tab,
+    ]);
+    vi.mocked(chrome.tabs.sendMessage).mockImplementation(async () => ({
+      ok: true,
+      account: `chatgpt:${'b'.repeat(64)}`,
+    }));
+    await mount();
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[data-library-open]')!.click(),
+    );
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+    const host = document.querySelector<HTMLElement>('[data-gv-layer="popover"]')!;
+    expect(host.shadowRoot!.textContent).toContain('This star was saved in Account 1.');
+    await answerConfirmation('Open anyway');
+    expect(chrome.tabs.create).toHaveBeenCalledWith({
+      url: 'https://chatgpt.com/c/one#gv-turn-turn-1',
+    });
+  });
+
   it('reports a conversation open failure while keeping the readable saved items', async () => {
     await mount();
     vi.mocked(chrome.tabs.create).mockImplementationOnce(async () => {

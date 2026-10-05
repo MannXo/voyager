@@ -3941,6 +3941,15 @@
   "savedLibraryConversationOpenFailed": {
     "message": "تعذّر فتح هذه المحادثة"
   },
+  "savedLibraryChatGptSwitchAccount": {
+    "message": "حُفظت هذه النجمة في {account}. بدّل إلى ذلك الحساب في ChatGPT، ثم حاول فتحها مرة أخرى."
+  },
+  "savedLibraryChatGptSwitchHint": {
+    "message": "لا يمكنك فتح هذه المحادثة؟ بدّل إلى الحساب الذي استخدمته في ChatGPT، ثم حاول فتحها مرة أخرى."
+  },
+  "savedLibraryOpenAnyway": {
+    "message": "فتح على أي حال"
+  },
   "savedLibraryFilters": {
     "message": "مرشحات المكتبة"
   },

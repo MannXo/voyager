@@ -3941,6 +3941,15 @@
   "savedLibraryConversationOpenFailed": {
     "message": "この会話を開けませんでした"
   },
+  "savedLibraryChatGptSwitchAccount": {
+    "message": "このスターは {account} で保存されました。ChatGPT でそのアカウントに切り替えてから、もう一度開いてください。"
+  },
+  "savedLibraryChatGptSwitchHint": {
+    "message": "この会話を開けませんか？ChatGPT で保存時に使っていたアカウントに切り替えてから、もう一度開いてください。"
+  },
+  "savedLibraryOpenAnyway": {
+    "message": "そのまま開く"
+  },
   "savedLibraryFilters": {
     "message": "ライブラリの絞り込み"
   },

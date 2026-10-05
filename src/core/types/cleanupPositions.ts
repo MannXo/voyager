@@ -21,6 +21,7 @@ export enum CleanupPositions {
   CleanupRemoteAnnouncements,
   CleanupStorageQuotaWarning,
   CleanupAccountContextBridge,
+  CleanupChatGptJump,
   CleanupCodeBlockCollapse,
   CleanupUsageStatus,
   CleanupWatermarkNativeNotice,

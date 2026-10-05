@@ -113,6 +113,7 @@ export function StarredHistory({ onClose, sourceTabId }: StarredHistoryProps) {
     notice: libraryNotice,
     reload: loadSavedItems,
     remove: deleteItem,
+    confirmOpen,
   } = useSavedLibrary({ highlightScope: resolveSourceHighlightScope, confirmRemoval: false });
   const filter = selection.kind;
   const query = selection.query;
@@ -129,6 +130,7 @@ export function StarredHistory({ onClose, sourceTabId }: StarredHistoryProps) {
 
   const openItem = async (item: SavedLibraryItem) => {
     try {
+      if (!(await confirmOpen(item))) return;
       const currentTab =
         typeof sourceTabId === 'number'
           ? await chrome.tabs.get(sourceTabId).catch(() => undefined)

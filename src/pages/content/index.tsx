@@ -494,6 +494,8 @@ function handleVisibilityChange(): void {
     if (!isPluginSubframe)
       void mountNativeFeature(cleanupManager, NATIVE_FEATURES.accountContextBridge);
 
+    if (!isPluginSubframe) void mountNativeFeature(cleanupManager, NATIVE_FEATURES.chatGptJump);
+
     // Plugin ecosystem host. Started up-front on EVERY page the content script is
     // injected into (Gemini / AI Studio, and any site a user enabled a plugin for,
     // e.g. claude.ai via dynamic registration). It self-detects the site adapter

@@ -3941,6 +3941,15 @@
   "savedLibraryConversationOpenFailed": {
     "message": "无法打开这段对话"
   },
+  "savedLibraryChatGptSwitchAccount": {
+    "message": "这条星标保存在 {account}。请在 ChatGPT 中切换到该账号，然后重新打开。"
+  },
+  "savedLibraryChatGptSwitchHint": {
+    "message": "无法打开这段对话？请在 ChatGPT 中切换到保存时使用的账号，然后重新打开。"
+  },
+  "savedLibraryOpenAnyway": {
+    "message": "仍然打开"
+  },
   "savedLibraryFilters": {
     "message": "收藏库筛选"
   },

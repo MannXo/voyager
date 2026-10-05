@@ -29,6 +29,44 @@ const star: StarredMessage = {
 };
 
 describe('saved library conversation views', () => {
+  it('a ChatGPT switch prompt and account filter use the same stable account numbers', () => {
+    const items = toSavedLibraryItems(
+      [
+        {
+          ...star,
+          conversationId: 'chatgpt:conv:one',
+          conversationUrl: 'https://chatgpt.com/c/one',
+          account: 'chatgpt:first',
+          starredAt: 100,
+        },
+        {
+          ...star,
+          conversationId: 'chatgpt:conv:two',
+          conversationUrl: 'https://chatgpt.com/c/two',
+          account: 'chatgpt:second',
+          starredAt: 200,
+        },
+        {
+          ...star,
+          conversationId: 'chatgpt:conv:legacy',
+          conversationUrl: 'https://chatgpt.com/c/legacy',
+          starredAt: 300,
+        },
+      ],
+      [],
+    );
+    const view = getSavedLibraryView(items, { ...selection, site: 'chatgpt' });
+    expect(view.accounts.map((account) => account.number)).toEqual([1, 2, 0]);
+    const second = view.accounts.find((account) => account.number === 2)!;
+    const filtered = getSavedLibraryView(items, {
+      ...selection,
+      site: 'chatgpt',
+      account: second.id,
+      query: 'Stored',
+    });
+    expect(filtered.items.map((item) => item.account)).toEqual(['chatgpt:second']);
+    expect(filtered.groups[0].accountNumber).toBe(2);
+  });
   it('resolves site labels from prefixed records and legacy native URLs', () => {
     const items = toSavedLibraryItems(
       [

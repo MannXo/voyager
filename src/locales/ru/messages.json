@@ -3941,6 +3941,15 @@
   "savedLibraryConversationOpenFailed": {
     "message": "Не удалось открыть этот разговор"
   },
+  "savedLibraryChatGptSwitchAccount": {
+    "message": "Эта звезда сохранена в {account}. Переключитесь на этот аккаунт в ChatGPT и попробуйте открыть снова."
+  },
+  "savedLibraryChatGptSwitchHint": {
+    "message": "Не получается открыть этот разговор? Переключитесь на аккаунт, который вы использовали в ChatGPT, и попробуйте открыть снова."
+  },
+  "savedLibraryOpenAnyway": {
+    "message": "Всё равно открыть"
+  },
   "savedLibraryFilters": {
     "message": "Фильтры библиотеки"
   },

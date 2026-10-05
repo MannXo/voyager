@@ -126,6 +126,60 @@ it('opens a saved Claude star in the current Claude tab', async () => {
   expect(chrome.tabs.create).not.toHaveBeenCalled();
 });
 
+it.each([true, false])(
+  'the popup checks ChatGPT account before navigating its source tab (readable=%s)',
+  async (readable) => {
+    pageUrl = 'https://chatgpt.com/c/current';
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation((async (
+      message: { type: string },
+      callback?: (value: unknown) => void,
+    ) => {
+      if (message.type === 'gv.starred.getAll') {
+        const response = {
+          ok: true,
+          data: {
+            messages: {
+              'chatgpt:conv:saved': [
+                {
+                  conversationId: 'chatgpt:conv:saved',
+                  conversationUrl: 'https://chatgpt.com/c/saved',
+                  turnId: 'turn-one',
+                  content: 'Saved answer',
+                  starredAt: 100,
+                  account: `chatgpt:${'a'.repeat(64)}`,
+                },
+              ],
+            },
+          },
+        };
+        callback?.(response);
+        return response;
+      }
+      return { ok: false };
+    }) as typeof chrome.runtime.sendMessage);
+    vi.mocked(chrome.tabs.sendMessage).mockImplementation(async () =>
+      readable ? { ok: true, account: `chatgpt:${'b'.repeat(64)}` } : { ok: false },
+    );
+    await mount();
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[data-library-open]')!.click(),
+    );
+    if (readable) {
+      expect(chrome.tabs.update).not.toHaveBeenCalled();
+      const host = document.querySelector<HTMLElement>('[data-gv-layer="popover"]')!;
+      expect(host.shadowRoot!.textContent).toContain('This star was saved in Account 1.');
+      const button = [...host.shadowRoot!.querySelectorAll('button')].find(
+        (candidate) => candidate.textContent === 'Open anyway',
+      )!;
+      await act(async () => button.click());
+    }
+    expect(chrome.tabs.update).toHaveBeenCalledWith(7, {
+      url: 'https://chatgpt.com/c/saved#gv-turn-turn-one',
+    });
+    expect(window.close).toHaveBeenCalled();
+  },
+);
+
 it('keeps a starred row after a failed removal and allows retry', async () => {
   let removed = false;
   let attempts = 0;

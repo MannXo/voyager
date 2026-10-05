@@ -3941,6 +3941,15 @@
   "savedLibraryConversationOpenFailed": {
     "message": "無法開啟這段對話"
   },
+  "savedLibraryChatGptSwitchAccount": {
+    "message": "這則星號儲存在 {account}。請在 ChatGPT 中切換至該帳號，然後重新開啟。"
+  },
+  "savedLibraryChatGptSwitchHint": {
+    "message": "無法開啟這段對話？請在 ChatGPT 中切換至儲存時使用的帳號，然後重新開啟。"
+  },
+  "savedLibraryOpenAnyway": {
+    "message": "仍要開啟"
+  },
   "savedLibraryFilters": {
     "message": "收藏庫篩選"
   },

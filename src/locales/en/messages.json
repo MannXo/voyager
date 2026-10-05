@@ -3941,6 +3941,15 @@
   "savedLibraryConversationOpenFailed": {
     "message": "Couldn’t open this conversation"
   },
+  "savedLibraryChatGptSwitchAccount": {
+    "message": "This star was saved in {account}. Switch to that account in ChatGPT, then open again."
+  },
+  "savedLibraryChatGptSwitchHint": {
+    "message": "Can’t open this conversation? Switch to the account you used in ChatGPT, then open again."
+  },
+  "savedLibraryOpenAnyway": {
+    "message": "Open anyway"
+  },
   "savedLibraryFilters": {
     "message": "Library filters"
   },

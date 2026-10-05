@@ -66,6 +66,7 @@ export function Library() {
   const openItem = async (item: SavedLibraryItem) => {
     setOpenError(false);
     try {
+      if (!(await library.confirmOpen(item))) return;
       await chrome.tabs.create({ url: buildSavedLibraryItemUrl(item) });
     } catch {
       setOpenError(true);

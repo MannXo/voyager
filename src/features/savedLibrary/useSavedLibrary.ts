@@ -9,6 +9,7 @@ import {
 import { askConfirm } from '@/core/ui/confirm';
 
 import { StarredMessagesService } from './StarredMessagesService';
+import { confirmSavedLibraryOpen } from './confirmSavedLibraryOpen';
 import { listLibraryHighlights, removeLibraryItem } from './libraryClient';
 import { type SavedLibraryItem, savedLibraryItemKey, toSavedLibraryItems } from './model';
 import type { StarredMessage } from './starTypes';
@@ -180,5 +181,22 @@ export function useSavedLibrary({
     [confirmRemoval, reload, t],
   );
 
-  return { ...view, allItems, selection, setSelection, loading, error, notice, reload, remove };
+  const confirmOpen = useCallback(
+    (item: SavedLibraryItem) =>
+      confirmSavedLibraryOpen(item, currentItems.current, t, lifetime.current.signal),
+    [t],
+  );
+
+  return {
+    ...view,
+    allItems,
+    selection,
+    setSelection,
+    loading,
+    error,
+    notice,
+    reload,
+    remove,
+    confirmOpen,
+  };
 }

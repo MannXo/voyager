@@ -149,6 +149,7 @@ describe('willCleanUp tests module', () => {
       'CleanupRemoteAnnouncements',
       'CleanupStorageQuotaWarning',
       'CleanupAccountContextBridge',
+      'CleanupChatGptJump',
       'CleanupCodeBlockCollapse',
       'CleanupUsageStatus',
       'CleanupWatermarkNativeNotice',
