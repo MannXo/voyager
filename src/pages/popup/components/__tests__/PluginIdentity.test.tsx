@@ -33,6 +33,18 @@ describe('PluginIdentity accessible plugin identity', () => {
     expect(header?.getAttribute('aria-label')).toBe('Claude · 阅读宽度');
   });
 });
+describe('PluginIdentity supported sites', () => {
+  it('lists every supported site on hover instead of a line in each open card', async () => {
+    await render({
+      ...widthPlugin,
+      matches: ['https://claude.ai/*', 'https://chatgpt.com/*', 'https://chat.openai.com/*'],
+    });
+    const header = container.querySelector<HTMLButtonElement>('button[aria-expanded]')!;
+    expect(header.getAttribute('aria-expanded')).toBe('true');
+    expect(header.title).toBe('claude.ai, chatgpt.com, chat.openai.com');
+    expect(container.textContent).not.toContain('chat.openai.com');
+  });
+});
 describe('PluginIdentity platform name display', () => {
   it('removes the DeepSeek prefix when the platform badge is shown', async () => {
     const plugin: PluginManifest = {

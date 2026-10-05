@@ -220,6 +220,8 @@ export function PluginIdentity({
         className="group flex w-full items-start gap-1.5 text-left"
         aria-expanded={isOpen}
         aria-label={localizedName}
+        // The site badge already says where it runs; the full host list stays a hover away.
+        title={hosts || undefined}
       >
         <svg
           width="11"
@@ -268,7 +270,6 @@ export function PluginIdentity({
             </p>
           )}
           <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-            {hosts && <span className="text-muted-foreground">{hosts}</span>}
             <span className="text-muted-foreground tabular-nums">{provenance}</span>
             {plugin.homepage && (
               <a
