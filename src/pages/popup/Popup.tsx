@@ -257,6 +257,8 @@ export default function Popup({ sourceTabId }: PopupProps = {}) {
         {/* Cloud Sync */}
         {wrapSection('cloudSync', <CloudSyncSettings sourceTabId={sourceTabId} />, {
           allowPluginSite: getFolderPlatformForHost(activeSiteDomain) !== null,
+          // Same top-level slot as on Gemini, ahead of the site's prompt and plugin cards.
+          pluginSiteOrder: -2,
         })}
         {isPluginSite && (
           <PluginSiteSettings

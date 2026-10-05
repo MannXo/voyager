@@ -299,6 +299,20 @@ describe('Popup settings integration', () => {
     await mount();
     expect(container.querySelector('#prompt-manager-site-enabled')).not.toBeNull();
     expect(container.textContent).toContain(TRANSLATIONS.en.cloudSync);
+    // Flex order, then DOM order, decides what the user sees first.
+    const promptCard = container
+      .querySelector('#prompt-manager-site-enabled')!
+      .closest('[style*="order"]')!;
+    const blocks = Array.from(promptCard.parentElement!.children) as HTMLElement[];
+    const shownBefore = (a: HTMLElement, b: HTMLElement) =>
+      Number(a.style.order || 0) < Number(b.style.order || 0) ||
+      (a.style.order === b.style.order && blocks.indexOf(a) < blocks.indexOf(b));
+    const syncBlock = blocks.find(
+      (block) => block !== promptCard && block.textContent?.includes(TRANSLATIONS.en.cloudSync),
+    )!;
+    const pluginList = blocks.find((block) => block.style.order === '-1')!;
+    expect(shownBefore(syncBlock, promptCard as HTMLElement)).toBe(true);
+    expect(shownBefore(syncBlock, pluginList)).toBe(true);
     expect(container.querySelector('#account-isolation-enabled')).toBeNull();
     expect(container.querySelector('#folder-enabled')).toBeNull();
     const requestedLocalKeys = extensionApi.storage.local.get.mock.calls.flatMap(([keys]) =>

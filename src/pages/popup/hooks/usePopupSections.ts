@@ -49,6 +49,8 @@ export interface PopupSectionsOptions {
 
 export interface PopupSectionOptions {
   allowPluginSite?: boolean;
+  /** Flex order on plugin sites, where the saved native order does not apply. */
+  pluginSiteOrder?: number;
 }
 
 /** Persisted section order, settings search and the active platform's visibility rules. */
@@ -180,7 +182,10 @@ export function usePopupSections({
       isSectionVisible(id) &&
       (isPluginSite || !hasSettingsSearch || settingsSearchSections.has(id)),
     // Keep the stored slot even while hidden; the quota card is placed after cloud sync.
-    order: sectionOrder.indexOf(id) * 2,
+    order:
+      isPluginSite && options.pluginSiteOrder !== undefined
+        ? options.pluginSiteOrder
+        : sectionOrder.indexOf(id) * 2,
     reorder:
       !isPluginSite && !hasSettingsSearch
         ? {
