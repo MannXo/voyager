@@ -1,3 +1,4 @@
+import { hashValue } from '@/core/utils/canonicalHash';
 /**
  * Multi-key bundles (DESIGN-v2 §9, addendum P3P4 R3.1–R3.6, R4.1–R4.3, R5.2).
  * Dormant: nothing produces a bundle until the cloud merge moves to the owner
@@ -15,7 +16,6 @@ import type { StorageBudget } from '@/features/storage/storageBudget';
 import { storedItemBytes, storedItemsBytes } from '@/features/storage/storageBudget';
 
 import type { FolderAuthority } from './authority';
-import { hashValue } from './canonicalHash';
 import { INTERRUPTED, type OpOutcome, type StoredOutcome } from './folderOps';
 import { type FolderSite, siteOfFolderKey } from './folderOwnerPolicy';
 import type { FolderOwnerMeta, FolderOwnerStorageArea } from './folderOwnerState';

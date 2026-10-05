@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import { hashValue } from '@/core/utils/canonicalHash';
+
 import { BUNDLE_INTENT_KEY, writeBundle } from '../bundleIntent';
-import { hashValue } from '../canonicalHash';
 import type { FolderOwnerMeta } from '../folderOwnerState';
 import { ownerBackupKey, ownerMetaKey } from '../folderOwnerState';
 import { createFaultyStorage } from './faultyStorage';

@@ -1,8 +1,8 @@
 import type { FolderData } from '@/core/types/folder';
+import { canonicalJson, hashValue } from '@/core/utils/canonicalHash';
 
 import type { FolderAuthority } from './authority';
 import { interruptStaleBundles, resolveBundleIntent } from './bundleIntent';
-import { canonicalJson, hashValue } from './canonicalHash';
 import type { StoredOutcome } from './folderOps';
 import type { FolderSite } from './folderOwnerPolicy';
 import { orphanedClients } from './ownerEpochScan';

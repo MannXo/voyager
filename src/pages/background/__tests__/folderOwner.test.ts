@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { hashValue } from '@/core/utils/canonicalHash';
 import {
   type FaultyStorage,
   createFaultyStorage,
@@ -8,7 +9,6 @@ import { folder, folderData } from '@/features/folder/owner/__tests__/ownerHarne
 import { type FolderAuthority, FOLDER_WRITE_AUTHORITY } from '@/features/folder/owner/authority';
 import { AUTHORITY_FENCE_KEY } from '@/features/folder/owner/authorityFence';
 import { BUNDLE_INTENT_KEY } from '@/features/folder/owner/bundleIntent';
-import { hashValue } from '@/features/folder/owner/canonicalHash';
 import { createFolderOwnerCore } from '@/features/folder/owner/folderOwnerCore';
 import type { FolderSite } from '@/features/folder/owner/folderOwnerPolicy';
 import { ownerMetaKey } from '@/features/folder/owner/folderOwnerState';

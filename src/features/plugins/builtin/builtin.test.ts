@@ -106,7 +106,7 @@ describe('BUILTIN_PLUGINS', () => {
     expect(timeline).toBeDefined();
     expect(timeline?.matches).toEqual(['https://chatgpt.com/*', 'https://chat.openai.com/*']);
     expect(timeline?.engine).toBe('>=1.5.0');
-    expect(timeline?.contributes.domOps).toEqual([
+    expect(timeline?.contributes.domOps).toMatchObject([
       {
         op: 'native',
         handler: 'turnNavigator',

@@ -1,9 +1,9 @@
+import { canonicalJson } from '@/core/utils/canonicalHash';
 import type { StorageBudget } from '@/features/storage/storageBudget';
 import { type Serialize, createWriteQueue } from '@/features/storage/writeQueue';
 
 import type { FolderAuthority } from './authority';
 import { resolveBundleIntent } from './bundleIntent';
-import { canonicalJson } from './canonicalHash';
 import type { StoredOutcome } from './folderOps';
 import type {
   AckRequest,

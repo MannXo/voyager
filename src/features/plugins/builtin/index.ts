@@ -300,6 +300,7 @@ export const BUILTIN_PLUGINS: readonly PluginManifest[] = [
           params: {
             turnItem: '[data-turn-key]',
             conversationIdAttribute: 'data-chatgpt-selection-conversation-id',
+            accountIdAttributes: ['data-theme-user-id', 'data-theme-account-id'],
           },
         },
       ],

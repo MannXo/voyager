@@ -145,6 +145,20 @@ describe('turnNavigator primitive', () => {
     );
   });
 
+  it('accepts account attribute lists and refuses malformed names or values before activation', () => {
+    const attributes = ['data-user-id', 'data-workspace-id'];
+    expect(turnNavigatorPrimitive.validateParams({ accountIdAttributes: attributes })).toEqual({
+      success: true,
+      data: { accountIdAttributes: attributes },
+    });
+    for (const value of ['data-user-id', ['Data-Upper'], ['data-user-id', 42], [''], null]) {
+      const result = turnNavigatorPrimitive.validateParams({ accountIdAttributes: value });
+      expect(result.success).toBe(false);
+      if (!result.success)
+        expect(result.error.map((issue) => issue.path)).toEqual(['params.accountIdAttributes']);
+    }
+  });
+
   it("mounts the rail for the adapter's turns, loads stars under the site prefix and updates in place", async () => {
     document.body.innerHTML = '<div class="ds-user">first</div><div class="ds-user">second</div>';
     const scope = new PluginScope();

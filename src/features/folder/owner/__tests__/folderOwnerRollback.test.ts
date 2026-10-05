@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { hashValue } from '@/core/utils/canonicalHash';
 import {
   PROMPT_LIBRARY_KEY,
   createPromptLibraryOwner,
@@ -10,7 +11,6 @@ import { FOLDER_WRITE_AUTHORITY } from '../authority';
 import { AUTHORITY_FENCE_KEY, writeAuthorityFence } from '../authorityFence';
 import { BUNDLE_INTENT_KEY, resolveBundleIntent, writeBundle } from '../bundleIntent';
 import { createBundleRecovery } from '../bundleRecovery';
-import { hashValue } from '../canonicalHash';
 import { INTERRUPTED } from '../folderOps';
 import { createFolderOwnerCore } from '../folderOwnerCore';
 import { ownerBackupKey, ownerMetaKey } from '../folderOwnerState';

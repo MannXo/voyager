@@ -282,6 +282,8 @@ beforeEach(() => {
 afterEach(async () => {
   await scope.dispose();
   document.body.innerHTML = '';
+  document.documentElement.removeAttribute('data-theme-user-id');
+  document.documentElement.removeAttribute('data-theme-account-id');
   vi.useRealTimers();
 });
 
@@ -358,7 +360,9 @@ describe('ChatGPT timeline', () => {
     expect(window.scrollTo).not.toHaveBeenCalled();
   });
 
-  it('marks every prompt, skips replies, and files stars under chatgpt', async () => {
+  it('marks every prompt, skips replies, and files stars under chatgpt with the loaded account', async () => {
+    document.documentElement.setAttribute('data-theme-user-id', 'user-account-a');
+    document.documentElement.setAttribute('data-theme-account-id', 'workspace-a');
     exchange('First question');
     exchange('Second question');
 
@@ -370,6 +374,11 @@ describe('ChatGPT timeline', () => {
     expect(getStarredMessagesForConversation).toHaveBeenLastCalledWith('chatgpt:conv:first');
 
     await longPress(dots()[1]);
+    await vi.waitFor(() =>
+      expect(starStore.get('chatgpt:conv:first')?.[0].account).toBe(
+        'chatgpt:ab894c1ca59dbaea95295fae9a616794d31cffbfdf53b53649933ca4842b5bca',
+      ),
+    );
     expect(starred('chatgpt:conv:first')).toEqual(['Second question']);
   });
 

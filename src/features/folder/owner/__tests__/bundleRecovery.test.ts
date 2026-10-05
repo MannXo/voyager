@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { hashValue } from '@/core/utils/canonicalHash';
 import { createByteStore } from '@/features/storage/__tests__/byteStore';
 import { createWriteQueue } from '@/features/storage/writeQueue';
 
 import { BUNDLE_INTENT_KEY, type OpenBundle } from '../bundleIntent';
 import { BUNDLE_RETRY_MS, createBundleRecovery } from '../bundleRecovery';
 import { createBundleSpaceRelease } from '../bundleRelease';
-import { hashValue } from '../canonicalHash';
 import { createFolderOwnerCore } from '../folderOwnerCore';
 import {
   type FolderOwnerMeta,

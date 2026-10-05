@@ -16,7 +16,7 @@
  */
 import type { SemanticSelectorKey } from '../sites/semanticKeys';
 
-export type PrimitiveParamType = 'string' | 'number' | 'boolean' | 'selector';
+export type PrimitiveParamType = 'string' | 'string[]' | 'number' | 'boolean' | 'selector';
 
 export interface PrimitiveParamSpec {
   readonly type: PrimitiveParamType;
@@ -81,6 +81,13 @@ export const PRIMITIVE_CONTRACTS: readonly PrimitiveContract[] = [
         sinceEngine: '1.5.0',
         description:
           'Attribute holding the conversation id that conversationIdPattern captures from the URL, on an ancestor of each turn or inside its turnItem. When set, it is the only thing that lets a turn be starred: the id must name the current conversation; a turn without one stays unstarrable.',
+      },
+      accountIdAttributes: {
+        type: 'string[]',
+        required: false,
+        sinceEngine: '1.5.0',
+        description:
+          'Ordered attributes on document.documentElement identifying the loaded account. Stars hash their values together; missing values leave the star untagged.',
       },
       turnItem: {
         type: 'selector',

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { ABSENT_HASH, hashValue } from '../canonicalHash';
+import { ABSENT_HASH, hashValue } from '@/core/utils/canonicalHash';
+
 import { ownerBackupKey, ownerMetaKey, resolveOwnerState } from '../folderOwnerState';
 import { createFaultyStorage } from './faultyStorage';
 import { ALL_OWNER, KEY, conversation, folder, folderData } from './ownerHarness';

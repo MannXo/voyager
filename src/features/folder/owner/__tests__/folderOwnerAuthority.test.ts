@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import { hashValue } from '@/core/utils/canonicalHash';
+
 import type { FolderAuthority } from '../authority';
 import { BUNDLE_INTENT_KEY, resolveBundleIntent } from '../bundleIntent';
-import { hashValue } from '../canonicalHash';
 import { createFolderOwnerCore } from '../folderOwnerCore';
 import type { FolderSite } from '../folderOwnerPolicy';
 import { ownerBackupKey, ownerMetaKey } from '../folderOwnerState';

@@ -1,3 +1,5 @@
+import { hashValue } from '@/core/utils/canonicalHash';
+
 import type { TimelineStoragePolicy } from '../../TimelineStoragePolicy';
 import { CatalogTurnOwnership } from './CatalogTurnOwnership';
 import { catalogHierarchyStorageKey, type CatalogTimelineConfig } from './config';
@@ -17,7 +19,13 @@ export function createCatalogTimelineStoragePolicy(
     settingsPrefix: `gvTimeline:${config.siteId}:`,
     stars: {
       matchLegacyConversations: false,
-      resolveAccount: async () => undefined,
+      resolveAccount: async () => {
+        const values = config.accountIdAttributes?.map((attribute) =>
+          document.documentElement.getAttribute(attribute),
+        );
+        if (!values?.length || values.some((value) => !value)) return undefined;
+        return `${config.siteId}:${await hashValue(values)}`;
+      },
     },
     hierarchy: {
       localKey: conversationId ? catalogHierarchyStorageKey(config.siteId, conversationId) : null,

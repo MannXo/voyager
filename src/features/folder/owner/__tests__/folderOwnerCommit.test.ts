@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { hashValue } from '../canonicalHash';
+import { hashValue } from '@/core/utils/canonicalHash';
+
 import { ownerBackupKey, resolveOwnerState } from '../folderOwnerState';
 import { type Fault, type StorageOp, createFaultyStorage } from './faultyStorage';
 import {

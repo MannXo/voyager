@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { hashValue } from '@/core/utils/canonicalHash';
 import { type ByteStore, createByteStore } from '@/features/storage/__tests__/byteStore';
 import { createStorageBudget } from '@/features/storage/storageBudget';
 
@@ -10,7 +11,6 @@ import {
   resolveBundleIntent,
   writeBundle,
 } from '../bundleIntent';
-import { hashValue } from '../canonicalHash';
 import { INTERRUPTED, type StoredOutcome } from '../folderOps';
 import {
   type FolderOwnerMeta,

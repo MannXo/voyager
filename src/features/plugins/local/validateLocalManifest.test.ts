@@ -136,6 +136,21 @@ describe('validateLocalManifest', () => {
     expect(paths(native('vimInput', { composer: 42 }))).toEqual([
       'contributes.domOps[0].params.composer',
     ]);
+    expect(
+      paths(
+        native(
+          'turnNavigator',
+          { accountIdAttributes: ['data-user-id', 'data-workspace-id'] },
+          '>=1.5.0',
+        ),
+      ),
+    ).toEqual([]);
+    expect(
+      paths(native('turnNavigator', { accountIdAttributes: 'data-user-id' }, '>=1.5.0')),
+    ).toEqual(['contributes.domOps[0].params.accountIdAttributes']);
+    expect(
+      paths(native('turnNavigator', { accountIdAttributes: ['data-user-id', 42] }, '>=1.5.0')),
+    ).toEqual(['contributes.domOps[0].params.accountIdAttributes']);
     // engine must exclude builds that predate the primitive.
     expect(paths(native('vimInput', {}, '>=1.0.0'))).toEqual(['engine']);
   });

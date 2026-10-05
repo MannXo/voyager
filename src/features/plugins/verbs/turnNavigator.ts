@@ -18,6 +18,7 @@ import type { Primitive } from './types';
 export interface TurnNavigatorParams {
   readonly turn?: string;
   readonly conversationIdAttribute?: string;
+  readonly accountIdAttributes?: readonly string[];
   readonly turnItem?: string;
   readonly conversationIdPattern?: string;
   readonly scrollContainer?: string;
@@ -51,6 +52,7 @@ export const turnNavigatorPrimitive: Primitive<TurnNavigatorParams> = {
     const params: {
       turn?: string;
       conversationIdAttribute?: string;
+      accountIdAttributes?: string[];
       turnItem?: string;
       conversationIdPattern?: string;
       scrollContainer?: string;
@@ -90,6 +92,21 @@ export const turnNavigatorPrimitive: Primitive<TurnNavigatorParams> = {
         else issues.push({ path: `params.${key}`, message: 'must be a lower-case attribute name' });
         continue;
       }
+      if (key === 'accountIdAttributes') {
+        if (
+          Array.isArray(value) &&
+          value.every(
+            (attribute) => typeof attribute === 'string' && ATTRIBUTE_NAME.test(attribute),
+          )
+        )
+          params.accountIdAttributes = value;
+        else
+          issues.push({
+            path: `params.${key}`,
+            message: 'must be an array of lower-case attribute names',
+          });
+        continue;
+      }
       if (key === 'position') {
         if (value === 'left' || value === 'right') params.position = value;
         else issues.push({ path: 'params.position', message: 'must be "left" or "right"' });
@@ -123,6 +140,7 @@ export const turnNavigatorPrimitive: Primitive<TurnNavigatorParams> = {
       turnSelector,
       assistantTurnSelector: adapter?.selectors.assistantTurn,
       conversationIdAttribute: params.conversationIdAttribute,
+      accountIdAttributes: params.accountIdAttributes,
       turnItemSelector: params.turnItem,
       conversationIdPattern: params.conversationIdPattern ?? adapter?.conversationIdPattern,
       scrollContainerSelector: params.scrollContainer ?? adapter?.selectors.scrollContainer,

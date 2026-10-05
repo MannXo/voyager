@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { StorageQuotaService } from '@/core/services/StorageQuotaService';
 import { StorageKeys } from '@/core/types/common';
 import type { FolderData } from '@/core/types/folder';
+import { hashValue } from '@/core/utils/canonicalHash';
 import { createPromptLibraryOwner } from '@/features/prompt/library/promptLibraryOwner';
 import { createByteStore, itemBytes } from '@/features/storage/__tests__/byteStore';
 import { createStorageBudget } from '@/features/storage/storageBudget';
@@ -10,7 +11,6 @@ import { createWriteQueue } from '@/features/storage/writeQueue';
 
 import { BUNDLE_INTENT_KEY, writeBundle } from '../bundleIntent';
 import { BUNDLE_RETRY_MS, createBundleRecovery } from '../bundleRecovery';
-import { hashValue } from '../canonicalHash';
 import { FolderClient } from '../client/folderClient';
 import { createFolderOwnerCore } from '../folderOwnerCore';
 import type { FolderOwnerRequest } from '../folderOwnerMessages';

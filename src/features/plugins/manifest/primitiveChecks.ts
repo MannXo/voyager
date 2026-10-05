@@ -108,11 +108,14 @@ export function primitiveParamIssues(manifest: PluginManifest): ManifestIssue[] 
         continue;
       }
       const ok =
-        spec.type === 'number'
-          ? typeof value === 'number' && Number.isFinite(value)
-          : spec.type === 'boolean'
-            ? typeof value === 'boolean'
-            : typeof value === 'string' && value.trim().length > 0;
+        spec.type === 'string[]'
+          ? Array.isArray(value) &&
+            value.every((item) => typeof item === 'string' && item.trim().length > 0)
+          : spec.type === 'number'
+            ? typeof value === 'number' && Number.isFinite(value)
+            : spec.type === 'boolean'
+              ? typeof value === 'boolean'
+              : typeof value === 'string' && value.trim().length > 0;
       if (!ok) issues.push({ path, message: `must be a ${spec.type}` });
     }
   });

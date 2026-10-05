@@ -5,6 +5,7 @@ export interface CatalogTimelineConfig {
   readonly assistantTurnSelector?: string;
   readonly conversationIdPattern?: string;
   readonly conversationIdAttribute?: string;
+  readonly accountIdAttributes?: readonly string[];
   readonly turnItemSelector?: string;
   readonly scrollContainerSelector?: string;
   readonly yieldWhenSelector?: string;
