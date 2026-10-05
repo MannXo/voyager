@@ -78,6 +78,8 @@ export const StorageKeys = {
   TIMELINE_STARRED_MESSAGES: 'geminiTimelineStarredMessages',
   SAVED_LIBRARY_STARS: 'gvSavedLibraryStars',
   TIMELINE_HIERARCHY: 'geminiTimelineHierarchy',
+  /** Catalog-site (ChatGPT, Claude, DeepSeek) outlines: one `<prefix><siteId>` blob per site. */
+  CATALOG_TIMELINE_HIERARCHY_PREFIX: 'gvCatalogTimelineHierarchy:',
   TIMELINE_SHORTCUTS: 'geminiTimelineShortcuts',
   HIGHLIGHT_CLOUD_SYNC_ENABLED: 'gvHighlightCloudSyncEnabled',
   HIGHLIGHT_DEVICE_ID: 'gvAnnotationDeviceId',

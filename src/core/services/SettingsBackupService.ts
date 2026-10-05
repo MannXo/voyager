@@ -226,6 +226,12 @@ export const NON_SETTINGS_BACKUP_POLICIES = {
     disposition: 'separate-file',
     reason: 'Timeline hierarchy has its own account-scoped Drive file.',
   },
+  [StorageKeys.CATALOG_TIMELINE_HIERARCHY_PREFIX]: {
+    storage: 'local',
+    disposition: 'local-data',
+    reason:
+      'Catalog-site timeline outlines are user data, kept locally until they get a Drive file.',
+  },
   [StorageKeys.HIGHLIGHT_CLOUD_SYNC_ENABLED]: {
     storage: 'local',
     disposition: 'device-local',

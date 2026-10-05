@@ -1,6 +1,10 @@
 import './testSetup';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  type MemoryStorage,
+  createMemoryStorage,
+} from '@/features/plugins/builtin/chatgptFolders/__tests__/memoryStorage';
 import { requireBundledSiteAdapter } from '@/features/plugins/catalog/sites';
 import { PluginScope } from '@/features/plugins/runtime/pluginScope';
 import { turnNavigatorPrimitive } from '@/features/plugins/verbs/turnNavigator';
@@ -15,6 +19,7 @@ vi.mock('@/pages/content/timeline/timelineStyleCoachmark', () => ({
 
 const scopes: PluginScope[] = [];
 let releaseRead: (() => void) | null;
+let storage: MemoryStorage;
 
 async function flush(): Promise<void> {
   for (let i = 0; i < 30; i++) await Promise.resolve();
@@ -25,6 +30,11 @@ beforeEach(() => {
   document.body.innerHTML =
     '<main data-conversation-id="one"><div data-user-message-bubble>Prompt</div></main>';
   releaseRead = null;
+  storage = createMemoryStorage();
+  vi.stubGlobal('chrome', {
+    ...chrome,
+    storage: { ...chrome.storage, local: storage.api.local, onChanged: storage.api.onChanged },
+  });
   let firstRead = true;
   vi.mocked(chrome.runtime.sendMessage).mockImplementation(((
     request: { type: string },
@@ -44,6 +54,7 @@ afterEach(async () => {
   releaseRead?.();
   for (const scope of scopes.splice(0)) await scope.dispose();
   document.body.innerHTML = '';
+  vi.unstubAllGlobals();
 });
 
 function enable(): PluginScope {
@@ -92,10 +103,24 @@ describe('timeline scope lifetime', () => {
 describe('timeline startup outline', () => {
   it('editing a level while the Library read is delayed preserves saved chapters and collapse state', async () => {
     const { buildTurnId } = await import('./turnMerge');
-    const key = 'gvTimelineHierarchy:chatgpt:chatgpt:conv:one';
+    const key = 'gvCatalogTimelineHierarchy:chatgpt';
+    const conversationId = 'chatgpt:conv:one';
     const heading = buildTurnId('Saved heading');
     const child = buildTurnId('Saved child');
-    localStorage.setItem(key, JSON.stringify({ levels: { [child]: 2 }, collapsed: [heading] }));
+    const outline = () =>
+      (storage.values.local.get(key) as { conversations: Record<string, unknown> }).conversations[
+        conversationId
+      ];
+    storage.values.local.set(key, {
+      conversations: {
+        [conversationId]: {
+          conversationUrl: `${location.origin}/c/one`,
+          levels: { [child]: 2 },
+          collapsed: [heading],
+          updatedAt: 1,
+        },
+      },
+    });
     enable();
     await flush();
     document
@@ -110,13 +135,14 @@ describe('timeline startup outline', () => {
       .querySelector('.timeline-dot')!
       .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, button: 2 }));
     document.querySelector<HTMLButtonElement>('.timeline-context-menu [data-level="3"]')!.click();
-    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({
+    await flush();
+    expect(outline()).toMatchObject({
       levels: { [child]: 2, [buildTurnId('Prompt')]: 3 },
       collapsed: [heading],
     });
     releaseRead?.();
     await flush();
-    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({
+    expect(outline()).toMatchObject({
       levels: { [child]: 2, [buildTurnId('Prompt')]: 3 },
       collapsed: [heading],
     });

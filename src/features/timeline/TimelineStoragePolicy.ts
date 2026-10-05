@@ -11,14 +11,15 @@ export interface TimelineStoragePolicy {
     readonly matchLegacyConversations: boolean;
     readonly resolveAccount: () => Promise<string | undefined>;
   };
-  readonly hierarchy:
-    | { readonly localKey: string | null }
-    | {
-        readonly extensionKey: string;
-        readonly legacyLevelsKey: string | null;
-        readonly legacyCollapsedKey: string | null;
-        readonly resolveAccountScope: () => Promise<AccountScope | null>;
-      };
+  readonly hierarchy: {
+    readonly extensionKey: string;
+    readonly legacyLevelsKey: string | null;
+    readonly legacyCollapsedKey: string | null;
+    readonly resolveAccountScope: () => Promise<Pick<
+      AccountScope,
+      'accountKey' | 'routeUserId'
+    > | null>;
+  };
   /** Full-history aliases belong to stored records, never to DOM-window positions. */
   readonly resolveMountedTurnId: (id: string) => string | null;
   readonly resolveStoredTurnId: (id: string) => string | null;

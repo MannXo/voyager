@@ -21,7 +21,6 @@ export class TimelineState {
   private readonly hierarchyHydration = new TimelineHydration(() => this.isCurrent);
   private starDisplayOverride = new Map<string, boolean>();
   private starStorageIdsByMarkerId = new Map<string, string[]>();
-  private onStorage: ((e: StorageEvent) => void) | null = null;
   private onChromeStorageChanged:
     | ((changes: Record<string, chrome.storage.StorageChange>, areaName: string) => void)
     | null = null;
@@ -65,20 +64,6 @@ export class TimelineState {
     for (const marker of markers) marker.starred = this.isMarkerStarred(marker.id);
   }
   private listen(): void {
-    if ('localKey' in this.policy.hierarchy) {
-      this.onStorage = (event) => {
-        if (!this.isCurrent || event.storageArea !== localStorage) return;
-        if (
-          'localKey' in this.policy.hierarchy &&
-          (event.key === null || event.key === this.policy.hierarchy.localKey)
-        ) {
-          this.hierarchy.loadLocalHierarchy();
-          this.onChange();
-        }
-      };
-      window.addEventListener('storage', this.onStorage);
-    }
-
     if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
       this.onChromeStorageChanged = (changes, areaName) => {
         if (areaName === 'local' && this.isCurrent) {
@@ -96,7 +81,6 @@ export class TimelineState {
   destroy(): void {
     this.destroyed = true;
     this.hierarchy.destroy();
-    if (this.onStorage) window.removeEventListener('storage', this.onStorage);
     if (this.onChromeStorageChanged)
       chrome.storage.onChanged.removeListener(this.onChromeStorageChanged);
   }

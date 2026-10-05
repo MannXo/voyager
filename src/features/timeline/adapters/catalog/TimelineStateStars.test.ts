@@ -59,7 +59,12 @@ function create(
       matchLegacyConversations: false,
       resolveAccount: async () => undefined,
     },
-    hierarchy: { localKey: null },
+    hierarchy: {
+      extensionKey: 'gvCatalogTimelineHierarchy:site',
+      legacyLevelsKey: null,
+      legacyCollapsedKey: null,
+      resolveAccountScope: async () => null,
+    },
     isCurrent: () => route === capturedRoute,
     canEdit: (marker) => !!marker && ownership.canStar(marker.element),
     resolveMountedTurnId: extractTurnHash,

@@ -392,7 +392,8 @@ export class BackupService implements IBackupService {
       const hierarchyKeys = Object.keys(storageItems).filter(
         (key) =>
           key === StorageKeys.TIMELINE_HIERARCHY ||
-          key.startsWith(`${StorageKeys.TIMELINE_HIERARCHY}:acct:`),
+          key.startsWith(`${StorageKeys.TIMELINE_HIERARCHY}:acct:`) ||
+          key.startsWith(StorageKeys.CATALOG_TIMELINE_HIERARCHY_PREFIX),
       );
       const timelineHierarchy = hierarchyKeys.reduce<TimelineHierarchyData>((merged, key) => {
         const next = normalizeTimelineHierarchyData(storageItems[key]);

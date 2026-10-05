@@ -16,7 +16,3 @@ export interface CatalogTimelineConfig {
 
 /** Keep the existing once-per-user guide identity across every catalog site. */
 export const TIMELINE_STYLE_COACHMARK_ID = 'claude-timeline-compact-style-intro-v1';
-
-export function catalogHierarchyStorageKey(siteId: string, conversationId: string): string {
-  return `gvTimelineHierarchy:${siteId}:${conversationId}`;
-}

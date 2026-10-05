@@ -187,6 +187,7 @@ const CATEGORY_DEFINITIONS: readonly CategoryDefinition[] = [
     exactKeys: TIMELINE_KEYS,
     prefixes: [
       `${StorageKeys.TIMELINE_HIERARCHY}:acct:`,
+      StorageKeys.CATALOG_TIMELINE_HIERARCHY_PREFIX,
       'geminiTimelineStars:',
       'geminiTimelineLevels:',
       'geminiTimelineCollapsed:',

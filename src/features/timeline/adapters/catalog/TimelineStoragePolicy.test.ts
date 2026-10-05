@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  type MemoryStorage,
+  createMemoryStorage,
+  settle,
+} from '@/features/plugins/builtin/chatgptFolders/__tests__/memoryStorage';
 import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
 import type { StarredMessage } from '@/features/savedLibrary/starTypes';
 
@@ -10,6 +15,7 @@ import type { CatalogTimelineConfig } from './config';
 import { starConversationId, turnConversationId } from './conversationId';
 
 const states: TimelineState[] = [];
+let storage: MemoryStorage;
 const library = new Map<string, StarredMessage[]>();
 const accountAttributes = ['data-theme-user-id', 'data-theme-account-id'];
 const accountA = 'chatgpt:ab894c1ca59dbaea95295fae9a616794d31cffbfdf53b53649933ca4842b5bca';
@@ -55,8 +61,26 @@ async function fixture(siteId: string, accountIdAttributes?: readonly string[]) 
   return state;
 }
 
+function hierarchyKeys(): string[] {
+  return [...storage.values.local.keys()].filter((key) =>
+    key.startsWith('gvCatalogTimelineHierarchy:'),
+  );
+}
+
+function storedOutline(key: string, conversationId: string): unknown {
+  const blob = storage.values.local.get(key) as
+    | { conversations: Record<string, unknown> }
+    | undefined;
+  return blob?.conversations[conversationId];
+}
+
 beforeEach(() => {
   vi.restoreAllMocks();
+  storage = createMemoryStorage();
+  vi.stubGlobal('chrome', {
+    ...chrome,
+    storage: { ...chrome.storage, local: storage.api.local, onChanged: storage.api.onChanged },
+  });
   history.replaceState({}, '', '/c/one');
   localStorage.clear();
   document.body.replaceChildren();
@@ -86,6 +110,7 @@ beforeEach(() => {
 afterEach(() => {
   states.splice(0).forEach((state) => state.destroy());
   setAccount(null, null);
+  vi.unstubAllGlobals();
 });
 
 describe('ChatGPT star accounts', () => {
@@ -195,26 +220,46 @@ describe('ChatGPT star accounts', () => {
 });
 
 describe.each(['chatgpt', 'claude', 'deepseek'])('%s shared timeline storage policy', (siteId) => {
-  it('keeps the site hierarchy format and saves stars through the Library', async () => {
+  it('a hierarchy survives the site clearing its localStorage and saves stars through the Library', async () => {
     const state = await fixture(siteId);
     const conversationId = `${siteId}:conv:one`;
-    const hierarchyKey = `gvTimelineHierarchy:${siteId}:${conversationId}`;
     state.hierarchy.setMarkerLevel('c-turn', 2);
     state.hierarchy.toggleCollapse('c-turn');
-    expect(localStorage.getItem(hierarchyKey)).toBe(
-      '{"levels":{"c-turn":2},"collapsed":["c-turn"]}',
-    );
-    state.hierarchy.setMarkerLevel('c-turn', 1);
-    state.hierarchy.toggleCollapse('c-turn');
-    expect(localStorage.getItem(hierarchyKey)).toBe('{"levels":{},"collapsed":[]}');
-    await state.toggleStar('c-turn');
+    await settle();
+    expect(localStorage.length).toBe(0);
+    expect(storedOutline(`gvCatalogTimelineHierarchy:${siteId}`, conversationId)).toMatchObject({
+      conversationUrl: `${location.origin}/c/one`,
+      levels: { 'c-turn': 2 },
+      collapsed: ['c-turn'],
+    });
+
+    state.destroy();
+    localStorage.clear();
+    const reopened = await fixture(siteId);
+    expect(reopened.hierarchy.getMarkerLevel('c-turn')).toBe(2);
+    expect(reopened.hierarchy.isMarkerCollapsed('c-turn')).toBe(true);
+
+    reopened.hierarchy.setMarkerLevel('c-turn', 1);
+    reopened.hierarchy.toggleCollapse('c-turn');
+    await settle();
+    expect(storedOutline(`gvCatalogTimelineHierarchy:${siteId}`, conversationId)).toBeUndefined();
+
+    await reopened.toggleStar('c-turn');
     expect(StarredMessagesService.addStarredMessage).toHaveBeenCalledWith(
       expect.objectContaining({ conversationId, turnId: 'c-turn' }),
     );
-    expect(state.markers[0].starred).toBe(true);
+    expect(reopened.markers[0].starred).toBe(true);
     expect(
       vi.mocked(StarredMessagesService.addStarredMessage).mock.calls.at(-1)?.[0].account,
     ).toBeUndefined();
+  });
+
+  it('a level set in another tab of the same conversation appears without a reload', async () => {
+    const editor = await fixture(siteId);
+    const viewer = await fixture(siteId);
+    editor.hierarchy.setMarkerLevel('c-turn', 3);
+    await settle();
+    expect(viewer.hierarchy.getMarkerLevel('c-turn')).toBe(3);
   });
 
   it('refuses stars and hierarchy edits after its captured route is replaced', async () => {
@@ -223,7 +268,8 @@ describe.each(['chatgpt', 'claude', 'deepseek'])('%s shared timeline storage pol
     state.hierarchy.setMarkerLevel('c-turn', 2);
     state.hierarchy.toggleCollapse('c-turn');
     await state.toggleStar('c-turn');
-    expect(localStorage.length).toBe(0);
+    await settle();
+    expect(hierarchyKeys()).toEqual([]);
     expect(StarredMessagesService.addStarredMessage).not.toHaveBeenCalled();
   });
 
@@ -233,8 +279,61 @@ describe.each(['chatgpt', 'claude', 'deepseek'])('%s shared timeline storage pol
     state.hierarchy.setMarkerLevel('c-turn', 2);
     state.hierarchy.toggleCollapse('c-turn');
     await state.toggleStar('c-turn');
-    expect(localStorage.length).toBe(0);
+    await settle();
+    expect(hierarchyKeys()).toEqual([]);
     expect(StarredMessagesService.getStarredMessagesForConversation).not.toHaveBeenCalled();
     expect(StarredMessagesService.addStarredMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('catalog hierarchy storage boundaries', () => {
+  it('two catalog sites keep separate hierarchies for the same conversation path', async () => {
+    const chatgpt = await fixture('chatgpt');
+    chatgpt.hierarchy.setMarkerLevel('c-turn', 2);
+    const claude = await fixture('claude');
+    claude.hierarchy.toggleCollapse('c-turn');
+    await settle();
+
+    expect(hierarchyKeys().sort()).toEqual([
+      'gvCatalogTimelineHierarchy:chatgpt',
+      'gvCatalogTimelineHierarchy:claude',
+    ]);
+    expect(storedOutline('gvCatalogTimelineHierarchy:chatgpt', 'chatgpt:conv:one')).toMatchObject({
+      levels: { 'c-turn': 2 },
+      collapsed: [],
+    });
+    expect(storedOutline('gvCatalogTimelineHierarchy:claude', 'claude:conv:one')).toMatchObject({
+      levels: {},
+      collapsed: ['c-turn'],
+    });
+
+    const reopenedClaude = await fixture('claude');
+    expect(reopenedClaude.hierarchy.getMarkerLevel('c-turn')).toBe(1);
+    expect(reopenedClaude.hierarchy.isMarkerCollapsed('c-turn')).toBe(true);
+  });
+
+  it('a ChatGPT outline saved on account A stays hidden from account B on the same browser', async () => {
+    setAccount('user-account-a', 'workspace-a');
+    const onA = await fixture('chatgpt', accountAttributes);
+    onA.hierarchy.setMarkerLevel('c-turn', 2);
+    await settle();
+    onA.destroy();
+
+    setAccount('user-account-b', 'workspace-b');
+    const onB = await fixture('chatgpt', accountAttributes);
+    onB.hierarchy.setMarkerLevel('c-turn', 3);
+    await settle();
+    onB.destroy();
+
+    setAccount('user-account-a', 'workspace-a');
+    expect((await fixture('chatgpt', accountAttributes)).hierarchy.getMarkerLevel('c-turn')).toBe(
+      2,
+    );
+    setAccount('user-account-b', 'workspace-b');
+    expect((await fixture('chatgpt', accountAttributes)).hierarchy.getMarkerLevel('c-turn')).toBe(
+      3,
+    );
+    expect(hierarchyKeys()).toHaveLength(2);
+    expect(storage.values.local.has('gvCatalogTimelineHierarchy:chatgpt')).toBe(false);
   });
 });

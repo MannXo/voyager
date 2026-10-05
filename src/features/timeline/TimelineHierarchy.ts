@@ -33,10 +33,10 @@ export class TimelineHierarchy {
   }
   private markerLevels = new Map<string, MarkerLevel>();
   private collapsedMarkers = new Set<string>();
-  private timelineHierarchyAccountScope: AccountScope | null = null;
+  private timelineHierarchyAccountScope: Pick<AccountScope, 'routeUserId'> | null = null;
   private timelineHierarchyStorageKey = '';
   private get unscopedKey(): string {
-    return 'extensionKey' in this.policy.hierarchy ? this.policy.hierarchy.extensionKey : '';
+    return this.policy.hierarchy.extensionKey;
   }
   private get extensionKeysToRead(): string[] {
     return this.timelineHierarchyStorageKey === this.unscopedKey
@@ -57,9 +57,7 @@ export class TimelineHierarchy {
   // ===== Marker Level Methods =====
 
   private getLevelsStorageKey(): string | null {
-    return 'legacyLevelsKey' in this.policy.hierarchy
-      ? this.policy.hierarchy.legacyLevelsKey
-      : null;
+    return this.policy.hierarchy.legacyLevelsKey;
   }
   /* Load marker levels from legacy localStorage */
   private loadMarkerLevels(): void {
@@ -84,18 +82,6 @@ export class TimelineHierarchy {
   /* Save marker levels to legacy localStorage and mirrored extension storage */
   private saveHierarchy(): void {
     if (!this.hydration.ready) return;
-    if ('localKey' in this.policy.hierarchy) {
-      const key = this.policy.hierarchy.localKey;
-      if (key)
-        safeLocalStorageSet(
-          key,
-          JSON.stringify({
-            levels: Object.fromEntries(this.markerLevels),
-            collapsed: [...this.collapsedMarkers],
-          }),
-        );
-      return;
-    }
     if (this.timelineHierarchyStorageKey === this.unscopedKey) {
       this.persistTimelineHierarchyToLegacyStorage();
     }
@@ -104,9 +90,7 @@ export class TimelineHierarchy {
   // ===== Collapsed Markers Methods =====
 
   private getCollapsedStorageKey(): string | null {
-    return 'legacyCollapsedKey' in this.policy.hierarchy
-      ? this.policy.hierarchy.legacyCollapsedKey
-      : null;
+    return this.policy.hierarchy.legacyCollapsedKey;
   }
   private loadCollapsedMarkers(): void {
     this.collapsedMarkers.clear();
@@ -211,7 +195,6 @@ export class TimelineHierarchy {
     conversationData.collapsed.forEach((turnId) => this.collapsedMarkers.add(turnId));
   }
   private async loadTimelineHierarchyStorageContext(): Promise<boolean> {
-    if (!('extensionKey' in this.policy.hierarchy)) return true;
     if (this.timelineHierarchyStorageKey) return true;
     try {
       const scope = await this.policy.hierarchy.resolveAccountScope();
@@ -357,38 +340,15 @@ export class TimelineHierarchy {
       },
     );
   }
-  loadLocalHierarchy(): void {
-    if (!('localKey' in this.policy.hierarchy) || !this.isCurrent) return;
-    const key = this.policy.hierarchy.localKey;
-    try {
-      const raw = key ? safeLocalStorageGet(key) : null;
-      const data: unknown = raw ? JSON.parse(raw) : null;
-      if (data !== null && !isCompleteOutline(data)) return;
-      this.hydration.snapshot(() => {
-        this.markerLevels.clear();
-        this.collapsedMarkers.clear();
-        if (!data) return;
-        const { levels, collapsed } = data as TimelineHierarchyConversationData;
-        for (const [id, level] of Object.entries(levels)) this.markerLevels.set(id, level);
-        for (const id of collapsed) this.collapsedMarkers.add(id);
-      });
-    } catch (error) {
-      console.warn('[Timeline] Failed to parse hierarchy:', error);
-    }
-  }
   init(): Promise<void> {
     return this.hydration.read(async (accept) => {
-      if ('localKey' in this.policy.hierarchy) {
-        this.loadLocalHierarchy();
-      } else {
-        if (!(await this.loadTimelineHierarchyStorageContext())) return;
-        if (!this.isCurrent || this.hydration.ready) return;
-        if (this.timelineHierarchyStorageKey === this.unscopedKey) {
-          this.loadMarkerLevels();
-          this.loadCollapsedMarkers();
-        }
-        await this.loadTimelineHierarchyFromExtensionStorage(accept);
+      if (!(await this.loadTimelineHierarchyStorageContext())) return;
+      if (!this.isCurrent || this.hydration.ready) return;
+      if (this.timelineHierarchyStorageKey === this.unscopedKey) {
+        this.loadMarkerLevels();
+        this.loadCollapsedMarkers();
       }
+      await this.loadTimelineHierarchyFromExtensionStorage(accept);
       if (this.hydration.ready) this.onChange();
     });
   }
@@ -396,8 +356,7 @@ export class TimelineHierarchy {
     this.destroyed = true;
   }
   applyStorageChanges(changes: Record<string, chrome.storage.StorageChange>): void {
-    if (!this.isCurrent || 'localKey' in this.policy.hierarchy || !this.timelineHierarchyStorageKey)
-      return;
+    if (!this.isCurrent || !this.timelineHierarchyStorageKey) return;
     const timelineHierarchyChange = changes[this.timelineHierarchyStorageKey];
     if (timelineHierarchyChange && this.conversationId) {
       const value: unknown = timelineHierarchyChange.newValue;

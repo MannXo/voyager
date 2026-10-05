@@ -1,11 +1,17 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import {
+  type MemoryStorage,
+  createMemoryStorage,
+  settle,
+} from '@/features/plugins/builtin/chatgptFolders/__tests__/memoryStorage';
 
 import { TimelineHierarchyGeometry } from '../../TimelineHierarchyGeometry';
 import { TimelineState } from '../../TimelineState';
 import { CatalogTimelineAdapter } from './CatalogTimelineAdapter';
 import { CatalogTurnOwnership } from './CatalogTurnOwnership';
-import { catalogHierarchyStorageKey, type CatalogTimelineConfig } from './config';
-import { buildConversationId, starConversationId, turnConversationId } from './conversationId';
+import type { CatalogTimelineConfig } from './config';
+import { starConversationId, turnConversationId } from './conversationId';
 
 vi.mock('@/features/savedLibrary/StarredMessagesService', async (importOriginal) => ({
   StarredMessagesService: {
@@ -39,10 +45,19 @@ const fixtures = [
   },
 ];
 
+let storage: MemoryStorage;
+
 beforeEach(() => {
   document.body.innerHTML = '';
   localStorage.clear();
+  storage = createMemoryStorage();
+  vi.stubGlobal('chrome', {
+    ...chrome,
+    storage: { ...chrome.storage, local: storage.api.local, onChanged: storage.api.onChanged },
+  });
 });
+
+afterEach(() => vi.unstubAllGlobals());
 
 for (const fixture of fixtures) {
   describe(`${fixture.siteId} shared timeline adapter`, () => {
@@ -112,11 +127,11 @@ for (const fixture of fixtures) {
       state.hierarchy.setMarkerLevel(state.markers[1].id, 2);
       state.hierarchy.toggleCollapse(state.markers[0].id);
       expect(geometry.getHiddenMarkerIndices()).toEqual(new Set([1]));
-      const key = catalogHierarchyStorageKey(fixture.siteId, buildConversationId(config));
-      expect(localStorage.getItem(key)).toBeTruthy();
-      expect(
-        localStorage.getItem(`geminiTimelineLevels:${buildConversationId(config)}`),
-      ).toBeNull();
+      await settle();
+      expect([...storage.values.local.keys()]).toEqual([
+        `gvCatalogTimelineHierarchy:${fixture.siteId}`,
+      ]);
+      expect(localStorage.length).toBe(0);
       state.destroy();
       const restored = new TimelineState(() => {}, adapter.storage);
       await restored.init();
@@ -145,11 +160,8 @@ for (const fixture of fixtures) {
       state.hierarchy.setMarkerLevel(state.markers[0].id, 2);
       state.hierarchy.toggleCollapse(state.markers[0].id);
       expect(state.hierarchy.getMarkerLevel(state.markers[0].id)).toBe(1);
-      expect(
-        localStorage.getItem(
-          catalogHierarchyStorageKey(fixture.siteId, buildConversationId(config)),
-        ),
-      ).toBeNull();
+      await settle();
+      expect(storage.writes).toEqual([]);
       state.destroy();
       adapter.turns.stop();
       nextAdapter.turns.stop();

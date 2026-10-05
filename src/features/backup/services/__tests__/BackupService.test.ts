@@ -38,6 +38,26 @@ function createChromeMock(): MockedChrome {
         },
       },
     },
+    [`${StorageKeys.CATALOG_TIMELINE_HIERARCHY_PREFIX}chatgpt:acct:abc`]: {
+      conversations: {
+        'chatgpt:conv:one': {
+          conversationUrl: 'https://chatgpt.com/c/one',
+          levels: { 'c-turn': 2 },
+          collapsed: [],
+          updatedAt: 9,
+        },
+      },
+    },
+    [`${StorageKeys.CATALOG_TIMELINE_HIERARCHY_PREFIX}claude`]: {
+      conversations: {
+        'claude:conv:one': {
+          conversationUrl: 'https://claude.ai/chat/one',
+          levels: {},
+          collapsed: ['c-turn'],
+          updatedAt: 10,
+        },
+      },
+    },
   };
 
   const getLocal = vi.fn((keys: unknown, callback?: (items: Record<string, unknown>) => void) => {
@@ -98,7 +118,7 @@ describe('BackupService', () => {
     vi.clearAllMocks();
   });
 
-  it('includes timeline hierarchy data in generated backup files', async () => {
+  it('a backup carries Gemini and catalog-site timeline outlines', async () => {
     const service = new BackupService();
 
     const result = await service.generateBackupFiles({
@@ -146,6 +166,18 @@ describe('BackupService', () => {
             collapsed: [],
             updatedAt: 5678,
           },
+          'chatgpt:conv:one': {
+            conversationUrl: 'https://chatgpt.com/c/one',
+            levels: { 'c-turn': 2 },
+            collapsed: [],
+            updatedAt: 9,
+          },
+          'claude:conv:one': {
+            conversationUrl: 'https://claude.ai/chat/one',
+            levels: {},
+            collapsed: ['c-turn'],
+            updatedAt: 10,
+          },
         },
       },
     });
@@ -155,7 +187,7 @@ describe('BackupService', () => {
       expect.objectContaining({
         includesSettings: true,
         settingsCount: expect.any(Number),
-        timelineHierarchyConversationCount: 2,
+        timelineHierarchyConversationCount: 4,
       }),
     );
   });
