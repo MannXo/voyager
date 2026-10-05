@@ -349,14 +349,99 @@ describe('catalog hierarchy storage boundaries', () => {
     expect(onB.hierarchy.getMarkerLevel('c-turn')).toBe(1);
   });
 
-  it('a ChatGPT edit made once the account appears is saved under that account', async () => {
-    const state = await fixture('chatgpt', accountAttributes);
+  it('a ChatGPT outline appears and accepts edits once the account becomes known', async () => {
     setAccount('user-account-a', 'workspace-a');
-    await state.hierarchy.setMarkerLevel('c-turn', 2);
+    const before = await fixture('chatgpt', accountAttributes);
+    before.hierarchy.setMarkerLevel('c-turn', 2);
     await settle();
+    before.destroy();
+    setAccount(null, null);
+
+    const state = await fixture('chatgpt', accountAttributes);
+    expect(state.hierarchy.getMarkerLevel('c-turn')).toBe(1);
+    setAccount('user-account-a', 'workspace-a');
+    await settle();
+    await state.hierarchy.init();
     expect(state.hierarchy.getMarkerLevel('c-turn')).toBe(2);
+    state.hierarchy.setMarkerLevel('c-turn', 3);
+    await settle();
     expect(hierarchyKeys()).toEqual([
       expect.stringMatching(/^gvCatalogTimelineHierarchy:chatgpt:acct:/),
     ]);
+    expect(storedOutline(hierarchyKeys()[0], 'chatgpt:conv:one')).toMatchObject({
+      levels: { 'c-turn': 3 },
+    });
+  });
+
+  it('a ChatGPT outline edit after switching accounts saves under the new account', async () => {
+    setAccount('user-account-a', 'workspace-a');
+    const state = await fixture('chatgpt', accountAttributes);
+    state.hierarchy.setMarkerLevel('c-turn', 2);
+    await settle();
+    const [keyA] = hierarchyKeys();
+
+    setAccount('user-account-b', 'workspace-b');
+    await settle();
+    await state.hierarchy.init();
+    expect(state.hierarchy.getMarkerLevel('c-turn')).toBe(1);
+    state.hierarchy.setMarkerLevel('c-turn', 3);
+    await settle();
+
+    const keyB = hierarchyKeys().find((key) => key !== keyA);
+    expect(storedOutline(keyA, 'chatgpt:conv:one')).toMatchObject({ levels: { 'c-turn': 2 } });
+    expect(storedOutline(keyB!, 'chatgpt:conv:one')).toMatchObject({ levels: { 'c-turn': 3 } });
+    setAccount('user-account-a', 'workspace-a');
+    await settle();
+    await state.hierarchy.init();
+    expect(state.hierarchy.getMarkerLevel('c-turn')).toBe(2);
+  });
+
+  it('an edit made in the same moment the ChatGPT account changes never lands in the old account', async () => {
+    setAccount('user-account-a', 'workspace-a');
+    const state = await fixture('chatgpt', accountAttributes);
+    state.hierarchy.setMarkerLevel('c-turn', 2);
+    await settle();
+    const [keyA] = hierarchyKeys();
+
+    setAccount('user-account-b', 'workspace-b');
+    state.hierarchy.setMarkerLevel('c-turn', 3);
+    await settle();
+    await state.hierarchy.init();
+    expect(storedOutline(keyA, 'chatgpt:conv:one')).toMatchObject({ levels: { 'c-turn': 2 } });
+    expect(hierarchyKeys()).toEqual([keyA]);
+  });
+
+  it('signing out of ChatGPT hides the outline and refuses edits', async () => {
+    setAccount('user-account-a', 'workspace-a');
+    const state = await fixture('chatgpt', accountAttributes);
+    state.hierarchy.setMarkerLevel('c-turn', 2);
+    await settle();
+    const [keyA] = hierarchyKeys();
+
+    setAccount(null, null);
+    await settle();
+    await state.hierarchy.init();
+    expect(state.hierarchy.getMarkerLevel('c-turn')).toBe(1);
+    await state.hierarchy.setMarkerLevel('c-turn', 3);
+    await settle();
+    await state.hierarchy.init();
+    expect(state.hierarchy.getMarkerLevel('c-turn')).toBe(1);
+    expect(hierarchyKeys()).toEqual([keyA]);
+    expect(storedOutline(keyA, 'chatgpt:conv:one')).toMatchObject({ levels: { 'c-turn': 2 } });
+  });
+
+  it('a ChatGPT account switch during the first outline read shows the new account', async () => {
+    setAccount('user-account-a', 'workspace-a');
+    const onA = await fixture('chatgpt', accountAttributes);
+    onA.hierarchy.setMarkerLevel('c-turn', 2);
+    await settle();
+    onA.destroy();
+
+    const opening = fixture('chatgpt', accountAttributes);
+    setAccount('user-account-b', 'workspace-b');
+    const state = await opening;
+    await settle();
+    await state.hierarchy.init();
+    expect(state.hierarchy.getMarkerLevel('c-turn')).toBe(1);
   });
 });

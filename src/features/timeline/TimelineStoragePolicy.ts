@@ -17,7 +17,9 @@ export interface TimelineStoragePolicy {
     readonly legacyCollapsedKey: string | null;
     /** Gemini only: a missing scoped blob adopts the pre-isolation unscoped blob once. */
     readonly adoptUnscopedHierarchy: boolean;
-    /** null stores unscoped; 'unknown' reads and writes nothing until a later edit retries. */
+    /** Page attributes naming the account; a change rehydrates the outline from the new account. */
+    readonly accountAttributes: readonly string[];
+    /** null stores unscoped; 'unknown' shows and accepts no outline until the account is known. */
     readonly resolveAccountScope: () => Promise<
       Pick<AccountScope, 'accountKey' | 'routeUserId'> | null | 'unknown'
     >;

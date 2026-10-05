@@ -54,6 +54,7 @@ export function createGeminiTimelineStoragePolicy(
         ? getLegacyTimelineCollapsedStorageKey(conversationId)
         : null,
       adoptUnscopedHierarchy: true,
+      accountAttributes: [],
       resolveAccountScope,
     },
     // A mounted u-N is an unverified window position even when stored u-N has a history alias.

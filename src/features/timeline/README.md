@@ -34,10 +34,16 @@ The [catalog adapter](adapters/catalog/CatalogTimelineAdapter.ts) receives seman
 `site.json` and optional `turnNavigator` manifest parameters. It retains identity and ownership
 across virtualized DOM windows. Its [storage policy](adapters/catalog/CatalogTimelineStorage.ts)
 stores hierarchy in extension storage, one `gvCatalogTimelineHierarchy:<siteId>` blob per site in the
-Gemini blob shape. A site that declares `accountIdAttributes` (ChatGPT) scopes that blob and its star
-annotations to the hashed account and stores no outline while that account is unknown; other sites
-stay unscoped. Only Gemini's migration reads an unscoped blob behind a missing scoped one. Catalog hierarchy is in local backups
-but has no Drive file yet. Stars for every site come from the Saved Library through its
+Gemini blob shape. A site that declares `accountIdAttributes` (ChatGPT) scopes that blob to the hashed
+account; the hierarchy watches those attributes, rehydrates from the new account when they change,
+and while the account is unknown shows no outline and refuses edits. Other sites stay unscoped, and
+only Gemini's migration reads an unscoped blob behind a missing scoped one. Each accepted edit
+captures its bucket, conversation and entry, then joins one page-wide save queue that replaces only
+that conversation's entry; the save completes even if the timeline is torn down, and storage
+snapshots do not overwrite an edit whose save is pending. Local backups export catalog buckets in
+`catalog-timeline-hierarchy.json`, keyed by storage key; catalog hierarchy has no Drive file yet.
+ChatGPT stars carry the same hashed account annotation. Stars for every site come from the Saved
+Library through its
 [client](../savedLibrary/StarredMessagesService.ts), whose requests use the background store as the
 single write owner. Every edit requires evidence that the turn belongs to the current conversation.
 Old page star arrays are neither read, imported, written nor purged.

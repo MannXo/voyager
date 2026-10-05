@@ -64,6 +64,7 @@ function create(
       legacyLevelsKey: null,
       legacyCollapsedKey: null,
       adoptUnscopedHierarchy: false,
+      accountAttributes: [],
       resolveAccountScope: async () => null,
     },
     isCurrent: () => route === capturedRoute,

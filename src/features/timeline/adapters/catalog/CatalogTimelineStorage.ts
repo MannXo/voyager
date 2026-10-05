@@ -39,6 +39,7 @@ export function createCatalogTimelineStoragePolicy(
       legacyLevelsKey: null,
       legacyCollapsedKey: null,
       adoptUnscopedHierarchy: false,
+      accountAttributes: config.accountIdAttributes ?? [],
       // A site with account attributes never stores an outline it cannot attribute to an account.
       resolveAccountScope: async () => {
         if (!config.accountIdAttributes?.length) return null;

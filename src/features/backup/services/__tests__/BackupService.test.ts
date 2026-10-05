@@ -48,6 +48,16 @@ function createChromeMock(): MockedChrome {
         },
       },
     },
+    [`${StorageKeys.CATALOG_TIMELINE_HIERARCHY_PREFIX}chatgpt:acct:def`]: {
+      conversations: {
+        'chatgpt:conv:one': {
+          conversationUrl: 'https://chatgpt.com/c/one',
+          levels: { 'c-turn': 3 },
+          collapsed: ['c-turn'],
+          updatedAt: 11,
+        },
+      },
+    },
     [`${StorageKeys.CATALOG_TIMELINE_HIERARCHY_PREFIX}claude`]: {
       conversations: {
         'claude:conv:one': {
@@ -118,7 +128,7 @@ describe('BackupService', () => {
     vi.clearAllMocks();
   });
 
-  it('a backup carries Gemini and catalog-site timeline outlines', async () => {
+  it('includes timeline hierarchy data in generated backup files', async () => {
     const service = new BackupService();
 
     const result = await service.generateBackupFiles({
@@ -166,18 +176,6 @@ describe('BackupService', () => {
             collapsed: [],
             updatedAt: 5678,
           },
-          'chatgpt:conv:one': {
-            conversationUrl: 'https://chatgpt.com/c/one',
-            levels: { 'c-turn': 2 },
-            collapsed: [],
-            updatedAt: 9,
-          },
-          'claude:conv:one': {
-            conversationUrl: 'https://claude.ai/chat/one',
-            levels: {},
-            collapsed: ['c-turn'],
-            updatedAt: 10,
-          },
         },
       },
     });
@@ -187,8 +185,36 @@ describe('BackupService', () => {
       expect.objectContaining({
         includesSettings: true,
         settingsCount: expect.any(Number),
-        timelineHierarchyConversationCount: 4,
+        timelineHierarchyConversationCount: 2,
       }),
     );
+  });
+
+  it('a backup keeps each ChatGPT account’s outlines apart', async () => {
+    const result = await new BackupService().generateBackupFiles({
+      enabled: true,
+      intervalHours: 24,
+      includePrompts: false,
+      includeFolders: false,
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    const catalogFile = result.data.find((file) => file.name === 'catalog-timeline-hierarchy.json');
+    const payload = JSON.parse(catalogFile?.content || '{}');
+    expect(payload.format).toBe('gemini-voyager.catalog-timeline-hierarchy.v1');
+    expect(Object.keys(payload.data).sort()).toEqual([
+      `${StorageKeys.CATALOG_TIMELINE_HIERARCHY_PREFIX}chatgpt:acct:abc`,
+      `${StorageKeys.CATALOG_TIMELINE_HIERARCHY_PREFIX}chatgpt:acct:def`,
+      `${StorageKeys.CATALOG_TIMELINE_HIERARCHY_PREFIX}claude`,
+    ]);
+    expect(
+      payload.data[`${StorageKeys.CATALOG_TIMELINE_HIERARCHY_PREFIX}chatgpt:acct:abc`]
+        .conversations['chatgpt:conv:one'],
+    ).toMatchObject({ levels: { 'c-turn': 2 }, collapsed: [] });
+    expect(
+      payload.data[`${StorageKeys.CATALOG_TIMELINE_HIERARCHY_PREFIX}chatgpt:acct:def`]
+        .conversations['chatgpt:conv:one'],
+    ).toMatchObject({ levels: { 'c-turn': 3 }, collapsed: ['c-turn'] });
   });
 });
