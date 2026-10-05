@@ -58,9 +58,11 @@ describe('starring a turn from the Gemini timeline', () => {
     const dot = dotFor(SECOND.prompt);
     expect(starredDotLabels()).toEqual([SECOND.prompt]);
     expect(dot.getAttribute('aria-pressed')).toBe('true');
-    expect(ext().read('local', NEUTRAL_LIBRARY_KEY)).toEqual(
-      ext().read('local', SAVED_LIBRARY_KEY),
-    );
+    expect(ext().read('local', NEUTRAL_LIBRARY_KEY)).toEqual({
+      messages: {
+        [CONVERSATION_ID]: savedLibrary().map((record) => ({ ...record, text: SECOND.prompt })),
+      },
+    });
     expect(savedLibrary()).toEqual([
       expect.objectContaining({
         turnId: turnIdOf(SECOND.serverId!),

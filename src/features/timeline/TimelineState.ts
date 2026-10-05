@@ -5,16 +5,18 @@ import { resolveStarredDisplay } from '@/pages/content/timeline/starredResolutio
 
 import { TimelineHierarchy } from './TimelineHierarchy';
 import { TimelineHydration } from './TimelineHydration';
+import { TimelineStarText } from './TimelineStarText';
 import type { TimelineStoragePolicy } from './TimelineStoragePolicy';
 import type { TimelineMarker } from './types';
 
-/** Conversation-scoped stars and hierarchy. Rendering never writes storage. */
+/** Conversation-scoped stars, hierarchy and mounted-text enrichment. */
 export class TimelineState {
   readonly conversationId: string;
   readonly hierarchy: TimelineHierarchy;
   markers: TimelineMarker[] = [];
   readonly markerMap = new Map<string, TimelineMarker>();
   private destroyed = false;
+  private readonly starText: TimelineStarText;
   private starred = new Set<string>();
   private starWrites: Promise<void> = Promise.resolve();
   private readonly starHydration = new TimelineHydration(() => this.isCurrent);
@@ -29,6 +31,7 @@ export class TimelineState {
     readonly policy: TimelineStoragePolicy,
   ) {
     this.conversationId = policy.conversationId;
+    this.starText = new TimelineStarText(policy, () => this.isCurrent);
     this.hierarchy = new TimelineHierarchy(
       policy,
       onChange,
@@ -62,6 +65,7 @@ export class TimelineState {
     for (const marker of markers) this.markerMap.set(marker.id, marker);
     this.recomputeStarredDisplay();
     for (const marker of markers) marker.starred = this.isMarkerStarred(marker.id);
+    this.starText.mount(markers);
   }
   private listen(): void {
     if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
@@ -80,6 +84,7 @@ export class TimelineState {
   }
   destroy(): void {
     this.destroyed = true;
+    this.starText.destroy();
     this.hierarchy.destroy();
     if (this.onChromeStorageChanged)
       chrome.storage.onChanged.removeListener(this.onChromeStorageChanged);
@@ -142,6 +147,7 @@ export class TimelineState {
     if (!this.conversationId) return;
     this.starHydration.snapshot(() => {
       const matched = this.matchLibrary(data);
+      this.starText.accept(matched.messages);
       this.applyStarredIdSet(new Set(matched.messages.map((message) => message.turnId)));
     });
   }
@@ -194,6 +200,7 @@ export class TimelineState {
       }
 
       accept(() => {
+        this.starText.accept(messages);
         this.applyStarredIdSet(new Set(messages.map((message) => message.turnId)));
       });
     } catch (error) {
@@ -211,6 +218,7 @@ export class TimelineState {
     const marker = this.markerMap.get(id);
     // A press captures its message before an initial read can yield to a route or DOM change.
     const summary = marker?.summary;
+    const text = marker?.text;
     const conversationTitle = this.policy.getConversationTitle(this.markers);
     // Resolve from the header at the press, before hydration or queued writes can yield to another page.
     const accountRead = this.policy.stars.resolveAccount().then(
@@ -241,16 +249,7 @@ export class TimelineState {
           const account = result.account;
           if (!this.isCurrent || !this.policy.canEdit(marker, id) || !this.starHydration.ready)
             return;
-          const message: StarredMessage = {
-            turnId: id,
-            content: summary ?? '',
-            conversationId: this.conversationId,
-            conversationUrl: this.url,
-            conversationTitle,
-            starredAt: Date.now(),
-            ...(account ? { account } : {}),
-          };
-          await StarredMessagesService.addStarredMessage(message);
+          await this.starText.add(id, summary ?? '', text, conversationTitle, account);
         }
       } catch (error) {
         if (this.isCurrent) console.warn('[Timeline] Failed to change starred message:', error);

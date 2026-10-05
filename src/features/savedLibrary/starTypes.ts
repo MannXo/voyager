@@ -7,6 +7,7 @@ export interface StarredMessage {
   turnId: string;
   /** Content preview of the message */
   content: string;
+  text?: string;
   /** Conversation ID (computed hash) */
   conversationId: string;
   /** Conversation URL */

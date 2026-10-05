@@ -23,6 +23,7 @@ import type { PluginStateMap } from '@/features/plugins/storage/pluginState';
 
 import type { GoogleDriveFiles } from './GoogleDriveFiles';
 import { logger } from './LoggerService';
+import { legacyStarredExport } from './legacyStarredExport';
 
 const PROMPTS_FILE_NAME = 'gemini-voyager-prompts.json';
 const SETTINGS_FILE_NAME = 'gemini-voyager-settings.json';
@@ -336,28 +337,11 @@ export class GoogleDriveSyncPayloads {
     accountScope: SyncAccountScope | null,
     now: Date,
   ): Promise<void> {
-    // Truncate content in starred messages to save storage space
-    const MAX_CONTENT_LENGTH = 60;
-    const truncatedStarred: StarredMessagesDataSync = {
-      messages: Object.fromEntries(
-        Object.entries(starred.messages).map(([convId, messages]) => [
-          convId,
-          messages.map((msg) => ({
-            ...msg,
-            content:
-              msg.content.length > MAX_CONTENT_LENGTH
-                ? msg.content.slice(0, MAX_CONTENT_LENGTH) + '...'
-                : msg.content,
-          })),
-        ]),
-      ),
-    };
-
     const starredPayload: StarredExportPayload = {
       format: 'gemini-voyager.starred.v1',
       exportedAt: now.toISOString(),
       version: EXTENSION_VERSION,
-      data: truncatedStarred,
+      data: legacyStarredExport(starred),
     };
     const starredFileName = this.getFileNameForScope(STARRED_FILE_NAME, accountScope);
     const starredFileId = await this.files.ensure(token, starredFileName);

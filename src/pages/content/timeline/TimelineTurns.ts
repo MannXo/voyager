@@ -1,6 +1,7 @@
 import { getGeminiTurnSelectors } from '@/core/gemini/turnSelectors';
 import { hashString } from '@/core/utils/hash';
 import type { TimelineMarker } from '@/features/timeline/types';
+import { userTurnText } from '@/features/timeline/userTurnText';
 
 import { makeStableTurnId, readServerTurnId } from '../fork/turnId';
 /** Accessibility prefixes injected by Gemini's DOM that should be stripped from previews effectively globally. */
@@ -38,11 +39,23 @@ export class TimelineTurns {
       id: this.ensureTurnId(element, index, usedIds, owners, previousOwners),
       element,
       summary: this.getTurnTextCached(element),
+      ...(element.isConnected ? { text: this.getFullTurnTextCached(element) } : {}),
       assistantSummary: summaries.get(element) ?? '',
       baseN: Math.max(0, Math.min(1, (element.offsetTop - firstOffset) / span)),
       starred: false,
     }));
   }
+  private fullTextCache = new WeakMap<HTMLElement, { raw: string; text: string }>();
+
+  private getFullTurnTextCached(element: HTMLElement): string {
+    const raw = element.outerHTML;
+    const cached = this.fullTextCache.get(element);
+    if (cached?.raw === raw) return cached.text;
+    const text = userTurnText(element);
+    this.fullTextCache.set(element, { raw, text });
+    return text;
+  }
+
   private normalizeText(text: string | null): string {
     try {
       if (!text) return '';

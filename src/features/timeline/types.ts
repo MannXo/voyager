@@ -19,6 +19,7 @@ export interface TimelineMarker {
   id: string;
   element: HTMLElement;
   summary: string;
+  text?: string;
   assistantSummary: string;
   baseN: number;
   starred: boolean;

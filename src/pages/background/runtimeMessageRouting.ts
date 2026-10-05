@@ -127,6 +127,7 @@ const HANDLED_BACKGROUND_MESSAGE_TYPES = new Set([
   'gv.highlight.clearAll',
   'gv.highlight.clearAllAccounts',
   'gv.starred.add',
+  'gv.starred.backfillTexts',
   'gv.starred.remove',
   'gv.starred.getAll',
   'gv.starred.getForConversation',

@@ -74,6 +74,13 @@ export class StarredMessagesService {
     await this.sendMessage('gv.starred.add', message);
   }
 
+  static async backfillStarredTexts(
+    conversationId: string,
+    entries: Array<{ turnId: string; text: string }>,
+  ): Promise<void> {
+    await this.sendMessage('gv.starred.backfillTexts', { conversationId, entries });
+  }
+
   static async removeStarredMessage(conversationId: string, turnId: string): Promise<void> {
     await this.sendMessage('gv.starred.remove', { conversationId, turnId });
   }

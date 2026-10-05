@@ -1,3 +1,4 @@
+import { mergeStarText, normalizeStarText } from './starText';
 import type { StarredMessage, StarredMessagesData } from './starTypes';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -27,6 +28,9 @@ export function normalizeStarredMessages(value: unknown): StarredMessagesData {
             : 0,
       };
       if (typeof item.conversationTitle !== 'string') delete record.conversationTitle;
+      const text = normalizeStarText(item.text);
+      delete record.text;
+      if (text !== undefined) record.text = text;
       records.push(record);
     }
     messages[conversationId] = records;
@@ -52,7 +56,11 @@ export function mergeStarredMessages(
   const messages: Record<string, StarredMessage[]> = Object.create(null);
   for (const id of new Set([...Object.keys(local.messages), ...Object.keys(cloud.messages)])) {
     const merged = new Map<string, StarredMessage>();
-    for (const item of [...(cloud.messages[id] || []), ...(local.messages[id] || [])]) {
+    for (const source of [...(cloud.messages[id] || []), ...(local.messages[id] || [])]) {
+      const item = { ...source };
+      const text = normalizeStarText(source.text);
+      delete item.text;
+      if (text !== undefined) item.text = text;
       const existing = merged.get(item.turnId);
       if (!existing) {
         merged.set(item.turnId, { ...item });
@@ -67,6 +75,9 @@ export function mergeStarredMessages(
           record[field] = value;
         }
       }
+      const mergedText = mergeStarText(winner, other);
+      delete record.text;
+      if (mergedText !== undefined) record.text = mergedText;
       merged.set(item.turnId, record);
     }
     messages[id] = Array.from(merged.values());

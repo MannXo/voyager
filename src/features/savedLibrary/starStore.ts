@@ -2,6 +2,7 @@ import { StorageKeys } from '@/core/types/common';
 
 import { mergeStarredMessages, normalizeStarredMessages } from './starData';
 import { mergeStarState, normalizeStarTombstones, type StarState } from './starSyncData';
+import { getBackfillStarText, legacyStarProjection } from './starText';
 import type { StarredMessage, StarredMessagesData, StarTombstone } from './starTypes';
 
 export interface StorageArea {
@@ -13,6 +14,7 @@ export interface StarStore {
   getAll(): Promise<StarredMessagesData>;
   getForConversation(id: string): Promise<StarredMessage[]>;
   add(item: StarredMessage): Promise<boolean>;
+  backfill(conversationId: string, entries: Array<{ turnId: string; text: string }>): Promise<void>;
   remove(conversationId: string, turnId: string): Promise<boolean>;
   reconcile(target: string, sources: string[], url?: string): Promise<StarredMessage[]>;
   mergeCloud(envelope: unknown): Promise<{ status: 'absent' | 'merged'; count: number }>;
@@ -35,7 +37,7 @@ export function createStarStore(area: StorageArea): StarStore {
   const write = ({ data, tombstones }: StarState): Promise<void> =>
     area.set({
       [StorageKeys.SAVED_LIBRARY_STARS]: data,
-      [StorageKeys.TIMELINE_STARRED_MESSAGES]: data,
+      [StorageKeys.TIMELINE_STARRED_MESSAGES]: legacyStarProjection(data),
       [StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES]: tombstones,
     });
   const read = async (sources: StarredMessagesData[] = []) => {
@@ -59,7 +61,8 @@ export function createStarStore(area: StorageArea): StarStore {
       dirty:
         keys.some((key) => values[key] !== undefined) &&
         (JSON.stringify(values[StorageKeys.SAVED_LIBRARY_STARS]) !== serialized ||
-          JSON.stringify(values[StorageKeys.TIMELINE_STARRED_MESSAGES]) !== serialized ||
+          JSON.stringify(values[StorageKeys.TIMELINE_STARRED_MESSAGES]) !==
+            JSON.stringify(legacyStarProjection(state.data)) ||
           JSON.stringify(values[StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES]) !==
             JSON.stringify(state.tombstones)),
     };
@@ -116,6 +119,23 @@ export function createStarStore(area: StorageArea): StarStore {
         ];
         await write(mergeStarState([data], rawTombstones, Date.now()));
         return true;
+      }),
+    backfill: (conversationId, entries) =>
+      serialize(async () => {
+        const state = await read();
+        const bucket = state.data.messages[conversationId] || [];
+        let changed = false;
+        for (const entry of entries) {
+          if (!entry || typeof entry.turnId !== 'string' || typeof entry.text !== 'string')
+            continue;
+          const item = bucket.find((record) => record.turnId === entry.turnId);
+          if (!item) continue;
+          const text = getBackfillStarText(item, entry.text);
+          if (text === undefined) continue;
+          item.text = text;
+          changed = true;
+        }
+        if (changed || state.dirty) await write(state);
       }),
     remove: (conversationId, turnId) =>
       serialize(async () => {

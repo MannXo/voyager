@@ -6,6 +6,10 @@ import { isTrustedSyncMessageSender } from './runtimeMessageRouting';
 type StarredMessageRequest =
   | { type: 'gv.starred.add'; payload: StarredMessage }
   | {
+      type: 'gv.starred.backfillTexts';
+      payload: { conversationId: string; entries: Array<{ turnId: string; text: string }> };
+    }
+  | {
       type: 'gv.starred.remove' | 'gv.starred.isStarred';
       payload: Pick<StarredMessage, 'conversationId' | 'turnId'>;
     }
@@ -30,6 +34,10 @@ export function createStarredMessagesHandler(store: StarStore) {
     switch (request?.type) {
       case 'gv.starred.add':
         return store.add(request.payload).then((added) => ({ ok: true, added }));
+      case 'gv.starred.backfillTexts':
+        return store
+          .backfill(request.payload.conversationId, request.payload.entries)
+          .then(() => ({ ok: true }));
       case 'gv.starred.remove':
         return store
           .remove(request.payload.conversationId, request.payload.turnId)

@@ -15,6 +15,7 @@ import { starConversationId, turnConversationId } from './conversationId';
 
 vi.mock('@/features/savedLibrary/StarredMessagesService', async (importOriginal) => ({
   StarredMessagesService: {
+    backfillStarredTexts: vi.fn().mockResolvedValue(undefined),
     decodeStorageChange: (
       await importOriginal<typeof import('@/features/savedLibrary/StarredMessagesService')>()
     ).StarredMessagesService.decodeStorageChange,

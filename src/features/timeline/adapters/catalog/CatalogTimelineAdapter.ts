@@ -4,6 +4,7 @@ import type {
   TimelineTurnSnapshot,
 } from '../../TimelineAdapter';
 import type { TimelineMarker } from '../../types';
+import { userTurnText } from '../../userTurnText';
 import { createCatalogTimelineStoragePolicy } from './CatalogTimelineStorage';
 import { CatalogTurnOwnership } from './CatalogTurnOwnership';
 import type { CatalogTimelineConfig } from './config';
@@ -110,6 +111,7 @@ class CatalogTimelineTurnSource implements TimelineTurnSource {
         element,
         summary: turnSummary(element),
       }));
+    const textByElement = new Map(mounted.map(({ element }) => [element, userTurnText(element)]));
     for (const turn of mounted)
       if (!this.originalStamps.has(turn.element))
         this.originalStamps.set(turn.element, turn.element.getAttribute('data-gv-turn-id'));
@@ -151,6 +153,7 @@ class CatalogTimelineTurnSource implements TimelineTurnSource {
       id: marker.id,
       element: marker.element,
       summary: marker.summary,
+      ...(textByElement.has(marker.element) ? { text: textByElement.get(marker.element) } : {}),
       assistantSummary:
         assistantByElement.get(marker.element) ?? old.get(marker.id)?.assistantSummary ?? '',
       baseN: this.known.length === 1 ? 0.5 : index / Math.max(1, this.known.length - 1),
