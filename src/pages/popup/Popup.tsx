@@ -91,6 +91,11 @@ export default function Popup({ sourceTabId }: PopupProps = {}) {
       return '';
     }
   }, [tab.activeUrl]);
+  // Catalog timelines read per-site keys and their plugin's own settings, not the Gemini keys the
+  // timeline card writes; only its cross-site Saved Library entry applies to them.
+  const siteHasCatalogTimeline = plugins.siteScopedManifests.some((plugin) =>
+    plugin.requires?.handlers?.includes('turnNavigator'),
+  );
   const theme = usePopupBrandTheme({
     activeUrl: tab.activeUrl,
     pluginManifests: plugins.pluginManifests,
@@ -296,9 +301,14 @@ export default function Popup({ sourceTabId }: PopupProps = {}) {
             onChange={timeline.onChange}
             onResetPosition={timeline.resetPosition}
             onViewStarredHistory={() => setShowStarredHistory(true)}
-            isVisible={(settingId) => sections.shouldShowSetting('timeline', settingId)}
+            isVisible={(settingId) =>
+              isPluginSite
+                ? settingId === 'viewStarredHistory'
+                : sections.shouldShowSetting('timeline', settingId)
+            }
             t={t}
           />,
+          { allowPluginSite: siteHasCatalogTimeline },
         )}
         {/* Folder Options */}
         {wrapSection(

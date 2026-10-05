@@ -261,6 +261,37 @@ describe('Popup settings integration', () => {
     expect(container.textContent).toContain(TRANSLATIONS.en.localPluginsTitle);
   });
 
+  it('reaches starred history from a timeline plugin site, even after a remembered native search', async () => {
+    const shown = (element: Element | null | undefined) =>
+      !!element && !element.closest('[hidden]');
+    const button = (label: string) =>
+      [...container.querySelectorAll('button')].find(
+        (candidate) => candidate.textContent === label,
+      );
+    const starredHistoryEntry = () => button(TRANSLATIONS.en.viewStarredHistory);
+    const remount = async (url: string) => {
+      await act(async () => root.unmount());
+      root = createRoot(container);
+      extensionApi.tabs.query.mockResolvedValue([{ id: 10, url }]);
+      await mount();
+    };
+    extensionApi.tabs.query.mockResolvedValue([{ id: 10, url: 'https://chatgpt.com/c/abc' }]);
+    await mount();
+    expect(shown(starredHistoryEntry())).toBe(true);
+    // Catalog timelines do not read the Gemini keys these controls write.
+    expect(shown(container.querySelector('#hide-container'))).toBe(false);
+    expect(shown(button(TRANSLATIONS.en.resetTimelinePosition))).toBe(false);
+    await act(async () => starredHistoryEntry()!.click());
+    expect(container.textContent).not.toContain(TRANSLATIONS.en.timelineOptions);
+
+    local[StorageKeys.GV_POPUP_SETTINGS_SEARCH_QUERY] = 'Mermaid';
+    await remount('https://chatgpt.com/c/abc');
+    expect(shown(starredHistoryEntry())).toBe(true);
+
+    await remount('https://example.com/');
+    expect(starredHistoryEntry()).toBeUndefined();
+  });
+
   it('shows ChatGPT Cloud Sync while keeping Gemini folders and isolation off the tab', async () => {
     extensionApi.tabs.query.mockResolvedValue([{ id: 10, url: 'https://chatgpt.com/c/abc' }]);
     local[StorageKeys.FOLDER_DATA] = { folders: [], folderContents: {} };
