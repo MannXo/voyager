@@ -10,6 +10,7 @@ import {
   isSafari,
   supportsExtensionNotifications,
 } from '@/core/utils/browser';
+import { getFolderPlatformForHost } from '@/features/folder/platforms';
 import type { FormulaCopyFormat } from '@/features/formulaCopy/FormulaCopyService';
 import { CHATGPT_EXPORT_PLUGIN_ID } from '@/features/plugins/builtin/chatgptExport/openMessage';
 import { isPluginEnabled } from '@/features/plugins/storage/pluginDefaults';
@@ -250,7 +251,7 @@ export default function Popup({ sourceTabId }: PopupProps = {}) {
         )}
         {/* Cloud Sync */}
         {wrapSection('cloudSync', <CloudSyncSettings sourceTabId={sourceTabId} />, {
-          allowPluginSite: activeSiteDomain === 'chatgpt.com',
+          allowPluginSite: getFolderPlatformForHost(activeSiteDomain) !== null,
         })}
         {isPluginSite && (
           <PluginSiteSettings
