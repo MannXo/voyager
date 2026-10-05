@@ -3491,176 +3491,6 @@ html[data-gv-scheme='light'] .gv-folder-search-input:focus {
   user-select: none;
 }
 
-/* Folder Item */
-.gv-folder-item {
-  display: flex;
-  flex-direction: column;
-}
-
-.gv-folder-item-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  position: relative;
-}
-
-.gv-folder-item-header:hover {
-  background-color: var(--folder-hover-bg);
-}
-
-.gv-folder-item-header.gv-folder-dragover {
-  background-color: var(--folder-dragover-bg);
-  border: 2px dashed var(--folder-dragover-border);
-}
-
-.gv-folder-item-header[draggable='true'] {
-  cursor: grab;
-}
-
-.gv-folder-item-header[draggable='true']:active {
-  cursor: grabbing;
-}
-
-/* Reorder indicator on conversation elements (top/bottom half detection) */
-.gv-reorder-above {
-  box-shadow: 0 -2px 0 0 #4285f4;
-}
-
-.gv-reorder-below {
-  box-shadow: 0 2px 0 0 #4285f4;
-}
-
-/* Reorder gap between folder items for drag-and-drop sorting */
-.gv-reorder-gap {
-  height: 0;
-  margin: 0 8px;
-  border-radius: 1px;
-  padding: 3px 0;
-  transition: background-color 0.15s ease;
-}
-
-/* Last-child drop zone: collapse to avoid ~6px of dead space below the last
- * folder. Users can still reorder via drag onto existing gaps or context menu. */
-.gv-reorder-gap:last-child {
-  padding: 0;
-}
-
-.gv-reorder-gap-active {
-  background-color: #4285f4;
-}
-
-.gv-folder-expand-btn {
-  width: 20px;
-  height: 20px;
-  border: none;
-  background: transparent;
-  color: var(--folder-icon-color);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  flex-shrink: 0;
-}
-
-.gv-folder-expand-btn .google-symbols {
-  font-size: 20px;
-}
-
-.gv-folder-icon {
-  font-size: 20px;
-  color: var(--folder-icon-color);
-  flex-shrink: 0;
-  transition: color 0.2s ease;
-}
-
-.gv-folder-name {
-  flex: 1;
-  font-size: 14px;
-  color: var(--folder-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  user-select: none;
-}
-
-.gv-folder-pin-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  color: var(--folder-icon-color);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  opacity: 0;
-  transition:
-    opacity 0.2s,
-    background-color 0.2s;
-  flex-shrink: 0;
-  margin-left: auto;
-  margin-right: 4px;
-}
-
-.gv-folder-item-header:hover .gv-folder-pin-btn {
-  opacity: 1;
-}
-
-.gv-folder-pin-btn:hover {
-  background-color: var(--folder-hover-bg);
-}
-
-.gv-folder-pin-btn .google-symbols {
-  font-size: 18px;
-}
-
-.gv-folder-actions-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  color: var(--folder-icon-color);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  opacity: 0;
-  transition:
-    opacity 0.2s,
-    background-color 0.2s;
-  flex-shrink: 0;
-}
-
-.gv-folder-item-header:hover .gv-folder-actions-btn {
-  opacity: 1;
-}
-
-.gv-folder-actions-btn:hover {
-  background-color: var(--folder-hover-bg);
-}
-
-.gv-folder-actions-btn .google-symbols {
-  font-size: 18px;
-}
-
-/* Folder Content (conversations and subfolders) */
-.gv-folder-content {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: 2px;
-  margin-left: 12px;
-  padding-left: 8px;
-  border-left: 1px solid var(--folder-border);
-}
-
 /* Conversation Item in Folder */
 .gv-folder-conversation {
   display: flex;
@@ -3959,41 +3789,6 @@ html[data-gv-scheme='light'] .gv-folder-search-input:focus {
   contain: strict;
 }
 
-.gv-conversation-icon {
-  font-size: 12px !important;
-  width: 16px !important;
-  height: 16px !important;
-  margin-left: -2px;
-  margin-right: -2px;
-  margin-top: 3px;
-  color: var(--folder-icon-color);
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  overflow: hidden !important;
-  font-variation-settings:
-    'FILL' 0,
-    'wght' 400,
-    'GRAD' 0,
-    'opsz' 20;
-}
-
-.gv-conversation-icon::before,
-.gv-conversation-icon::after {
-  display: none !important;
-  content: none !important;
-}
-
-/* Firefox specific alignment */
-@supports (-moz-appearance: none) {
-  .gv-conversation-icon {
-    /* 1px aligns better in Firefox */
-    margin-top: 1px !important;
-  }
-}
-
 .gv-conversation-title {
   flex: 1;
   font-size: 14px;
@@ -4003,20 +3798,10 @@ html[data-gv-scheme='light'] .gv-folder-search-input:focus {
   white-space: nowrap;
 }
 
-.gv-folder-container:not(.gv-aistudio) .gv-folder-name,
 .gv-folder-container:not(.gv-aistudio) .gv-conversation-title {
   font-size: 14px;
   line-height: 20px;
   font-weight: 500;
-}
-
-/* Action buttons container for proper layout */
-.gv-conversation-actions {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  margin-left: auto;
-  flex-shrink: 0;
 }
 
 /* Star button - hidden by default, show on hover to save space */
@@ -4071,50 +3856,6 @@ html[data-gv-scheme='light'] .gv-folder-search-input:focus {
 
 .gv-conversation-star-btn:active mat-icon,
 .gv-conversation-star-btn:active > svg {
-  transform: scale(0.9);
-}
-
-/* Remove button - only visible on hover */
-.gv-conversation-remove-btn {
-  min-width: 24px;
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  color: #9ca3af;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  opacity: 0;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  flex-shrink: 0;
-  padding: 0;
-}
-
-.gv-folder-conversation:hover .gv-conversation-remove-btn {
-  opacity: 1;
-}
-
-.gv-conversation-remove-btn:hover {
-  background-color: rgba(239, 68, 68, 0.12);
-  color: #ef4444;
-  transform: scale(1.05);
-}
-
-.gv-conversation-remove-btn mat-icon {
-  font-size: 18px !important;
-  width: 18px !important;
-  height: 18px !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  line-height: 1 !important;
-  transition: transform 0.2s;
-}
-
-.gv-conversation-remove-btn:active mat-icon {
   transform: scale(0.9);
 }
 

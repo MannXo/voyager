@@ -182,10 +182,19 @@ export type TreeSiteOptions = {
   /** The empty state's message. Default: `floatingPanelEmpty`. */
   emptyLabelKey?: string;
   /**
-   * A header click toggles after this many milliseconds, so a double-click
-   * renames without toggling twice. Default: at once.
+   * A click on a folder's name toggles after this many milliseconds, so a
+   * double-click on the name renames without toggling twice. A click elsewhere
+   * on the row toggles at once. Default: every click at once.
    */
   folderToggleDelayMs?: number;
+  /** Folder rows leave out their count badge. */
+  hideFolderCount?: boolean;
+  /** Folder rows leave out their "+ add subfolder" button; the folder menu still offers it. */
+  hideAddSubfolderButton?: boolean;
+  /** A pin toggle on each folder row in place of the pinned dot. */
+  folderPinButton?: boolean;
+  /** While a folder is renamed, its trailing controls leave the row to the name field. */
+  renameFillsRow?: boolean;
   /** Unpinned folder rows drag as `{ type: 'folder' }` payloads tagged `FOLDER_DRAG_TYPE`. */
   folderDrag?: boolean;
   /**

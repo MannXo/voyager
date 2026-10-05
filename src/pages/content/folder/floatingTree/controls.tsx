@@ -13,10 +13,20 @@ type IconButtonProps = {
   /** Drawn in place of `text` (a `lineIcons` tree). */
   icon?: IconNode;
   active?: boolean;
+  /** Fills the line icon without the active look, as a pinned folder's pin. Default: `active`. */
+  filled?: boolean;
   onClick: (e: MouseEvent) => void;
 };
 
-export function IconButton({ modifier, labelKey, text, icon, active, onClick }: IconButtonProps) {
+export function IconButton({
+  modifier,
+  labelKey,
+  text,
+  icon,
+  active,
+  filled = active,
+  onClick,
+}: IconButtonProps) {
   const label = t(labelKey);
   const classes = [cls('icon-button'), cls(`icon-button--${modifier}`)];
   if (active) classes.push(cls('icon-button--active'));
@@ -29,7 +39,7 @@ export function IconButton({ modifier, labelKey, text, icon, active, onClick }: 
       onClick={onClick}
     >
       {/* An active line icon is filled, as a starred conversation's star. */}
-      {icon ? <LineIcon node={icon} filled={active} /> : text}
+      {icon ? <LineIcon node={icon} filled={filled} /> : text}
     </button>
   );
 }

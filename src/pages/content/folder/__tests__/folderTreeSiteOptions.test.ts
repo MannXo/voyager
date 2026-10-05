@@ -547,6 +547,14 @@ describe('folderToggleDelayMs', () => {
     vi.advanceTimersByTime(200);
     expect(onToggleFolderExpanded).toHaveBeenCalledTimes(1);
   });
+
+  it('toggles at once from a click on the row outside the name', () => {
+    vi.useFakeTimers();
+    const onToggleFolderExpanded = vi.fn();
+    const { root } = mount({ folderToggleDelayMs: 200 }, { onToggleFolderExpanded });
+    header(root, 'z').dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    expect(onToggleFolderExpanded).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('folderMenuItems', () => {

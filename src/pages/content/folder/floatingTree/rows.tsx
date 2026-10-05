@@ -18,7 +18,7 @@ import {
   readConversationDragData,
   t,
 } from './shared';
-import { CHEVRON_RIGHT, ELLIPSIS, FOLDER, LineIcon, PLUS } from './treeIcons';
+import { CHEVRON_RIGHT, ELLIPSIS, FOLDER, LineIcon, PIN, PLUS } from './treeIcons';
 
 const FOLDER_DRAGGING = cls('folder-header--dragging');
 /** Set on a row while a drop would land before or after it. */
@@ -207,11 +207,72 @@ export type ItemRowProps<N> = {
   hidden?: boolean;
 };
 
+/** The pin, count and "+ add subfolder" slots after a folder's name, as the site has them. */
+function FolderTrailingControls({
+  tree,
+  node,
+  lineIcons,
+}: {
+  tree: TreeProps;
+  node: FolderNode;
+  lineIcons: boolean;
+}) {
+  const { apply, actions, site } = tree;
+  const { folder, depth } = node;
+  return (
+    <>
+      {site?.folderPinButton ? (
+        <IconButton
+          modifier="pin"
+          labelKey={folder.pinned ? 'floatingPanelUnpinFolder' : 'floatingPanelPinFolder'}
+          text={folder.pinned ? '●' : '○'}
+          icon={lineIcons ? PIN : undefined}
+          filled={!!folder.pinned}
+          onClick={(e) => {
+            e.stopPropagation();
+            actions.onToggleFolderPinned?.(folder.id);
+          }}
+        />
+      ) : (
+        <span class={cls('pin')} aria-hidden="true">
+          {folder.pinned ? '●' : ''}
+        </span>
+      )}
+      {!site?.hideFolderCount && <span class={cls('count')}>{node.count}</span>}
+      {/* Always occupy the trailing "+ add subfolder" slot so rows at
+          different depths line up; at MAX_FOLDER_DEPTH an invisible
+          placeholder keeps the count badge in the same position. */}
+      {site?.hideAddSubfolderButton ? null : canCreateChildAtDepth(depth) ? (
+        <IconButton
+          modifier="add-child"
+          labelKey="floatingPanelCreateSubfolder"
+          text="+"
+          icon={lineIcons ? PLUS : undefined}
+          onClick={(e) => {
+            e.stopPropagation();
+            apply({
+              expand: { folderId: folder.id, expanded: true },
+              inlineEditor: { mode: 'create', parentId: folder.id },
+              contextMenu: null,
+            });
+          }}
+        />
+      ) : (
+        <span
+          class={`${cls('icon-button')} ${cls('icon-button--placeholder')}`}
+          aria-hidden="true"
+        />
+      )}
+    </>
+  );
+}
+
 export function FolderRow({ tree, node, item, index, measure, hidden }: ItemRowProps<FolderNode>) {
   const { inlineEditor, apply, actions, site } = tree;
   const { folder, depth } = node;
   const expanded = tree.isExpanded(folder);
   const renaming = inlineEditor?.mode === 'rename' && inlineEditor.folderId === folder.id;
+  const trailing = !(renaming && site?.renameFillsRow);
   const toggle = () => apply({ expand: { folderId: folder.id, expanded: !expanded } });
   const menuButton = site?.folderMenuButton;
   const lineIcons = !!site?.lineIcons;
@@ -240,7 +301,9 @@ export function FolderRow({ tree, node, item, index, measure, hidden }: ItemRowP
     e.stopPropagation();
     if (!isPlainClick(e)) return;
     const delay = site?.folderToggleDelayMs;
-    if (delay === undefined) {
+    // Only the name renames on a double-click, so only a click on it waits.
+    if (delay === undefined || !target.closest(`.${cls('folder-name')}`)) {
+      cancelToggle();
       toggle();
       return;
     }
@@ -360,35 +423,8 @@ export function FolderRow({ tree, node, item, index, measure, hidden }: ItemRowP
             </span>
           )}
         </span>
-        <span class={cls('pin')} aria-hidden="true">
-          {folder.pinned ? '●' : ''}
-        </span>
-        <span class={cls('count')}>{node.count}</span>
-        {/* Always occupy the trailing "+ add subfolder" slot so rows at
-            different depths line up; at MAX_FOLDER_DEPTH an invisible
-            placeholder keeps the count badge in the same position. */}
-        {canCreateChildAtDepth(depth) ? (
-          <IconButton
-            modifier="add-child"
-            labelKey="floatingPanelCreateSubfolder"
-            text="+"
-            icon={lineIcons ? PLUS : undefined}
-            onClick={(e) => {
-              e.stopPropagation();
-              apply({
-                expand: { folderId: folder.id, expanded: true },
-                inlineEditor: { mode: 'create', parentId: folder.id },
-                contextMenu: null,
-              });
-            }}
-          />
-        ) : (
-          <span
-            class={`${cls('icon-button')} ${cls('icon-button--placeholder')}`}
-            aria-hidden="true"
-          />
-        )}
-        {menuButton && (
+        {trailing && <FolderTrailingControls tree={tree} node={node} lineIcons={lineIcons} />}
+        {menuButton && trailing && (
           <IconButton
             modifier="menu"
             labelKey={menuButton.labelKey}

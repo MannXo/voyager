@@ -52,6 +52,7 @@ export function ConversationRow({
   const classes = [cls('conv')];
   if (active) classes.push(cls('conv--active'));
   if (selected) classes.push(cls('conv--selected'));
+  if (conv.starred) classes.push(cls('conv--starred'));
   const href = site?.conversationHref?.(conv);
   const icon = site?.conversationIcon?.(conv);
   const onTitleClick = (e: MouseEvent) => {

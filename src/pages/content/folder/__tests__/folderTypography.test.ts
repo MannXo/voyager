@@ -13,7 +13,7 @@ describe('folder sidebar typography', () => {
       )?.[1] ?? '';
     const itemTextBlock =
       css.match(
-        /\.gv-folder-container:not\(\.gv-aistudio\) \.gv-folder-name,\s*\.gv-folder-container:not\(\.gv-aistudio\) \.gv-conversation-title\s*{([\s\S]*?)}/,
+        /\.gv-folder-container:not\(\.gv-aistudio\) \.gv-conversation-title\s*{([\s\S]*?)}/,
       )?.[1] ?? '';
     // AI Studio's tree is the shared tree in a shadow root, sized by its own sheet.
     const aiStudioTextBlock =

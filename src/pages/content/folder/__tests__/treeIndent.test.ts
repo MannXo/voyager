@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
 
-import { SIDEBAR_TREE_HOST_CLASS } from '../sidebarTree';
+import { FOLDER_INDENT_PROPERTY, SIDEBAR_TREE_HOST_CLASS } from '../sidebarTree';
 import { createFolderViewHarness, resetFolderViewBrowserMocks } from './folderViewHarness';
 import { sidebarTree } from './sidebarTreeDriver';
 
@@ -44,31 +44,31 @@ describe('folder tree indentation', () => {
     vi.restoreAllMocks();
   });
 
-  /** The nesting step each tree level indents by. */
-  const step = () =>
+  /** The indent each tree level adds to its rows' padding. */
+  const indent = () =>
     harness.runtime
       .panel!.querySelector<HTMLElement>(`.${SIDEBAR_TREE_HOST_CLASS}`)!
-      .style.getPropertyValue('--gv-tree-step');
+      .style.getPropertyValue(FOLDER_INDENT_PROPERTY);
 
-  it('starts at the 12px step of the default indent', () => {
-    expect(step()).toBe('12px');
+  it('starts at the default -8px indent', () => {
+    expect(indent()).toBe('-8px');
   });
 
-  // The setting runs from -8 to 32 on top of a 20px base step.
+  // The setting runs from -8 to 32.
   it.each([
-    [-40, '12px'],
-    [64, '52px'],
-    [0, '20px'],
-    [16, '36px'],
-    ['invalid', '12px'],
-  ])('clamps indent %s to a %s step without touching data', (setting, expected) => {
+    [-40, '-8px'],
+    [64, '32px'],
+    [0, '0px'],
+    [16, '16px'],
+    ['invalid', '-8px'],
+  ])('clamps indent %s to %s without touching data', (setting, expected) => {
     const originalData = structuredClone(harness.store.data);
     harness.treeView.applySettings(
       { [StorageKeys.GV_FOLDER_TREE_INDENT]: { newValue: setting } },
       'sync',
     );
 
-    expect(step()).toBe(expected);
+    expect(indent()).toBe(expected);
     expect(sidebarTree(harness.runtime.panel).outline()).toEqual([
       'root',
       '  child',

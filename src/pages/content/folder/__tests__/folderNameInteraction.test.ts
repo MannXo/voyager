@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { deepActiveElement } from '../floatingTree/__tests__/treeDriver';
+import { deepActiveElement, label } from '../floatingTree/__tests__/treeDriver';
 import { createFolderViewHarness, resetFolderViewBrowserMocks } from './folderViewHarness';
 import { sidebarTree } from './sidebarTreeDriver';
 
@@ -84,5 +84,91 @@ describe('folder name click/double-click interaction', () => {
     expect(harness.adapter.saveData).toHaveBeenCalledTimes(1);
     expect(tree().nameInput()).toBeNull();
     expect(tree().folderNames()).toEqual(['Renamed']);
+  });
+
+  const click = (target: Element) =>
+    target.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, detail: 1 }),
+    );
+  const buttonLabels = (row: Element) =>
+    Array.from(row.querySelectorAll('button'), (button) => button.getAttribute('aria-label'));
+
+  it('clicking a Gemini folder row outside its name expands it at once', () => {
+    click(tree().folderRow('Folder 1'));
+
+    expect(harness.store.data.folders[0].isExpanded).toBe(true);
+    expect(tree().isExpanded('Folder 1')).toBe(true);
+  });
+
+  it('a Gemini folder row shows no count badge or add-subfolder button, but a pin and menu', () => {
+    const row = tree().folderRow('Folder 1');
+
+    expect(tree().addSubfolderButton('Folder 1')).toBeNull();
+    expect(row.textContent?.trim()).toBe('Folder 1');
+    expect(buttonLabels(row)).toEqual([
+      label('floatingPanelExpandFolder'),
+      label('floatingPanelPinFolder'),
+      label('folder_settings'),
+    ]);
+
+    row
+      .querySelector<HTMLButtonElement>(`button[aria-label="${label('floatingPanelPinFolder')}"]`)!
+      .click();
+    expect(harness.store.data.folders[0].pinned).toBe(true);
+  });
+
+  it('renaming a Gemini folder leaves the row to the name field', async () => {
+    tree().startRename('Folder 1');
+    await vi.advanceTimersByTimeAsync(20);
+
+    const row = tree().nameInput()!.closest<HTMLElement>('[data-folder-id]')!;
+    expect(buttonLabels(row)).toEqual([
+      label('floatingPanelExpandFolder'),
+      label('floatingPanelSave'),
+      label('floatingPanelCancel'),
+    ]);
+  });
+});
+
+describe('Gemini folder conversation rows', () => {
+  let harness: Awaited<ReturnType<typeof createFolderViewHarness>>;
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    resetFolderViewBrowserMocks();
+    harness = await createFolderViewHarness({
+      folders: [
+        { id: 'f', name: 'Work', parentId: null, isExpanded: true, createdAt: 1, updatedAt: 1 },
+      ],
+      folderContents: {
+        f: [
+          { conversationId: 's', title: 'Starred', url: '/app/s', addedAt: 1, starred: true },
+          { conversationId: 'p', title: 'Plain', url: '/app/p', addedAt: 2 },
+        ],
+      },
+    });
+  });
+
+  afterEach(() => {
+    harness?.destroy();
+    document.body.innerHTML = '';
+    localStorage.clear();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  const star = (title: string) =>
+    sidebarTree(harness.runtime.panel)
+      .conversationRow('f', title)
+      .querySelector<HTMLButtonElement>(
+        `button[aria-label="${label(title === 'Starred' ? 'floatingPanelUnstarConversation' : 'floatingPanelStarConversation')}"]`,
+      )!;
+
+  it('a Gemini starred conversation shows the star icon, not a text glyph', () => {
+    expect(star('Starred').textContent).toBe('');
+    expect(star('Starred').querySelector('svg')?.getAttribute('fill')).toBe('currentColor');
+    expect(star('Plain').textContent).toBe('');
+    expect(star('Plain').querySelector('svg')?.getAttribute('fill')).toBe('none');
   });
 });
