@@ -163,6 +163,7 @@ export class GoogleDriveSyncService {
 
       await this.stateLoadPromise;
       const session = this.sessionRevision;
+      const provider = this.state.provider;
       const token = await this.auth.getToken(interactive);
       if (!token) {
         if (!interactive) {
@@ -175,7 +176,7 @@ export class GoogleDriveSyncService {
         throw new Error('Not authenticated');
       }
 
-      const { payloads, port } = this.starSession(token, capturedScope, session);
+      const { payloads, port } = this.starSession(token, capturedScope, session, provider);
       if (platform === 'gemini' && starred && !starStore)
         throw new Error('Star uploads require the queued store');
       const fileCount = await payloads.upload(token, {
@@ -376,6 +377,7 @@ export class GoogleDriveSyncService {
 
       await this.stateLoadPromise;
       const session = this.sessionRevision;
+      const provider = this.state.provider;
       const token = await this.auth.getToken(interactive);
       if (!token) {
         if (!interactive) {
@@ -388,7 +390,7 @@ export class GoogleDriveSyncService {
         throw new Error('Not authenticated');
       }
 
-      const { payloads } = this.starSession(token, capturedScope, session);
+      const { payloads } = this.starSession(token, capturedScope, session, provider);
       const data = await payloads.download(token, platform, capturedScope, capturedHierarchyScope);
       if (!data) {
         this.updateState({ isSyncing: false });
@@ -411,8 +413,13 @@ export class GoogleDriveSyncService {
     }
   }
 
-  private starSession(token: string, scope: SyncAccountScope | null, revision: number) {
-    const provider = this.state.provider;
+  private starSession(
+    token: string,
+    scope: SyncAccountScope | null,
+    revision: number,
+    provider: SyncProvider,
+  ) {
+    // A switch can advance its revision before publishing the new provider during auth cleanup.
     const assertActive = () => {
       if (revision !== this.sessionRevision || provider !== this.state.provider) {
         throw new Error('Cloud session changed during transfer');
