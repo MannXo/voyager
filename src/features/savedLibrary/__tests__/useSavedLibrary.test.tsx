@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { StorageKeys } from '@/core/types/common';
-import type { HighlightRecordV1 } from '@/core/types/highlight';
+import { HIGHLIGHT_STORAGE_NAMESPACE, type HighlightRecordV1 } from '@/core/types/highlight';
 import { makeRecord } from '@/pages/content/highlight/__tests__/fixtures';
 
 import type { StarredMessage } from '../starTypes';
@@ -24,6 +24,8 @@ let holdRead: boolean;
 let holdRemoval: boolean;
 let pendingRemoval: ((response: unknown) => void) | undefined;
 let highlightReadFails: boolean;
+let starReadFails: boolean;
+let notifyRemovals: boolean;
 const originalSend = chrome.runtime.sendMessage;
 
 function Harness({ scope = 'all' }: { scope?: 'all' | (() => Promise<null>) }) {
@@ -50,6 +52,10 @@ function snapshot(records: StarredMessage[]) {
   return { messages };
 }
 
+function notify(changes: Record<string, chrome.storage.StorageChange>) {
+  for (const listener of listeners) listener(changes, 'local');
+}
+
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   stars = [
@@ -72,6 +78,8 @@ beforeEach(() => {
   holdRead = false;
   holdRemoval = false;
   highlightReadFails = false;
+  starReadFails = false;
+  notifyRemovals = false;
   pendingRead = undefined;
   pendingRemoval = undefined;
   vi.mocked(chrome.storage.sync.get).mockImplementation(async () => ({
@@ -99,7 +107,8 @@ beforeEach(() => {
       callback?: (response: unknown) => void,
     ) => {
       if (message.type === 'gv.starred.getAll') {
-        if (holdRead) pendingRead = callback;
+        if (starReadFails) callback?.({ ok: false, error: 'Read unavailable' });
+        else if (holdRead) pendingRead = callback;
         else callback?.({ ok: true, data: snapshot(stars) });
         return;
       }
@@ -112,6 +121,8 @@ beforeEach(() => {
         if (holdRemoval) pendingRemoval = callback;
         else {
           stars = stars.filter((star) => star.turnId !== message.payload?.turnId);
+          if (notifyRemovals)
+            notify({ [StorageKeys.SAVED_LIBRARY_STARS]: { newValue: snapshot(stars) } });
           callback?.({ ok: true });
         }
         return;
@@ -124,6 +135,7 @@ beforeEach(() => {
             record.platform !== message.payload?.platform ||
             record.conversationId !== message.payload?.conversationId,
         );
+        if (notifyRemovals) notify({ [`${HIGHLIGHT_STORAGE_NAMESPACE}:index`]: { newValue: {} } });
         return Promise.resolve({ ok: true });
       }
       throw new Error(`Unexpected ${message.type}`);
@@ -288,5 +300,35 @@ it('a failed removal still shows an item another tab deleted meanwhile', async (
   expect(container.textContent).toContain('Saved star');
   expect(container.textContent).not.toContain('Deleted elsewhere');
   expect(view.notice?.error).toBe(true);
+  expect(view.loading).toBe(false);
+});
+
+it('a deleted star stays gone when the reload after deleting fails', async () => {
+  await render();
+  starReadFails = true;
+  notifyRemovals = true;
+  await act(async () => {
+    expect(await view.remove(view.items.find((item) => item.kind === 'starred')!)).toBe(true);
+  });
+  expect(container.textContent).toBe('Saved highlight');
+  expect(view.error).toBe(true);
+  expect(view.loading).toBe(false);
+});
+
+it('a deleted highlight stays gone when the reload after deleting fails', async () => {
+  highlights.push({ ...highlights[0], accountHash: 'other-account' });
+  await render();
+  const item = view.items.find((item) => item.kind === 'highlight')!;
+  highlightReadFails = true;
+  notifyRemovals = true;
+  await act(async () => {
+    expect(await view.remove(item)).toBe(true);
+  });
+  const remaining = view.items.filter((item) => item.kind === 'highlight');
+  expect(remaining).toHaveLength(1);
+  expect(remaining[0].id).toBe(item.id);
+  expect(remaining[0].accountHash).not.toBe(item.accountHash);
+  expect(container.textContent).toContain('Saved star');
+  expect(view.error).toBe(true);
   expect(view.loading).toBe(false);
 });

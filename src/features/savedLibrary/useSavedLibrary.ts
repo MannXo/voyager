@@ -15,6 +15,31 @@ import type { StarredMessage } from './starTypes';
 import { ALL_FILTER, type SavedLibrarySelection, getSavedLibraryView } from './viewModel';
 
 type HighlightSource = typeof ALL_FILTER | (() => Promise<HighlightAccountScope | null>);
+interface LibrarySources {
+  stars: StarredMessage[];
+  highlights: HighlightRecordV1[];
+  highlightScope: string | null;
+}
+
+function withoutItem(sources: LibrarySources, item: SavedLibraryItem): LibrarySources {
+  return item.kind === 'starred'
+    ? {
+        ...sources,
+        stars: sources.stars.filter(
+          (star) => star.conversationId !== item.conversationId || star.turnId !== item.turnId,
+        ),
+      }
+    : {
+        ...sources,
+        highlights: sources.highlights.filter(
+          (record) =>
+            record.id !== item.id ||
+            record.platform !== item.platform ||
+            record.accountHash !== item.accountHash ||
+            record.conversationId !== item.conversationId,
+        ),
+      };
+}
 
 /** Reads and mutations belong here; popup and full-page views only present the result. */
 export function useSavedLibrary({
@@ -25,11 +50,11 @@ export function useSavedLibrary({
   confirmRemoval?: boolean;
 }) {
   const { t } = useLanguage();
-  const [sources, setSources] = useState<{
-    stars: StarredMessage[];
-    highlights: HighlightRecordV1[];
-    highlightScope: string | null;
-  }>({ stars: [], highlights: [], highlightScope: null });
+  const [sources, setSources] = useState<LibrarySources>({
+    stars: [],
+    highlights: [],
+    highlightScope: null,
+  });
   const [selection, updateSelection] = useState<SavedLibrarySelection>({
     kind: ALL_FILTER,
     query: '',
@@ -137,6 +162,8 @@ export function useSavedLibrary({
       try {
         await removeLibraryItem(item);
         removed = true;
+        // A failed follow-up read retains previous rows, so drop the acknowledged item from them first.
+        if (!session.signal.aborted) setSources((previous) => withoutItem(previous, item));
       } catch {
         if (!session.signal.aborted) {
           setNotice({
