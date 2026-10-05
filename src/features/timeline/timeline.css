@@ -28,6 +28,13 @@ html[data-gv-scheme] .gemini-timeline-bar:not(.timeline-no-container)::before {
   pointer-events: auto;
 }
 
+/* No turns yet (Gemini's new-chat home): no rail or slider; timelinePreview.css hides the
+   toggle. Independent of `.timeline-no-container`, which only hides the rail film. */
+.gemini-timeline-bar.gv-timeline-empty,
+.timeline-left-slider.gv-timeline-empty {
+  display: none !important;
+}
+
 /* Visual background layer — width adjustable via edge drag, dots unaffected */
 .gemini-timeline-bar::before {
   content: '';

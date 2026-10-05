@@ -28,7 +28,8 @@
 }
 
 .timeline-preview-toggle.timeline-preview-toggle-compact,
-.timeline-preview-toggle[hidden] {
+.timeline-preview-toggle[hidden],
+.gemini-timeline-bar.gv-timeline-empty ~ .timeline-preview-toggle {
   display: none;
 }
 

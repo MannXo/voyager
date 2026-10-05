@@ -9,6 +9,8 @@ import { TimelineSlider } from './TimelineSlider';
 import type { TimelineState } from './TimelineState';
 import timelineStyles from './timeline.css?inline';
 import previewStyles from './timelinePreview.css?inline';
+/** Hides every rail surface until the conversation has a turn to mark. */
+const EMPTY_RAIL_CLASS = 'gv-timeline-empty';
 interface TimelineViewOptions {
   mountAnchor?: HTMLElement;
   storagePrefix?: string;
@@ -87,7 +89,15 @@ export class TimelineView {
     this.slider?.updateGeometry();
   }
   updateVirtualRangeAndRender(): void {
+    this.applyEmptyState();
     this.dotLayer.render();
+  }
+  // Gemini's new-chat home (/app) is a conversation route with no turns; an unmarked rail there
+  // read as a stray full-height bar, so nothing of the rail shows until a marker exists.
+  private applyEmptyState(): void {
+    const empty = this.markers.length === 0;
+    this.ui.timelineBar?.classList.toggle(EMPTY_RAIL_CLASS, empty);
+    this.ui.slider?.classList.toggle(EMPTY_RAIL_CLASS, empty);
   }
   startRunner(fromIdx: number, toIdx: number, duration: number): void {
     this.dotLayer.startRunner(fromIdx, toIdx, duration);
@@ -170,6 +180,7 @@ export class TimelineView {
     }
     this.ui.slider = slider;
     this.ui.sliderHandle = slider.querySelector('.timeline-left-handle') as HTMLElement | null;
+    this.applyEmptyState();
 
     this.previewPanel = new TimelinePreviewPanel(bar, anchor, this.options.position);
     this.previewPanel.init(this.options.navigate, this.options.search, (id) =>
