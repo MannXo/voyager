@@ -38,9 +38,11 @@ Gemini blob shape. A site that declares `accountIdAttributes` (ChatGPT) scopes t
 account; the hierarchy watches those attributes, rehydrates from the new account when they change,
 and while the account is unknown shows no outline and refuses edits. Other sites stay unscoped, and
 only Gemini's migration reads an unscoped blob behind a missing scoped one. Each accepted edit
-captures its bucket, conversation and entry, then joins one page-wide save queue that replaces only
-that conversation's entry; the save completes even if the timeline is torn down, and storage
-snapshots do not overwrite an edit whose save is pending. Local backups export catalog buckets in
+is a per-turn change (one turn's level or collapse) captured with its bucket and conversation. The
+page-wide `outlineSaveQueue` applies it to the entry freshly read from storage, so it never writes a
+remembered entry, and the save completes even if the timeline is torn down. The displayed outline is
+the latest storage snapshot, always accepted, with the page's unwritten changes for that bucket and
+conversation overlaid; a remounted timeline therefore sees an earlier session's pending edits. Local backups export catalog buckets in
 `catalog-timeline-hierarchy.json`, keyed by storage key; catalog hierarchy has no Drive file yet.
 ChatGPT stars carry the same hashed account annotation. Stars for every site come from the Saved
 Library through its

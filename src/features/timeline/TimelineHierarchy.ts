@@ -12,7 +12,10 @@ import {
 
 import type { TimelineHydration } from './TimelineHydration';
 import type { TimelineStoragePolicy } from './TimelineStoragePolicy';
+import { type OutlineChange, outlineSaveQueue } from './outlineSaveQueue';
 import type { MarkerLevel } from './types';
+
+type OutlineEntry = TimelineHierarchyConversationData | null;
 
 /** The storage bucket one hydrated outline belongs to. */
 interface HierarchyBucket {
@@ -21,12 +24,6 @@ interface HierarchyBucket {
   /** Gemini's pre-isolation migration reads the unscoped blob behind a missing scoped one. */
   readonly adoptUnscoped: boolean;
   readonly routeUserId: string | null;
-}
-
-interface HierarchySave {
-  readonly bucket: HierarchyBucket;
-  readonly conversationId: string;
-  readonly entry: TimelineHierarchyConversationData | null;
 }
 
 function keysToRead(bucket: HierarchyBucket): string[] {
@@ -55,18 +52,66 @@ function hasExtensionStorage(): boolean {
   return typeof chrome !== 'undefined' && !!chrome.storage?.local?.get;
 }
 
-/** Replaces one conversation's entry; every other conversation in the bucket is read fresh. */
-async function writeConversationEntry({ bucket, conversationId, entry }: HierarchySave) {
-  if (!hasExtensionStorage()) return;
+/** Applies one change to the conversation's freshly read entry; nothing else in the bucket moves. */
+async function writeChange(
+  bucket: HierarchyBucket,
+  conversationId: string,
+  apply: OutlineChange,
+  submit: () => void,
+): Promise<boolean> {
+  if (!hasExtensionStorage()) return true;
   try {
     const values = (await chrome.storage.local.get(keysToRead(bucket))) as Record<string, unknown>;
     const conversations = { ...readBucket(bucket, values).conversations };
-    if (entry) conversations[conversationId] = entry;
+    const next = apply(conversations[conversationId] ?? null);
+    if (next) conversations[conversationId] = next;
     else delete conversations[conversationId];
+    submit();
     await chrome.storage.local.set({ [bucket.key]: { conversations } });
+    return true;
   } catch (error) {
     console.warn('[Timeline] Failed to persist timeline hierarchy to extension storage:', error);
+    return false;
   }
+}
+
+function outlineEntry(
+  levels: Record<string, MarkerLevel>,
+  collapsed: string[],
+  conversationUrl: string,
+  updatedAt: number,
+): OutlineEntry {
+  if (Object.keys(levels).length === 0 && collapsed.length === 0) return null;
+  return { conversationUrl, levels, collapsed, updatedAt };
+}
+
+function setLevelChange(
+  turnId: string,
+  aliases: readonly string[],
+  level: MarkerLevel,
+  url: string,
+): OutlineChange {
+  const updatedAt = Date.now();
+  return (entry) => {
+    const levels = { ...entry?.levels };
+    aliases.forEach((alias) => delete levels[alias]);
+    if (level !== 1) levels[turnId] = level;
+    return outlineEntry(levels, entry?.collapsed ?? [], url, updatedAt);
+  };
+}
+
+function setCollapsedChange(
+  turnId: string,
+  aliases: readonly string[],
+  collapsed: boolean,
+  url: string,
+): OutlineChange {
+  const updatedAt = Date.now();
+  return (entry) => {
+    const ids = (entry?.collapsed ?? []).filter((id) => !aliases.includes(id));
+    if (collapsed) ids.push(turnId);
+    return outlineEntry({ ...entry?.levels }, ids, url, updatedAt);
+  };
 }
 
 function accountAttributesChanged(records: readonly MutationRecord[]): boolean {
@@ -79,17 +124,16 @@ function accountAttributesChanged(records: readonly MutationRecord[]): boolean {
 
 /** Shared level/collapse state and persistence; geometry reads this owner without owning it. */
 export class TimelineHierarchy {
-  // Saves from every timeline in this page share one queue, so one conversation's
-  // read-modify-write never writes back a bucket read before another's save landed.
-  private static writes: Promise<void> = Promise.resolve();
   private destroyed = false;
+  /** Latest authoritative entry: the initial read or a storage event, never an edit. */
+  private snapshot: OutlineEntry = null;
+  /** Displayed view: the snapshot with this page's accepted, unwritten changes overlaid. */
   private markerLevels = new Map<string, MarkerLevel>();
   private collapsedMarkers = new Set<string>();
   /** The resolved account's bucket; null while the account is unresolved or unknown. */
   private bucket: HierarchyBucket | null = null;
+  private stopQueueListener: (() => void) | null = null;
   private accountGeneration = 0;
-  /** Accepted edits whose writes have not finished; storage snapshots cannot overwrite them. */
-  private pendingSaves = 0;
   private accountObserver: MutationObserver | null = null;
   constructor(
     private readonly policy: TimelineStoragePolicy,
@@ -111,6 +155,37 @@ export class TimelineHierarchy {
   }
   private get mirrorsLegacyKeys(): boolean {
     return this.bucket?.key === this.unscopedKey;
+  }
+  private get queueKey(): string | null {
+    return this.bucket && this.conversationId
+      ? `${this.bucket.key}\u0000${this.conversationId}`
+      : null;
+  }
+  private bindBucket(bucket: HierarchyBucket | null): void {
+    if (bucket?.key === this.bucket?.key && this.stopQueueListener) return;
+    this.stopQueueListener?.();
+    this.stopQueueListener = null;
+    this.bucket = bucket;
+    const key = this.queueKey;
+    if (!key) return;
+    this.stopQueueListener = outlineSaveQueue.subscribe(key, () => {
+      if (!this.isCurrent) return;
+      this.refresh();
+      this.onChange();
+    });
+  }
+  private refresh(): void {
+    const key = this.queueKey;
+    const entry = key ? outlineSaveQueue.overlay(key, this.snapshot) : null;
+    this.markerLevels.clear();
+    this.collapsedMarkers.clear();
+    if (entry) {
+      Object.entries(entry.levels).forEach(([turnId, level]) =>
+        this.markerLevels.set(turnId, level),
+      );
+      entry.collapsed.forEach((turnId) => this.collapsedMarkers.add(turnId));
+    }
+    if (this.mirrorsLegacyKeys) this.writeLegacyMirror();
   }
 
   // ===== Account lifetime =====
@@ -135,9 +210,9 @@ export class TimelineHierarchy {
   private rebind(): void {
     if (!this.isCurrent) return;
     this.accountGeneration += 1;
-    this.bucket = null;
-    this.markerLevels.clear();
-    this.collapsedMarkers.clear();
+    this.bindBucket(null);
+    this.snapshot = null;
+    this.refresh();
     this.hydration.invalidate();
     this.onChange();
     void this.init();
@@ -206,48 +281,28 @@ export class TimelineHierarchy {
 
   // ===== Persistence =====
 
-  private buildEntry(): TimelineHierarchyConversationData | null {
-    if (this.markerLevels.size === 0 && this.collapsedMarkers.size === 0) return null;
-    return {
-      conversationUrl: this.url,
-      levels: Object.fromEntries(this.markerLevels),
-      collapsed: Array.from(this.collapsedMarkers),
-      updatedAt: Date.now(),
-    };
-  }
-  private applyEntry(entry: TimelineHierarchyConversationData | null): void {
-    this.markerLevels.clear();
-    this.collapsedMarkers.clear();
-    if (!entry) return;
-    Object.entries(entry.levels).forEach(([turnId, level]) => this.markerLevels.set(turnId, level));
-    entry.collapsed.forEach((turnId) => this.collapsedMarkers.add(turnId));
-  }
-  /** Captures destination and value now; the write completes even if this timeline is torn down. */
-  private enqueueSave(): Promise<void> {
-    if (!this.bucket || !this.conversationId) return Promise.resolve();
-    const save: HierarchySave = {
-      bucket: this.bucket,
-      conversationId: this.conversationId,
-      entry: this.buildEntry(),
-    };
-    this.pendingSaves += 1;
-    const write = TimelineHierarchy.writes
-      .then(() => writeConversationEntry(save))
-      .finally(() => {
-        this.pendingSaves -= 1;
-      });
-    TimelineHierarchy.writes = write;
-    return write;
+  /** Captures destination and change now; the write completes even if this timeline is torn down. */
+  private enqueue(change: OutlineChange): Promise<void> {
+    const bucket = this.bucket;
+    const key = this.queueKey;
+    if (!bucket || !key) return Promise.resolve();
+    const conversationId = this.conversationId;
+    return outlineSaveQueue.enqueue(key, change, (apply, submit) =>
+      writeChange(bucket, conversationId, apply, submit),
+    );
   }
   private async load(
     bucket: HierarchyBucket,
     accept: (apply: () => void) => boolean,
   ): Promise<boolean> {
     if (!this.conversationId || !hasExtensionStorage()) {
-      return accept(() => this.applyEntry(null));
+      return accept(() => {
+        this.snapshot = null;
+        this.refresh();
+      });
     }
-    // Read after this page's queued saves so a rehydration never shows an outline older than them.
-    await TimelineHierarchy.writes;
+    const queueKey = this.queueKey;
+    const retireRead = queueKey ? outlineSaveQueue.beginRead(queueKey) : () => {};
     const values = (await chrome.storage.local.get(keysToRead(bucket))) as Record<string, unknown>;
     if (!this.isCurrent) return false;
     if (this.accountChangedSinceObserved()) {
@@ -257,16 +312,17 @@ export class TimelineHierarchy {
     const stored = readBucket(bucket, values).conversations[this.conversationId] ?? null;
     const legacy = stored ? null : this.readLegacyEntry();
     const accepted = accept(() => {
-      this.applyEntry(stored ?? legacy);
-      if (stored && this.mirrorsLegacyKeys) this.writeLegacyMirror();
+      this.snapshot = stored;
+      retireRead();
+      this.refresh();
     });
-    if (accepted && legacy) await this.enqueueSave();
+    if (accepted && legacy) await this.enqueue((entry) => entry ?? legacy);
     return accepted;
   }
 
   // ===== Edits =====
 
-  private edit(turnId: string, change: (aliases: string[]) => void): void | Promise<void> {
+  private edit(turnId: string, change: (aliases: string[]) => OutlineChange): void | Promise<void> {
     if (!this.isCurrent || !this.canEdit(turnId)) return;
     if (this.accountChangedSinceObserved()) return this.rebind();
     return this.hydration.edit(
@@ -276,10 +332,8 @@ export class TimelineHierarchy {
         if (!this.isCurrent || !this.canEdit(turnId) || !this.bucket || aliases.length === 0)
           return;
         if (this.accountChangedSinceObserved()) return this.rebind();
-        change(aliases);
-        if (this.mirrorsLegacyKeys) this.writeLegacyMirror();
-        void this.enqueueSave();
-        this.onChange();
+        // Enqueueing notifies this owner, which overlays the change and re-renders.
+        void this.enqueue(change(aliases));
       },
     );
   }
@@ -289,13 +343,9 @@ export class TimelineHierarchy {
       .some((alias) => this.collapsedMarkers.has(alias));
   }
   toggleCollapse(turnId: string): void | Promise<void> {
-    return this.edit(turnId, (aliases) => {
-      if (aliases.some((alias) => this.collapsedMarkers.has(alias))) {
-        aliases.forEach((alias) => this.collapsedMarkers.delete(alias));
-      } else {
-        this.collapsedMarkers.add(turnId);
-      }
-    });
+    return this.edit(turnId, (aliases) =>
+      setCollapsedChange(turnId, aliases, !this.isMarkerCollapsed(turnId), this.url),
+    );
   }
   getMarkerLevel(turnId: string): MarkerLevel {
     for (const alias of this.policy.getStoredTurnIdAliases(turnId)) {
@@ -306,10 +356,7 @@ export class TimelineHierarchy {
   }
   setMarkerLevel(turnId: string, level: MarkerLevel): void | Promise<void> {
     // Converge verified legacy aliases only after a complete outline is available.
-    return this.edit(turnId, (aliases) => {
-      aliases.forEach((alias) => this.markerLevels.delete(alias));
-      if (level !== 1) this.markerLevels.set(turnId, level);
-    });
+    return this.edit(turnId, (aliases) => setLevelChange(turnId, aliases, level, this.url));
   }
 
   // ===== Lifecycle =====
@@ -322,7 +369,7 @@ export class TimelineHierarchy {
       // An account change during resolution belongs to the newer read that rebind started.
       if (generation !== this.accountGeneration || !this.isCurrent) return;
       if (this.accountChangedSinceObserved()) return this.rebind();
-      this.bucket = bucket;
+      this.bindBucket(bucket);
       if (!bucket || this.hydration.ready) return;
       try {
         if (await this.load(bucket, accept)) this.onChange();
@@ -336,9 +383,12 @@ export class TimelineHierarchy {
     this.destroyed = true;
     this.accountObserver?.disconnect();
     this.accountObserver = null;
+    this.stopQueueListener?.();
+    this.stopQueueListener = null;
   }
   applyStorageChanges(changes: Record<string, chrome.storage.StorageChange>): void {
-    if (!this.isCurrent || !this.bucket || !this.conversationId || this.pendingSaves > 0) return;
+    const key = this.queueKey;
+    if (!this.isCurrent || !this.bucket || !key) return;
     const bucket = this.bucket;
     const change = changes[bucket.key];
     if (!change) return;
@@ -346,10 +396,10 @@ export class TimelineHierarchy {
     // Unresolved scope or partial data is not evidence that the complete outline was read.
     if (value != null && !isCompleteHierarchySnapshot(value)) return;
     this.hydration.snapshot(() => {
-      this.applyEntry(
-        readBucket(bucket, { [bucket.key]: value }).conversations[this.conversationId] ?? null,
-      );
-      if (this.mirrorsLegacyKeys) this.writeLegacyMirror();
+      this.snapshot =
+        readBucket(bucket, { [bucket.key]: value }).conversations[this.conversationId] ?? null;
+      outlineSaveQueue.retireOnStorageEvent(key);
+      this.refresh();
       this.onChange();
     });
   }

@@ -19,6 +19,17 @@ let current: Set<string>;
 /** Counts down reads from the next one; the read that reaches zero is held. */
 let readsUntilHold: number;
 let release: (() => void) | null;
+/** Holds each write before it reaches storage, or holds its reply after it has. */
+let holdWrites: 'before-commit' | 'after-commit' | null;
+const heldWrites: Array<() => void> = [];
+
+async function releaseWrites(): Promise<void> {
+  holdWrites = null;
+  while (heldWrites.length > 0) {
+    heldWrites.shift()?.();
+    await settle(30);
+  }
+}
 
 function outline(conversation: string, level: 1 | 2 | 3) {
   return {
@@ -78,7 +89,10 @@ beforeEach(() => {
   current = new Set();
   readsUntilHold = 0;
   release = null;
+  holdWrites = null;
   const get = storage.api.local.get.bind(storage.api.local) as (keys: unknown) => Promise<unknown>;
+  const set = storage.api.local.set.bind(storage.api.local);
+  const hold = () => new Promise<void>((resolve) => heldWrites.push(resolve));
   // Like chrome.storage, a held read still returns the bucket as it was when the read was issued.
   const local = {
     ...storage.api.local,
@@ -90,6 +104,11 @@ beforeEach(() => {
         });
       }
       return snapshot;
+    },
+    set: async (items: Record<string, unknown>) => {
+      if (holdWrites === 'before-commit') await hold();
+      await set(items);
+      if (holdWrites === 'after-commit') await hold();
     },
   };
   vi.stubGlobal('chrome', {
@@ -105,6 +124,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   release?.();
+  await releaseWrites();
   await settle();
   states.splice(0).forEach((state) => state.destroy());
   vi.unstubAllGlobals();
@@ -223,5 +243,52 @@ describe('timeline outline persistence', () => {
     } finally {
       document.documentElement.removeAttribute(attribute);
     }
+  });
+
+  it('another tab’s outline change survives this tab’s pending save', async () => {
+    const levels = (x: 1 | 2 | 3, y: 1 | 2 | 3) => ({
+      conversations: {
+        'claude:conv:a': { ...outline('a', 1), levels: { 'c-x': x, 'c-y': y } },
+      },
+    });
+    storage.values.local.set(KEY, levels(2, 2));
+    const state = await open('a');
+    holdWrites = 'after-commit';
+    state.hierarchy.setMarkerLevel('c-x', 3);
+    await settle(30);
+    expect(heldWrites).toHaveLength(1);
+    storage.external('local', KEY, levels(3, 3));
+    await settle(30);
+
+    await releaseWrites();
+    expect(state.hierarchy.getMarkerLevel('c-y')).toBe(3);
+    state.hierarchy.setMarkerLevel('c-x', 2);
+    await settle(30);
+    expect(stored('a')?.levels).toEqual({ 'c-x': 2, 'c-y': 3 });
+  });
+
+  it('re-enabling the timeline mid-save keeps every accepted level', async () => {
+    const before = await open('a');
+    holdWrites = 'before-commit';
+    before.hierarchy.setMarkerLevel('c-a', 2);
+    before.hierarchy.setMarkerLevel('c-b', 3);
+    await settle(30);
+    expect(heldWrites).toHaveLength(1);
+    before.destroy();
+
+    const after = create('a');
+    const opening = after.init();
+    await settle(30);
+    heldWrites.shift()?.();
+    await settle(30);
+    expect(after.hierarchy.getMarkerLevel('c-a')).toBe(2);
+    expect(after.hierarchy.getMarkerLevel('c-b')).toBe(3);
+    after.hierarchy.setMarkerLevel('c-a', 3);
+    await settle(30);
+
+    await releaseWrites();
+    await opening;
+    expect(stored('a')?.levels).toEqual({ 'c-a': 3, 'c-b': 3 });
+    expect(after.hierarchy.getMarkerLevel('c-b')).toBe(3);
   });
 });

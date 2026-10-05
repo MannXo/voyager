@@ -144,6 +144,10 @@ describe('TimelineState identity aliases', () => {
     expect(chrome.storage.local.set).not.toHaveBeenCalled();
     expect(localStorage.getItem(levelsKey)).toBeNull();
     expect(localStorage.getItem(collapsedKey)).toBeNull();
+    // Each edit is written against what storage holds, so storage must keep what was set.
+    vi.mocked(chrome.storage.local.set).mockImplementation(async (items) => {
+      Object.assign(saved, items);
+    });
     release(saved);
     await pending;
     state.hierarchy.setMarkerLevel(CHILD_ID, 3);
