@@ -259,21 +259,22 @@ describe('popup cloud sync transfer operations', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('keeps AI Studio restore writes limited to its folder bucket', async () => {
+  it('restores the prompts an AI Studio upload saved, without Gemini-only data', async () => {
     vi.mocked(accountIsolationService.isIsolationEnabled).mockResolvedValue(false);
+    const localPrompt = { id: 'local', text: 'Local', tags: [], createdAt: 1 };
+    const cloudPrompt = { id: 'cloud', text: 'Cloud', tags: [], createdAt: 2 };
+    stored[StorageKeys.PROMPT_ITEMS] = [localPrompt];
     await render('aistudio');
     const download = await transfer.prepareDownload();
     await download.restore(
-      {
-        folders: { data: folders },
-        prompts: { items: [{ id: 'p', text: 'Prompt', tags: [], createdAt: 1 }] },
-      },
-      'overwrite',
+      { folders: { data: folders }, prompts: { items: [cloudPrompt] } },
+      'merge',
       false,
     );
-    expect(localSet).toHaveBeenCalledExactlyOnceWith({
-      [StorageKeys.FOLDER_DATA_AISTUDIO]: folders,
-    });
+    expect(stored[StorageKeys.PROMPT_ITEMS]).toEqual([localPrompt, cloudPrompt]);
+    expect(Object.keys(stored).sort()).toEqual(
+      [StorageKeys.FOLDER_DATA_AISTUDIO, StorageKeys.PROMPT_ITEMS].sort(),
+    );
     expect(download.payload).toEqual({
       platform: 'aistudio',
       accountScope: null,

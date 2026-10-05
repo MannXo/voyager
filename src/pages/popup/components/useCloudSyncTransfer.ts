@@ -266,7 +266,7 @@ async function readLocalSyncData(
     // A successful empty live snapshot may be an unsaved deletion, rather than missing data.
     if (!hasLiveFolderSnapshot && storedFolders) folders = storedFolders;
     const storedPrompts = storageResult[StorageKeys.PROMPT_ITEMS];
-    if (platform === 'gemini' && isPromptItemArray(storedPrompts)) prompts = storedPrompts;
+    if (definition.syncsSharedData && isPromptItemArray(storedPrompts)) prompts = storedPrompts;
     if (platform === 'gemini' && purpose === 'restore') {
       const resolvedHierarchy = resolveTimelineHierarchyDataForStorageScope(
         storageResult as Record<string, unknown>,
@@ -319,8 +319,9 @@ async function restoreCloudDownload(
     ? cloudHierarchy
     : mergeTimelineHierarchy(local.timelineHierarchy, cloudHierarchy);
   const storageUpdate: Record<string, unknown> = { [local.folderStorageKey]: nextFolders };
+  // AI Studio uploads the shared prompts too; only the timeline hierarchy is Gemini's alone.
+  if (definition.syncsSharedData) storageUpdate[StorageKeys.PROMPT_ITEMS] = promptMerge.items;
   if (context.payload.platform === 'gemini') {
-    storageUpdate[StorageKeys.PROMPT_ITEMS] = promptMerge.items;
     storageUpdate[context.timelineHierarchyStorageKey] = nextHierarchy;
   }
   await applyCloudRestore({
@@ -332,7 +333,7 @@ async function restoreCloudDownload(
         : undefined,
     settings: definition.syncsSharedData ? data.settings?.data : undefined,
     storageUpdate,
-    includesPrompts: context.payload.platform === 'gemini',
+    includesPrompts: definition.syncsSharedData,
     foldersMissing: !hasCloudFolderData,
     // Both restore modes merge stars so this tab cannot erase other sites or accounts.
     mergeStarred:

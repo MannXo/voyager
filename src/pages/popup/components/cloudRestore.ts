@@ -1,6 +1,6 @@
 /**
  * The popup's writes for a Drive restore, in order: plugin state, synced
- * settings, then folders (plus prompts and the timeline hierarchy on Gemini),
+ * settings, then folders (plus shared prompts, and the timeline hierarchy on Gemini),
  * followed by the background-owned star merge. There is no transaction across
  * them, and the background has already restored highlights by the time they
  * run, so a failure partway reports which parts were restored and which were
@@ -54,7 +54,7 @@ export interface CloudRestoreInput {
   /** The Drive plugin-state payload, or undefined when absent or another format. */
   readonly plugins: unknown;
   readonly settings: unknown;
-  /** Folders, plus prompts and hierarchy on Gemini: one storage write. */
+  /** Folders, plus shared prompts and Gemini's hierarchy: one storage write. */
   readonly storageUpdate: Record<string, unknown>;
   readonly includesPrompts: boolean;
   /** Resolves true when a present cloud star payload merged successfully. */
