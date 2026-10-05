@@ -28,14 +28,13 @@ const BLOCK_TAGS = new Set([
 ]);
 
 const HIGHLIGHT_MARK_SELECTOR = 'mark.gv-highlight-mark';
+const LATEX_ATTRIBUTE = 'data-user-latex-original';
 
-function excluded(element: Element): boolean {
+function injected(element: Element): boolean {
   // Voyager highlight wrappers carry the user's authored text, not injected UI.
   if (element.matches(HIGHLIGHT_MARK_SELECTOR)) return false;
-  if (
+  return (
     element.matches(EXCLUDED_SELECTOR) ||
-    element.hasAttribute('hidden') ||
-    element.getAttribute('aria-hidden') === 'true' ||
     Array.from(element.classList).some(
       (name) =>
         name.startsWith('gv-') ||
@@ -43,108 +42,73 @@ function excluded(element: Element): boolean {
         name === 'sr-only' ||
         name === 'screen-reader-only',
     )
-  )
-    return true;
-  // Host stylesheets hide alternatives and internal labels; only the connected original knows that.
-  return getComputedStyle(element).display === 'none';
+  );
 }
 
-export interface UserTurnCapture {
-  /** Changes whenever which nodes count as visible changes, even if the markup does not. */
-  readonly visibilityKey: string;
-  readonly read: () => string;
-}
-
-/** Decide hidden nodes on the connected original, before a detached clone loses computed styles. */
-export function captureUserTurn(element: HTMLElement): UserTurnCapture {
-  const dropped: number[] = [];
-  const invisible = new Map<Element, boolean>();
-  const hidesText = (parent: Element): boolean => {
-    let hidden = invisible.get(parent);
-    if (hidden === undefined) {
-      hidden = getComputedStyle(parent).visibility === 'hidden';
-      invisible.set(parent, hidden);
-    }
-    return hidden;
-  };
-  let index = 0;
-  const walk = (node: Node): void => {
-    const position = index++;
-    if (node.nodeType === Node.TEXT_NODE) {
-      const parent = node.parentElement;
-      if (parent && hidesText(parent)) dropped.push(position);
-      return;
-    }
-    if (node instanceof Element && excluded(node)) {
-      dropped.push(position);
-      return;
-    }
-    node.childNodes.forEach(walk);
-  };
-  if (excluded(element)) return { visibilityKey: 'root', read: () => '' };
-  index++;
-  element.childNodes.forEach(walk);
-  return {
-    visibilityKey: dropped.join(','),
-    read: () => extract(element, new Set(dropped)),
-  };
-}
-
+/**
+ * Full user prompt as plain text, read from the connected original so host CSS decides what is hidden.
+ * Reads computed styles for the whole turn: call it only when a star needs text, never per collect.
+ */
 export function userTurnText(element: HTMLElement): string {
-  return captureUserTurn(element).read();
-}
-
-function extract(element: HTMLElement, dropped: ReadonlySet<number>): string {
-  const clone = element.cloneNode(true) as HTMLElement;
-  const removals: Node[] = [];
-  let index = 1;
-  const walk = (node: Node): void => {
-    if (dropped.has(index++)) {
-      removals.push(node);
-      return;
+  const styles = new Map<Element, CSSStyleDeclaration>();
+  const style = (node: Element): CSSStyleDeclaration => {
+    let value = styles.get(node);
+    if (!value) {
+      value = getComputedStyle(node);
+      styles.set(node, value);
     }
-    if (node.nodeType !== Node.TEXT_NODE) node.childNodes.forEach(walk);
+    return value;
   };
-  clone.childNodes.forEach(walk);
-  removals.forEach((node) => node.parentNode?.removeChild(node));
-  clone.querySelectorAll(HIGHLIGHT_MARK_SELECTOR).forEach((mark) => {
-    mark.replaceWith(...mark.childNodes);
-  });
-  const content = clone.matches(USER_CONTENT_SELECTOR)
-    ? clone
-    : (clone.querySelector<HTMLElement>(USER_CONTENT_SELECTOR) ?? clone);
-  for (const node of [
-    content,
-    ...content.querySelectorAll<HTMLElement>('[data-user-latex-original]'),
-  ]) {
-    const original = node.getAttribute('data-user-latex-original');
-    if (original !== null) node.textContent = original;
-  }
+  const excluded = (node: Element): boolean =>
+    injected(node) ||
+    node.hasAttribute('hidden') ||
+    node.getAttribute('aria-hidden') === 'true' ||
+    style(node).display === 'none';
+  const invisible = (node: Element): boolean => style(node).visibility === 'hidden';
+
+  if (excluded(element)) return '';
+  const reachable = (node: Element): boolean => {
+    for (let current: Element | null = node; current && current !== element;) {
+      if (excluded(current)) return false;
+      current = current.parentElement;
+    }
+    return true;
+  };
+  const content = element.matches(USER_CONTENT_SELECTOR)
+    ? element
+    : (Array.from(element.querySelectorAll(USER_CONTENT_SELECTOR)).find(reachable) ?? element);
+
   let text = '';
   let syntheticNewline = false;
+  const append = (value: string): void => {
+    text += value;
+    if (value) syntheticNewline = false;
+  };
   const newline = () => {
     if (text && !text.endsWith('\n')) {
       text += '\n';
       syntheticNewline = true;
     }
   };
-  const visit = (node: Node): void => {
+  const visit = (node: Node, root = false): void => {
     if (node.nodeType === Node.TEXT_NODE) {
-      const value = (node.nodeValue ?? '').replace(/\r\n?/g, '\n');
-      text += value;
-      if (value) syntheticNewline = false;
-    } else if (node instanceof Element) {
-      if (node.tagName === 'BR') {
-        text += '\n';
-        syntheticNewline = false;
-        return;
-      }
-      const block = BLOCK_TAGS.has(node.tagName);
-      if (block) newline();
-      node.childNodes.forEach(visit);
-      if (block) newline();
+      const parent = node.parentElement;
+      if (!parent || !invisible(parent)) append((node.nodeValue ?? '').replace(/\r\n?/g, '\n'));
+      return;
     }
+    if (!(node instanceof Element) || (!root && excluded(node))) return;
+    if (node.tagName === 'BR') {
+      if (!invisible(node)) append('\n');
+      return;
+    }
+    const block = BLOCK_TAGS.has(node.tagName);
+    if (block) newline();
+    const latex = node.getAttribute(LATEX_ATTRIBUTE);
+    // The rendered formula's own visibility decides whether its source belongs to the prompt.
+    if (latex === null) node.childNodes.forEach((child) => visit(child));
+    else if (!invisible(node)) append(latex.replace(/\r\n?/g, '\n'));
+    if (block) newline();
   };
-  visit(content);
+  visit(content, true);
   return syntheticNewline ? text.slice(0, -1) : text;
 }

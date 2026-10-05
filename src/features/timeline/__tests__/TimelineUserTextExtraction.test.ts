@@ -8,6 +8,7 @@ import { TimelineTurns } from '@/pages/content/timeline/TimelineTurns';
 
 import { CatalogTimelineAdapter } from '../adapters/catalog/CatalogTimelineAdapter';
 import { CatalogTurnOwnership } from '../adapters/catalog/CatalogTurnOwnership';
+import { userTurnText } from '../userTurnText';
 
 beforeEach(() => document.body.replaceChildren());
 afterEach(() => document.body.replaceChildren());
@@ -38,6 +39,10 @@ function gemini(markup: string): TimelineTurns {
   return new TimelineTurns();
 }
 
+function geminiText(): string {
+  return userTurnText(document.querySelector<HTMLElement>('.user-query-bubble-with-background')!);
+}
+
 function geminiMarkers(turns: TimelineTurns) {
   return turns.collect(
     document.querySelector<HTMLElement>('main')!,
@@ -49,8 +54,8 @@ describe('Gemini full user text', () => {
   it('a starred prompt keeps its line breaks without changing its summary or assistant preview', () => {
     const turns = gemini('<p>First<br>Second</p><p>Third</p>');
     const [marker] = geminiMarkers(turns);
+    expect(geminiText()).toBe('First\nSecond\nThird');
     expect(marker).toMatchObject({
-      text: 'First\nSecond\nThird',
       summary: 'FirstSecondThird',
       assistantSummary: 'Assistant answer',
     });
@@ -58,91 +63,91 @@ describe('Gemini full user text', () => {
   });
 
   it('full user text restores LaTeX and omits hidden labels and injected controls', () => {
-    const turns = gemini(
+    gemini(
       '<div class="query-text"><span class="cdk-visually-hidden">You said</span><p>Formula <span data-user-latex-original="$x^2$">Rendered math</span></p><p>Next<br>line</p><button>Edit prompt</button><div class="gv-fork-indicator-group">Forked</div><div aria-hidden="true">Invisible label</div></div>',
     );
-    expect(geminiMarkers(turns)[0]?.text).toBe('Formula $x^2$\nNext\nline');
+    expect(geminiText()).toBe('Formula $x^2$\nNext\nline');
     expect(document.querySelector('[data-user-latex-original]')?.textContent).toBe('Rendered math');
     expect(document.querySelector('.gv-fork-indicator-group')).not.toBeNull();
   });
 
   it('a hidden parent cannot make its old preferred text become the saved prompt', () => {
-    const turns = gemini(
+    gemini(
       '<div hidden><div class="query-text">Hidden old</div></div><div class="query-text">Visible prompt</div>',
     );
-    expect(geminiMarkers(turns)[0]?.text).toBe('Visible prompt');
+    expect(geminiText()).toBe('Visible prompt');
   });
 
   it('an assistant parent cannot make its preferred text become the saved prompt', () => {
-    const turns = gemini(
+    gemini(
       '<model-response><div class="query-text">Assistant answer in old content</div></model-response><div class="query-text">User prompt</div>',
     );
-    expect(geminiMarkers(turns)[0]?.text).toBe('User prompt');
+    expect(geminiText()).toBe('User prompt');
   });
 
   it('highlighted user words survive extraction without changing their host marks', () => {
-    const turns = gemini(
+    gemini(
       '<div class="query-text">Before <mark class="gv-highlight-mark" role="button">highlighted words</mark> after</div>',
     );
-    expect(geminiMarkers(turns)[0]?.text).toBe('Before highlighted words after');
+    expect(geminiText()).toBe('Before highlighted words after');
     expect(document.querySelector('mark.gv-highlight-mark')?.textContent).toBe('highlighted words');
     expect(document.querySelector('mark.gv-highlight-mark')?.getAttribute('role')).toBe('button');
   });
 
   it('editing only line breaks or the original LaTeX updates full text', () => {
-    const turns = gemini('<p>First<br>Second</p><span data-user-latex-original="$x$">math</span>');
-    expect(geminiMarkers(turns)[0]?.text).toBe('First\nSecond\n$x$');
+    gemini('<p>First<br>Second</p><span data-user-latex-original="$x$">math</span>');
+    expect(geminiText()).toBe('First\nSecond\n$x$');
     document.querySelector('p')!.innerHTML = 'First<br><br>Second';
     document
       .querySelector('[data-user-latex-original]')!
       .setAttribute('data-user-latex-original', '$y$');
-    expect(geminiMarkers(turns)[0]?.text).toBe('First\n\nSecond\n$y$');
+    expect(geminiText()).toBe('First\n\nSecond\n$y$');
   });
 
   it('blank lines between inline rendered formulas remain in the full prompt', () => {
-    const turns = gemini(
+    gemini(
       '<div class="query-text" style="white-space:pre-wrap"><span data-user-latex-original="$x$">math</span>\n\n<span data-user-latex-original="$y$">math</span></div>',
     );
-    expect(geminiMarkers(turns)[0]?.text).toBe('$x$\n\n$y$');
+    expect(geminiText()).toBe('$x$\n\n$y$');
   });
 
   it('a prompt keeps its leading pre indentation and trailing authored newlines', () => {
-    const turns = gemini('<pre>  first line\n<span>last</span>\n\n</pre>');
-    expect(geminiMarkers(turns)[0]?.text).toBe('  first line\nlast\n\n');
+    gemini('<pre>  first line\n<span>last</span>\n\n</pre>');
+    expect(geminiText()).toBe('  first line\nlast\n\n');
   });
 
   it('a trailing explicit line break survives the terminal block separator', () => {
-    const turns = gemini('<p>First<br></p>');
-    expect(geminiMarkers(turns)[0]?.text).toBe('First\n');
+    gemini('<p>First<br></p>');
+    expect(geminiText()).toBe('First\n');
   });
 
-  it('hiding the user root invalidates its full-text cache', () => {
-    const turns = gemini('<p>Visible text</p>');
-    expect(geminiMarkers(turns)[0]?.text).toBe('Visible text');
+  it('hiding the user root removes its full text', () => {
+    gemini('<p>Visible text</p>');
+    expect(geminiText()).toBe('Visible text');
     const element = document.querySelector<HTMLElement>('.user-query-bubble-with-background')!;
     element.setAttribute('aria-hidden', 'true');
-    expect(geminiMarkers(turns)[0]?.text).toBe('');
+    expect(geminiText()).toBe('');
     element.removeAttribute('aria-hidden');
-    expect(geminiMarkers(turns)[0]?.text).toBe('Visible text');
+    expect(geminiText()).toBe('Visible text');
   });
 
-  it('a host stylesheet hiding part of an unchanged turn updates its cached full text', () => {
+  it('a host stylesheet hiding part of an unchanged turn removes that part', () => {
     const sheet = document.createElement('style');
     sheet.textContent = 'main.drafts-hidden .draft { display: none }';
     document.head.append(sheet);
     try {
-      const turns = gemini('<p>Prompt<span class="draft"> draft</span></p>');
-      expect(geminiMarkers(turns)[0]?.text).toBe('Prompt draft');
+      gemini('<p>Prompt<span class="draft"> draft</span></p>');
+      expect(geminiText()).toBe('Prompt draft');
       document.querySelector('main')!.classList.add('drafts-hidden');
-      expect(geminiMarkers(turns)[0]?.text).toBe('Prompt');
+      expect(geminiText()).toBe('Prompt');
     } finally {
       sheet.remove();
     }
   });
 
   it('full user text keeps authored newlines and preformatted indentation', () => {
-    const turns = gemini('<pre>line one\n  indented\n\nlast</pre><p>Following paragraph</p>');
-    expect(geminiMarkers(turns)[0]?.text).toBe('line one\n  indented\n\nlast\nFollowing paragraph');
+    gemini('<pre>line one\n  indented\n\nlast</pre><p>Following paragraph</p>');
+    expect(geminiText()).toBe('line one\n  indented\n\nlast\nFollowing paragraph');
   });
 });
 
@@ -169,29 +174,9 @@ describe('Catalog mounted full user text', () => {
     const adapter = catalog(site);
     try {
       const [marker] = adapter.turns.read([]).markers;
-      expect(marker?.text).toBe('First\nSecond\nThird');
+      expect(userTurnText(marker!.element)).toBe('First\nSecond\nThird');
       expect(marker?.assistantSummary).toBe('Assistant answer');
       expect(adapter.turns.read([]).markers[0]?.id).toBe(marker?.id);
-    } finally {
-      adapter.turns.stop();
-    }
-  });
-
-  it('a virtualized remembered turn cannot supply full text until its user content mounts again', () => {
-    document.body.innerHTML =
-      '<main><div data-user-message-bubble><p>First<br>Second</p></div></main>';
-    const adapter = catalog(chatgptAdapter);
-    try {
-      const initial = adapter.turns.read([]).markers;
-      expect(initial[0]?.text).toBe('First\nSecond');
-      const element = initial[0]!.element;
-      element.remove();
-      const hidden = adapter.turns.read(initial).markers;
-      expect(hidden[0]?.id).toBe(initial[0]?.id);
-      expect(hidden[0]?.text).toBeUndefined();
-      document.querySelector('main')!.appendChild(element);
-      const returned = adapter.turns.read(hidden).markers;
-      expect(returned[0]).toMatchObject({ id: initial[0]?.id, text: 'First\nSecond' });
     } finally {
       adapter.turns.stop();
     }

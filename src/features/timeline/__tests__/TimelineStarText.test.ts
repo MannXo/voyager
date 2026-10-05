@@ -131,6 +131,82 @@ it("text hidden by the site's stylesheet never enters a starred prompt", async (
   }
 });
 
+function withSheet(css: string): () => void {
+  const sheet = document.createElement('style');
+  sheet.textContent = css;
+  document.head.append(sheet);
+  return () => sheet.remove();
+}
+
+it('a formula hidden by the site never enters a starred prompt', async () => {
+  const { state, store, mount } = fixture();
+  const removeSheet = withSheet(
+    '.host-folded { visibility: hidden } .host-shown { visibility: visible }',
+  );
+  try {
+    await state.init();
+    mount(
+      turnId,
+      '<span class="host-folded" data-user-latex-original="$secret$">rendered secret</span>' +
+        '<span class="host-folded"><span class="host-shown" data-user-latex-original="$x$">x</span></span>',
+    );
+    await state.toggleStar(turnId);
+    expect((await store.getForConversation(conversationId))[0]?.text).toBe(
+      'First line\nSecond line$x$',
+    );
+  } finally {
+    removeSheet();
+  }
+});
+
+it('a hidden highlight never enters a starred prompt', async () => {
+  const { state, store, mount } = fixture();
+  const removeSheet = withSheet('.host-collapsed { display: none }');
+  try {
+    await state.init();
+    mount(
+      turnId,
+      ' <mark class="gv-highlight-mark" role="button">kept</mark>' +
+        '<span class="host-collapsed"><mark class="gv-highlight-mark">secret</mark></span>' +
+        '<mark class="gv-highlight-mark" hidden>also secret</mark>',
+    );
+    await state.toggleStar(turnId);
+    expect((await store.getForConversation(conversationId))[0]?.text).toBe(
+      'First line\nSecond line kept',
+    );
+  } finally {
+    removeSheet();
+  }
+});
+
+it('recalculating an unchanged conversation reads no computed styles', async () => {
+  const mismatched = { ...star('s-2222222222222222'), content: 'A prompt that was since edited' };
+  const { state, store, mount } = fixture([star(), mismatched]);
+  await state.init();
+  mount();
+  document
+    .querySelector('main')!
+    .insertAdjacentHTML(
+      'beforeend',
+      '<user-query data-turn-id="s-2222222222222222">Edited prompt</user-query>',
+    );
+  const collect = () =>
+    state.replaceMarkers(
+      new TimelineTurns().collect(document.querySelector('main')!, 'user-query'),
+    );
+  collect();
+  await vi.waitFor(async () =>
+    expect((await store.getForConversation(conversationId))[0]?.text).toBe(
+      'First line\nSecond line',
+    ),
+  );
+  const styles = vi.spyOn(globalThis, 'getComputedStyle');
+  collect();
+  collect();
+  expect(styles).not.toHaveBeenCalled();
+  expect((await store.getForConversation(conversationId))[1]?.text).toBeUndefined();
+});
+
 it('opening an old conversation fills in the full text of its stars once', async () => {
   const { state, store, area, mount, values } = fixture([star()]);
   await state.init();
@@ -216,7 +292,7 @@ it('a star press keeps the full text captured before account lookup yields', asy
     return undefined;
   };
   const pressing = state.toggleStar(turnId);
-  marker!.text = 'Changed after the press';
+  marker!.element.textContent = 'Changed after the press';
   release();
   await pressing;
   expect((await store.getForConversation(conversationId))[0]?.text).toBe('First line\nSecond line');
