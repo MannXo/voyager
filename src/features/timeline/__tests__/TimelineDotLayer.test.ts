@@ -145,32 +145,33 @@ describe('TimelineDotLayer', () => {
     expect(content.querySelector('[data-target-turn-id="turn-0"]')).toBe(dots[0]);
   });
 
-  it('collapsed turns do not leave a long compact rail around the remaining ticks', async () => {
-    const { layer, state, geometry, content, bar } = fixture(
+  it('collapsed turns close up the remaining compact ticks', async () => {
+    const { layer, state, geometry, content } = fixture(
       [0, 0.3, 0.6, 1],
       () => null,
       () => 'compact',
     );
+    const offsets = () =>
+      Array.from(content.querySelectorAll<HTMLElement>('.timeline-dot'), (dot) =>
+        Number.parseFloat(dot.style.getPropertyValue('--timeline-compact-offset')),
+      );
     await state.hierarchy.init();
     geometry.markerLevelEnabled = true;
     state.hierarchy.setMarkerLevel('turn-1', 2);
     state.hierarchy.setMarkerLevel('turn-2', 2);
     layer.layout();
     layer.render();
-    expect(bar.style.getPropertyValue('--timeline-compact-rail-height')).toBe('36px');
+    expect(offsets()).toEqual([-12, -4, 4, 12]);
 
     state.hierarchy.toggleCollapse('turn-0');
     layer.layout();
     layer.render();
-    expect(content.querySelectorAll('.timeline-dot')).toHaveLength(2);
-    expect(bar.style.getPropertyValue('--timeline-compact-rail-offset')).toBe('-10px');
-    expect(bar.style.getPropertyValue('--timeline-compact-rail-height')).toBe('20px');
+    expect(offsets()).toEqual([-4, 4]);
 
     state.hierarchy.toggleCollapse('turn-0');
     layer.layout();
     layer.render();
-    expect(content.querySelectorAll('.timeline-dot')).toHaveLength(4);
-    expect(bar.style.getPropertyValue('--timeline-compact-rail-height')).toBe('36px');
+    expect(offsets()).toEqual([-12, -4, 4, 12]);
   });
 
   it('replaces a running animation without letting the old jump move or hide the runner', () => {

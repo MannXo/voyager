@@ -113,7 +113,8 @@ export function TimelineSettingsCard({
           label="hideOuterContainer"
           checked={values.hideContainer}
           onChange={(hideContainer) => onChange({ hideContainer })}
-          isVisible={isVisible}
+          // Compact paints no rail, so there is no container for this toggle to hide.
+          isVisible={(settingId) => values.timelineStyle !== 'compact' && isVisible(settingId)}
           t={t}
         />
         <SettingToggleRow

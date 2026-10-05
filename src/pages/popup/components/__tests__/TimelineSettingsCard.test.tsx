@@ -113,6 +113,16 @@ describe('TimelineSettingsCard', () => {
     ).toBe(false);
   });
 
+  it('hides the outer-container toggle while compact style paints no rail', () => {
+    const hideRow = () =>
+      container.querySelector<HTMLElement>('#hide-container')!.closest<HTMLElement>('div.group')!;
+    render({ values: { ...values, timelineStyle: 'compact' } });
+    expect(hideRow().hidden).toBe(true);
+
+    render({ values: { ...values, timelineStyle: 'dots' } });
+    expect(hideRow().hidden).toBe(false);
+  });
+
   it('marks the experimental rows with the shared badge', () => {
     render();
     const badges = Array.from(container.querySelectorAll('[title="experimentalLabel"]'));

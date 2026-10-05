@@ -79,9 +79,6 @@ describe('timeline rail background', () => {
     expect(css).not.toMatch(
       /\.gemini-timeline-bar\.gv-timeline-style-ruler::before\s*\{[^}]*opacity:\s*0/,
     );
-    expect(css).not.toMatch(
-      /\.gemini-timeline-bar\.timeline-style-compact::before\s*\{[^}]*opacity:\s*0/,
-    );
     expect(rule('.gemini-timeline-bar.timeline-no-container::before')).toMatch(
       /opacity:\s*0\s*!important/,
     );
