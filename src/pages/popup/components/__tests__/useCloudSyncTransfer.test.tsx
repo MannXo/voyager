@@ -336,6 +336,23 @@ describe('popup cloud sync transfer operations', () => {
     },
   );
 
+  it.each(['gemini', 'aistudio'] as const)(
+    'overwrite repairs a corrupt prompt library on %s',
+    async (platform) => {
+      for (const items of [[{ id: 'cloud', text: 'Cloud', tags: [], createdAt: 2 }], []]) {
+        stored[StorageKeys.PROMPT_ITEMS] = { broken: true };
+        await render(platform, false);
+        const download = await transfer.prepareDownload();
+        await download.restore(
+          { folders: { data: folders }, prompts: { items } },
+          'overwrite',
+          false,
+        );
+        expect(stored[StorageKeys.PROMPT_ITEMS]).toEqual(items);
+      }
+    },
+  );
+
   it('restores the prompts an AI Studio upload saved, without Gemini-only data', async () => {
     vi.mocked(accountIsolationService.isIsolationEnabled).mockResolvedValue(false);
     const localPrompt = { id: 'local', text: 'Local', tags: [], createdAt: 1 };

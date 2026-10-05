@@ -10,7 +10,8 @@
  *
  * The stored format is unchanged: the same array of prompt objects under the
  * same key. Prompts an op does not touch are written back exactly as read.
- * A stored value that is not a list is never overwritten.
+ * A stored value that is not a list is never overwritten, except by a restore
+ * overwrite, which the user chose to replace the library with a backup.
  */
 import { StorageKeys } from '@/core/types/common';
 import { getPromptNameComparisonKey, getPromptNameConflictIds } from '@/core/utils/promptName';
@@ -267,6 +268,14 @@ export function createPromptLibraryOwner(options: {
       return summarize(items, items.length, 0);
     }, [PROMPT_LIBRARY_KEY]);
 
+  /** A restore overwrite replaces whatever was read, a corrupt value included; a failed read refuses it. */
+  const overwrite = (items: PromptItem[]): Promise<PromptLibraryResult> =>
+    serialize(async () => {
+      await readRaw();
+      await options.area.set({ [PROMPT_LIBRARY_KEY]: items });
+      return summarize(items, items.length, 0);
+    }, [PROMPT_LIBRARY_KEY]);
+
   const transact = <T>(
     change: (stored: unknown[]) => { items: unknown[] | null; result: T },
   ): Promise<T> =>
@@ -278,7 +287,11 @@ export function createPromptLibraryOwner(options: {
 
   return {
     apply: (op) =>
-      op.kind === 'seed' ? seed(op.items) : transact((stored) => applyPromptLibraryOp(stored, op)),
+      op.kind === 'seed'
+        ? seed(op.items)
+        : op.kind === 'restore' && op.mode === 'overwrite'
+          ? overwrite(op.items)
+          : transact((stored) => applyPromptLibraryOp(stored, op)),
     read: () => serialize(readStored, [PROMPT_LIBRARY_KEY]),
     transact,
   };
