@@ -34,6 +34,12 @@ function userInput(event: Event): void {
 function renderTurn(conversationId: string): void {
   document.body.innerHTML = `<div data-turn-key="t"><div data-chatgpt-selection-conversation-id="${conversationId}" data-chatgpt-selection-message-id="m2">Antwort</div></div>`;
 }
+/** Reports the URL the tab originally loaded, which jsdom does not record. */
+function loadedFrom(url: string): void {
+  vi.spyOn(performance, 'getEntriesByType').mockReturnValue([
+    { name: url } as PerformanceNavigationTiming,
+  ]);
+}
 async function settle(): Promise<void> {
   await vi.advanceTimersByTimeAsync(200);
   await Promise.resolve();
@@ -50,6 +56,7 @@ beforeEach(() => {
 afterEach(() => {
   stop?.();
   stop = undefined;
+  vi.restoreAllMocks();
   vi.useRealTimers();
   document.body.innerHTML = '';
 });
@@ -71,6 +78,27 @@ describe('legacy ChatGPT star failure hint', () => {
     expect(toasts()).toHaveLength(1);
     stop();
     expect(document.querySelector('[data-gv-layer="toast"]')).toBeNull();
+  });
+
+  it('a saved ChatGPT link that bounced home before Voyager started still hints to switch accounts', async () => {
+    loadedFrom('https://chatgpt.com/c/example#gv-turn-turn-one');
+    history.replaceState(null, '', '/');
+    stop = startChatGptLegacyJumpHint();
+    await settle();
+    expect(toasts()).toHaveLength(1);
+    stop();
+    expect(document.querySelector('[data-gv-layer="toast"]')).toBeNull();
+  });
+
+  it('ChatGPT home opened directly or from a plain chat link shows no hint', async () => {
+    history.replaceState(null, '', '/');
+    for (const url of ['https://chatgpt.com/', 'https://chatgpt.com/c/example']) {
+      loadedFrom(url);
+      stop = startChatGptLegacyJumpHint();
+      await settle();
+      expect(toasts()).toBeUndefined();
+      stop();
+    }
   });
 
   it('opening a saved chat and then clicking New chat shows no hint', async () => {

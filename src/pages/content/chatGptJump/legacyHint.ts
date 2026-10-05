@@ -11,10 +11,53 @@ function conversationInRoute(): string | undefined {
   return CONVERSATION_ROUTE.exec(location.pathname)?.[1];
 }
 
+/** The URL this document was loaded from; SPA route changes do not rewrite it. */
+function loadedUrl(): URL | undefined {
+  const entry = performance.getEntriesByType('navigation')[0];
+  if (!entry?.name) return undefined;
+  try {
+    return new URL(entry.name);
+  } catch {
+    return undefined;
+  }
+}
+
+/** The host already bounced a saved-turn load home before this script started. */
+function bouncedBeforeStart(): boolean {
+  if (location.pathname !== HOME_ROUTE) return false;
+  const loaded = loadedUrl();
+  return (
+    loaded?.origin === location.origin &&
+    CONVERSATION_ROUTE.test(loaded.pathname) &&
+    loaded.hash.startsWith('#gv-turn-')
+  );
+}
+
 function targetTurnsRendered(conversationId: string): boolean {
   return Array.from(document.querySelectorAll(`[${CHATGPT_CONVERSATION_ID_ATTRIBUTE}]`)).some(
     (node) => node.getAttribute(CHATGPT_CONVERSATION_ID_ATTRIBUTE)?.trim() === conversationId,
   );
+}
+
+/** Shows the switch-account hint once i18n is ready; the returned stop removes it. */
+function showSwitchHint(): () => void {
+  const toaster = createToaster();
+  const t = createTranslator();
+  let stopped = false;
+  const show = (): void => {
+    if (stopped) return;
+    toaster.show({
+      message: t('savedLibraryChatGptSwitchHint'),
+      tone: 'warning',
+      durationMs: null,
+      dismissLabel: t('changelog_close'),
+    });
+  };
+  void initI18n().then(show, show);
+  return () => {
+    stopped = true;
+    toaster.destroy();
+  };
 }
 
 /**
@@ -25,10 +68,11 @@ function targetTurnsRendered(conversationId: string): boolean {
  */
 export function startChatGptLegacyJumpHint(): () => void {
   const target = conversationInRoute();
-  if (!target || !location.hash.startsWith('#gv-turn-')) return () => {};
-  const toaster = createToaster();
-  const t = createTranslator();
-  let stopped = false;
+  // The content script is registered at document_idle, which in a background
+  // tab can land after the host has already replaced the route with `/`.
+  if (!target) return bouncedBeforeStart() ? showSwitchHint() : () => {};
+  if (!location.hash.startsWith('#gv-turn-')) return () => {};
+  let hide: (() => void) | undefined;
   let armed = true;
 
   const disarm = (): void => {
@@ -43,15 +87,6 @@ export function startChatGptLegacyJumpHint(): () => void {
   const onUserInput = (event: Event): void => {
     if (event.isTrusted) disarm();
   };
-  const showHint = (): void => {
-    if (stopped) return;
-    toaster.show({
-      message: t('savedLibraryChatGptSwitchHint'),
-      tone: 'warning',
-      durationMs: null,
-      dismissLabel: t('changelog_close'),
-    });
-  };
   const check = (): void => {
     if (!armed) return;
     if (conversationInRoute() === target) {
@@ -60,7 +95,7 @@ export function startChatGptLegacyJumpHint(): () => void {
     }
     const bouncedHome = location.pathname === HOME_ROUTE;
     disarm();
-    if (bouncedHome) void initI18n().then(showHint, showHint);
+    if (bouncedHome) hide = showSwitchHint();
   };
 
   // Capture phase sees the click or shortcut before the host's router acts on it.
@@ -71,8 +106,7 @@ export function startChatGptLegacyJumpHint(): () => void {
   const expiry = setTimeout(disarm, REDIRECT_WINDOW_MS);
   check();
   return () => {
-    stopped = true;
     disarm();
-    toaster.destroy();
+    hide?.();
   };
 }
