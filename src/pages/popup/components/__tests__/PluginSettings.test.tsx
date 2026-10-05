@@ -110,6 +110,26 @@ describe.each(timelines)('$name style no longer offered', (plugin) => {
   });
 });
 
+describe.each(BUILTIN_PLUGINS.filter((plugin) => plugin.id.endsWith('-timeline')))(
+  '$name node levels',
+  (plugin) => {
+    it('offers node levels as an experimental switch that starts off, in Gemini wording', async () => {
+      await render(plugin);
+      // Translations resolve to their key here: the switch reuses Gemini's own messages.
+      const input = container.querySelector(
+        'input[aria-label="enableMarkerLevel"]',
+      ) as HTMLInputElement;
+      expect(input.checked).toBe(false);
+      const row = input.closest('div')!;
+      expect(row.querySelector('[title="experimentalLabel"]')).not.toBeNull();
+      expect(row.textContent).toContain('enableMarkerLevelHint');
+
+      act(() => input.click());
+      expect(setPluginSettings).toHaveBeenCalledWith(plugin.id, { markerLevel: true });
+    });
+  },
+);
+
 describe('PluginSettings select setting', () => {
   it('keeps English option labels when a translation is missing', async () => {
     mockLanguage.current = 'zh';

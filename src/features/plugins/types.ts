@@ -15,6 +15,8 @@
  *    plugin run arbitrary top-level code.
  */
 
+import type { TranslationKey } from '@/utils/translations';
+
 // ---------------------------------------------------------------------------
 // Sites
 // ---------------------------------------------------------------------------
@@ -155,6 +157,13 @@ export interface SettingField {
   readonly options?: readonly { readonly value: string; readonly label: string }[];
   readonly min?: number;
   readonly max?: number;
+  /** Marks a setting still being trialled, as the native settings do. */
+  readonly experimental?: boolean;
+  /**
+   * First-party only: reuse the extension's own message keys so a builtin setting shares the
+   * native setting's wording. The manifest validator drops it from catalog and remote data.
+   */
+  readonly messageKeys?: { readonly label: TranslationKey; readonly hint?: TranslationKey };
 }
 export type SettingsSchema = Readonly<Record<string, SettingField>>;
 

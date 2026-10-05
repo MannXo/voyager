@@ -6,6 +6,7 @@ import type { PluginManifest, PluginSettingValue } from '@/features/plugins/type
 
 import { Switch } from '../../../components/ui/switch';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { ExperimentalBadge } from './ExperimentalBadge';
 import { pickLocalized, pickLocalizedSetting } from './PluginIdentity';
 
 interface PluginSettingsProps {
@@ -24,7 +25,7 @@ export function PluginSettings({
   handleSetting,
   handleImmediateSettings,
 }: PluginSettingsProps) {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const settingsSchema = plugin.contributes.settings;
   const localizedName = pickLocalized(plugin, 'name', language);
   const resolved = resolvePluginSettings(plugin, values);
@@ -35,13 +36,30 @@ export function PluginSettings({
     <div className="mt-2 space-y-2.5" role="group" aria-label={localizedName}>
       {Object.entries(settingsSchema).map(([key, field]) => {
         const rawValue = resolved[key];
-        const settingText = pickLocalizedSetting(plugin, key, field, language);
+        const localized = pickLocalizedSetting(plugin, key, field, language);
+        const settingText = field.messageKeys
+          ? { ...localized, label: t(field.messageKeys.label) }
+          : localized;
+        const hint = field.messageKeys?.hint ? t(field.messageKeys.hint) : undefined;
 
         if (field.type === 'boolean') {
           const checked = rawValue === true;
           return (
-            <div key={key} className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground text-[11px]">{settingText.label}</span>
+            <div
+              key={key}
+              className={`flex justify-between gap-3 ${hint ? 'items-start' : 'items-center'}`}
+            >
+              <span className="min-w-0">
+                <span className="text-muted-foreground flex items-center gap-1 text-[11px]">
+                  {settingText.label}
+                  {field.experimental && <ExperimentalBadge title={t('experimentalLabel')} />}
+                </span>
+                {hint && (
+                  <span className="text-muted-foreground/80 mt-0.5 block text-[10px] leading-snug">
+                    {hint}
+                  </span>
+                )}
+              </span>
               <Switch
                 checked={checked}
                 aria-label={settingText.label}

@@ -7,6 +7,7 @@ import {
 } from '@/features/plugins/builtin/chatgptFolders/__tests__/memoryStorage';
 import { requireBundledSiteAdapter } from '@/features/plugins/catalog/sites';
 import { PluginScope } from '@/features/plugins/runtime/pluginScope';
+import type { PluginSettings } from '@/features/plugins/types';
 import { turnNavigatorPrimitive } from '@/features/plugins/verbs/turnNavigator';
 
 vi.mock('@/utils/i18n', () => ({
@@ -57,7 +58,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-function enable(): PluginScope {
+function enable(settings: PluginSettings = {}): PluginScope {
   const scope = new PluginScope();
   scopes.push(scope);
   turnNavigatorPrimitive.activate(
@@ -67,7 +68,7 @@ function enable(): PluginScope {
       doc: document,
       adapter: requireBundledSiteAdapter('chatgpt'),
       pluginId: 'voyager.chatgpt-timeline',
-      settings: {},
+      settings,
       setTargetCounter: () => {},
     },
   );
@@ -100,6 +101,27 @@ describe('timeline scope lifetime', () => {
   });
 });
 
+describe('timeline marker levels', () => {
+  it('a ChatGPT marker opens no level menu until the experimental setting is turned on', async () => {
+    const scope = enable();
+    await flush();
+    releaseRead?.();
+    await vi.waitFor(() => expect(document.querySelector('.timeline-dot')).not.toBeNull());
+    const rightClick = () =>
+      document
+        .querySelector('.timeline-dot')!
+        .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, button: 2 }));
+    rightClick();
+    expect(document.querySelector('.timeline-context-menu [data-level]')).toBeNull();
+
+    await scope.dispose();
+    enable({ markerLevel: true });
+    await vi.waitFor(() => expect(document.querySelector('.timeline-dot')).not.toBeNull());
+    rightClick();
+    expect(document.querySelector('.timeline-context-menu [data-level="2"]')).not.toBeNull();
+  });
+});
+
 describe('timeline startup outline', () => {
   it('editing a level while the Library read is delayed preserves saved chapters and collapse state', async () => {
     const { buildTurnId } = await import('./turnMerge');
@@ -121,7 +143,7 @@ describe('timeline startup outline', () => {
         },
       },
     });
-    enable();
+    enable({ markerLevel: true });
     await flush();
     document
       .querySelector('main')!

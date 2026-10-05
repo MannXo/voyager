@@ -38,4 +38,24 @@ describe('shared hierarchy geometry', () => {
     expect(positions.desiredY).toEqual([10, -1, -1, 110]);
     expect(positions.effectiveBaseNs[0]).toBeCloseTo(0.35);
   });
+
+  it('saved levels and a collapsed parent leave the rail flat while levels are switched off', () => {
+    const markers = [marker('parent', 0.1), marker('child', 0.11), marker('next', 0.5)];
+    const levels: Record<string, MarkerLevel> = { parent: 1, child: 2, next: 2 };
+    const geometry = new TimelineHierarchyGeometry(
+      () => markers,
+      (id) => levels[id],
+      (id) => id === 'parent',
+    );
+    const hidden = geometry.getHiddenMarkerIndices();
+    expect(geometry.calculateCollapsedPositions(hidden, 0, 100).effectiveBaseNs).toEqual([
+      0.1, 0.11, 0.5,
+    ]);
+    expect(geometry.getMarkerLevel('child')).toBe(1);
+    expect(geometry.isMarkerCollapsed('parent')).toBe(false);
+
+    geometry.markerLevelEnabled = true;
+    expect(geometry.getMarkerLevel('child')).toBe(2);
+    expect(geometry.isMarkerCollapsed('parent')).toBe(true);
+  });
 });

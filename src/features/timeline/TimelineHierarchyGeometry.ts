@@ -5,19 +5,22 @@ export class TimelineHierarchyGeometry {
   markerLevelEnabled = false;
   constructor(
     private readonly getMarkers: () => TimelineMarker[],
-    readonly getMarkerLevel: (id: string) => MarkerLevel,
-    readonly isMarkerCollapsed: (id: string) => boolean,
+    private readonly readMarkerLevel: (id: string) => MarkerLevel,
+    private readonly readMarkerCollapsed: (id: string) => boolean,
   ) {}
   private get markers(): TimelineMarker[] {
     return this.getMarkers();
   }
+  // Saved levels outlive the switch; while it is off the rail must look flat, not keep shapes,
+  // collapse rings or shifted positions the user can no longer edit.
+  getMarkerLevel(id: string): MarkerLevel {
+    return this.markerLevelEnabled ? this.readMarkerLevel(id) : 1;
+  }
+  isMarkerCollapsed(id: string): boolean {
+    return this.markerLevelEnabled && this.readMarkerCollapsed(id);
+  }
   getHiddenMarkerIndices(): Set<number> {
     const hidden = new Set<number>();
-
-    // If marker level feature is disabled, no markers are hidden
-    if (!this.markerLevelEnabled) {
-      return hidden;
-    }
 
     for (let i = 0; i < this.markers.length; i++) {
       // Skip markers that are already hidden by a parent collapse

@@ -3,6 +3,15 @@ import { type PluginManifest, hasNativeOps } from '../types';
 /** ChatGPT stamps the owning conversation id on each rendered reply. */
 export const CHATGPT_CONVERSATION_ID_ATTRIBUTE = 'data-chatgpt-selection-conversation-id';
 
+/** Same experimental, default-off switch and wording as Gemini's native timeline setting. */
+const MARKER_LEVEL_SETTING = {
+  type: 'boolean',
+  label: 'Enable node levels',
+  default: false,
+  experimental: true,
+  messageKeys: { label: 'enableMarkerLevel', hint: 'enableMarkerLevelHint' },
+} as const;
+
 /**
  * Built-in (bundled-in-the-extension) plugins — first-party data, NOT from the
  * remote marketplace.
@@ -254,6 +263,7 @@ export const BUILTIN_PLUGINS: readonly PluginManifest[] = [
             { value: 'ruler', label: 'Ruler' },
           ],
         },
+        markerLevel: MARKER_LEVEL_SETTING,
       },
       domOps: [
         {
@@ -390,6 +400,7 @@ export const BUILTIN_PLUGINS: readonly PluginManifest[] = [
             { value: 'ruler', label: 'Ruler' },
           ],
         },
+        markerLevel: MARKER_LEVEL_SETTING,
       },
       domOps: [
         {

@@ -89,7 +89,7 @@ export class TimelineEngine {
     if (isTimelineStyle(settings.timelineStyle)) this.view.timelineStyle = settings.timelineStyle;
     this.view.applyTimelineStyle();
     this.view.toggleDraggable(settings.draggable !== false);
-    this.setMarkerLevelEnabled(settings.markerLevel !== false);
+    this.setMarkerLevelEnabled(settings.markerLevel === true);
   }
   private mountUI(): void {
     this.view.mount();
@@ -197,7 +197,7 @@ export class TimelineEngine {
         [this.settingKey('BarWidth')]: null,
         [this.settingKey('Draggable')]: false,
         [this.settingKey('MarkerLevel')]:
-          this.pluginSettings !== null && this.pluginSettings.markerLevel !== false,
+          this.pluginSettings !== null && this.pluginSettings.markerLevel === true,
         [this.settingKey('Position')]: null,
         [this.settingKey('PreviewPinned')]: false,
         [StorageKeys.LANGUAGE]: null,
