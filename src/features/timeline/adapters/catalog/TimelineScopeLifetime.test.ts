@@ -211,3 +211,64 @@ describe('timeline startup outline', () => {
     });
   });
 });
+
+describe('one timeline per page', () => {
+  const counts = () =>
+    Object.fromEntries(
+      [
+        'style[data-gv-timeline]',
+        '.gemini-timeline-bar',
+        '.timeline-left-slider',
+        '.timeline-preview-toggle',
+        '.timeline-preview-panel',
+        '.timeline-preview-search',
+        '.gv-timeline-preview-hover-bridge',
+        '.timeline-tooltip',
+      ].map((selector) => [selector, document.querySelectorAll(selector).length]),
+    );
+  const single = {
+    'style[data-gv-timeline]': 1,
+    '.gemini-timeline-bar': 1,
+    '.timeline-left-slider': 1,
+    '.timeline-preview-toggle': 1,
+    '.timeline-preview-panel': 1,
+    '.timeline-preview-search': 1,
+    '.gv-timeline-preview-hover-bridge': 1,
+    '.timeline-tooltip': 1,
+  };
+
+  it('a ChatGPT conversation shows one timeline preview panel when an earlier Voyager copy left its rail behind', async () => {
+    // An extension reload orphans the old content script without tearing it
+    // down; the re-injected copy then mounts its own timeline on the same page.
+    enable({ timelineStyle: 'compact' });
+    await flush();
+    releaseRead?.();
+    await vi.waitFor(() => expect(document.querySelector('.timeline-dot')).not.toBeNull());
+
+    enable({ timelineStyle: 'ruler' });
+    await flush();
+    await vi.waitFor(() => expect(document.querySelector('.timeline-dot')).not.toBeNull());
+
+    expect(counts()).toEqual(single);
+    expect(document.querySelector('.timeline-preview-panel-compact')).toBeNull();
+    expect(
+      document.querySelector('.gemini-timeline-bar')?.classList.contains('gv-timeline-style-ruler'),
+    ).toBe(true);
+  });
+
+  it('navigating between ChatGPT chats keeps a single preview panel', async () => {
+    enable();
+    await flush();
+    releaseRead?.();
+    await vi.waitFor(() => expect(document.querySelector('.timeline-dot')).not.toBeNull());
+
+    for (const id of ['two', 'three', 'one']) {
+      history.pushState({}, '', `/c/${id}`);
+      document.querySelector('main')!.dataset.conversationId = id;
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      await flush();
+      await vi.waitFor(() => expect(document.querySelector('.timeline-dot')).not.toBeNull());
+      expect(counts()).toEqual(single);
+    }
+  });
+});

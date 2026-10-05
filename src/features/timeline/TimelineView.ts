@@ -11,6 +11,16 @@ import timelineStyles from './timeline.css?inline';
 import previewStyles from './timelinePreview.css?inline';
 /** Hides every rail surface until the conversation has a turn to mark. */
 const EMPTY_RAIL_CLASS = 'gv-timeline-empty';
+/** Everything a timeline view and its engine put on the page. */
+const TIMELINE_PAGE_NODES = [
+  'style[data-gv-timeline]',
+  '.gemini-timeline-bar',
+  '.timeline-left-slider',
+  '.timeline-preview-toggle',
+  '.timeline-preview-panel',
+  '.gv-timeline-preview-hover-bridge',
+  '#gemini-timeline-tooltip',
+].join(',');
 interface TimelineViewOptions {
   mountAnchor?: HTMLElement;
   storagePrefix?: string;
@@ -136,50 +146,43 @@ export class TimelineView {
   }
   mount(): void {
     if (this.destroyed) return;
+    // One timeline per page: an orphaned content script (extension reload or
+    // update) cannot tear its rail down, and adopting its bar while adding a
+    // second preview panel stacked two lists on ChatGPT. The newest view owns
+    // the page.
+    for (const stale of document.querySelectorAll(TIMELINE_PAGE_NODES)) stale.remove();
     this.styleElement = document.createElement('style');
     this.styleElement.dataset.gvTimeline = '';
     this.styleElement.textContent = `${timelineStyles}\n${previewStyles}`;
     document.head.appendChild(this.styleElement);
     const anchor = this.options.mountAnchor ?? document.body;
-    let bar = anchor.querySelector('.gemini-timeline-bar') as HTMLElement | null;
-    if (!bar) {
-      bar = document.createElement('div');
-      bar.className = 'gemini-timeline-bar';
-      anchor.appendChild(bar);
-    }
+    const bar = document.createElement('div');
+    bar.className = 'gemini-timeline-bar';
+    anchor.appendChild(bar);
     if (this.options.position === 'left') {
       bar.style.right = 'auto';
       bar.style.left = '15px';
     }
     if (this.options.position) bar.dataset.gvPosition = this.options.position;
     this.ui.timelineBar = bar;
-    let track = bar.querySelector('.timeline-track') as HTMLElement | null;
-    if (!track) {
-      track = document.createElement('div');
-      track.className = 'timeline-track';
-      bar.appendChild(track);
-    }
-    let content = track.querySelector('.timeline-track-content') as HTMLElement | null;
-    if (!content) {
-      content = document.createElement('div');
-      content.className = 'timeline-track-content';
-      track.appendChild(content);
-    }
+    const track = document.createElement('div');
+    track.className = 'timeline-track';
+    bar.appendChild(track);
+    const content = document.createElement('div');
+    content.className = 'timeline-track-content';
+    track.appendChild(content);
     this.ui.track = track;
     this.ui.trackContent = content;
     this.dotLayer.mount(bar, track, content);
 
-    let slider = anchor.querySelector('.timeline-left-slider') as HTMLElement | null;
-    if (!slider) {
-      slider = document.createElement('div');
-      slider.className = 'timeline-left-slider';
-      const handle = document.createElement('div');
-      handle.className = 'timeline-left-handle';
-      slider.appendChild(handle);
-      anchor.appendChild(slider);
-    }
+    const slider = document.createElement('div');
+    slider.className = 'timeline-left-slider';
+    const handle = document.createElement('div');
+    handle.className = 'timeline-left-handle';
+    slider.appendChild(handle);
+    anchor.appendChild(slider);
     this.ui.slider = slider;
-    this.ui.sliderHandle = slider.querySelector('.timeline-left-handle') as HTMLElement | null;
+    this.ui.sliderHandle = handle;
     this.applyEmptyState();
 
     this.previewPanel = new TimelinePreviewPanel(bar, anchor, this.options.position);

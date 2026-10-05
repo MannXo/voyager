@@ -22,15 +22,7 @@ function initializeTimeline(previousUrl: string | null = null): void {
     } catch {}
     timelineManagerInstance = null;
   }
-  try {
-    document.querySelector('.gemini-timeline-bar')?.remove();
-  } catch {}
-  try {
-    document.querySelector('.timeline-left-slider')?.remove();
-  } catch {}
-  try {
-    document.getElementById('gemini-timeline-tooltip')?.remove();
-  } catch {}
+  // The shared view clears any stale rail when it mounts.
   timelineManagerInstance = new TimelineManager({ previousUrl });
   timelineManagerInstance
     .init()

@@ -47,7 +47,18 @@
   position: fixed;
   width: 320px;
   direction: ltr;
-  font-family: 'Google Sans', Roboto, Arial, sans-serif;
+  /* Google Sans only exists on Gemini; elsewhere fall back to the tooltip's
+     pinned system stack so the list and the turn tooltip match. */
+  font-family:
+    'Google Sans',
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
   background-color: var(--timeline-tooltip-bg);
   border: 1px solid var(--timeline-tooltip-border);
   border-radius: var(--timeline-tooltip-radius);

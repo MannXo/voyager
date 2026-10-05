@@ -20,6 +20,7 @@ import { startChatLineHeightAdjuster } from './chatLineHeight/index';
 import { startChatParagraphSpacingAdjuster } from './chatParagraphSpacing/index';
 import { startChatWidthAdjuster } from './chatWidth/index';
 import { runCoachmarkSequence } from './coachmark';
+import { claimContentScript } from './contentScriptHandoff';
 import { startContextSync } from './contextSync';
 import { startDeepResearchExport } from './deepResearch/index';
 import DefaultModelManager from './defaultModel/modelLocker';
@@ -460,6 +461,23 @@ function handleVisibilityChange(): void {
 (function () {
   try {
     if (!hasValidExtensionContext()) return;
+
+    // Before anything mounts: an orphan left by an extension reload/update
+    // would otherwise keep its rail, panels and observers beside ours.
+    claimContentScript(
+      () => {
+        initialized = true;
+        if (initializationTimer !== null) clearTimeout(initializationTimer);
+        initializationTimer = null;
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        try {
+          cleanupManager.executeCleanups();
+        } catch {
+          // An orphan's chrome.* calls throw; every other cleanup has still run.
+        }
+      },
+      () => !hasValidExtensionContext(),
+    );
 
     // First, before every branch below and before any surface mounts. The host
     // dialects this replaced were the page's own classes, already there, so a
