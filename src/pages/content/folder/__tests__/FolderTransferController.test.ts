@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StorageKeys } from '@/core/types/common';
+import { hashString } from '@/core/utils/hash';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
 import { createStarStore, type StarStore } from '@/features/savedLibrary/starStore';
 import { createForkMessagesOwner } from '@/pages/background/forkMessages';
@@ -543,6 +544,60 @@ describe('folder transfer commands', () => {
     });
     await h.transfer.sync();
     expect((await owner.getAll()).messages).toEqual({ [cloud.conversationId]: [cloud] });
+    expect(h.notify).toHaveBeenLastCalledWith('downloadMergeSuccess', 'success');
+  });
+
+  it('a scoped old-version re-star survives in-page restore from another account slot', async () => {
+    const h = harness();
+    h.session.accountScope = {
+      accountKey: 'person',
+      accountId: 1,
+      routeUserId: '1',
+      emailHash: null,
+    };
+    const cloud = {
+      conversationId: 'gemini:conv:peer',
+      turnId: 'turn',
+      content: 'Peer',
+      conversationUrl: 'https://gemini.google.com/u/0/app/peer',
+      starredAt: 60,
+    };
+    sendMessage.mockResolvedValue({
+      ok: true,
+      data: {
+        folders: { data: importedData() },
+        starred: {
+          format: 'gemini-voyager.starred.v1',
+          data: { messages: { [cloud.conversationId]: [cloud] } },
+        },
+        starredAccountHash: hashString('person'),
+        stars: {
+          format: 'gemini-voyager.stars.v2',
+          version: '1.0',
+          exportedAt: new Date().toISOString(),
+          accountScope: { accountHash: hashString('person') },
+          items: [],
+          tombstones: [
+            {
+              conversationId: cloud.conversationId,
+              turnId: cloud.turnId,
+              conversationUrl: cloud.conversationUrl,
+              starredAt: 50,
+              deletedAt: Date.now(),
+            },
+          ],
+        },
+      },
+    });
+    await h.transfer.sync();
+    expect((await owner.getAll()).messages).toEqual({
+      [cloud.conversationId]: [
+        {
+          ...cloud,
+          conversationUrl: 'https://gemini.google.com/u/1/app/peer',
+        },
+      ],
+    });
     expect(h.notify).toHaveBeenLastCalledWith('downloadMergeSuccess', 'success');
   });
 

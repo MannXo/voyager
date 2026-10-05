@@ -20,7 +20,11 @@ import { hashString } from '@/core/utils/hash';
 import { EXTENSION_VERSION } from '@/core/utils/version';
 import { FOLDER_PLATFORMS, FOLDER_PLATFORM_IDS } from '@/features/folder/platforms';
 import type { PluginStateMap } from '@/features/plugins/storage/pluginState';
-import { decodeStarsV2, type StarsExportPayloadV2 } from '@/features/savedLibrary/starSyncPayload';
+import {
+  decodeStarsV2,
+  type StarsExportPayloadV2,
+  type StarSyncSources,
+} from '@/features/savedLibrary/starSyncPayload';
 
 import type { GoogleDriveFiles } from './GoogleDriveFiles';
 import { logger } from './LoggerService';
@@ -62,6 +66,7 @@ export interface GoogleDriveDownload {
   settings: SettingsExportPayload | null;
   plugins: PluginStateExportPayload | null;
   starred: StarredExportPayload | null;
+  starredAccountHash?: string;
   stars?: StarsExportPayloadV2 | null;
   forks: ForkExportPayload | null;
   timelineHierarchy: TimelineHierarchyExportPayload | null;
@@ -205,8 +210,11 @@ export class GoogleDriveSyncPayloads {
     );
     const plugins = await this.readFile<PluginStateExportPayload>(token, PLUGINS_FILE_NAME, null);
     let starred: StarredExportPayload | null = null;
+    let starredAccountHash: string | undefined;
     if (platform === 'gemini') {
-      starred = await this.readStarred(token, accountScope);
+      const source = await this.readStarred(token, accountScope);
+      starred = source.v1;
+      starredAccountHash = source.v1AccountHash;
     }
     const stars = platform === 'gemini' ? await this.downloadStarsV2(token, accountScope) : null;
     let forks: ForkExportPayload | null = null;
@@ -242,7 +250,17 @@ export class GoogleDriveSyncPayloads {
       return null;
     }
 
-    return { folders, prompts, settings, plugins, starred, stars, forks, timelineHierarchy };
+    return {
+      folders,
+      prompts,
+      settings,
+      plugins,
+      starred,
+      ...(starredAccountHash !== undefined ? { starredAccountHash } : {}),
+      stars,
+      forks,
+      timelineHierarchy,
+    };
   }
 
   async uploadPrompts(
@@ -337,23 +355,25 @@ export class GoogleDriveSyncPayloads {
   private async readStarred(
     token: string,
     scope: SyncAccountScope | null,
-  ): Promise<StarredExportPayload | null> {
+  ): Promise<{ v1: StarredExportPayload | null; v1AccountHash?: string }> {
     const name = this.getFileNameForScope(STARRED_FILE_NAME, scope);
     const id = await this.files.find(token, name);
     const payload = id ? await this.files.download<StarredExportPayload>(token, id) : null;
-    if (payload || !scope) return payload;
+    if (payload || !scope) {
+      return {
+        v1: payload,
+        ...(payload && scope ? { v1AccountHash: hashString(scope.accountKey) } : {}),
+      };
+    }
     const legacy = await this.files.find(token, STARRED_FILE_NAME);
-    return legacy ? this.files.download<StarredExportPayload>(token, legacy) : null;
+    return { v1: legacy ? await this.files.download<StarredExportPayload>(token, legacy) : null };
   }
 
-  async readStars(
-    token: string,
-    scope: SyncAccountScope | null,
-  ): Promise<{ v1: unknown; v2: unknown }> {
+  async readStars(token: string, scope: SyncAccountScope | null): Promise<StarSyncSources> {
     await this.files.prepareDownload(token);
     const v2 = await this.downloadStarsV2(token, scope);
-    const v1 = await this.readStarred(token, scope);
-    return { v1, v2 };
+    const source = await this.readStarred(token, scope);
+    return { ...source, v2 };
   }
 
   async writeStars(

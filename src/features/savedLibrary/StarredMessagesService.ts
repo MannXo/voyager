@@ -6,6 +6,7 @@ import { StorageKeys } from '@/core/types/common';
 import type { SyncAccountScope } from '@/core/types/sync';
 
 import { decodeStarredSnapshot, normalizeStarredMessages } from './starData';
+import type { StarSyncSources } from './starSyncPayload';
 import type { StarredMessage, StarredMessagesData } from './starTypes';
 
 export class StarredMessagesService {
@@ -98,7 +99,7 @@ export class StarredMessagesService {
   }
 
   static async mergeSync(
-    sources: { v1?: unknown; v2?: unknown },
+    sources: StarSyncSources,
     accountScope: SyncAccountScope | null,
   ): Promise<{ status: 'absent' | 'merged'; count: number }> {
     const response = await this.sendMessage<{

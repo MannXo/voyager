@@ -70,6 +70,7 @@ export interface CloudDownloadData {
   settings?: SettingsExportPayload;
   plugins?: PluginStateExportPayload;
   starred?: unknown;
+  starredAccountHash?: string;
   stars?: unknown;
   forks?: unknown;
   timelineHierarchy?: { data?: TimelineHierarchyData };
@@ -334,7 +335,7 @@ async function restoreCloudDownload(
         ? async () =>
             (
               await StarredMessagesService.mergeSync(
-                { v1: data.starred, v2: data.stars },
+                { v1: data.starred, v2: data.stars, v1AccountHash: data.starredAccountHash },
                 context.payload.accountScope,
               )
             ).status === 'merged'

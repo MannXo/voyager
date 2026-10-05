@@ -10,8 +10,7 @@ import {
   type StarState,
 } from './starSyncData';
 import {
-  decodeStarSyncSources,
-  decodeStarsV2,
+  decodeStarSyncSourcesWithAuthority,
   filterStarStateByScope,
   type StarSyncSources,
 } from './starSyncPayload';
@@ -99,11 +98,12 @@ export function createStarStore(area: StorageArea): StarStore {
   const mergeSync = (sources: StarSyncSources, scope: SyncAccountScope | null) => {
     const capturedScope = scope ? { ...scope } : null;
     return serialize(async () => {
-      const incoming = decodeStarSyncSources(sources, capturedScope);
-      const matchedV2 = sources.v2 == null ? null : decodeStarsV2(sources.v2, capturedScope);
+      const { state: incoming, authorized } = decodeStarSyncSourcesWithAuthority(
+        sources,
+        capturedScope,
+      );
       const state = await read([incoming.data], incoming.tombstones);
-      const imported =
-        matchedV2 === null ? state : retargetKnownStarState(state, matchedV2, capturedScope);
+      const imported = retargetKnownStarState(state, authorized, capturedScope);
       if (sources.v1 != null || sources.v2 != null || state.dirty) await write(imported);
       return filterStarStateByScope(imported, capturedScope);
     });

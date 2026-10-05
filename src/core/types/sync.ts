@@ -194,6 +194,7 @@ export interface SyncData {
   plugins?: PluginStateExportPayload;
   /** Starred messages in export format */
   starred?: StarredExportPayload;
+  starredAccountHash?: string;
   stars?: import('@/features/savedLibrary/starSyncPayload').StarsExportPayloadV2;
   /** Fork metadata in export format */
   forks?: ForkExportPayload;

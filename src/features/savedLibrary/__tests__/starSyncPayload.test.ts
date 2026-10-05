@@ -117,6 +117,52 @@ describe('stars v2 owner boundary', () => {
     });
   });
 
+  it('an unscoped fallback from another account does not erase an authorized star', async () => {
+    const own = star('shared-id');
+    const foreign = { ...star('shared-id', '0'), starredAt: 60 };
+    const { store } = setup();
+    await store.mergeSync(
+      {
+        v1: { data: { messages: { [foreign.conversationId]: [foreign] } } },
+        v2: payload([own]),
+      },
+      scope,
+    );
+    expect((await store.getAll()).messages[own.conversationId]).toEqual([own]);
+  });
+
+  it('a scoped v1 restore repairs a newer cached star from another navigation slot', async () => {
+    const cached = { ...star('same-account', '0'), starredAt: 60 };
+    const { store } = setup([cached]);
+    await store.mergeSync(
+      {
+        v1: { data: { messages: { [cached.conversationId]: [star('same-account', '0')] } } },
+        v1AccountHash: hashString(scope.accountKey),
+      },
+      scope,
+    );
+    expect((await store.getSyncSnapshot(scope)).data.messages[cached.conversationId]).toEqual([
+      { ...cached, conversationUrl: star('same-account').conversationUrl },
+    ]);
+  });
+
+  it('scoped v1 provenance from a different account refuses mutation', async () => {
+    const { store, area, values } = setup([star('local')]);
+    const before = structuredClone(values);
+    await expect(
+      store.mergeSync(
+        {
+          v1: { data: { messages: { incoming: [star('incoming', '0')] } } },
+          v1AccountHash: hashString('another-account'),
+        },
+        scope,
+      ),
+    ).rejects.toThrow('account scope');
+    expect(area.get).not.toHaveBeenCalled();
+    expect(area.set).not.toHaveBeenCalled();
+    expect(values).toEqual(before);
+  });
+
   it('a queued star snapshot retains the requested account scope when the caller switches accounts', async () => {
     const own = star('own');
     const { store } = setup([own, star('other', '3')]);

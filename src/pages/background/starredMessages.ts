@@ -1,5 +1,6 @@
 import type { SyncAccountScope } from '@/core/types/sync';
 import type { StarStore } from '@/features/savedLibrary/starStore';
+import type { StarSyncSources } from '@/features/savedLibrary/starSyncPayload';
 import type { StarredMessage } from '@/features/savedLibrary/starTypes';
 
 import { isTrustedSyncMessageSender } from './runtimeMessageRouting';
@@ -17,7 +18,7 @@ type StarredMessageRequest =
   | { type: 'gv.starred.getAll' }
   | { type: 'gv.starred.getForConversation'; payload: Pick<StarredMessage, 'conversationId'> }
   | { type: 'gv.starred.mergeCloud'; payload: unknown }
-  | { type: 'gv.starred.mergeSync'; payload: { v1?: unknown; v2?: unknown; accountScope: unknown } }
+  | { type: 'gv.starred.mergeSync'; payload: StarSyncSources & { accountScope: unknown } }
   | {
       type: 'gv.starred.reconcileConversationIds';
       payload: {

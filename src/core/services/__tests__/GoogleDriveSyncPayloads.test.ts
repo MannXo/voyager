@@ -187,6 +187,51 @@ describe('GoogleDriveSyncPayloads', () => {
     ]);
   });
 
+  it('an exact scoped v1 star file carries account authority without changing its envelope', async () => {
+    const { payloads, files, remote } = fixture();
+    const item = {
+      conversationId: 'gemini:conv:abc',
+      turnId: 'turn',
+      content: 'Old peer',
+      conversationUrl: 'https://gemini.google.com/u/0/app/abc',
+      starredAt: 60,
+    };
+    const v1 = {
+      format: 'gemini-voyager.starred.v1',
+      exportedAt,
+      data: { messages: { [item.conversationId]: [item] } },
+    };
+    remote.set(scoped('gemini-voyager-starred'), v1);
+    files.find.mockImplementation(async (_token, name) => (remote.has(name) ? name : null));
+    expect(await payloads.readStars('token', scope)).toEqual({
+      v1,
+      v1AccountHash: hashString(scope.accountKey),
+      v2: null,
+    });
+    expect(await payloads.download('token', 'gemini', scope, null)).toMatchObject({
+      starred: v1,
+      starredAccountHash: hashString(scope.accountKey),
+    });
+    expect(remote.get(scoped('gemini-voyager-starred'))).toEqual(v1);
+    expect(v1).not.toHaveProperty('accountScope');
+    expect(v1).not.toHaveProperty('v1AccountHash');
+  });
+
+  it.each(['missing', 'empty'] as const)(
+    'an unscoped v1 fallback gains no scoped authority when the scoped file is %s',
+    async (condition) => {
+      const { payloads, files, remote } = fixture();
+      const v1 = { format: 'gemini-voyager.starred.v1', exportedAt, data: { messages: {} } };
+      remote.set('gemini-voyager-starred.json', v1);
+      if (condition === 'empty') remote.set(scoped('gemini-voyager-starred'), null);
+      files.find.mockImplementation(async (_token, name) => (remote.has(name) ? name : null));
+      expect(await payloads.readStars('token', scope)).toEqual({ v1, v2: null });
+      const aggregate = await payloads.download('token', 'gemini', scope, null);
+      expect(aggregate?.starred).toEqual(v1);
+      expect(aggregate).not.toHaveProperty('starredAccountHash');
+    },
+  );
+
   it('stops uploading after a failed file without attempting later payloads', async () => {
     const { payloads, files, writes } = fixture();
     files.upload.mockImplementation(async (_token, name, payload) => {

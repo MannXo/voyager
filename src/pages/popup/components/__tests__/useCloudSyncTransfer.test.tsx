@@ -298,6 +298,50 @@ describe('popup cloud sync transfer operations', () => {
     },
   );
 
+  it.each(['merge', 'overwrite'] as const)(
+    'a scoped old-version re-star survives popup restore from another account slot (%s)',
+    async (mode) => {
+      const cloud = {
+        conversationId: 'gemini:conv:peer',
+        turnId: 'turn',
+        content: 'Peer',
+        conversationUrl: 'https://gemini.google.com/u/0/app/peer',
+        starredAt: 60,
+      };
+      await render('gemini', false);
+      const download = await transfer.prepareDownload();
+      await download.restore(
+        {
+          folders: { data: folders },
+          starred: {
+            format: 'gemini-voyager.starred.v1',
+            data: { messages: { [cloud.conversationId]: [cloud] } },
+          },
+          starredAccountHash: hashString(pageScope.accountKey),
+          stars: {
+            format: 'gemini-voyager.stars.v2',
+            version: '1.0',
+            exportedAt: new Date().toISOString(),
+            accountScope: { accountHash: hashString(pageScope.accountKey) },
+            items: [{ ...cloud, starredAt: 50, text: 'Full\nprompt' }],
+            tombstones: [],
+          },
+        },
+        mode,
+        false,
+      );
+      expect((await starStore.getAll()).messages).toEqual({
+        [cloud.conversationId]: [
+          {
+            ...cloud,
+            conversationUrl: 'https://gemini.google.com/u/1/app/peer',
+            text: 'Full\nprompt',
+          },
+        ],
+      });
+    },
+  );
+
   it('a v2-only download restores the full starred prompt without a legacy file', async () => {
     const cloud = {
       conversationId: 'gemini:conv:full',

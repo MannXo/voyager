@@ -18,6 +18,7 @@ export interface StarsExportPayloadV2 {
 }
 export interface StarSyncSources {
   v1?: unknown;
+  v1AccountHash?: string;
   v2?: unknown;
 }
 
@@ -112,6 +113,13 @@ export function decodeStarSyncSources(
   sources: StarSyncSources,
   scope: SyncAccountScope | null,
 ): StarState {
+  return decodeStarSyncSourcesWithAuthority(sources, scope).state;
+}
+
+export function decodeStarSyncSourcesWithAuthority(
+  sources: StarSyncSources,
+  scope: SyncAccountScope | null,
+): { state: StarState; authorized: StarState } {
   const v2 =
     sources.v2 == null
       ? { data: normalizeStarredMessages(undefined), tombstones: [] }
@@ -125,16 +133,30 @@ export function decodeStarSyncSources(
       ('format' in v1 && v1.format !== 'gemini-voyager.starred.v1'))
   )
     throw new Error('Invalid starred messages envelope');
-  return filterStarStateByScope(
-    {
-      data: mergeStarredMessages(
-        v2.data,
-        normalizeStarredMessages(isRecord(v1) ? v1.data : undefined),
-      ),
+  if (
+    sources.v1AccountHash !== undefined &&
+    (!scope || sources.v1AccountHash !== hashString(scope.accountKey))
+  )
+    throw new Error('Invalid starred messages account scope');
+  const legacy = {
+    data: normalizeStarredMessages(isRecord(v1) ? v1.data : undefined),
+    tombstones: [],
+  };
+  // Resolve each source before merging so an old navigation slot cannot discard the newer choice.
+  const scopedLegacy = sources.v1AccountHash !== undefined;
+  const accepted = scopedLegacy
+    ? retargetImportedStarState(legacy, scope)
+    : filterStarStateByScope(legacy, scope);
+  return {
+    state: {
+      data: mergeStarredMessages(v2.data, accepted.data),
       tombstones: v2.tombstones,
     },
-    scope,
-  );
+    authorized: {
+      data: scopedLegacy ? mergeStarredMessages(v2.data, accepted.data) : v2.data,
+      tombstones: v2.tombstones,
+    },
+  };
 }
 
 export function buildStarsV2(

@@ -3,14 +3,18 @@ import { isSafariICloudConflictError } from '@/core/utils/safariICloudSync';
 import { EXTENSION_VERSION } from '@/core/utils/version';
 import type { StarStore } from '@/features/savedLibrary/starStore';
 import { mergeStarState, type StarState } from '@/features/savedLibrary/starSyncData';
-import { buildStarsV2, decodeStarSyncSources } from '@/features/savedLibrary/starSyncPayload';
+import {
+  buildStarsV2,
+  decodeStarSyncSources,
+  type StarSyncSources,
+} from '@/features/savedLibrary/starSyncPayload';
 
 import { legacyStarredExport } from './legacyStarredExport';
 
 export interface StarTransferPort {
   identity: string;
   assertActive(): void;
-  read(): Promise<{ v1: unknown; v2: unknown }>;
+  read(): Promise<StarSyncSources>;
   writeV2(payload: unknown): Promise<void>;
   writeV1(payload: unknown): Promise<void>;
 }
@@ -85,7 +89,10 @@ export class StarDriveSyncCoordinator {
         Date.now(),
       );
       const actualV2 = decodeStarSyncSources({ v2: readback.v2 }, scope);
-      const actualV1 = decodeStarSyncSources({ v1: readback.v1 }, scope);
+      const actualV1 = decodeStarSyncSources(
+        { v1: readback.v1, v1AccountHash: readback.v1AccountHash },
+        scope,
+      );
       const projection = { data: legacyStarredExport(latest.data), tombstones: [] };
       if (
         readback.v2 &&

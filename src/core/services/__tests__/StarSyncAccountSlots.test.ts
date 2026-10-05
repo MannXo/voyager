@@ -215,3 +215,74 @@ it('a newer legacy deletion keeps both aliases when its backup uses the canonica
     ),
   ).toBe(true);
 });
+
+it.each(['live', 'deleted'] as const)(
+  'a newer re-star from an old version on another /u/ slot survives the v2 merge (%s)',
+  async (mode) => {
+    const { store, payloads, writes } = fixture();
+    const now = 1_800_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+    await payloads.writeStars(
+      'token',
+      {
+        ...backup(mode === 'live' ? [remoteStar] : []),
+        tombstones:
+          mode === 'deleted'
+            ? [
+                {
+                  conversationId: remoteStar.conversationId,
+                  turnId: remoteStar.turnId,
+                  conversationUrl: remoteStar.conversationUrl,
+                  starredAt: 50,
+                  deletedAt: now,
+                },
+              ]
+            : [],
+      },
+      source,
+      true,
+    );
+    const { text: _text, ...preview } = remoteStar;
+    await payloads.writeStars(
+      'token',
+      {
+        format: 'gemini-voyager.starred.v1',
+        data: { messages: { [preview.conversationId]: [{ ...preview, starredAt: 60 }] } },
+      },
+      source,
+      false,
+    );
+    await store.mergeSync(await payloads.readStars('token', destination), destination);
+    const expected = {
+      ...preview,
+      conversationUrl: localStar.conversationUrl,
+      starredAt: 60,
+      ...(mode === 'live' ? { text: remoteStar.text } : {}),
+    };
+    expect((await store.getAll()).messages[remoteStar.conversationId]).toEqual([expected]);
+    writes.length = 0;
+    await new StarDriveSyncCoordinator().push(
+      store,
+      {
+        identity: 'same-person',
+        assertActive: () => {},
+        read: () => payloads.readStars('token', destination),
+        writeV2: (value) => payloads.writeStars('token', value, destination, true),
+        writeV1: (value) => payloads.writeStars('token', value, destination, false),
+      },
+      destination,
+    );
+    const after = await payloads.readStars('token', destination);
+    expect(after.v2).toMatchObject({ items: [expected] });
+    expect(after.v1).toMatchObject({
+      data: {
+        messages: {
+          [preview.conversationId]: [
+            { ...preview, starredAt: 60, conversationUrl: localStar.conversationUrl },
+          ],
+        },
+      },
+    });
+    expect(writes).toHaveLength(2);
+  },
+);
