@@ -41,6 +41,25 @@ export function PluginSettings({
           );
         }
 
+        if (field.type === 'select') {
+          return (
+            <label key={key} className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground text-[11px]">{settingText.label}</span>
+              <select
+                value={String(rawValue)}
+                onChange={(event) => handleImmediateSetting(plugin.id, key, event.target.value)}
+                className="bg-background border-border focus:ring-primary/50 min-w-0 rounded-md border px-2 py-1 text-[11px] transition-all focus:ring-2"
+              >
+                {field.options?.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          );
+        }
+
         if (field.type !== 'number') return null;
         const value = Number(rawValue);
         return (

@@ -534,8 +534,8 @@ plugin id:
   permissions plus content-script registration still ship in the package. Adding
   a site is still an extension release.
 - **Full setting UI coverage.** The schema accepts boolean/string/color/select;
-  the popup currently renders boolean switches and number/range controls, while
-  string, color and select controls remain future work.
+  the popup currently renders boolean switches, number/range controls and select
+  controls, while string and color controls remain future work.
 - **Scripted runtime** via gated `chrome.userScripts`.
 - **Account + Stripe entitlement**.
 
