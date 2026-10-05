@@ -1,7 +1,8 @@
 import { StorageKeys } from '@/core/types/common';
 
 import { mergeStarredMessages, normalizeStarredMessages } from './starData';
-import type { StarredMessage, StarredMessagesData } from './starTypes';
+import { mergeStarState, normalizeStarTombstones, type StarState } from './starSyncData';
+import type { StarredMessage, StarredMessagesData, StarTombstone } from './starTypes';
 
 export interface StorageArea {
   get(keys: string[]): Promise<Record<string, unknown>>;
@@ -26,44 +27,67 @@ export function createStarStore(area: StorageArea): StarStore {
     queue = pending.catch(() => {});
     return pending;
   };
-  const keys = [StorageKeys.SAVED_LIBRARY_STARS, StorageKeys.TIMELINE_STARRED_MESSAGES];
-  const write = (data: StarredMessagesData): Promise<void> =>
+  const keys = [
+    StorageKeys.SAVED_LIBRARY_STARS,
+    StorageKeys.TIMELINE_STARRED_MESSAGES,
+    StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES,
+  ];
+  const write = ({ data, tombstones }: StarState): Promise<void> =>
     area.set({
       [StorageKeys.SAVED_LIBRARY_STARS]: data,
       [StorageKeys.TIMELINE_STARRED_MESSAGES]: data,
+      [StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES]: tombstones,
     });
-  const read = async (): Promise<{ data: StarredMessagesData; dirty: boolean }> => {
-    // Downgraded clients may add legacy stars even after the neutral projection exists.
+  const read = async (sources: StarredMessagesData[] = []) => {
     const values = await area.get(keys);
-    const neutral = values[StorageKeys.SAVED_LIBRARY_STARS];
-    const legacy = values[StorageKeys.TIMELINE_STARRED_MESSAGES];
-    const data = mergeStarredMessages(
-      normalizeStarredMessages(neutral),
-      normalizeStarredMessages(legacy),
+    const rawTombstones = normalizeStarTombstones(
+      values[StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES],
     );
-    const serialized = JSON.stringify(data);
+    const state = mergeStarState(
+      [
+        normalizeStarredMessages(values[StorageKeys.SAVED_LIBRARY_STARS]),
+        normalizeStarredMessages(values[StorageKeys.TIMELINE_STARRED_MESSAGES]),
+        ...sources,
+      ],
+      rawTombstones,
+      Date.now(),
+    );
+    const serialized = JSON.stringify(state.data);
     return {
-      data,
+      ...state,
+      rawTombstones,
       dirty:
-        (neutral !== undefined || legacy !== undefined) &&
-        (JSON.stringify(neutral) !== serialized || JSON.stringify(legacy) !== serialized),
+        keys.some((key) => values[key] !== undefined) &&
+        (JSON.stringify(values[StorageKeys.SAVED_LIBRARY_STARS]) !== serialized ||
+          JSON.stringify(values[StorageKeys.TIMELINE_STARRED_MESSAGES]) !== serialized ||
+          JSON.stringify(values[StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES]) !==
+            JSON.stringify(state.tombstones)),
     };
   };
   const readReconciled = async (): Promise<StarredMessagesData> => {
-    const { data, dirty } = await read();
-    if (dirty) await write(data);
-    return data;
+    const state = await read();
+    if (state.dirty) await write(state);
+    return state.data;
   };
+  const deletionFor = (conversationId: string, item: StarredMessage): StarTombstone => ({
+    conversationId,
+    turnId: item.turnId,
+    conversationUrl: item.conversationUrl,
+    starredAt: item.starredAt,
+    deletedAt: Date.now(),
+    ...(typeof item.account === 'string' ? { account: item.account } : {}),
+  });
 
   return {
     getAll: () => serialize(readReconciled),
     getForConversation: (id) => serialize(async () => (await readReconciled()).messages[id] || []),
     add: (item) =>
       serialize(async () => {
-        const { data, dirty } = await read();
+        const state = await read();
+        const { data, rawTombstones } = state;
         const bucket = data.messages[item.conversationId] || [];
         if (bucket.some((message) => message.turnId === item.turnId)) {
-          if (dirty) await write(data);
+          if (state.dirty) await write(state);
           return false;
         }
         const incoming: Record<string, StarredMessage[]> = Object.create(null);
@@ -72,39 +96,73 @@ export function createStarStore(area: StorageArea): StarStore {
           item.conversationId
         ][0];
         if (!normalized) throw new Error('Invalid starred message');
+        const starredAt = rawTombstones.reduce(
+          (timestamp, deletion) =>
+            deletion.conversationId === item.conversationId && deletion.turnId === item.turnId
+              ? Math.max(timestamp, deletion.starredAt + 1)
+              : timestamp,
+          normalized.starredAt,
+        );
         data.messages[item.conversationId] = [
           ...bucket,
           {
             ...normalized,
+            starredAt,
             content:
               normalized.content.length > MAX_CONTENT_LENGTH
                 ? `${normalized.content.slice(0, MAX_CONTENT_LENGTH)}...`
                 : normalized.content,
           },
         ];
-        await write(data);
+        await write(mergeStarState([data], rawTombstones, Date.now()));
         return true;
       }),
     remove: (conversationId, turnId) =>
       serialize(async () => {
-        const { data, dirty } = await read();
+        const state = await read();
+        const { data, rawTombstones } = state;
         const bucket = data.messages[conversationId] || [];
         const remaining = bucket.filter((item) => item.turnId !== turnId);
         if (bucket.length === remaining.length) {
-          if (dirty) await write(data);
+          if (state.dirty) await write(state);
           return false;
         }
         if (remaining.length) data.messages[conversationId] = remaining;
         else delete data.messages[conversationId];
-        await write(data);
+        const deleted = bucket
+          .filter((item) => item.turnId === turnId)
+          .map((item) => deletionFor(conversationId, item));
+        await write(mergeStarState([data], [...rawTombstones, ...deleted], Date.now()));
         return true;
       }),
     reconcile: (target, sources, url) =>
       serialize(async () => {
-        const { data } = await read();
+        const { data, rawTombstones } = await read();
         const ids = Array.from(new Set([target, ...sources])).filter(Boolean);
+        const deletions = [...rawTombstones];
+        for (const item of rawTombstones) {
+          if (
+            !item.movedTo &&
+            ids.includes(item.conversationId) &&
+            item.conversationId !== target
+          ) {
+            deletions.push({
+              ...item,
+              conversationId: target,
+              conversationUrl: url || item.conversationUrl,
+            });
+          }
+        }
         let merged = normalizeStarredMessages(undefined);
         for (const id of ids) {
+          if (id !== target) {
+            deletions.push(
+              ...(data.messages[id] || []).map((item) => ({
+                ...deletionFor(id, item),
+                movedTo: target,
+              })),
+            );
+          }
           const bucket = (data.messages[id] || []).map((item) => ({
             ...item,
             conversationId: target,
@@ -119,8 +177,9 @@ export function createStarStore(area: StorageArea): StarStore {
         if (result.length) data.messages[target] = result;
         else delete data.messages[target];
         for (const id of ids) if (id !== target) delete data.messages[id];
-        await write(data);
-        return result;
+        const state = mergeStarState([data], deletions, Date.now());
+        await write(state);
+        return state.data.messages[target] || [];
       }),
     mergeCloud: (envelope) =>
       serialize(async () => {
@@ -131,8 +190,9 @@ export function createStarStore(area: StorageArea): StarStore {
           throw new Error('Invalid starred messages envelope');
         }
         const cloud = normalizeStarredMessages('data' in envelope ? envelope.data : undefined);
-        const data = mergeStarredMessages((await read()).data, cloud);
-        await write(data);
+        const state = await read([cloud]);
+        await write(state);
+        const { data } = state;
         return {
           status: 'merged',
           count: Object.values(data.messages).reduce((total, bucket) => total + bucket.length, 0),

@@ -17,13 +17,16 @@ const star = (turnId: string): StarredMessage => ({
 
 function installLibrary(messages: StarredMessage[]) {
   let data: StarredMessagesData = { messages: { [conversationId]: messages } };
+  let tombstones: unknown = [];
   const area = {
     get: vi.fn(async () => ({
       [StorageKeys.TIMELINE_STARRED_MESSAGES]: structuredClone(data),
       [StorageKeys.SAVED_LIBRARY_STARS]: structuredClone(data),
+      [StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES]: structuredClone(tombstones),
     })),
     set: vi.fn(async (items: Record<string, unknown>) => {
       data = structuredClone(items[StorageKeys.TIMELINE_STARRED_MESSAGES]) as StarredMessagesData;
+      tombstones = structuredClone(items[StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES]);
     }),
   };
   const handle = createStarredMessagesHandler(createStarStore(area));

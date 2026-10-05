@@ -23,3 +23,13 @@ export interface StarredMessagesData {
   /** Map of conversationId -> array of starred messages */
   messages: Record<string, StarredMessage[]>;
 }
+
+export interface StarTombstone {
+  conversationId: string;
+  turnId: string;
+  conversationUrl: string;
+  starredAt: number;
+  deletedAt: number;
+  movedTo?: string;
+  account?: string;
+}

@@ -126,6 +126,7 @@ const FOLDER_KEYS = new Set<string>([
 const TIMELINE_KEYS = new Set<string>([
   StorageKeys.TIMELINE_STARRED_MESSAGES,
   StorageKeys.SAVED_LIBRARY_STARS,
+  StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES,
   StorageKeys.TIMELINE_HIERARCHY,
   StorageKeys.FORK_NODES,
   StorageKeys.GV_MESSAGE_TIMESTAMPS,
@@ -188,6 +189,7 @@ const CATEGORY_DEFINITIONS: readonly CategoryDefinition[] = [
     prefixes: [
       `${StorageKeys.TIMELINE_HIERARCHY}:acct:`,
       StorageKeys.CATALOG_TIMELINE_HIERARCHY_PREFIX,
+      `${StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES}:acct:`,
       'geminiTimelineStars:',
       'geminiTimelineLevels:',
       'geminiTimelineCollapsed:',

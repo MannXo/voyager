@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { GoogleDriveSyncPayloads } from '@/core/services/GoogleDriveSyncPayloads';
 import { StorageKeys } from '@/core/types/common';
@@ -8,7 +8,12 @@ import type { StarredMessage, StarredMessagesData } from '../starTypes';
 
 const neutral = StorageKeys.SAVED_LIBRARY_STARS;
 const legacy = StorageKeys.TIMELINE_STARRED_MESSAGES;
-const keys = [neutral, legacy];
+const tombstones = StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES;
+const keys = [neutral, legacy, tombstones];
+const NOW = 1_800_000_000_000;
+const DAY = 24 * 60 * 60 * 1000;
+
+afterEach(() => vi.restoreAllMocks());
 const star = (turnId: string, starredAt = 1): StarredMessage => ({
   turnId,
   starredAt,
@@ -48,7 +53,11 @@ describe('Saved Library dual projections', () => {
     ]);
     expectProjections(values, expected);
     expect(area.set).toHaveBeenCalledTimes(1);
-    expect(area.set).toHaveBeenCalledWith({ [neutral]: expected, [legacy]: expected });
+    expect(area.set).toHaveBeenCalledWith({
+      [neutral]: expected,
+      [legacy]: expected,
+      [tombstones]: [],
+    });
     expect(area.get).toHaveBeenCalledTimes(2);
     expect(area.get).toHaveBeenCalledWith(keys);
   });
@@ -136,7 +145,7 @@ describe('Saved Library dual projections', () => {
   );
 
   it('prototype-like conversation IDs survive cloud merge, add, reconciliation and removal', async () => {
-    const { store, values } = setup();
+    const { store, values, area } = setup();
     const cloudStar = { ...star('cloud'), conversationId: '__proto__' };
     const addedStar = { ...star('added'), conversationId: 'constructor' };
     await expect(
@@ -159,6 +168,17 @@ describe('Saved Library dual projections', () => {
     await expect(store.remove('constructor', 'cloud')).resolves.toBe(true);
     await expect(store.remove('__proto__', 'missing')).resolves.toBe(false);
     expectProjections(values, { messages: { constructor: [addedStar] } });
+    await store.mergeCloud({
+      data: {
+        messages: {
+          ['__proto__']: [cloudStar],
+          constructor: [{ ...cloudStar, conversationId: 'constructor' }],
+        },
+      },
+    });
+    await expect(createStarStore(area).getAll()).resolves.toEqual({
+      messages: { constructor: [addedStar] },
+    });
   });
 
   it('migration quota failure retains legacy bytes and a later queued read retries successfully', async () => {
@@ -224,4 +244,245 @@ describe('Saved Library dual projections', () => {
     );
     expect(Object.keys(values[legacy] as object)).toEqual(['messages']);
   });
+});
+
+describe('Saved Library deletion persistence', () => {
+  it('a removed star stays removed when a legacy or v1 copy arrives after owner restart', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const deleted = { ...star('deleted', 50), account: 'opaque-account' };
+    const { store, area, values } = setup({ [legacy]: data(deleted) });
+    await store.remove('chat', 'deleted');
+    expect(values[tombstones]).toEqual([
+      {
+        conversationId: deleted.conversationId,
+        turnId: deleted.turnId,
+        conversationUrl: deleted.conversationUrl,
+        starredAt: 50,
+        deletedAt: NOW,
+        account: 'opaque-account',
+      },
+    ]);
+    values[legacy] = data(deleted);
+    const restarted = createStarStore(area);
+    await expect(restarted.getForConversation('chat')).resolves.toEqual([]);
+    await restarted.mergeCloud({ format: 'gemini-voyager.starred.v1', data: data(deleted) });
+    await expect(restarted.getAll()).resolves.toEqual({ messages: {} });
+    expectProjections(values, { messages: {} });
+  });
+
+  it('a queued re-star survives a known clock rollback instead of staying deleted', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const original = star('same', 500);
+    const { store, area } = setup({ [legacy]: data(original) });
+    await Promise.all([store.remove('chat', 'same'), store.add(star('same', 100))]);
+    await expect(store.getForConversation('chat')).resolves.toEqual([star('same', 501)]);
+    await store.mergeCloud({ data: data(original) });
+    await expect(createStarStore(area).getForConversation('chat')).resolves.toEqual([
+      star('same', 501),
+    ]);
+  });
+
+  it('a valid deletion beside malformed local entries remains effective and editable', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const deleted = star('deleted', 50);
+    const valid = {
+      conversationId: 'chat',
+      turnId: 'deleted',
+      conversationUrl: deleted.conversationUrl,
+      starredAt: 50,
+      deletedAt: NOW,
+      account: 'opaque',
+    };
+    const { store, values } = setup({
+      [legacy]: data(deleted, star('kept')),
+      [tombstones]: [
+        valid,
+        null,
+        {},
+        { ...valid, turnId: 'bad', starredAt: NaN },
+        { ...valid, turnId: 'bad-date', deletedAt: 'yesterday' },
+      ],
+    });
+    await expect(store.getForConversation('chat')).resolves.toEqual([star('kept')]);
+    await store.add(star('new'));
+    expectProjections(values, data(star('kept'), star('new')));
+    expect(values[tombstones]).toEqual([valid]);
+  });
+
+  it('deleting a turn in one conversation keeps the same turn in another conversation', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const first = star('same', 50);
+    const second = {
+      ...first,
+      conversationId: 'other',
+      conversationUrl: 'https://gemini.google.com/u/3/app/other',
+      account: 'other-account',
+    };
+    const expected = { messages: { other: [second] } };
+    const { store, values } = setup({ [legacy]: { messages: { chat: [first], other: [second] } } });
+    await store.remove('chat', 'same');
+    await store.mergeCloud({ data: { messages: { chat: [first], other: [second] } } });
+    await expect(store.getAll()).resolves.toEqual(expected);
+    expectProjections(values, expected);
+  });
+
+  it('reconciling a deleted legacy conversation suppresses both source and canonical stale copies', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const source = {
+      ...star('deleted', 50),
+      conversationId: 'draft',
+      conversationUrl: 'https://gemini.google.com/u/2/app/draft',
+    };
+    const targetUrl = star('deleted').conversationUrl;
+    const target = { ...source, conversationId: 'chat', conversationUrl: targetUrl };
+    const { store, area, values } = setup({ [legacy]: { messages: { draft: [source] } } });
+    await store.remove('draft', 'deleted');
+    await expect(store.reconcile('chat', ['draft'], targetUrl)).resolves.toEqual([]);
+    expect(values[tombstones]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ conversationId: 'draft', turnId: 'deleted', starredAt: 50 }),
+        expect.objectContaining({
+          conversationId: 'chat',
+          turnId: 'deleted',
+          conversationUrl: targetUrl,
+          starredAt: 50,
+        }),
+      ]),
+    );
+    const restarted = createStarStore(area);
+    await restarted.mergeCloud({ data: { messages: { draft: [source], chat: [target] } } });
+    await expect(restarted.getAll()).resolves.toEqual({ messages: {} });
+    await restarted.add({ ...target, starredAt: 10 });
+    await expect(restarted.getForConversation('chat')).resolves.toEqual([
+      { ...target, starredAt: 51 },
+    ]);
+  });
+
+  it('a migrated live source cannot reappear from legacy storage while its canonical star stays live', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const source = {
+      ...star('moved', 50),
+      conversationId: 'draft',
+      conversationUrl: 'https://gemini.google.com/u/2/app/draft',
+    };
+    const canonical = {
+      ...source,
+      conversationId: 'chat',
+      conversationUrl: star('moved').conversationUrl,
+    };
+    const { store, area, values } = setup({ [legacy]: { messages: { draft: [source] } } });
+    await expect(store.reconcile('chat', ['draft'], canonical.conversationUrl)).resolves.toEqual([
+      canonical,
+    ]);
+    values[legacy] = { messages: { draft: [source] } };
+    const restarted = createStarStore(area);
+    await expect(restarted.getAll()).resolves.toEqual(data(canonical));
+    await restarted.mergeCloud({ data: { messages: { draft: [source] } } });
+    await expect(restarted.getAll()).resolves.toEqual(data(canonical));
+    expectProjections(values, data(canonical));
+  });
+
+  it('repeated alias reconciliation after restart keeps a migrated canonical star live', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const source = { ...star('moved', 50), conversationId: 'draft' };
+    const canonical = { ...source, conversationId: 'chat' };
+    const { store, area, values } = setup({ [legacy]: { messages: { draft: [source] } } });
+    await expect(store.reconcile('chat', ['draft'])).resolves.toEqual([canonical]);
+    const restarted = createStarStore(area);
+    await expect(restarted.reconcile('chat', ['draft'])).resolves.toEqual([canonical]);
+    await restarted.mergeCloud({ data: { messages: { draft: [source] } } });
+    await expect(restarted.reconcile('chat', ['draft'])).resolves.toEqual([canonical]);
+    const final = { ...canonical, conversationId: 'final' };
+    await expect(restarted.reconcile('final', ['chat', 'draft'])).resolves.toEqual([final]);
+    await expect(createStarStore(area).reconcile('final', ['chat', 'draft'])).resolves.toEqual([
+      final,
+    ]);
+    expectProjections(values, { messages: { final: [final] } });
+    await restarted.remove('final', 'moved');
+    await restarted.mergeCloud({
+      data: { messages: { draft: [source], chat: [canonical], final: [final] } },
+    });
+    await expect(restarted.reconcile('final', ['chat', 'draft'])).resolves.toEqual([]);
+  });
+
+  it('an imported newer re-star survives duplicate older deletions without changing its timestamp', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const deletion = {
+      conversationId: 'chat',
+      turnId: 'same',
+      conversationUrl: star('same').conversationUrl,
+      starredAt: 50,
+      deletedAt: NOW - DAY,
+    };
+    const latest = { ...deletion, deletedAt: NOW };
+    const { store, values } = setup({
+      [legacy]: data(star('same', 49)),
+      [tombstones]: [deletion, { ...latest, starredAt: 40, deletedAt: NOW + DAY }, latest],
+    });
+    await store.mergeCloud({ data: data(star('same', 51)) });
+    await expect(store.getForConversation('chat')).resolves.toEqual([star('same', 51)]);
+    expect(values[tombstones]).toEqual([latest]);
+  });
+
+  it('a rejected deletion write leaves both live projections and prior deletions unchanged', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    const { store, area, values } = setup();
+    await store.add(star('old', 10));
+    await store.remove('chat', 'old');
+    await store.add(star('kept', 20));
+    const before = structuredClone(values);
+    area.set.mockRejectedValueOnce(new Error('quota'));
+    await expect(store.remove('chat', 'kept')).rejects.toThrow('quota');
+    expect(values).toEqual(before);
+    await expect(createStarStore(area).getForConversation('chat')).resolves.toEqual([
+      star('kept', 20),
+    ]);
+    await expect(store.remove('chat', 'kept')).resolves.toBe(true);
+    await expect(store.getForConversation('chat')).resolves.toEqual([]);
+  });
+
+  it.each([180 * DAY - 1, 180 * DAY, -DAY])(
+    'a deletion aged %s milliseconds still suppresses later stale imports',
+    async (age) => {
+      vi.spyOn(Date, 'now').mockReturnValue(NOW);
+      const stale = star('deleted', 50);
+      const deletion = {
+        conversationId: 'chat',
+        turnId: 'deleted',
+        conversationUrl: stale.conversationUrl,
+        starredAt: 50,
+        deletedAt: NOW - age,
+      };
+      const { store, values } = setup({ [legacy]: data(stale), [tombstones]: [deletion] });
+      await expect(store.getAll()).resolves.toEqual({ messages: {} });
+      expect(values[tombstones]).toEqual([deletion]);
+      await store.mergeCloud({ data: data(stale) });
+      await expect(store.getForConversation('chat')).resolves.toEqual([]);
+    },
+  );
+
+  it.each(['legacy read', 'v1 merge'] as const)(
+    'an expired deletion suppresses the current %s before pruning but a future stale import may revive it',
+    async (kind) => {
+      vi.spyOn(Date, 'now').mockReturnValue(NOW);
+      const stale = star('deleted', 50);
+      const deletion = {
+        conversationId: 'chat',
+        turnId: 'deleted',
+        conversationUrl: stale.conversationUrl,
+        starredAt: 50,
+        deletedAt: NOW - 180 * DAY - 1,
+      };
+      const { store, values } = setup({
+        ...(kind === 'legacy read' ? { [legacy]: data(stale) } : {}),
+        [tombstones]: [deletion],
+      });
+      if (kind === 'v1 merge') await store.mergeCloud({ data: data(stale) });
+      await expect(store.getAll()).resolves.toEqual({ messages: {} });
+      expect(values[tombstones]).toEqual([]);
+      expectProjections(values, { messages: {} });
+      await store.mergeCloud({ data: data(stale) });
+      await expect(store.getForConversation('chat')).resolves.toEqual([stale]);
+    },
+  );
 });

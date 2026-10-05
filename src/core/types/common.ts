@@ -77,6 +77,7 @@ export const StorageKeys = {
   TIMELINE_MARKER_LEVEL: 'geminiTimelineMarkerLevel',
   TIMELINE_STARRED_MESSAGES: 'geminiTimelineStarredMessages',
   SAVED_LIBRARY_STARS: 'gvSavedLibraryStars',
+  SAVED_LIBRARY_STAR_TOMBSTONES: 'gvSavedLibraryStarTombstones',
   TIMELINE_HIERARCHY: 'geminiTimelineHierarchy',
   /** Catalog-site (ChatGPT, Claude, DeepSeek) outlines: one `<prefix><siteId>` blob per site. */
   CATALOG_TIMELINE_HIERARCHY_PREFIX: 'gvCatalogTimelineHierarchy:',

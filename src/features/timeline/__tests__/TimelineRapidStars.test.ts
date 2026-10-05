@@ -37,6 +37,7 @@ async function fixture(initiallyStarred: boolean, failFirst = false, delaySecond
   const stored: Record<string, unknown> = {
     [StorageKeys.SAVED_LIBRARY_STARS]: structuredClone(data),
     [StorageKeys.TIMELINE_STARRED_MESSAGES]: structuredClone(data),
+    [StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES]: [],
   };
   let release!: () => void;
   const delay = new Promise<void>((resolve) => {

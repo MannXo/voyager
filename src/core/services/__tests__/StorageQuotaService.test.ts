@@ -106,11 +106,15 @@ function category(snapshot: Awaited<ReturnType<StorageQuotaService['getSnapshot'
 }
 
 describe('StorageQuotaService', () => {
-  it('both star projections count as protected timeline data and survive every cleanup category', async () => {
+  it('star projections and deletion records survive every quota cleanup category', async () => {
     const stars = { messages: { chat: [{ turnId: 'kept' }] } };
+    const tombstones = [{ conversationId: 'chat', turnId: 'removed', starredAt: 1, deletedAt: 2 }];
+    const scopedTombstonesKey = `${StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES}:acct:account`;
     const local = createArea({
       [StorageKeys.SAVED_LIBRARY_STARS]: stars,
       [StorageKeys.TIMELINE_STARRED_MESSAGES]: stars,
+      [StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES]: tombstones,
+      [scopedTombstonesKey]: tombstones,
       [StorageKeys.GV_GEMS_LIST_CACHE]: {},
       'gvDraft_/app/chat': 'draft',
       'gvHighlight:records': [],
@@ -120,12 +124,19 @@ describe('StorageQuotaService', () => {
     const snapshot = await service.getSnapshot();
     expect(category(snapshot, 'timeline')).toMatchObject({
       clearable: false,
-      keys: [StorageKeys.SAVED_LIBRARY_STARS, StorageKeys.TIMELINE_STARRED_MESSAGES],
-      bytesInUse: 2,
+      keys: [
+        StorageKeys.SAVED_LIBRARY_STARS,
+        StorageKeys.TIMELINE_STARRED_MESSAGES,
+        StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES,
+        scopedTombstonesKey,
+      ],
+      bytesInUse: 4,
     });
     for (const id of ['cache', 'drafts', 'highlights'] as const) await service.clearCategory(id);
     expect(local.data[StorageKeys.SAVED_LIBRARY_STARS]).toEqual(stars);
     expect(local.data[StorageKeys.TIMELINE_STARRED_MESSAGES]).toEqual(stars);
+    expect(local.data[StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES]).toEqual(tombstones);
+    expect(local.data[scopedTombstonesKey]).toEqual(tombstones);
     await expect(service.clearCategory('timeline' as 'cache')).rejects.toThrow('not clearable');
   });
   it('measures local and sync separately and classifies explicit keys and prefixes', async () => {

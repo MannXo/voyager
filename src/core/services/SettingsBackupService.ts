@@ -221,6 +221,11 @@ export const NON_SETTINGS_BACKUP_POLICIES = {
     disposition: 'separate-file',
     reason: 'Saved Library stars share the existing account-scoped starred messages Drive file.',
   },
+  [StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES]: {
+    storage: 'local',
+    disposition: 'separate-file',
+    reason: 'Saved Library deletion records belong to star data, outside settings restore.',
+  },
   [StorageKeys.TIMELINE_HIERARCHY]: {
     storage: 'local',
     disposition: 'separate-file',

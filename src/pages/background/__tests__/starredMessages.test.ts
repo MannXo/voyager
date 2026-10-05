@@ -18,18 +18,21 @@ const star = (conversationId: string, turnId: string, starredAt = 1): StarredMes
 function setup(initial: unknown = { messages: {} }) {
   let stored = structuredClone(initial);
   let neutral = structuredClone(initial);
+  let tombstones: unknown = [];
   const area = {
     get: vi.fn(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       return {
         [key]: structuredClone(stored),
         [StorageKeys.SAVED_LIBRARY_STARS]: structuredClone(neutral),
+        [StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES]: structuredClone(tombstones),
       };
     }),
     set: vi.fn(async (items: Record<string, unknown>) => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       stored = structuredClone(items[key]);
       neutral = structuredClone(items[StorageKeys.SAVED_LIBRARY_STARS]);
+      tombstones = structuredClone(items[StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES]);
     }),
   };
   const store = createStarStore(area);
@@ -151,7 +154,11 @@ describe('starred messages owner', () => {
       },
     });
     expect(area.set).toHaveBeenCalledTimes(3);
-    expect(area.get).toHaveBeenCalledWith([StorageKeys.SAVED_LIBRARY_STARS, key]);
+    expect(area.get).toHaveBeenCalledWith([
+      StorageKeys.SAVED_LIBRARY_STARS,
+      key,
+      StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES,
+    ]);
     await expect(
       handle({ type: 'gv.starred.isStarred', payload: { conversationId: 'a', turnId: '2' } }),
     ).resolves.toEqual({ ok: true, isStarred: true });

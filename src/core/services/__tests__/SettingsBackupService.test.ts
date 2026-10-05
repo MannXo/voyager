@@ -101,6 +101,46 @@ describe('SettingsBackupService', () => {
     },
   );
 
+  it.each(['merge', 'overwrite'] as const)(
+    'settings %s restore cannot erase star deletion records',
+    async (mode) => {
+      const key = StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES;
+      const scopedKey = `${key}:acct:account`;
+      const tombstones = [
+        {
+          conversationId: 'chat',
+          turnId: 'removed',
+          conversationUrl: '/app/chat',
+          starredAt: 1,
+          deletedAt: 2,
+        },
+      ];
+      const state: Record<string, unknown> = { [key]: tombstones, [scopedKey]: tombstones };
+      const area = {
+        get: vi.fn().mockImplementation(async (defaults: Record<string, unknown>) => ({
+          ...defaults,
+          ...state,
+        })),
+        set: vi.fn(async (items: Record<string, unknown>) => {
+          Object.assign(state, items);
+        }),
+      };
+      const exported = await exportBackupableSyncSettings(area);
+      expect(exported.data).not.toHaveProperty(key);
+      expect(exported.data).not.toHaveProperty(scopedKey);
+
+      await restoreBackupableSyncSettings(
+        { [key]: [], [scopedKey]: [], [StorageKeys.CHAT_WIDTH]: 92 },
+        area,
+        mode,
+      );
+
+      expect(state[key]).toEqual(tombstones);
+      expect(state[scopedKey]).toEqual(tombstones);
+      expect(state[StorageKeys.CHAT_WIDTH]).toBe(92);
+    },
+  );
+
   it('keeps popup scroll position device-local and outside settings backup', () => {
     const popupScrollKey = 'gvPopupScrollTop';
 
