@@ -334,7 +334,12 @@
             "properties": {
               "label": { "type": "string", "minLength": 1, "maxLength": 500 },
               "minLabel": { "type": "string", "minLength": 1, "maxLength": 500 },
-              "maxLabel": { "type": "string", "minLength": 1, "maxLength": 500 }
+              "maxLabel": { "type": "string", "minLength": 1, "maxLength": 500 },
+              "options": {
+                "type": "object",
+                "description": "Select option value → localized label.",
+                "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 500 }
+              }
             }
           }
         }

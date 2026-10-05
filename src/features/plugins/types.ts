@@ -213,6 +213,8 @@ export interface LocalizedSettingField {
   readonly label?: string;
   readonly minLabel?: string;
   readonly maxLabel?: string;
+  /** Select option value → localized label. */
+  readonly options?: Readonly<Record<string, string>>;
 }
 
 export interface PluginLocalization {

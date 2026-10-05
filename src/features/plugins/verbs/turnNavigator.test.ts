@@ -1,12 +1,73 @@
 import '@/features/timeline/adapters/catalog/testSetup';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildConversationId } from '@/features/timeline/adapters/catalog/conversationId';
 
+import { BUILTIN_PLUGINS } from '../builtin';
+import deepseekTimeline from '../catalog/sites/deepseek/plugins/timeline/plugin.json';
+import { validateManifest } from '../manifest/validate';
+import { PluginHost } from '../runtime/PluginHost';
 import { PluginScope } from '../runtime/pluginScope';
 import type { SiteAdapter } from '../types';
 import { turnNavigatorPrimitive } from './turnNavigator';
 import type { PrimitiveContext } from './types';
+
+const validated = validateManifest({
+  ...deepseekTimeline,
+  contributes: { ...deepseekTimeline.contributes, styles: [] },
+});
+if (!validated.success) throw new Error('invalid DeepSeek timeline');
+const timelines = [
+  ...BUILTIN_PLUGINS.filter((plugin) => plugin.id.endsWith('-timeline')),
+  validated.data,
+];
+
+describe.each(timelines)('$name saved style', (plugin) => {
+  it('keeps an existing compact setting and applies a new ruler choice without remounting', async () => {
+    document.body.innerHTML = `
+      <div data-user-message-bubble>ChatGPT question</div>
+      <div data-testid="user-message">Claude question</div>
+      <div class="ds-message"><div class="ds-collapsible-text">DeepSeek question</div></div>`;
+    (chrome.storage.local.get as unknown as Mock).mockResolvedValue({
+      gvPluginsState: {
+        [plugin.id]: { enabled: true, installedAt: 0, settings: { compactView: true } },
+      },
+    });
+    const host = new PluginHost({
+      url: plugin.matches[0].replace('*', 'c/first'),
+      sources: [{ id: 'test', list: async () => [plugin] }],
+      doc: document,
+      requestCatalogRefresh: () => {},
+    });
+    try {
+      await host.start();
+      await flush();
+      const bar = document.querySelector('[data-gv-turn-navigator]');
+      expect(bar).not.toBeNull();
+      expect(bar?.classList.contains('timeline-style-compact')).toBe(true);
+      expect(showTimelineStyleCoachmark).not.toHaveBeenCalled();
+
+      const state = {
+        [plugin.id]: {
+          enabled: true,
+          installedAt: 0,
+          settings: { compactView: true, timelineStyle: 'ruler' },
+        },
+      };
+      for (const [listener] of vi.mocked(chrome.storage.onChanged.addListener).mock.calls) {
+        listener({ gvPluginsState: { newValue: state } }, 'local');
+      }
+      await flush();
+      expect(document.querySelector('[data-gv-turn-navigator]')).toBe(bar);
+      expect(bar?.classList.contains('gv-timeline-style-ruler')).toBe(true);
+      expect(bar?.classList.contains('timeline-style-compact')).toBe(false);
+    } finally {
+      host.stop();
+      vi.mocked(chrome.storage.local.get).mockReset();
+      vi.mocked(chrome.storage.onChanged.addListener).mockClear();
+    }
+  });
+});
 
 const { getStarredMessagesForConversation, showTimelineStyleCoachmark } = vi.hoisted(() => ({
   getStarredMessagesForConversation: vi.fn().mockResolvedValue([]),

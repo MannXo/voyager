@@ -108,10 +108,20 @@ function normalizeLocalizedSetting(raw: unknown): LocalizedSettingField | undefi
   const label = readOptionalString(raw, 'label', 'label');
   const minLabel = readOptionalString(raw, 'minLabel', 'minLabel');
   const maxLabel = readOptionalString(raw, 'maxLabel', 'maxLabel');
+  const rawOptions = raw.options;
+  const options = isRecord(rawOptions)
+    ? Object.fromEntries(
+        Object.keys(rawOptions).flatMap((key) => {
+          const label = readOptionalString(rawOptions, key, key);
+          return label ? [[key, label]] : [];
+        }),
+      )
+    : undefined;
   const entry: LocalizedSettingField = {
     ...(label ? { label } : {}),
     ...(minLabel ? { minLabel } : {}),
     ...(maxLabel ? { maxLabel } : {}),
+    ...(options && Object.keys(options).length > 0 ? { options } : {}),
   };
   return Object.keys(entry).length > 0 ? entry : undefined;
 }

@@ -113,7 +113,7 @@ export function pickLocalizedSetting(
   key: string,
   field: SettingField,
   lang: string,
-): { label: string; minLabel?: string; maxLabel?: string } {
+): { label: string; minLabel?: string; maxLabel?: string; options?: SettingField['options'] } {
   const pick = (name: 'label' | 'minLabel' | 'maxLabel'): string | undefined => {
     for (const locale of localeCandidates(lang)) {
       const value = plugin.i18n?.[locale]?.settings?.[key]?.[name];
@@ -125,6 +125,13 @@ export function pickLocalizedSetting(
     label: pick('label') ?? field.label,
     minLabel: pick('minLabel') ?? field.minLabel,
     maxLabel: pick('maxLabel') ?? field.maxLabel,
+    options: field.options?.map((option) => {
+      for (const locale of localeCandidates(lang)) {
+        const label = plugin.i18n?.[locale]?.settings?.[key]?.options?.[option.value];
+        if (typeof label === 'string' && label.trim()) return { ...option, label };
+      }
+      return option;
+    }),
   };
 }
 

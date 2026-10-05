@@ -3,6 +3,7 @@ import { type Root, createRoot } from 'react-dom/client';
 
 import { type Mock, afterEach, beforeEach, vi } from 'vitest';
 
+import type { PluginStateEntry } from '@/features/plugins/storage/pluginState';
 import type { PluginManifest } from '@/features/plugins/types';
 
 import { PluginCatalogControls, usePluginCatalog } from '../PluginCatalogControls';
@@ -32,7 +33,7 @@ const {
   permissionRequest: vi.fn().mockResolvedValue(true),
   runtimeSendMessage: vi.fn().mockResolvedValue({ ok: true }),
   permissionOrigins: vi.fn().mockReturnValue([]),
-  pluginState: { current: {} as Record<string, { enabled: boolean; installedAt: number }> },
+  pluginState: { current: {} as Record<string, PluginStateEntry> },
   PLUGIN_ID: 'voyager.test-width',
   mockLanguage: { current: 'en' },
   // Translations resolve to their key by default (so assertions stay readable);

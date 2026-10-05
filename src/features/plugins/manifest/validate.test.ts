@@ -64,6 +64,7 @@ describe('validateManifest', () => {
           settings: {
             width: { label: '阅读宽度', minLabel: '更窄', maxLabel: '更宽' },
             ignored: { label: 42 },
+            style: { options: { dots: '节点', compact: 42, ruler: '', huge: 'x'.repeat(501) } },
           },
         },
         ja: { name: 123, description: '日本語' }, // bad name dropped, description kept
@@ -78,7 +79,10 @@ describe('validateManifest', () => {
       zh: {
         name: 'Claude · 测试',
         description: '中文描述',
-        settings: { width: { label: '阅读宽度', minLabel: '更窄', maxLabel: '更宽' } },
+        settings: {
+          width: { label: '阅读宽度', minLabel: '更窄', maxLabel: '更宽' },
+          style: { options: { dots: '节点' } },
+        },
       },
       ja: { description: '日本語' },
       es: { settings: { width: { minLabel: 'Más estrecho' } } },

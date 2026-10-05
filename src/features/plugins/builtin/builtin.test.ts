@@ -90,22 +90,27 @@ describe('BUILTIN_PLUGINS', () => {
         },
       },
     ]);
-    expect(timeline?.engine).toBe('>=1.5.0');
+    expect(timeline?.engine).toBe('>=1.6.0');
     expect(timeline?.requires).toEqual({ handlers: ['turnNavigator'], semantic: ['userTurn'] });
-    expect(timeline?.contributes.settings?.compactView).toEqual({
-      type: 'boolean',
-      label: 'Use compact timeline',
-      default: false,
+    expect(timeline?.contributes.settings?.timelineStyle).toEqual({
+      type: 'select',
+      label: 'Timeline style',
+      default: 'dots',
+      options: [
+        { value: 'dots', label: 'Nodes' },
+        { value: 'compact', label: 'Compact' },
+        { value: 'ruler', label: 'Ruler' },
+      ],
     });
     expect(timeline?.i18n?.zh?.name).toBe('Claude · 时间线');
-    expect(timeline?.i18n?.zh?.settings?.compactView?.label).toBe('使用紧凑索引');
+    expect(timeline?.i18n?.zh?.settings?.timelineStyle?.label).toBe('时间线样式');
   });
 
   it("includes the ChatGPT timeline, which needs the engine that reads a turn's item", () => {
     const timeline = BUILTIN_PLUGINS.find((m) => m.id === 'voyager.chatgpt-timeline');
     expect(timeline).toBeDefined();
     expect(timeline?.matches).toEqual(['https://chatgpt.com/*', 'https://chat.openai.com/*']);
-    expect(timeline?.engine).toBe('>=1.5.0');
+    expect(timeline?.engine).toBe('>=1.6.0');
     expect(timeline?.contributes.domOps).toMatchObject([
       {
         op: 'native',
@@ -117,12 +122,12 @@ describe('BUILTIN_PLUGINS', () => {
       },
     ]);
     expect(timeline?.requires).toEqual({ handlers: ['turnNavigator'], semantic: ['userTurn'] });
-    expect(timeline?.contributes.settings?.compactView?.default).toBe(false);
+    expect(timeline?.contributes.settings?.timelineStyle?.default).toBe('dots');
     const locales = ['zh', 'zh_TW', 'ja', 'ko', 'fr', 'es', 'pt', 'ru', 'ar'] as const;
     for (const locale of locales) {
       expect(timeline?.i18n?.[locale]?.name, locale).toContain('ChatGPT');
       expect(timeline?.i18n?.[locale]?.description, locale).toContain('ChatGPT');
-      expect(timeline?.i18n?.[locale]?.settings?.compactView?.label, locale).toBeTruthy();
+      expect(timeline?.i18n?.[locale]?.settings?.timelineStyle?.label, locale).toBeTruthy();
     }
   });
 

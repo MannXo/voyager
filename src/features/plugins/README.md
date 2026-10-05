@@ -150,6 +150,9 @@ user settings, `{{settingKey}}` tokens can be used in CSS text or in
 use a normal custom property and for a `setStyle` op to set that variable from a
 setting.
 
+Select settings render their declared value/label options in the popup. Localize
+each option under `i18n.<locale>.settings.<key>.options.<value>` (engine 1.6.0+).
+
 `target` is a CSS selector string, or `{ "kind": "semantic", "key": "userTurn" }`
 to use the site adapter's stable selector for one of the nine semantic keys in
 `sites/semanticKeys.ts`; a `site.json` may not invent a key outside that

@@ -1,3 +1,4 @@
+import { resolvePluginSettings } from '@/features/plugins/runtime/resolvePluginSettings';
 import type { PluginManifest, PluginSettingValue } from '@/features/plugins/types';
 
 import { Switch } from '../../../components/ui/switch';
@@ -20,11 +21,12 @@ export function PluginSettings({
   const { language } = useLanguage();
   const settingsSchema = plugin.contributes.settings;
   const localizedName = pickLocalized(plugin, 'name', language);
+  const resolved = resolvePluginSettings(plugin, values);
   if (!settingsSchema) return null;
   return (
     <div className="mt-2 space-y-2.5" role="group" aria-label={localizedName}>
       {Object.entries(settingsSchema).map(([key, field]) => {
-        const rawValue = values?.[key] ?? field.default;
+        const rawValue = resolved[key];
         const settingText = pickLocalizedSetting(plugin, key, field, language);
 
         if (field.type === 'boolean') {
@@ -50,7 +52,7 @@ export function PluginSettings({
                 onChange={(event) => handleImmediateSetting(plugin.id, key, event.target.value)}
                 className="bg-background border-border focus:ring-primary/50 min-w-0 rounded-md border px-2 py-1 text-[11px] transition-all focus:ring-2"
               >
-                {field.options?.map((option) => (
+                {settingText.options?.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>

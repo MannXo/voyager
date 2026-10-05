@@ -210,7 +210,11 @@ describe('plugin setting writes from content scripts', () => {
     expect(timelines.length).toBeGreaterThan(0);
     for (const manifest of timelines) {
       expect(
-        isDeclaredPluginSetting(manifest, { id: manifest.id, key: 'compactView', value: true }),
+        isDeclaredPluginSetting(manifest, {
+          id: manifest.id,
+          key: 'timelineStyle',
+          value: 'ruler',
+        }),
       ).toBe(true);
     }
   });
@@ -302,7 +306,7 @@ describe('plugin setting writes checked against the real plugin listing', () => 
       { ...timeline, id: 'voyager.deepseek-remote-timeline', version: '9.0.0' },
     ]);
     const response = await handlePluginRuntimeMessage(
-      setSetting({ id: 'voyager.deepseek-remote-timeline', key: 'compactView', value: true }),
+      setSetting({ id: 'voyager.deepseek-remote-timeline', key: 'timelineStyle', value: 'ruler' }),
       deepseekSender(),
       noFinder(),
     );

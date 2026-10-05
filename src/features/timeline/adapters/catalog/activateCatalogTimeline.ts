@@ -73,16 +73,23 @@ export function activateCatalogTimeline(
   } catch {
     /* Invalid optional catalog selector does not block the timeline. */
   }
-  if (!yieldGuide && currentSettings.compactView !== true) {
+  if (
+    !yieldGuide &&
+    currentSettings.compactView !== true &&
+    currentSettings.timelineStyle !== 'compact' &&
+    currentSettings.timelineStyle !== 'ruler'
+  ) {
     void showTimelineStyleCoachmark({
       id: config.coachmarkId,
       enabled: false,
       signal: scope.signal,
       onStyleChange: async (compact) => {
         if (scope.isDisposed) return;
-        currentSettings = { ...currentSettings, compactView: compact };
+        const key = currentSettings.timelineStyle === undefined ? 'compactView' : 'timelineStyle';
+        const value = key === 'compactView' ? compact : compact ? 'compact' : 'dots';
+        currentSettings = { ...currentSettings, [key]: value };
         engine?.updateSettings(currentSettings);
-        await requestPluginSetting(config.pluginId, 'compactView', compact);
+        await requestPluginSetting(config.pluginId, key, value);
       },
     });
   }

@@ -42,7 +42,6 @@ import { type PluginStateMap, loadPluginState, subscribePluginState } from '../s
 import {
   type EntitlementProvider,
   type PluginManifest,
-  type PluginSettingValue,
   type PluginSettings,
   type PluginSource,
   type PluginSourceContext,
@@ -53,6 +52,7 @@ import { hasPrimitive } from '../verbs/registry';
 import { DeclarativeEngine } from './declarativeEngine';
 import { PLUGIN_CATALOG_REFRESH_MESSAGE } from './messages';
 import { type PluginStatus, findIncompatibility } from './pluginStatus';
+import { resolvePluginSettings } from './resolvePluginSettings';
 import { type SurfaceSwitch, surfaceSwitchForUrl } from './surfaceSwitch';
 
 export interface PluginHostOptions {
@@ -435,14 +435,7 @@ export class PluginHost {
 
   /** Merge the plugin's declared setting defaults with the user's stored values. */
   private resolveSettings(manifest: PluginManifest, state: PluginStateMap): PluginSettings {
-    const schema = manifest.contributes.settings;
-    const stored = state[manifest.id]?.settings ?? {};
-    if (!schema) return stored;
-    const resolved: Record<string, PluginSettingValue> = {};
-    for (const [key, field] of Object.entries(schema)) {
-      resolved[key] = stored[key] ?? field.default;
-    }
-    return resolved;
+    return resolvePluginSettings(manifest, state[manifest.id]?.settings);
   }
 
   /**
