@@ -43,6 +43,10 @@
     "message": "隐藏外部容器",
     "description": "隐藏外部容器标签"
   },
+  "hideOuterContainerDotsOnly": {
+    "message": "仅适用于节点样式",
+    "description": "Why the hide outer container toggle is disabled: the ruler and compact timeline styles draw no container"
+  },
   "draggableTimeline": {
     "message": "可拖拽时间线",
     "description": "可拖拽时间线标签"

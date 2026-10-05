@@ -266,7 +266,10 @@ html[data-gv-scheme] .gv-timeline-style-preview::before {
   overflow: hidden;
 }
 
+/* Like the live rail, ruler and compact draw no film; `gv-no-rail` mirrors a
+ * hidden outer container for the dots preview. */
 .gv-timeline-style-preview.is-compact::before,
+.gv-timeline-style-preview.is-ruler::before,
 .gv-timeline-style-preview.gv-no-rail::before {
   opacity: 0;
 }

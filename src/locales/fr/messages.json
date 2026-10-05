@@ -43,6 +43,10 @@
     "message": "Masquer le conteneur externe",
     "description": "Hide outer container label"
   },
+  "hideOuterContainerDotsOnly": {
+    "message": "S'applique uniquement au style Nœuds",
+    "description": "Why the hide outer container toggle is disabled: the ruler and compact timeline styles draw no container"
+  },
   "draggableTimeline": {
     "message": "Chronologie déplaçable",
     "description": "Draggable Timeline label"

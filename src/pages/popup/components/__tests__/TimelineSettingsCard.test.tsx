@@ -113,14 +113,28 @@ describe('TimelineSettingsCard', () => {
     ).toBe(false);
   });
 
-  it('hides the outer-container toggle while compact style paints no rail', () => {
-    const hideRow = () =>
-      container.querySelector<HTMLElement>('#hide-container')!.closest<HTMLElement>('div.group')!;
-    render({ values: { ...values, timelineStyle: 'compact' } });
-    expect(hideRow().hidden).toBe(true);
+  it.each(['ruler', 'compact'] as const)(
+    'the %s style shows hide outer container disabled, with its saved value and why',
+    (timelineStyle) => {
+      const props = render({ values: { ...values, timelineStyle, hideContainer: true } });
+      const toggle = container.querySelector<HTMLInputElement>('#hide-container')!;
+      const row = toggle.closest<HTMLElement>('div.group')!;
+      expect(row.hidden).toBe(false);
+      expect(toggle.disabled).toBe(true);
+      expect(toggle.checked).toBe(true);
+      expect(row.textContent).toContain('hideOuterContainerDotsOnly');
+      act(() => toggle.click());
+      expect(props.onChange).not.toHaveBeenCalled();
+    },
+  );
 
-    render({ values: { ...values, timelineStyle: 'dots' } });
-    expect(hideRow().hidden).toBe(false);
+  it('the dots style lets hide outer container be changed', () => {
+    const props = render({ values: { ...values, timelineStyle: 'dots' } });
+    const toggle = container.querySelector<HTMLInputElement>('#hide-container')!;
+    expect(toggle.disabled).toBe(false);
+    expect(toggle.closest('div.group')!.textContent).not.toContain('hideOuterContainerDotsOnly');
+    act(() => toggle.click());
+    expect(props.onChange).toHaveBeenLastCalledWith({ hideContainer: true });
   });
 
   it('with node levels on, only the dots style can be chosen', () => {

@@ -43,6 +43,10 @@
     "message": "Скрыть внешний контейнер",
     "description": "Hide outer container label"
   },
+  "hideOuterContainerDotsOnly": {
+    "message": "Действует только для стиля «Узлы»",
+    "description": "Why the hide outer container toggle is disabled: the ruler and compact timeline styles draw no container"
+  },
   "draggableTimeline": {
     "message": "Перетаскиваемый таймлайн",
     "description": "Draggable Timeline label"

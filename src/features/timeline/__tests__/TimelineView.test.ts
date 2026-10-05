@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { TimelineStyle } from '@/core/types/common';
 import { TimelineState } from '@/features/timeline/TimelineState';
 import { createGeminiTimelineStoragePolicy } from '@/pages/content/timeline/GeminiTimelineStorage';
+import { beforePaints, injectStylesheets } from '@/tests/pseudoElementPaint';
 
 import { TimelineHierarchyGeometry } from '../TimelineHierarchyGeometry';
 import { TimelineView } from '../TimelineView';
@@ -150,15 +152,43 @@ describe('TimelineView', () => {
     expect(bar.style.getPropertyValue('--timeline-bar-width')).toBe('4px');
   });
 
-  it('shows the rail background again after hide is turned off', () => {
-    const { view, bar } = fixture();
-    view.hideContainer = true;
-    view.applyContainerVisibility();
-    expect(bar.classList.contains('timeline-no-container')).toBe(true);
+  describe('rail film', () => {
+    let removeStyles: () => void;
+    beforeEach(() => {
+      removeStyles = injectStylesheets('src/features/timeline/timeline.css');
+    });
+    afterEach(() => removeStyles());
 
-    view.hideContainer = false;
-    view.applyContainerVisibility();
-    expect(bar.classList.contains('timeline-no-container')).toBe(false);
+    function show(view: TimelineView, style: TimelineStyle, hideContainer: boolean): void {
+      view.timelineStyle = style;
+      view.applyTimelineStyle();
+      view.hideContainer = hideContainer;
+      view.applyContainerVisibility();
+    }
+
+    it('unchecking hide outer container brings back the dots rail', () => {
+      const { view, bar } = fixture();
+      show(view, 'dots', false);
+      expect(beforePaints(bar)).toBe(true);
+      show(view, 'dots', true);
+      expect(beforePaints(bar)).toBe(false);
+      show(view, 'dots', false);
+      expect(beforePaints(bar)).toBe(true);
+    });
+
+    it.each(['ruler', 'compact'] as const)(
+      'the %s timeline paints no rail whether or not the outer container is hidden',
+      (style) => {
+        const { view, bar } = fixture();
+        show(view, style, false);
+        expect(beforePaints(bar)).toBe(false);
+        show(view, style, true);
+        expect(beforePaints(bar)).toBe(false);
+        // The stored setting still applies on the way back to dots.
+        show(view, 'dots', true);
+        expect(beforePaints(bar)).toBe(false);
+      },
+    );
   });
 
   it('compact ticks stay centred as turns are added and removed', () => {

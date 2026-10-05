@@ -43,6 +43,10 @@
     "message": "외부 컨테이너 숨기기",
     "description": "Hide outer container label"
   },
+  "hideOuterContainerDotsOnly": {
+    "message": "노드 스타일에서만 적용됩니다",
+    "description": "Why the hide outer container toggle is disabled: the ruler and compact timeline styles draw no container"
+  },
   "draggableTimeline": {
     "message": "드래그 가능한 타임라인",
     "description": "Draggable Timeline label"

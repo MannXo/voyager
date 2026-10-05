@@ -178,10 +178,17 @@ html[data-gv-scheme] .gemini-timeline-bar:not(.timeline-no-container)::before {
   filter: drop-shadow(0 0 6px var(--timeline-dot-active-color));
 }
 
+/* Ruler and compact paint ticks only, never the rail film: their ticks extend
+ * sideways from the centre, so a rail reads as a scrollbar beside them. "Hide
+ * outer container" is a dots-only setting and the popup disables it here; do
+ * not drop this rule to give that toggle an effect in these styles. */
+.gemini-timeline-bar.gv-timeline-style-ruler::before,
+.gemini-timeline-bar.timeline-style-compact::before {
+  display: none;
+}
+
 /* Ruler timeline style: keep the classic full-height marker positions and
- * interactions, but render each node as a quiet horizontal tick.
- * The rail stays painted here; only `.timeline-no-container` hides it, which
- * is what keeps "Hide outer container" meaningful for this style. */
+ * interactions, but render each node as a quiet horizontal tick. */
 .gemini-timeline-bar.gv-timeline-style-ruler .timeline-track {
   overflow: hidden;
 }
@@ -291,15 +298,9 @@ html[data-gv-scheme] .gemini-timeline-bar:not(.timeline-no-container)::before {
 
 /* Compact timeline style: the full-height bar stays one hover target and
  * markers are rendered as quiet index ticks. Navigation happens from the
- * preview panel. No rail is painted: ticks extend left from the centre, so
- * any rail sits beside them like a scrollbar thumb. "Hide outer container"
- * therefore has nothing to hide here, and the popup hides that row. */
+ * preview panel. Like ruler, it paints no rail (see above). */
 .gemini-timeline-bar.timeline-style-compact {
   cursor: pointer;
-}
-
-.gemini-timeline-bar.timeline-style-compact::before {
-  display: none;
 }
 
 .gemini-timeline-bar.timeline-style-compact .timeline-track {

@@ -43,6 +43,10 @@
     "message": "Ocultar contêiner externo",
     "description": "Hide outer container label"
   },
+  "hideOuterContainerDotsOnly": {
+    "message": "Aplica-se apenas ao estilo Nós",
+    "description": "Why the hide outer container toggle is disabled: the ruler and compact timeline styles draw no container"
+  },
   "draggableTimeline": {
     "message": "Linha do tempo arrastável",
     "description": "Draggable Timeline label"

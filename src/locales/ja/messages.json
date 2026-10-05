@@ -43,6 +43,10 @@
     "message": "外側のコンテナを隠す",
     "description": "Hide outer container label"
   },
+  "hideOuterContainerDotsOnly": {
+    "message": "ノード表示でのみ有効です",
+    "description": "Why the hide outer container toggle is disabled: the ruler and compact timeline styles draw no container"
+  },
   "draggableTimeline": {
     "message": "ドラッグ可能なタイムライン",
     "description": "Draggable Timeline label"

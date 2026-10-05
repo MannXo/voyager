@@ -43,6 +43,10 @@
     "message": "Ocultar contenedor exterior",
     "description": "Hide outer container label"
   },
+  "hideOuterContainerDotsOnly": {
+    "message": "Solo se aplica al estilo Nodos",
+    "description": "Why the hide outer container toggle is disabled: the ruler and compact timeline styles draw no container"
+  },
   "draggableTimeline": {
     "message": "Línea de tiempo arrastrable",
     "description": "Draggable Timeline label"

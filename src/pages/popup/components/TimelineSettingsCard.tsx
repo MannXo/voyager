@@ -58,6 +58,9 @@ export function TimelineSettingsCard({
 }: TimelineSettingsCardProps) {
   const activeStyle = TIMELINE_STYLE_OPTIONS.find((o) => o.value === values.timelineStyle);
   const activeMode = SCROLL_MODE_OPTIONS.find((o) => o.value === values.mode);
+  // Ruler and compact paint no rail, so only dots has a container to hide. The
+  // stored value is kept and applies again when the user returns to dots.
+  const containerless = values.timelineStyle !== 'dots';
 
   return (
     <Card className="p-4 transition-all hover:shadow-md">
@@ -113,10 +116,11 @@ export function TimelineSettingsCard({
           id="hide-container"
           settingId="hideOuterContainer"
           label="hideOuterContainer"
+          hint={containerless ? 'hideOuterContainerDotsOnly' : undefined}
           checked={values.hideContainer}
+          disabled={containerless}
           onChange={(hideContainer) => onChange({ hideContainer })}
-          // Compact paints no rail, so there is no container for this toggle to hide.
-          isVisible={(settingId) => values.timelineStyle !== 'compact' && isVisible(settingId)}
+          isVisible={isVisible}
           t={t}
         />
         <SettingToggleRow

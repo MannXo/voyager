@@ -43,6 +43,10 @@
     "message": "إخفاء الحاوية الخارجية",
     "description": "Hide outer container label"
   },
+  "hideOuterContainerDotsOnly": {
+    "message": "ينطبق على نمط العُقد فقط",
+    "description": "Why the hide outer container toggle is disabled: the ruler and compact timeline styles draw no container"
+  },
   "draggableTimeline": {
     "message": "جدول زمني قابل للسحب",
     "description": "Draggable Timeline label"
