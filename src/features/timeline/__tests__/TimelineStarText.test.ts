@@ -84,7 +84,14 @@ function fixture(messages: StarredMessage[] = []) {
       resolveCanonicalTurnId: (_conversation, id) => (id === 'u-0' ? turnId : id),
       getTurnIdAliases: () => [turnId, 'u-0'],
     }),
-    hierarchy: { localKey: null },
+    hierarchy: {
+      extensionKey: StorageKeys.TIMELINE_HIERARCHY,
+      legacyLevelsKey: null,
+      legacyCollapsedKey: null,
+      adoptUnscopedHierarchy: false,
+      accountAttributes: [],
+      resolveAccountScope: async () => null,
+    },
     stars: { matchLegacyConversations: true, resolveAccount: async () => undefined },
   };
   const state = timeline(policy);
