@@ -3904,5 +3904,35 @@
   "researchPackTemplateFailed": {
     "message": "Couldn’t update templates. Try again.",
     "description": "Research pack: reading or writing templates failed"
+  },
+  "savedLibraryOpenFull": {
+    "message": "Open full library"
+  },
+  "savedLibrarySite": {
+    "message": "Site"
+  },
+  "savedLibraryAllSites": {
+    "message": "All sites"
+  },
+  "savedLibraryUnknownSite": {
+    "message": "Unknown site"
+  },
+  "savedLibraryAccount": {
+    "message": "Account"
+  },
+  "savedLibraryAllAccounts": {
+    "message": "All accounts"
+  },
+  "savedLibraryAccountNumber": {
+    "message": "Account {number}"
+  },
+  "savedLibraryUnassigned": {
+    "message": "Unassigned"
+  },
+  "savedLibraryRemoveStarConfirm": {
+    "message": "Remove this star?"
+  },
+  "savedLibraryDeleteHighlightConfirm": {
+    "message": "Delete this highlight and its note?"
   }
 }

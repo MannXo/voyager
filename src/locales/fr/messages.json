@@ -3904,5 +3904,35 @@
   "researchPackTemplateFailed": {
     "message": "Impossible de mettre à jour les modèles. Réessayez.",
     "description": "Research pack: reading or writing templates failed"
+  },
+  "savedLibraryOpenFull": {
+    "message": "Ouvrir la bibliothèque complète"
+  },
+  "savedLibrarySite": {
+    "message": "Site"
+  },
+  "savedLibraryAllSites": {
+    "message": "Tous les sites"
+  },
+  "savedLibraryUnknownSite": {
+    "message": "Site inconnu"
+  },
+  "savedLibraryAccount": {
+    "message": "Compte"
+  },
+  "savedLibraryAllAccounts": {
+    "message": "Tous les comptes"
+  },
+  "savedLibraryAccountNumber": {
+    "message": "Compte {number}"
+  },
+  "savedLibraryUnassigned": {
+    "message": "Non attribué"
+  },
+  "savedLibraryRemoveStarConfirm": {
+    "message": "Retirer cette étoile ?"
+  },
+  "savedLibraryDeleteHighlightConfirm": {
+    "message": "Supprimer ce surlignage et sa note ?"
   }
 }

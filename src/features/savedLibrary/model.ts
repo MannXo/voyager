@@ -19,9 +19,17 @@ export interface SavedLibraryItem {
   content: string;
   note?: string;
   color?: HighlightColor;
+  account?: string;
   accountHash?: string;
   platform?: HighlightPlatform;
   savedAt: number;
+  firstSeenAt?: number;
+}
+
+export function savedLibraryItemKey(item: SavedLibraryItem): string {
+  return item.kind === 'starred'
+    ? JSON.stringify([item.kind, item.id])
+    : JSON.stringify([item.kind, item.platform, item.accountHash, item.conversationId, item.id]);
 }
 
 export function isSavedLibraryItemConversationUrl(item: SavedLibraryItem, url: URL): boolean {
@@ -62,7 +70,9 @@ export function toSavedLibraryItems(
     conversationTitle: message.conversationTitle,
     turnId: message.turnId,
     content: message.content,
+    account: message.account,
     savedAt: message.starredAt,
+    firstSeenAt: message.starredAt,
   }));
   const highlightItems = highlights
     .filter(
@@ -83,6 +93,7 @@ export function toSavedLibraryItems(
       accountHash: record.accountHash,
       platform: record.platform,
       savedAt: record.updatedAt,
+      firstSeenAt: record.createdAt,
     }));
 
   return [...starredItems, ...highlightItems].sort(

@@ -14,6 +14,7 @@ import {
   PLUGIN_SET_SETTING_MESSAGE,
   PLUGIN_CONTENT_SCRIPT_SYNC_MESSAGE,
 } from '@/features/plugins/runtime/messages';
+import { LIBRARY_OPEN_MESSAGE } from '@/features/savedLibrary/openLibraryPage';
 
 function parseHttpsUrl(rawUrl: string | undefined): URL | null {
   if (!rawUrl) return null;
@@ -96,6 +97,7 @@ export function canSenderPageUseSyncPlatform(
 }
 
 const HANDLED_BACKGROUND_MESSAGE_TYPES = new Set([
+  LIBRARY_OPEN_MESSAGE,
   'gv.fetchImage',
   'gv.fetchImageViaPage',
   'gv.generatedUi.ensureCapturePermission',

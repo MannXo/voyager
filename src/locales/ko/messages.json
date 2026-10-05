@@ -3904,5 +3904,35 @@
   "researchPackTemplateFailed": {
     "message": "템플릿을 업데이트하지 못했습니다. 다시 시도하세요.",
     "description": "Research pack: reading or writing templates failed"
+  },
+  "savedLibraryOpenFull": {
+    "message": "전체 라이브러리 열기"
+  },
+  "savedLibrarySite": {
+    "message": "사이트"
+  },
+  "savedLibraryAllSites": {
+    "message": "모든 사이트"
+  },
+  "savedLibraryUnknownSite": {
+    "message": "알 수 없는 사이트"
+  },
+  "savedLibraryAccount": {
+    "message": "계정"
+  },
+  "savedLibraryAllAccounts": {
+    "message": "모든 계정"
+  },
+  "savedLibraryAccountNumber": {
+    "message": "계정 {number}"
+  },
+  "savedLibraryUnassigned": {
+    "message": "미지정"
+  },
+  "savedLibraryRemoveStarConfirm": {
+    "message": "이 별표를 해제할까요?"
+  },
+  "savedLibraryDeleteHighlightConfirm": {
+    "message": "이 하이라이트와 메모를 삭제할까요?"
   }
 }

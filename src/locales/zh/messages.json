@@ -3904,5 +3904,35 @@
   "researchPackTemplateFailed": {
     "message": "模板更新失败，请重试。",
     "description": "Research pack: reading or writing templates failed"
+  },
+  "savedLibraryOpenFull": {
+    "message": "打开完整收藏库"
+  },
+  "savedLibrarySite": {
+    "message": "网站"
+  },
+  "savedLibraryAllSites": {
+    "message": "所有网站"
+  },
+  "savedLibraryUnknownSite": {
+    "message": "未知网站"
+  },
+  "savedLibraryAccount": {
+    "message": "账号"
+  },
+  "savedLibraryAllAccounts": {
+    "message": "所有账号"
+  },
+  "savedLibraryAccountNumber": {
+    "message": "账号 {number}"
+  },
+  "savedLibraryUnassigned": {
+    "message": "未分配"
+  },
+  "savedLibraryRemoveStarConfirm": {
+    "message": "取消这条收藏？"
+  },
+  "savedLibraryDeleteHighlightConfirm": {
+    "message": "删除这条高亮及其备注？"
   }
 }

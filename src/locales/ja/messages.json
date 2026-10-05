@@ -3904,5 +3904,35 @@
   "researchPackTemplateFailed": {
     "message": "テンプレートを更新できませんでした。もう一度お試しください。",
     "description": "Research pack: reading or writing templates failed"
+  },
+  "savedLibraryOpenFull": {
+    "message": "ライブラリ全体を開く"
+  },
+  "savedLibrarySite": {
+    "message": "サイト"
+  },
+  "savedLibraryAllSites": {
+    "message": "すべてのサイト"
+  },
+  "savedLibraryUnknownSite": {
+    "message": "不明なサイト"
+  },
+  "savedLibraryAccount": {
+    "message": "アカウント"
+  },
+  "savedLibraryAllAccounts": {
+    "message": "すべてのアカウント"
+  },
+  "savedLibraryAccountNumber": {
+    "message": "アカウント {number}"
+  },
+  "savedLibraryUnassigned": {
+    "message": "未割り当て"
+  },
+  "savedLibraryRemoveStarConfirm": {
+    "message": "このスターを解除しますか？"
+  },
+  "savedLibraryDeleteHighlightConfirm": {
+    "message": "このハイライトとメモを削除しますか？"
   }
 }

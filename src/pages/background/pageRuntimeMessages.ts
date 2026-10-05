@@ -3,6 +3,7 @@ import {
   accountIsolationService,
   detectAccountPlatformFromUrl,
 } from '@/core/services/AccountIsolationService';
+import { LIBRARY_OPEN_MESSAGE, LIBRARY_PAGE_PATH } from '@/features/savedLibrary/openLibraryPage';
 
 async function openSettingsPageFallback(sourceTabId?: number): Promise<void> {
   if (typeof sourceTabId === 'number') {
@@ -23,12 +24,25 @@ export function handlePageRuntimeMessage(
   sender: chrome.runtime.MessageSender,
 ): Promise<unknown> | null {
   if (
-    !['gv.account.resolve', 'gv.openPopup', 'gv.syncToIDE', 'gv.checkSyncStatus'].includes(
-      message.type,
-    )
+    ![
+      LIBRARY_OPEN_MESSAGE,
+      'gv.account.resolve',
+      'gv.openPopup',
+      'gv.syncToIDE',
+      'gv.checkSyncStatus',
+    ].includes(message.type)
   )
     return null;
   return (async () => {
+    if (message.type === LIBRARY_OPEN_MESSAGE) {
+      try {
+        await chrome.tabs.create({ url: chrome.runtime.getURL(LIBRARY_PAGE_PATH) });
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    }
+
     if (message?.type === 'gv.account.resolve') {
       const payload = message.payload as {
         pageUrl?: string;

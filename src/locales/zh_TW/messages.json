@@ -3904,5 +3904,35 @@
   "researchPackTemplateFailed": {
     "message": "範本更新失敗，請再試一次。",
     "description": "Research pack: reading or writing templates failed"
+  },
+  "savedLibraryOpenFull": {
+    "message": "開啟完整收藏庫"
+  },
+  "savedLibrarySite": {
+    "message": "網站"
+  },
+  "savedLibraryAllSites": {
+    "message": "所有網站"
+  },
+  "savedLibraryUnknownSite": {
+    "message": "未知網站"
+  },
+  "savedLibraryAccount": {
+    "message": "帳號"
+  },
+  "savedLibraryAllAccounts": {
+    "message": "所有帳號"
+  },
+  "savedLibraryAccountNumber": {
+    "message": "帳號 {number}"
+  },
+  "savedLibraryUnassigned": {
+    "message": "未分配"
+  },
+  "savedLibraryRemoveStarConfirm": {
+    "message": "取消這則收藏？"
+  },
+  "savedLibraryDeleteHighlightConfirm": {
+    "message": "刪除這則螢光標記及其備註？"
   }
 }

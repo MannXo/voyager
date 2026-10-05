@@ -3904,5 +3904,35 @@
   "researchPackTemplateFailed": {
     "message": "Не удалось обновить шаблоны. Попробуйте ещё раз.",
     "description": "Research pack: reading or writing templates failed"
+  },
+  "savedLibraryOpenFull": {
+    "message": "Открыть всю библиотеку"
+  },
+  "savedLibrarySite": {
+    "message": "Сайт"
+  },
+  "savedLibraryAllSites": {
+    "message": "Все сайты"
+  },
+  "savedLibraryUnknownSite": {
+    "message": "Неизвестный сайт"
+  },
+  "savedLibraryAccount": {
+    "message": "Аккаунт"
+  },
+  "savedLibraryAllAccounts": {
+    "message": "Все аккаунты"
+  },
+  "savedLibraryAccountNumber": {
+    "message": "Аккаунт {number}"
+  },
+  "savedLibraryUnassigned": {
+    "message": "Не назначен"
+  },
+  "savedLibraryRemoveStarConfirm": {
+    "message": "Убрать эту звезду?"
+  },
+  "savedLibraryDeleteHighlightConfirm": {
+    "message": "Удалить это выделение и заметку к нему?"
   }
 }

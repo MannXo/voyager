@@ -34,6 +34,7 @@ import {
   filterSavedLibraryItems,
   toSavedLibraryItems,
 } from '@/features/savedLibrary/model';
+import { openLibraryPage } from '@/features/savedLibrary/openLibraryPage';
 import type { StarredMessage } from '@/features/savedLibrary/starTypes';
 import type { TranslationKey } from '@/utils/translations';
 
@@ -100,6 +101,7 @@ export function createSavedLibraryView({
   let exportMenuOpen = false;
 
   const toolbar = createEl('div', 'gv-pm-saved-toolbar gv-hidden');
+  toolbar.style.gap = '8px';
   const filterGroup = createEl('div', 'gv-pm-saved-filters');
   filterGroup.setAttribute('role', 'group');
   const filterButtons = new Map<SavedLibraryFilter, HTMLButtonElement>();
@@ -115,6 +117,12 @@ export function createSavedLibraryView({
     filterGroup.appendChild(button);
   }
   toolbar.appendChild(filterGroup);
+  const openFullButton = createEl('button', 'gv-pm-saved-footer-button gv-pm-saved-open-full');
+  openFullButton.type = 'button';
+  openFullButton.addEventListener('click', () => {
+    void openLibraryPage().catch(() => setNotice(t('pm_starred_load_error'), 'err'));
+  });
+  toolbar.appendChild(openFullButton);
 
   // The view keeps its two top-level actions in the footer. Export formats
   // are disclosed only after the user asks to export.
@@ -147,6 +155,7 @@ export function createSavedLibraryView({
   footerActions.append(backBtn, exportWrap);
 
   function applyTexts(): void {
+    openFullButton.textContent = t('savedLibraryOpenFull');
     const labels: Record<SavedLibraryFilter, TranslationKey> = {
       all: 'savedLibraryAll',
       starred: 'savedLibraryStars',

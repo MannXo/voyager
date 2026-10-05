@@ -1,0 +1,123 @@
+import { hashString } from '@/core/utils/hash';
+import { NATIVE_SITE_IDS, SiteRegistry } from '@/features/plugins/sites/registry';
+
+import { type SavedLibraryFilter, type SavedLibraryItem, filterSavedLibraryItems } from './model';
+
+export interface SavedLibrarySelection {
+  kind: SavedLibraryFilter;
+  query: string;
+  site: string;
+  account: string;
+}
+
+export interface SavedLibraryGroup {
+  id: string;
+  title?: string;
+  site: string;
+  siteLabel: string;
+  account: string;
+  accountNumber?: number;
+  items: SavedLibraryItem[];
+}
+
+export interface SavedLibraryView {
+  items: SavedLibraryItem[];
+  groups: SavedLibraryGroup[];
+  sites: { id: string; label: string }[];
+  accounts: { id: string; number: number }[];
+}
+
+function itemSite(item: SavedLibraryItem, registry: SiteRegistry): string {
+  if (item.kind === 'highlight' && item.platform) return item.platform;
+  const prefix = item.conversationId.includes(':') ? item.conversationId.split(':')[0] : null;
+  const site = registry.resolveByUrl(item.conversationUrl);
+  if (!site) return 'unknown';
+  return prefix
+    ? prefix === site.id
+      ? site.id
+      : 'unknown'
+    : NATIVE_SITE_IDS.has(site.id)
+      ? site.id
+      : 'unknown';
+}
+
+function itemAccount(item: SavedLibraryItem, site: string): string {
+  if (item.accountHash) return JSON.stringify([site, 'hash', item.accountHash]);
+  if (!item.account) return 'unassigned';
+  // Gemini stars capture accountKey; highlightAnnotationData hashes that same key.
+  const identity = site === 'gemini' ? ['hash', hashString(item.account)] : ['star', item.account];
+  return JSON.stringify([site, ...identity]);
+}
+
+export function getSavedLibraryView(
+  items: readonly SavedLibraryItem[],
+  selection: SavedLibrarySelection,
+): SavedLibraryView {
+  const registry = SiteRegistry.createDefault();
+  const sorted = [...items].sort((a, b) => b.savedAt - a.savedAt || a.id.localeCompare(b.id));
+  const located = sorted.map((item) => {
+    const site = itemSite(item, registry);
+    return { item, site, account: itemAccount(item, site) };
+  });
+  const siteIds = new Set(located.map(({ site }) => site));
+  const sites = registry
+    .all()
+    .filter((site) => siteIds.has(site.id))
+    .map(({ id, label }) => ({ id, label }));
+  if (siteIds.has('unknown')) sites.push({ id: 'unknown', label: '' });
+
+  const firstSeenBySite = new Map<string, Map<string, number>>();
+  for (const { item, site, account } of located) {
+    if (!NATIVE_SITE_IDS.has(site)) continue;
+    const firstSeen = firstSeenBySite.get(site) ?? new Map<string, number>();
+    firstSeen.set(
+      account,
+      Math.min(firstSeen.get(account) ?? Infinity, item.firstSeenAt ?? item.savedAt),
+    );
+    firstSeenBySite.set(site, firstSeen);
+  }
+  const accountsBySite = new Map(
+    [...firstSeenBySite].map(([site, firstSeen]) => {
+      const accounts = [...firstSeen]
+        .filter(([id]) => id !== 'unassigned')
+        .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+        .map(([id], index) => ({ id, number: index + 1 }));
+      if (firstSeen.has('unassigned')) accounts.push({ id: 'unassigned', number: 0 });
+      return [site, accounts] as const;
+    }),
+  );
+  const accounts = accountsBySite.get(selection.site) ?? [];
+
+  const matches = new Set(filterSavedLibraryItems(sorted, selection.kind, selection.query));
+  const titles = new Map<string, string>();
+  const groups = new Map<string, SavedLibraryGroup>();
+  const visible: SavedLibraryItem[] = [];
+  for (const { item, site, account } of located) {
+    const id = JSON.stringify([site, account, item.conversationId]);
+    if (!titles.has(id) && item.conversationTitle?.trim()) titles.set(id, item.conversationTitle);
+    if (!matches.has(item) || (selection.site !== 'all' && selection.site !== site)) continue;
+    if (
+      selection.account !== 'all' &&
+      NATIVE_SITE_IDS.has(selection.site) &&
+      selection.account !== account
+    )
+      continue;
+    visible.push(item);
+    const group = groups.get(id) ?? {
+      id,
+      site,
+      account,
+      items: [],
+      siteLabel: sites.find((option) => option.id === site)?.label ?? '',
+      accountNumber: accountsBySite.get(site)?.find((option) => option.id === account)?.number,
+    };
+    group.items.push(item);
+    groups.set(id, group);
+  }
+  return {
+    items: visible,
+    groups: [...groups.values()].map((group) => ({ ...group, title: titles.get(group.id) })),
+    sites,
+    accounts,
+  };
+}

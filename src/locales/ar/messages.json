@@ -3904,5 +3904,35 @@
   "researchPackTemplateFailed": {
     "message": "تعذّر تحديث القوالب. حاول مرة أخرى.",
     "description": "Research pack: reading or writing templates failed"
+  },
+  "savedLibraryOpenFull": {
+    "message": "فتح المكتبة الكاملة"
+  },
+  "savedLibrarySite": {
+    "message": "الموقع"
+  },
+  "savedLibraryAllSites": {
+    "message": "كل المواقع"
+  },
+  "savedLibraryUnknownSite": {
+    "message": "موقع غير معروف"
+  },
+  "savedLibraryAccount": {
+    "message": "الحساب"
+  },
+  "savedLibraryAllAccounts": {
+    "message": "كل الحسابات"
+  },
+  "savedLibraryAccountNumber": {
+    "message": "الحساب {number}"
+  },
+  "savedLibraryUnassigned": {
+    "message": "غير معيّن"
+  },
+  "savedLibraryRemoveStarConfirm": {
+    "message": "إزالة هذه النجمة؟"
+  },
+  "savedLibraryDeleteHighlightConfirm": {
+    "message": "حذف هذا التمييز وملاحظته؟"
   }
 }

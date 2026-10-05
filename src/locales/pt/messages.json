@@ -3904,5 +3904,35 @@
   "researchPackTemplateFailed": {
     "message": "Não foi possível atualizar os modelos. Tente de novo.",
     "description": "Research pack: reading or writing templates failed"
+  },
+  "savedLibraryOpenFull": {
+    "message": "Abrir biblioteca completa"
+  },
+  "savedLibrarySite": {
+    "message": "Site"
+  },
+  "savedLibraryAllSites": {
+    "message": "Todos os sites"
+  },
+  "savedLibraryUnknownSite": {
+    "message": "Site desconhecido"
+  },
+  "savedLibraryAccount": {
+    "message": "Conta"
+  },
+  "savedLibraryAllAccounts": {
+    "message": "Todas as contas"
+  },
+  "savedLibraryAccountNumber": {
+    "message": "Conta {number}"
+  },
+  "savedLibraryUnassigned": {
+    "message": "Sem atribuição"
+  },
+  "savedLibraryRemoveStarConfirm": {
+    "message": "Remover esta estrela?"
+  },
+  "savedLibraryDeleteHighlightConfirm": {
+    "message": "Excluir este destaque e sua nota?"
   }
 }

@@ -3904,5 +3904,35 @@
   "researchPackTemplateFailed": {
     "message": "No se pudieron actualizar las plantillas. Inténtalo de nuevo.",
     "description": "Research pack: reading or writing templates failed"
+  },
+  "savedLibraryOpenFull": {
+    "message": "Abrir biblioteca completa"
+  },
+  "savedLibrarySite": {
+    "message": "Sitio"
+  },
+  "savedLibraryAllSites": {
+    "message": "Todos los sitios"
+  },
+  "savedLibraryUnknownSite": {
+    "message": "Sitio desconocido"
+  },
+  "savedLibraryAccount": {
+    "message": "Cuenta"
+  },
+  "savedLibraryAllAccounts": {
+    "message": "Todas las cuentas"
+  },
+  "savedLibraryAccountNumber": {
+    "message": "Cuenta {number}"
+  },
+  "savedLibraryUnassigned": {
+    "message": "Sin asignar"
+  },
+  "savedLibraryRemoveStarConfirm": {
+    "message": "¿Quitar esta estrella?"
+  },
+  "savedLibraryDeleteHighlightConfirm": {
+    "message": "¿Eliminar este resaltado y su nota?"
   }
 }

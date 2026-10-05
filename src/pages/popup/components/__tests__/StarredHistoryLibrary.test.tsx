@@ -117,7 +117,7 @@ it.each([
 
 it('opens a saved Claude star in the current Claude tab', async () => {
   await mount();
-  const card = container.querySelector<HTMLElement>('[role="button"]')!;
+  const card = container.querySelector<HTMLButtonElement>('[data-library-open]')!;
   await act(async () => card.click());
   expect(chrome.tabs.update).toHaveBeenCalledWith(7, {
     url: 'https://claude.ai/chat/saved#gv-turn-turn-one',
@@ -178,4 +178,24 @@ it('keeps a highlight row and reports highlight removal failure when the request
   );
   expect(container.textContent).toContain('Highlighted answer');
   expect(button.isConnected).toBe(true);
+});
+
+it('opens the full library from the popup without navigating the source tab', async () => {
+  vi.mocked(chrome.runtime.sendMessage).mockImplementation((async (
+    message: { type: string },
+    callback?: (value: unknown) => void,
+  ) => {
+    if (message.type === 'gv.starred.getAll') {
+      callback?.({ ok: true, data: { messages: {} } });
+      return;
+    }
+    return { ok: message.type === 'gv.library.open' };
+  }) as typeof chrome.runtime.sendMessage);
+  await mount();
+  const button = container.querySelector<HTMLButtonElement>(
+    `button[aria-label="${TRANSLATIONS.en.savedLibraryOpenFull}"]`,
+  )!;
+  await act(async () => button.click());
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'gv.library.open' });
+  expect(chrome.tabs.update).not.toHaveBeenCalled();
 });
