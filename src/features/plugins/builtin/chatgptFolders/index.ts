@@ -29,6 +29,7 @@ import {
 } from '@/pages/content/folder/floatingTree/dropTargets';
 import type { TreeActions } from '@/pages/content/folder/floatingTree/shared';
 import { createFolderDialogs } from '@/pages/content/folder/folderDialogs';
+import { cloudMenuAction } from '@/pages/content/folder/folderHeader/folderHeader';
 import {
   type SidebarDropContext,
   acceptsSidebarDrag,
@@ -40,6 +41,11 @@ import { getTranslationSyncUnsafe as t, initI18n } from '@/utils/i18n';
 
 import { isTemporaryChat } from '../chatgptTemporaryHandoff/handoff';
 import { type ChatGptFolderChange, ChatGptFolderStore } from './ChatGptFolderStore';
+import {
+  type ChatGptCloudSyncHost,
+  syncChatGptFolders,
+  uploadChatGptFolders,
+} from './chatgptCloudSync';
 import { ChatGptFolderGuide } from './chatgptFolderGuide';
 import { type FolderPickerHandle, openFolderPicker } from './chatgptFolderPicker';
 import {
@@ -174,23 +180,30 @@ class ChatGptFoldersView {
         },
         headerActions: [
           {
-            modifier: 'add-current',
+            className: 'gv-chatgpt-folder-section__add-current',
             labelKey: 'chatgptFoldersAddCurrent',
             icon: () => createBookmarkPlusIcon(SECTION_ICON_SIZE),
             onClick: () => this.addCurrent(CHATGPT_FOLDER_CONFIG.rootBucketId),
           },
           {
-            modifier: 'import',
+            className: 'gv-chatgpt-folder-section__import',
             labelKey: 'folder_import',
             icon: () => createUploadIcon(SECTION_ICON_SIZE),
             onClick: () => this.pickImportFile(),
           },
           {
-            modifier: 'export',
+            className: 'gv-chatgpt-folder-section__export',
             labelKey: 'folder_export',
             icon: () => createDownloadIcon(SECTION_ICON_SIZE),
             onClick: () => this.exportFolders(),
           },
+          cloudMenuAction(
+            {
+              upload: () => void uploadChatGptFolders(this.cloudHost),
+              sync: () => void syncChatGptFolders(this.cloudHost),
+            },
+            { className: 'gv-chatgpt-folder-section__cloud' },
+          ),
         ],
       });
       section.setDataReady(this.store.ready);
@@ -326,6 +339,15 @@ class ChatGptFoldersView {
       });
   }
 
+  /** What a cloud upload or sync reads and writes; the background picks Drive or iCloud. */
+  private readonly cloudHost: ChatGptCloudSyncHost = {
+    data: () => this.store.data,
+    ready: () => this.store.ready,
+    replaceData: (data) => this.store.replaceData(data),
+    notify: (message, tone) => this.notify(message, tone),
+    isDisposed: () => this.scope.isDisposed,
+  };
+
   private notify(message: string, tone: ToastTone): void {
     this.toaster.show({ message, tone, durationMs: NOTICE_MS, channel: NOTICE_CHANNEL });
   }
@@ -348,8 +370,9 @@ class ChatGptFoldersView {
       data: store.data,
       rootBucketId: CHATGPT_FOLDER_CONFIG.rootBucketId,
       dataReady: store.ready,
-      cloudActions: false,
       hintKeys: HINT_KEYS,
+      onCloudUpload: () => void uploadChatGptFolders(this.cloudHost),
+      onCloudSync: () => void syncChatGptFolders(this.cloudHost),
       headerActions: [
         {
           modifier: 'add-current',

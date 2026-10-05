@@ -237,7 +237,7 @@ describe('ChatGPT folder section in the sidebar', () => {
     await activate();
 
     const create = section().shadowRoot!.querySelector<HTMLButtonElement>(
-      '[class*="icon-button--create"]',
+      '.gv-chatgpt-folder-section__create',
     )!;
     create.click();
     const input = section().shadowRoot!.querySelector<HTMLInputElement>(

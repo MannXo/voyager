@@ -246,7 +246,7 @@ describe('ChatGPT folders sidebar guide', () => {
     const menu = sidebar.openMenu(ROWS[1].id);
     await activate();
     const root = document.querySelector<HTMLElement>(SECTION)!.shadowRoot!;
-    root.querySelector<HTMLButtonElement>('[class*="icon-button--create"]')!.click();
+    root.querySelector<HTMLButtonElement>('.gv-chatgpt-folder-section__create')!.click();
     menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await nextPass();
     sidebar.rerenderList();

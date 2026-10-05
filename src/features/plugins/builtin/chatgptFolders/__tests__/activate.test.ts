@@ -137,9 +137,11 @@ describe('ChatGPT folders plugin', () => {
     expect(document.querySelector(PANEL)).toBeNull();
 
     press(document.querySelector(FAB)!, 'Enter');
-    // No Drive buttons: Drive sync does not carry ChatGPT folders.
+    // Cloud upload and sync carry ChatGPT folders, through whichever provider is chosen.
     const header = Array.from(shadow().querySelectorAll('[class*="__header-actions"] button'));
     expect(header.map((button) => button.getAttribute('aria-label'))).toEqual([
+      expect.any(String),
+      expect.any(String),
       'Add current conversation',
       'Import folders',
       'Export folders',

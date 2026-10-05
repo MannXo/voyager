@@ -1,7 +1,6 @@
 import browser from 'webextension-polyfill';
 
 import { StorageKeys } from '@/core/types/common';
-import { isSafari } from '@/core/utils/browser';
 import { isExtensionContextInvalidatedError } from '@/core/utils/extensionContext';
 import type { FolderCommands } from '@/features/folder/commands/folderCommands';
 import type { ConversationSortMode } from '@/features/folder/model/folderData';
@@ -182,18 +181,14 @@ export class FloatingFolderUI {
   }
 
   /**
-   * Cloud sync / upload — mirror what the sidebar's header buttons do. Only
-   * wire on non-Safari; the floating panel hides these buttons on Safari
-   * because our Drive OAuth2 flow is not supported there yet. The panel reads
-   * `isSafari()` itself, but we still guard here so callbacks stay undefined
-   * on Safari and nothing fires by accident.
+   * Cloud sync / upload — mirror what the sidebar's header buttons do, on every
+   * browser: Safari uploads through its native Drive bridge or iCloud.
    *
    * onCloudSync can mutate store.data (merges Drive payload locally); it
    * persists via saveData, whose centralised hook pushes the merged snapshot
    * into the floating panel. onCloudUpload is read-only locally.
    */
   private cloudActions() {
-    if (isSafari()) return {};
     const { transfer } = this.options;
     return {
       onCloudUpload: () => void transfer.upload(),

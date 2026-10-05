@@ -68,6 +68,11 @@ export type PopoverOptions = {
   /** The owner's lifetime; aborting dismisses the popover. */
   signal?: AbortSignal;
   /**
+   * A press on the anchor is not an outside press: the anchor's own click
+   * closes the popover, as a menu button does, instead of closing and reopening it.
+   */
+  anchorToggles?: boolean;
+  /**
    * The stack closed the popover: Escape, an outside press, abort, or its anchor
    * leaving the page or the viewport.
    */
@@ -84,6 +89,7 @@ export type Popover = {
 type Entry = {
   layer: LayerHost;
   anchor: HTMLElement | null;
+  anchorToggles: boolean;
   place: () => void;
   close: () => void;
   dismiss: () => void;
@@ -105,7 +111,11 @@ function focusableIn(root: ShadowRoot): HTMLElement[] {
 
 function onPointerDown(event: Event): void {
   const top = topEntry();
-  if (top && !event.composedPath().includes(top.layer.host)) top.dismiss();
+  if (!top) return;
+  const path = event.composedPath();
+  if (path.includes(top.layer.host)) return;
+  if (top.anchorToggles && top.anchor && path.includes(top.anchor)) return;
+  top.dismiss();
 }
 
 function onKeyDown(event: KeyboardEvent): void {
@@ -287,7 +297,14 @@ export function openPopover(options: PopoverOptions): Popover & { place: () => v
     layer.host.style.top = `${top}px`;
   };
 
-  const entry: Entry = { layer, anchor: options.anchor ?? null, place, close, dismiss };
+  const entry: Entry = {
+    layer,
+    anchor: options.anchor ?? null,
+    anchorToggles: options.anchorToggles === true,
+    place,
+    close,
+    dismiss,
+  };
   if (stack.length === 0) listen(true);
   stack.push(entry);
   options.signal?.addEventListener('abort', dismiss, { once: true });

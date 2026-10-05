@@ -105,9 +105,22 @@
 }
 
 /* ─── Header: one of ChatGPT's section headings ────────────────────────── */
+/* The shared folder header (folderHeader.css), in ChatGPT's sizes and colours:
+ * muted at rest, the row text colour on hover, a pressed toggle on the row's
+ * pressed fill. */
 .gv-chatgpt-folder-section__header {
-  display: flex;
-  align-items: center;
+  --gv-folder-header-gap: 2px;
+  --gv-folder-header-button-size: 28px;
+  --gv-folder-header-button-radius: 8px;
+  --gv-folder-header-icon: var(--gv-floating-folder-panel__text-muted);
+  --gv-folder-header-icon-active: var(--gv-floating-folder-panel__text);
+  --gv-folder-header-hover: var(--gv-floating-folder-panel__surface-hover);
+  --gv-folder-header-action-hover: var(--gv-floating-folder-panel__surface-hover);
+  --gv-folder-header-action-hover-color: var(--gv-floating-folder-panel__text);
+  --gv-folder-header-action-opacity: 1;
+  --gv-folder-header-pressed-bg: var(--gv-floating-folder-panel__surface-active);
+  --gv-folder-header-pressed-color: var(--gv-floating-folder-panel__text);
+  --gv-folder-header-focus-ring: var(--gv-floating-folder-panel__outline);
   gap: 2px;
   min-height: 36px;
   margin-inline: 6px;
@@ -130,89 +143,24 @@
   line-height: 20px;
 }
 
-.gv-chatgpt-folder-section__actions {
-  display: inline-flex;
+.gv-chatgpt-folder-section__header .gv-folder-header-actions {
   flex: 0 0 auto;
-  align-items: center;
-  gap: 2px;
 }
 
-/* Muted at rest, the row text colour on hover: Gemini's header buttons. */
-.gv-chatgpt-folder-section__actions .gv-floating-folder-panel__icon-button {
-  width: 28px;
-  height: 28px;
-  min-width: 28px;
-  border-radius: 8px;
-  color: var(--gv-floating-folder-panel__text-muted);
-  opacity: 1;
+.gv-chatgpt-folder-section__header :is(.gv-folder-action-btn, .gv-folder-add-btn) {
+  flex: 0 0 auto;
 }
 
-.gv-chatgpt-folder-section__actions .gv-floating-folder-panel__icon-button svg {
-  width: 18px;
-  height: 18px;
-}
-
-.gv-chatgpt-folder-section__actions .gv-floating-folder-panel__icon-button:hover,
-.gv-chatgpt-folder-section__actions .gv-floating-folder-panel__icon-button:focus-visible {
+.gv-chatgpt-folder-section__header .gv-folder-action-btn:focus-visible,
+.gv-chatgpt-folder-section__header .gv-folder-add-btn:focus-visible {
   background: var(--gv-floating-folder-panel__surface-hover);
   color: var(--gv-floating-folder-panel__text);
+  outline: none;
 }
 
-.gv-chatgpt-folder-section__actions .gv-floating-folder-panel__icon-button:disabled {
+.gv-chatgpt-folder-section__header :is(.gv-folder-action-btn, .gv-folder-add-btn):disabled {
   cursor: default;
   opacity: 0.4;
-}
-
-/* "Create folder" and a recent order that is on stay; the rest appear while
- * the heading is in use. */
-.gv-chatgpt-folder-section__header:not(:hover, :focus-within)
-  .gv-chatgpt-folder-section__reveal:not([aria-pressed='true']) {
-  opacity: 0;
-}
-
-.gv-chatgpt-folder-section__actions .gv-floating-folder-panel__icon-button[aria-pressed='true'] {
-  background: var(--gv-floating-folder-panel__surface-active);
-  color: var(--gv-floating-folder-panel__text);
-}
-
-/* The heading collapses the section, as ChatGPT's own section headings do: its
- * chevron shows while the heading is in use, or while the section is collapsed. */
-.gv-chatgpt-folder-section__toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 100%;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-
-.gv-chatgpt-folder-section__toggle span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.gv-chatgpt-folder-section__toggle svg {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  opacity: 0;
-}
-
-.gv-chatgpt-folder-section__header:is(:hover, :focus-within) .gv-chatgpt-folder-section__toggle svg,
-.gv-chatgpt-folder-section__toggle[aria-expanded='false'] svg {
-  opacity: 1;
-}
-
-.gv-chatgpt-folder-section__toggle:focus-visible {
-  outline: 2px solid var(--gv-floating-folder-panel__outline);
-  outline-offset: 2px;
 }
 
 /* ─── Search: a field on the rows' column, in ChatGPT's row shape ──────── */

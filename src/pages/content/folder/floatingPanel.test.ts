@@ -22,12 +22,6 @@ import {
   stubPointerCapture,
 } from './__tests__/floatingPanelHarness';
 
-const mockIsSafari = vi.hoisted(() => vi.fn(() => false));
-
-vi.mock('@/core/utils/browser', () => ({
-  isSafari: mockIsSafari,
-}));
-
 vi.mock('@/utils/i18n', () => ({
   getTranslationSyncUnsafe: (key: string) => key,
 }));
@@ -40,7 +34,6 @@ afterEach(() => {
   destroyMountedPanels();
   document.body.innerHTML = '';
   vi.restoreAllMocks();
-  mockIsSafari.mockReturnValue(false);
   globalThis.ResizeObserver = originalResizeObserver as typeof ResizeObserver;
   setWindowSize(originalInnerWidth, originalInnerHeight);
 });
@@ -355,21 +348,6 @@ describe('mountFloatingPanel', () => {
     expect(getCloudSyncTooltip).toHaveBeenCalledTimes(1);
     expect(uploadButton.title).toBe('Upload latest folders');
     expect(syncButton.title).toBe('Sync from Drive');
-  });
-
-  it('hides cloud buttons on Safari', () => {
-    mockIsSafari.mockReturnValue(true);
-    const handle = mountPanel({
-      onCloudUpload: vi.fn(),
-      onCloudSync: vi.fn(),
-    });
-
-    expect(
-      panelRoot(handle).querySelector(`.${FLOATING_PANEL_CLASS}__icon-button--cloud-upload`),
-    ).toBeNull();
-    expect(
-      panelRoot(handle).querySelector(`.${FLOATING_PANEL_CLASS}__icon-button--cloud-sync`),
-    ).toBeNull();
   });
 
   it('applies a stored floating panel size on mount', () => {

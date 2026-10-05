@@ -433,7 +433,11 @@ describe('AIStudio theme compatibility', () => {
       );
       expect(hit, `no --folder-bg block for ${scheme}`).toBeTruthy();
     }
-    expect(css).toContain("html[data-gv-scheme='dark'] .gv-folder-action-btn:hover");
+    const headerCss = readFileSync(
+      resolve(process.cwd(), 'src/pages/content/folder/folderHeader/folderHeader.css'),
+      'utf8',
+    );
+    expect(headerCss).toContain("html[data-gv-scheme='dark'] .gv-folder-action-btn:hover");
   });
 
   it('renders cloud action icons with currentColor in AI Studio', () => {

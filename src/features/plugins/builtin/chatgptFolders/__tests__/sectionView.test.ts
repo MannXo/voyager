@@ -266,7 +266,7 @@ describe('ChatGPT folder section: collapse', () => {
     memory.values.local.set(PREFS_KEY, { collapsed: true, sortMode: 'manual' });
     await activate();
 
-    shadow().querySelector<HTMLButtonElement>('[class*="icon-button--create"]')!.click();
+    shadow().querySelector<HTMLButtonElement>('.gv-chatgpt-folder-section__create')!.click();
 
     expect(collapseToggle().getAttribute('aria-expanded')).toBe('true');
     expect(shadow().querySelector('.gv-floating-folder-panel__inline-input')).not.toBeNull();

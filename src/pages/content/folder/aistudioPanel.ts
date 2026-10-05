@@ -1,12 +1,11 @@
+import { isLibraryPath } from './aistudioLibraryTable';
+import { openLibraryInApp } from './aistudioNavigation';
 /**
  * The folder panel's frame in AI Studio's left nav: the header with its
  * actions, where the panel goes in the legacy or V2 nav, and a watch that
  * notices when Angular rebuilds the nav and drops it.
  */
-import { isSafari } from '@/core/utils/browser';
-
-import { isLibraryPath } from './aistudioLibraryTable';
-import { openLibraryInApp } from './aistudioNavigation';
+import { ensureFolderHeaderStyle } from './folderHeader/folderHeader';
 
 const NAV_SELECTOR = '.nav-content.v3-left-nav';
 const REINJECT_THROTTLE_MS = 250;
@@ -61,11 +60,12 @@ function cloudButton(
 }
 
 /**
- * Builds the panel frame. Cloud actions are left out on Safari; the V2 nav,
+ * Builds the panel frame, styled by the shared folder header sheet. The V2 nav,
  * which has no inline history (`legacyNav` false), gets a /library shortcut.
  */
 export function buildFolderPanel(actions: PanelActions, legacyNav: boolean): FolderPanelFrame {
   const { t } = actions;
+  ensureFolderHeaderStyle();
   const container = document.createElement('div');
   // `.gv-aistudio` scopes AI Studio's styles away from Gemini's.
   container.className = 'gv-folder-container gv-aistudio';
@@ -78,22 +78,15 @@ export function buildFolderPanel(actions: PanelActions, legacyNav: boolean): Fol
   buttons.className = 'gv-folder-header-actions';
   header.append(title, buttons);
 
-  if (!isSafari()) {
-    buttons.append(
-      cloudButton(
-        CLOUD_UPLOAD_ICON,
-        t('folder_cloud_upload'),
-        actions.onCloudUpload,
-        actions.uploadTooltip,
-      ),
-      cloudButton(
-        CLOUD_SYNC_ICON,
-        t('folder_cloud_sync'),
-        actions.onCloudSync,
-        actions.syncTooltip,
-      ),
-    );
-  }
+  buttons.append(
+    cloudButton(
+      CLOUD_UPLOAD_ICON,
+      t('folder_cloud_upload'),
+      actions.onCloudUpload,
+      actions.uploadTooltip,
+    ),
+    cloudButton(CLOUD_SYNC_ICON, t('folder_cloud_sync'), actions.onCloudSync, actions.syncTooltip),
+  );
   const addButton = document.createElement('button');
   addButton.className = 'gv-folder-add-btn';
   addButton.title = t('folder_create');

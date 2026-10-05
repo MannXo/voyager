@@ -283,7 +283,7 @@ describe('ChatGPT folder section: multi-select', () => {
       return event;
     };
 
-    section.root.querySelector<HTMLButtonElement>('[class*="icon-button--create"]')!.click();
+    section.root.querySelector<HTMLButtonElement>('.gv-chatgpt-folder-section__create')!.click();
     escape(section.view.nameInput()!);
     expect(section.view.nameInput()).toBeNull();
     expect(selectedTitles(section)).toEqual(['Alpha', 'Beta']);

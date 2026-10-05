@@ -1,5 +1,4 @@
 import { CLOUD_SYNC_PATH, CLOUD_UPLOAD_PATH } from '@/core/icons/cloudSyncPaths';
-import { isSafari } from '@/core/utils/browser';
 import { ROOT_CONVERSATIONS_ID } from '@/features/folder/constants';
 import type { ConversationSortMode } from '@/features/folder/model/folderData';
 
@@ -241,7 +240,7 @@ export function mountFloatingPanel({
   const headerActions = document.createElement('div');
   headerActions.className = `${FLOATING_PANEL_CLASS}__header-actions`;
 
-  if (cloudActions && !isSafari()) {
+  if (cloudActions) {
     const cloudUploadBtn = createSvgIconButton(
       'cloud-upload',
       'floatingPanelCloudUpload',
