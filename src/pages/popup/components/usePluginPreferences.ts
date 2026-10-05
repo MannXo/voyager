@@ -9,6 +9,7 @@ import {
   loadPluginState,
   setPluginCollapsed,
   setPluginSetting,
+  setPluginSettings,
   subscribePluginState,
 } from '@/features/plugins/storage/pluginState';
 import type { PluginSettingValue } from '@/features/plugins/types';
@@ -90,10 +91,10 @@ export function usePluginPreferences() {
     );
   }, []);
 
-  const handleImmediateSetting = useCallback(
-    (id: string, key: string, value: PluginSettingValue) => {
-      setSettingsMap((prev) => ({ ...prev, [id]: { ...prev[id], [key]: value } }));
-      void setPluginSetting(id, key, value);
+  const handleImmediateSettings = useCallback(
+    (id: string, values: Readonly<Record<string, PluginSettingValue>>) => {
+      setSettingsMap((prev) => ({ ...prev, [id]: { ...prev[id], ...values } }));
+      void setPluginSettings(id, values);
     },
     [],
   );
@@ -132,7 +133,7 @@ export function usePluginPreferences() {
     settingsMap,
     collapsed,
     handleSetting,
-    handleImmediateSetting,
+    handleImmediateSettings,
     toggleCollapsed,
     mirrorEnabled,
   };

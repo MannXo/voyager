@@ -105,7 +105,8 @@ function readOptionalString(
 
 /**
  * A select's options and default, which the popup and the host both resolve
- * against: non-empty unique string options and a default that is one of them.
+ * against: at least one option, unique string values ("" included), labelled,
+ * and a default that is one of them.
  * Undefined, with issues, otherwise.
  */
 function readSelectOptions(
@@ -120,10 +121,10 @@ function readSelectOptions(
   }
   const options: { value: string; label: string }[] = [];
   for (const [index, option] of raw.entries()) {
-    if (!isRecord(option) || !nonEmptyString(option.value) || !nonEmptyString(option.label)) {
+    if (!isRecord(option) || !isString(option.value) || !nonEmptyString(option.label)) {
       issues.push({
         path: `${path}.options[${index}]`,
-        message: 'required { value, label } non-empty strings',
+        message: 'required { value: string, label: non-empty string }',
       });
       return undefined;
     }

@@ -1,4 +1,7 @@
-import { resolvePluginSettings } from '@/features/plugins/runtime/resolvePluginSettings';
+import {
+  compatibleSettingWrite,
+  resolvePluginSettings,
+} from '@/features/plugins/runtime/resolvePluginSettings';
 import type { PluginManifest, PluginSettingValue } from '@/features/plugins/types';
 
 import { Switch } from '../../../components/ui/switch';
@@ -9,20 +12,25 @@ interface PluginSettingsProps {
   readonly plugin: PluginManifest;
   readonly values?: Record<string, PluginSettingValue>;
   readonly handleSetting: (id: string, key: string, value: PluginSettingValue) => void;
-  readonly handleImmediateSetting: (id: string, key: string, value: PluginSettingValue) => void;
+  readonly handleImmediateSettings: (
+    id: string,
+    values: Readonly<Record<string, PluginSettingValue>>,
+  ) => void;
 }
 
 export function PluginSettings({
   plugin,
   values,
   handleSetting,
-  handleImmediateSetting,
+  handleImmediateSettings,
 }: PluginSettingsProps) {
   const { language } = useLanguage();
   const settingsSchema = plugin.contributes.settings;
   const localizedName = pickLocalized(plugin, 'name', language);
   const resolved = resolvePluginSettings(plugin, values);
   if (!settingsSchema) return null;
+  const writeNow = (key: string, value: PluginSettingValue) =>
+    handleImmediateSettings(plugin.id, compatibleSettingWrite(plugin, { key, value }).stored);
   return (
     <div className="mt-2 space-y-2.5" role="group" aria-label={localizedName}>
       {Object.entries(settingsSchema).map(([key, field]) => {
@@ -37,7 +45,7 @@ export function PluginSettings({
               <Switch
                 checked={checked}
                 aria-label={settingText.label}
-                onChange={(event) => handleImmediateSetting(plugin.id, key, event.target.checked)}
+                onChange={(event) => writeNow(key, event.target.checked)}
               />
             </div>
           );
@@ -49,7 +57,7 @@ export function PluginSettings({
               <span className="text-muted-foreground text-[11px]">{settingText.label}</span>
               <select
                 value={String(rawValue)}
-                onChange={(event) => handleImmediateSetting(plugin.id, key, event.target.value)}
+                onChange={(event) => writeNow(key, event.target.value)}
                 className="bg-background border-border focus:ring-primary/50 min-w-0 rounded-md border px-2 py-1 text-[11px] transition-all focus:ring-2"
               >
                 {settingText.options?.map((option) => (

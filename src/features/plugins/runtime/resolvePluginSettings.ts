@@ -46,19 +46,36 @@ export function resolvePluginSettings(
   return resolved;
 }
 
+export interface PluginSettingWrite {
+  readonly key: string;
+  readonly value: PluginSettingValue;
+}
+
 /**
- * A `compactView` write as the `timelineStyle` choice it stands for, or
- * undefined when `write` is not such a legacy write for `manifest`.
+ * The setting `manifest` checks for `write` (`checked`) and the values one
+ * storage write records for it (`stored`).
  */
-export function translateLegacySettingWrite(
+export function compatibleSettingWrite(
   manifest: PluginManifest,
-  write: { readonly key: string; readonly value: PluginSettingValue },
-): { key: 'timelineStyle'; value: string } | undefined {
-  // A guide mounted under the previous manifest stays pinned until reload and
-  // still sends the old switch after the catalog replaced it with the select.
+  write: PluginSettingWrite,
+): { readonly checked: PluginSettingWrite; readonly stored: Record<string, PluginSettingValue> } {
   const style = legacyTimelineStyle(manifest);
-  if (!style || manifest.contributes.settings?.compactView) return undefined;
-  if (write.key !== 'compactView' || typeof write.value !== 'boolean') return undefined;
-  if (!write.value) return { key: 'timelineStyle', value: String(style.default) };
-  return declaresChoice(style, 'compact') ? { key: 'timelineStyle', value: 'compact' } : undefined;
+  if (!style || manifest.contributes.settings?.compactView) {
+    return { checked: write, stored: { [write.key]: write.value } };
+  }
+  // A page running the previous manifest stays pinned until reload: its guide
+  // still sends `compactView`, and its host reads `compactView` again after a
+  // disable/re-enable, so the switch is translated in and mirrored out.
+  let checked = write;
+  if (write.key === 'compactView' && typeof write.value === 'boolean') {
+    if (!write.value) checked = { key: 'timelineStyle', value: style.default };
+    else if (declaresChoice(style, 'compact')) checked = { key: 'timelineStyle', value: 'compact' };
+  }
+  if (checked.key !== 'timelineStyle' || typeof checked.value !== 'string') {
+    return { checked, stored: { [checked.key]: checked.value } };
+  }
+  return {
+    checked,
+    stored: { timelineStyle: checked.value, compactView: checked.value === 'compact' },
+  };
 }

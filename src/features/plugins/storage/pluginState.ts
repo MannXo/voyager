@@ -229,14 +229,23 @@ export async function setPluginSetting(
   key: string,
   value: PluginSettingValue,
 ): Promise<boolean> {
-  return updatePluginState('setPluginSetting', { id, key }, (current) => {
+  return setPluginSettings(id, { [key]: value });
+}
+
+/** Persist several setting values for a plugin in one storage write, as `setPluginSetting`. */
+export async function setPluginSettings(
+  id: string,
+  values: Readonly<Record<string, PluginSettingValue>>,
+): Promise<boolean> {
+  const keys = Object.keys(values);
+  return updatePluginState('setPluginSettings', { id, keys }, (current) => {
     const previous = current[id];
     return {
       ...current,
       [id]: {
         enabled: isPluginEnabled(current, id),
         installedAt: previous?.installedAt ?? Date.now(),
-        settings: { ...previous?.settings, [key]: value },
+        settings: { ...previous?.settings, ...values },
       },
     };
   });

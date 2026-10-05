@@ -17,6 +17,7 @@ import { usePluginPreferences } from '../usePluginPreferences';
 const {
   setPluginEnabled,
   setPluginSetting,
+  setPluginSettings,
   permissionContains,
   permissionRequest,
   runtimeSendMessage,
@@ -29,6 +30,7 @@ const {
 } = vi.hoisted(() => ({
   setPluginEnabled: vi.fn().mockResolvedValue(undefined),
   setPluginSetting: vi.fn().mockResolvedValue(undefined),
+  setPluginSettings: vi.fn().mockResolvedValue(undefined),
   permissionContains: vi.fn().mockResolvedValue(false),
   permissionRequest: vi.fn().mockResolvedValue(true),
   runtimeSendMessage: vi.fn().mockResolvedValue({ ok: true }),
@@ -45,6 +47,7 @@ const {
 export {
   setPluginEnabled,
   setPluginSetting,
+  setPluginSettings,
   permissionContains,
   permissionRequest,
   runtimeSendMessage,
@@ -94,6 +97,7 @@ vi.mock('@/features/plugins/storage/pluginState', async (importOriginal) => {
   return {
     ...actual,
     setPluginSetting,
+    setPluginSettings,
     setPluginEnabled,
     setPluginCollapsed: vi.fn().mockResolvedValue(undefined),
     loadCollapsedPlugins: vi.fn().mockResolvedValue([]),
@@ -212,6 +216,7 @@ beforeEach(() => {
   pluginState.current = { [PLUGIN_ID]: { enabled: true, installedAt: 0 } };
   setPluginEnabled.mockClear();
   setPluginSetting.mockClear();
+  setPluginSettings.mockClear();
   permissionContains.mockReset().mockResolvedValue(false);
   permissionRequest.mockReset().mockResolvedValue(true);
   runtimeSendMessage.mockReset().mockResolvedValue({ ok: true });
@@ -245,7 +250,7 @@ function SettingsSubject({ plugin }: { plugin: PluginManifest }) {
       plugin={plugin}
       values={preferences.settingsMap[plugin.id]}
       handleSetting={preferences.handleSetting}
-      handleImmediateSetting={preferences.handleImmediateSetting}
+      handleImmediateSettings={preferences.handleImmediateSettings}
     />
   );
 }

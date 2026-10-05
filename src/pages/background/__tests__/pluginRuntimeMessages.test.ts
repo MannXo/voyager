@@ -8,12 +8,14 @@ import {
   PLUGIN_CONTENT_SCRIPT_SYNC_MESSAGE,
   PLUGIN_SET_SETTING_MESSAGE,
 } from '@/features/plugins/runtime/messages';
+import { resolvePluginSettings } from '@/features/plugins/runtime/resolvePluginSettings';
 import { BuiltinPluginSource } from '@/features/plugins/sources/BuiltinPluginSource';
 import { BundledCatalogPluginSource } from '@/features/plugins/sources/BundledCatalogPluginSource';
 import {
   isDeclaredPluginSetting,
   requestPluginSetting,
 } from '@/features/plugins/storage/pluginSettingRequest';
+import { loadPluginState, setPluginEnabled } from '@/features/plugins/storage/pluginState';
 import type { PluginManifest } from '@/features/plugins/types';
 
 import { handlePluginRuntimeMessage } from '../pluginRuntimeMessages';
@@ -325,9 +327,45 @@ describe('plugin setting writes checked against the real plugin listing', () => 
       'voyager.deepseek-timeline': {
         enabled: true,
         installedAt: 1,
-        settings: { timelineStyle: 'compact' },
+        settings: { timelineStyle: 'compact', compactView: true },
       },
     });
+  });
+
+  it('a Compact choice from an old open guide survives turning the plugin off and on before reload', async () => {
+    const timeline = await bundledTimeline();
+    // The 1.1 manifest the page still runs: a compactView switch, no style select.
+    const { timelineStyle: _replaced, ...current } = timeline.contributes.settings!;
+    const pinned: PluginManifest = {
+      ...timeline,
+      contributes: {
+        ...timeline.contributes,
+        settings: {
+          ...current,
+          compactView: { type: 'boolean', label: 'Compact', default: false },
+        },
+      },
+    };
+    memory[STATE] = {
+      'voyager.deepseek-timeline': {
+        enabled: true,
+        installedAt: 1,
+        settings: { compactView: false },
+      },
+    };
+    const response = await handlePluginRuntimeMessage(
+      setSetting({ id: 'voyager.deepseek-timeline', key: 'compactView', value: true }),
+      deepseekSender(),
+      noFinder(),
+    );
+    expect(response).toEqual({ ok: true });
+
+    await setPluginEnabled('voyager.deepseek-timeline', false);
+    await setPluginEnabled('voyager.deepseek-timeline', true);
+    const state = await loadPluginState();
+    const settings = state['voyager.deepseek-timeline'].settings;
+    expect(resolvePluginSettings(pinned, settings).compactView).toBe(true);
+    expect(resolvePluginSettings(timeline, settings).timelineStyle).toBe('compact');
   });
 
   it('an open DeepSeek guide from the previous version switching Compact off saves the default style', async () => {

@@ -13,7 +13,7 @@ import {
   mockLanguage,
   renderSettings as render,
   compactTimelinePlugin,
-  setPluginSetting,
+  setPluginSettings,
   PLUGIN_ID,
   widthPlugin,
   pluginState,
@@ -46,7 +46,10 @@ describe.each(timelines)('$name style setting', (plugin) => {
       select.dispatchEvent(new Event('change', { bubbles: true }));
     });
     expect(select.value).toBe('ruler');
-    expect(setPluginSetting).toHaveBeenCalledWith(plugin.id, 'timelineStyle', 'ruler');
+    expect(setPluginSettings).toHaveBeenCalledWith(plugin.id, {
+      timelineStyle: 'ruler',
+      compactView: false,
+    });
   });
 
   it('keeps an existing compact setting until the user chooses a style', async () => {
@@ -56,13 +59,16 @@ describe.each(timelines)('$name style setting', (plugin) => {
     await render(plugin);
     const select = container.querySelector('select')!;
     expect(select.value).toBe('compact');
-    expect(setPluginSetting).not.toHaveBeenCalled();
+    expect(setPluginSettings).not.toHaveBeenCalled();
     act(() => {
       select.value = 'dots';
       select.dispatchEvent(new Event('change', { bubbles: true }));
     });
     expect(select.value).toBe('dots');
-    expect(setPluginSetting).toHaveBeenCalledWith(plugin.id, 'timelineStyle', 'dots');
+    expect(setPluginSettings).toHaveBeenCalledWith(plugin.id, {
+      timelineStyle: 'dots',
+      compactView: false,
+    });
   });
 });
 
@@ -156,8 +162,8 @@ describe('PluginSettings select setting', () => {
     });
 
     expect(select.value).toBe('left');
-    expect(setPluginSetting).toHaveBeenCalledOnce();
-    expect(setPluginSetting).toHaveBeenCalledWith(PLUGIN_ID, 'placement', 'left');
+    expect(setPluginSettings).toHaveBeenCalledOnce();
+    expect(setPluginSettings).toHaveBeenCalledWith(PLUGIN_ID, { placement: 'left' });
   });
 });
 
@@ -185,7 +191,7 @@ describe('PluginSettings boolean setting', () => {
     act(() => input.click());
 
     expect(input.checked).toBe(true);
-    expect(setPluginSetting).toHaveBeenCalledOnce();
-    expect(setPluginSetting).toHaveBeenCalledWith(PLUGIN_ID, 'compactView', true);
+    expect(setPluginSettings).toHaveBeenCalledOnce();
+    expect(setPluginSettings).toHaveBeenCalledWith(PLUGIN_ID, { compactView: true });
   });
 });

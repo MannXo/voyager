@@ -47,6 +47,29 @@ describe('LocalPluginSource', () => {
     expect(listed.map((plugin) => plugin.id)).toEqual(['local.me.ok']);
   });
 
+  it('a plugin whose select offers an empty choice stays installed', async () => {
+    const records: LocalPluginRecordMap = {
+      'local.me.auto': stored('local.me.auto', {
+        contributes: {
+          styles: [{ css: '.gv-x{color:red}' }],
+          settings: {
+            width: {
+              type: 'select',
+              label: 'Width',
+              default: '',
+              options: [
+                { value: '', label: 'Automatic' },
+                { value: 'wide', label: 'Wide' },
+              ],
+            },
+          },
+        },
+      }),
+    };
+    const listed = await new LocalPluginSource({ loadRecords: async () => records }).list();
+    expect(listed.map((plugin) => plugin.id)).toEqual(['local.me.auto']);
+  });
+
   it('never loads a stored record outside the local namespace', () => {
     const sanitized = sanitizeLocalPluginRecords({
       'voyager.formula-copy': stored('voyager.formula-copy'),

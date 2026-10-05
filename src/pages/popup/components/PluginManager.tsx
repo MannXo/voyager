@@ -79,7 +79,7 @@ export function PluginManager({
     settingsMap,
     collapsed,
     handleSetting,
-    handleImmediateSetting,
+    handleImmediateSettings,
     toggleCollapsed,
   } = preferences;
   const updatedIds = usePluginUpdates(manifests);
@@ -223,7 +223,7 @@ export function PluginManager({
                       plugin={plugin}
                       values={settingsMap[plugin.id]}
                       handleSetting={handleSetting}
-                      handleImmediateSetting={handleImmediateSetting}
+                      handleImmediateSettings={handleImmediateSettings}
                     />
                   )}
 

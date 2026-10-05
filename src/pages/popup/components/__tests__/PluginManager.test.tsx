@@ -18,6 +18,7 @@ import {
   pluginState,
   mockMessages,
   setPluginSetting,
+  setPluginSettings,
   nativeSetSliderValue,
   render,
   renderManager,
@@ -223,7 +224,7 @@ describe('PluginManager passes its props to each plugin card', () => {
     );
     act(() => input?.click());
 
-    expect(setPluginSetting).toHaveBeenCalledOnce();
-    expect(setPluginSetting).toHaveBeenCalledWith(PLUGIN_ID, 'compactView', true);
+    expect(setPluginSettings).toHaveBeenCalledOnce();
+    expect(setPluginSettings).toHaveBeenCalledWith(PLUGIN_ID, { compactView: true });
   });
 });
