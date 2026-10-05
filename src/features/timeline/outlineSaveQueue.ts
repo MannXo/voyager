@@ -8,6 +8,8 @@ export type OutlineChange = (entry: OutlineEntry) => OutlineEntry;
 /** The conversation's entry as storage held it right after a successful write. */
 export interface SettledOutline {
   readonly stored: OutlineEntry;
+  /** Order claimed when the read-back was issued; see `claimSnapshotOrder`. */
+  readonly order: number;
 }
 
 /** `published` carries a post-write snapshot; null means only the pending changes moved. */
@@ -19,12 +21,23 @@ export type OutlineListener = (published: SettledOutline | null) => void;
  */
 class OutlineSaveQueue {
   private tail: Promise<void> = Promise.resolve();
+  private snapshotOrder = 0;
   private readonly changes = new Map<string, OutlineChange[]>();
   private readonly listeners = new Map<string, Set<OutlineListener>>();
 
   /** The stored entry as this page will leave it once its accepted changes are written. */
   overlay(key: string, entry: OutlineEntry): OutlineEntry {
     return (this.changes.get(key) ?? []).reduce((current, change) => change(current), entry);
+  }
+
+  /**
+   * Page-wide, monotonic order for outline snapshots, claimed when a read is issued or an event
+   * arrives. An owner keeps only snapshots newer than the last one it took, so a slow read can
+   * never replace a newer event.
+   */
+  claimSnapshotOrder(): number {
+    this.snapshotOrder += 1;
+    return this.snapshotOrder;
   }
 
   subscribe(key: string, listener: OutlineListener): () => void {

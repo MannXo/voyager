@@ -72,7 +72,8 @@ async function writeChange(
     if (next) conversations[conversationId] = next;
     else delete conversations[conversationId];
     await chrome.storage.local.set({ [bucket.key]: { conversations } });
-    return { stored: (await readConversations(bucket))[conversationId] ?? null };
+    const order = outlineSaveQueue.claimSnapshotOrder();
+    return { stored: (await readConversations(bucket))[conversationId] ?? null, order };
   } catch (error) {
     console.warn('[Timeline] Failed to persist timeline hierarchy to extension storage:', error);
     return null;
@@ -132,11 +133,13 @@ export class TimelineHierarchy {
   /** Latest authoritative entry: a storage read or event, never an edit. */
   private snapshot: OutlineEntry = null;
   /**
-   * Where the snapshot came from. Gemini's localStorage outline stays authoritative until extension
-   * storage holds the conversation, and the legacy keys mirror only an extension-storage outline,
-   * so an absent or failed migration can never overwrite them with an empty one.
+   * Where the snapshot came from. Gemini's localStorage outline stays authoritative only until
+   * extension storage has held the conversation; from then on its absence is a deletion. The legacy
+   * keys mirror only extension-storage outlines, so a failed migration never empties them.
    */
   private snapshotSource: 'none' | 'extension' | 'legacy' = 'none';
+  /** Order of the snapshot taken last; older reads and publishes are ignored. */
+  private snapshotOrder = 0;
   /** Displayed view: the snapshot with this page's accepted, unwritten changes overlaid. */
   private markerLevels = new Map<string, MarkerLevel>();
   private collapsedMarkers = new Set<string>();
@@ -180,24 +183,38 @@ export class TimelineHierarchy {
     if (!key) return;
     this.stopQueueListener = outlineSaveQueue.subscribe(key, (published) => {
       if (!this.isCurrent) return;
-      if (published) return this.acceptSnapshot(published.stored, 'write');
+      if (published) return this.acceptSnapshot(published.order, published.stored, 'write');
       this.refresh();
       this.onChange();
     });
   }
-  /** Storage events and post-write reads take the same path: always accepted, never dropped. */
-  private acceptSnapshot(entry: OutlineEntry, origin: 'event' | 'write'): void {
+  /** Storage events and post-write reads take the same path as the initial read. */
+  private acceptSnapshot(order: number, entry: OutlineEntry, origin: 'event' | 'write'): void {
+    if (order <= this.snapshotOrder) return;
     this.hydration.snapshot(() => {
-      if (entry || origin === 'write') {
-        this.snapshot = entry;
-        this.snapshotSource = 'extension';
-      } else if (this.snapshotSource !== 'legacy') {
-        this.snapshot = null;
-        this.snapshotSource = 'none';
-      }
-      this.refresh();
+      this.takeSnapshot(order, entry, null, origin);
       this.onChange();
     });
+  }
+  private takeSnapshot(
+    order: number,
+    entry: OutlineEntry,
+    legacy: OutlineEntry,
+    origin: 'read' | 'event' | 'write',
+  ): void {
+    if (order <= this.snapshotOrder) return;
+    this.snapshotOrder = order;
+    if (entry || origin === 'write' || this.snapshotSource === 'extension') {
+      this.snapshot = entry;
+      this.snapshotSource = 'extension';
+    } else if (legacy) {
+      this.snapshot = legacy;
+      this.snapshotSource = 'legacy';
+    } else if (this.snapshotSource !== 'legacy') {
+      this.snapshot = null;
+      this.snapshotSource = 'none';
+    }
+    this.refresh();
   }
   private refresh(): void {
     const key = this.queueKey;
@@ -312,12 +329,6 @@ export class TimelineHierarchy {
     const bucket = this.bucket;
     const key = this.queueKey;
     if (!bucket || !key) return Promise.resolve();
-    if (!hasExtensionStorage()) {
-      this.snapshot = change(this.snapshot);
-      this.refresh();
-      this.onChange();
-      return Promise.resolve();
-    }
     const conversationId = this.conversationId;
     return outlineSaveQueue.enqueue(key, change, () => writeChange(bucket, conversationId, change));
   }
@@ -342,6 +353,7 @@ export class TimelineHierarchy {
         this.refresh();
       });
     }
+    const order = outlineSaveQueue.claimSnapshotOrder();
     const values = (await chrome.storage.local.get(keysToRead(bucket))) as Record<string, unknown>;
     if (!this.isCurrent) return false;
     if (this.accountChangedSinceObserved()) {
@@ -350,11 +362,7 @@ export class TimelineHierarchy {
     }
     const stored = readBucket(bucket, values).conversations[this.conversationId] ?? null;
     const legacy = stored ? null : this.readLegacyEntry();
-    const accepted = accept(() => {
-      this.snapshot = stored ?? legacy;
-      this.snapshotSource = stored ? 'extension' : legacy ? 'legacy' : 'none';
-      this.refresh();
-    });
+    const accepted = accept(() => this.takeSnapshot(order, stored, legacy, 'read'));
     if (accepted && legacy) await this.migrateLegacy(legacy);
     return accepted;
   }
@@ -427,6 +435,7 @@ export class TimelineHierarchy {
   }
   applyStorageChanges(changes: Record<string, chrome.storage.StorageChange>): void {
     if (!this.isCurrent || !this.bucket || !this.queueKey) return;
+    const order = outlineSaveQueue.claimSnapshotOrder();
     const bucket = this.bucket;
     const change = changes[bucket.key];
     if (!change) return;
@@ -434,6 +443,7 @@ export class TimelineHierarchy {
     // Unresolved scope or partial data is not evidence that the complete outline was read.
     if (value != null && !isCompleteHierarchySnapshot(value)) return;
     this.acceptSnapshot(
+      order,
       readBucket(bucket, { [bucket.key]: value }).conversations[this.conversationId] ?? null,
       'event',
     );

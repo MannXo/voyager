@@ -345,4 +345,61 @@ describe('timeline outline persistence', () => {
         .conversations[policy.conversationId],
     ).toMatchObject({ levels: { [turn]: 2 }, collapsed: [turn] });
   });
+
+  it('an older save’s read never hides another tab’s newer outline', async () => {
+    const levels = (a: 1 | 2 | 3, b: 1 | 2 | 3) => ({
+      conversations: {
+        'claude:conv:a': { ...outline('a', 1), levels: { 'c-a': a, 'c-b': b } },
+      },
+    });
+    storage.values.local.set(KEY, levels(3, 2));
+    const state = await open('a');
+    // The save reads the bucket, writes, then reads it back; hold that read-back.
+    readsUntilHold = 2;
+    state.hierarchy.setMarkerLevel('c-a', 2);
+    await settle(30);
+    expect(release).not.toBeNull();
+    storage.external('local', KEY, levels(2, 3));
+    await settle(30);
+    expect(state.hierarchy.getMarkerLevel('c-b')).toBe(3);
+
+    release?.();
+    await settle(30);
+    expect(state.hierarchy.getMarkerLevel('c-b')).toBe(3);
+    expect(stored('a')?.levels).toEqual({ 'c-a': 2, 'c-b': 3 });
+  });
+
+  it('a cloud overwrite that drops a Gemini outline doesn’t bring it back on reopen', async () => {
+    history.replaceState({}, '', '/app/cleared');
+    const policy = createGeminiTimelineStoragePolicy(location.href);
+    const turn = 's-1111111111111111';
+    storage.values.local.set(StorageKeys.TIMELINE_HIERARCHY, {
+      conversations: {
+        [policy.conversationId]: {
+          conversationUrl: policy.url,
+          levels: { [turn]: 2 },
+          collapsed: [turn],
+          updatedAt: 1,
+        },
+      },
+    });
+    const mount = async () => {
+      const state = new TimelineState(() => {}, policy);
+      states.push(state);
+      await state.init();
+      await settle(30);
+      return state;
+    };
+    const before = await mount();
+    expect(before.hierarchy.getMarkerLevel(turn)).toBe(2);
+    storage.external('local', StorageKeys.TIMELINE_HIERARCHY, { conversations: {} });
+    await settle(30);
+    expect(before.hierarchy.getMarkerLevel(turn)).toBe(1);
+    before.destroy();
+
+    const reopened = await mount();
+    expect(reopened.hierarchy.getMarkerLevel(turn)).toBe(1);
+    expect(reopened.hierarchy.isMarkerCollapsed(turn)).toBe(false);
+    expect(storage.values.local.get(StorageKeys.TIMELINE_HIERARCHY)).toEqual({ conversations: {} });
+  });
 });

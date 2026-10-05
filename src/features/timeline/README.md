@@ -44,9 +44,11 @@ remembered entry, and the save completes even if the timeline is torn down. The 
 the latest storage snapshot, always accepted, with the page's unwritten changes for that bucket and
 conversation overlaid; a remounted timeline therefore sees an earlier session's pending edits. Each
 successful write reads the bucket back and publishes that read as the snapshot, which retires the
-change without relying on its own storage event. A Gemini localStorage outline with no
-extension-storage entry is the snapshot until its migration write succeeds; a failed migration
-changes nothing, and the legacy keys only mirror outlines that came from extension storage. Local backups export catalog buckets in
+change without relying on its own storage event. Every snapshot (read, event or read-back) claims a
+page-wide order when it starts, and an owner ignores one older than the last it took. A Gemini
+localStorage outline with no extension-storage entry is the snapshot until extension storage has
+held the conversation; a failed migration changes nothing, and once extension storage held it, its
+absence is a deletion that also clears the legacy keys, which only mirror extension-storage outlines. Local backups export catalog buckets in
 `catalog-timeline-hierarchy.json`, keyed by storage key; catalog hierarchy has no Drive file yet.
 ChatGPT stars carry the same hashed account annotation. Stars for every site come from the Saved
 Library through its
