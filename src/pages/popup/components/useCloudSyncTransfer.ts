@@ -70,6 +70,7 @@ export interface CloudDownloadData {
   settings?: SettingsExportPayload;
   plugins?: PluginStateExportPayload;
   starred?: unknown;
+  stars?: unknown;
   forks?: unknown;
   timelineHierarchy?: { data?: TimelineHierarchyData };
 }
@@ -328,8 +329,15 @@ async function restoreCloudDownload(
     foldersMissing: !hasCloudFolderData,
     // Both restore modes merge stars so this tab cannot erase other sites or accounts.
     mergeStarred:
-      context.payload.platform === 'gemini' && data.starred && typeof data.starred === 'object'
-        ? async () => (await StarredMessagesService.mergeCloud(data.starred)).status === 'merged'
+      context.payload.platform === 'gemini' &&
+      [data.starred, data.stars].some((value) => value !== null && typeof value === 'object')
+        ? async () =>
+            (
+              await StarredMessagesService.mergeSync(
+                { v1: data.starred, v2: data.stars },
+                context.payload.accountScope,
+              )
+            ).status === 'merged'
         : undefined,
     // Forks only add, like stars, so a restore never drops forks made on this device.
     mergeForks:

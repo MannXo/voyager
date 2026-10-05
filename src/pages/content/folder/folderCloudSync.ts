@@ -30,6 +30,7 @@ type SyncDownloadResponse =
         folders?: { data?: FolderData };
         prompts?: { items?: PromptItem[] };
         starred?: unknown;
+        stars?: unknown;
         forks?: unknown;
         timelineHierarchy?: { data?: TimelineHierarchyData };
       };
@@ -257,14 +258,16 @@ export async function syncFolders(host: FolderTransferHost): Promise<void> {
     });
     if (!isCurrentTransfer(host, context)) return;
 
-    const { starred, forks } = response.data;
+    const { starred, stars, forks } = response.data;
     const restored = [t('folder_title'), t('promptDataMigration')];
     // Only parts the backup has can fail, so an absent fork file is not reported as unrestored.
     const merges = [
       {
-        payload: starred,
+        payload: [starred, stars].find((value) => value !== null && typeof value === 'object'),
         label: t('savedLibraryStars'),
-        run: async () => (await StarredMessagesService.mergeCloud(starred)).status,
+        run: async () =>
+          (await StarredMessagesService.mergeSync({ v1: starred, v2: stars }, accountScope ?? null))
+            .status,
       },
       {
         payload: forks,

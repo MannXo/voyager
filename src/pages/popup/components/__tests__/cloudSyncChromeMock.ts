@@ -8,6 +8,7 @@ import {
 import { createPromptLibraryOwner } from '@/features/prompt/library/promptLibraryOwner';
 import { createStarStore } from '@/features/savedLibrary/starStore';
 import { createForkMessagesOwner } from '@/pages/background/forkMessages';
+import { createStarredMessagesHandler } from '@/pages/background/starredMessages';
 
 type RuntimeRequest = { type?: string; payload?: unknown };
 
@@ -41,6 +42,7 @@ export function createCloudSyncChromeMock(
     get: (keys) => local.get(keys),
     set: (items) => local.set(items),
   });
+  const starHandler = createStarredMessagesHandler(owner);
   const prompts = createPromptLibraryOwner({
     area: { get: (key) => local.get(key), set: (items) => local.set(items) },
   });
@@ -48,13 +50,16 @@ export function createCloudSyncChromeMock(
   return {
     runtime: {
       id: 'test-extension-id',
+      getURL: (path: string) => `chrome-extension://test-extension-id/${path}`,
       lastError: null,
       sendMessage: vi.fn((message: RuntimeRequest, reply?: (response: unknown) => void) => {
-        if (message.type === 'gv.starred.mergeCloud' && reply) {
-          void owner.mergeCloud(message.payload).then(
-            (result) => reply({ ok: true, ...result }),
-            (error: Error) => reply({ ok: false, error: error.message }),
-          );
+        if (message.type?.startsWith('gv.starred.') && reply) {
+          const result = starHandler(message, {
+            id: 'test-extension-id',
+            url: 'chrome-extension://test-extension-id/popup.html',
+          });
+          if (result)
+            void result.then(reply, (error: Error) => reply({ ok: false, error: error.message }));
           return;
         }
         if (isPromptLibraryApplyMessage(message)) {

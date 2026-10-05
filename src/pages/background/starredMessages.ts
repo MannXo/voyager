@@ -1,3 +1,4 @@
+import type { SyncAccountScope } from '@/core/types/sync';
 import type { StarStore } from '@/features/savedLibrary/starStore';
 import type { StarredMessage } from '@/features/savedLibrary/starTypes';
 
@@ -16,6 +17,7 @@ type StarredMessageRequest =
   | { type: 'gv.starred.getAll' }
   | { type: 'gv.starred.getForConversation'; payload: Pick<StarredMessage, 'conversationId'> }
   | { type: 'gv.starred.mergeCloud'; payload: unknown }
+  | { type: 'gv.starred.mergeSync'; payload: { v1?: unknown; v2?: unknown; accountScope: unknown } }
   | {
       type: 'gv.starred.reconcileConversationIds';
       payload: {
@@ -24,6 +26,17 @@ type StarredMessageRequest =
         conversationUrl?: unknown;
       };
     };
+
+function isSyncAccountScope(value: unknown): value is SyncAccountScope {
+  if (!value || typeof value !== 'object') return false;
+  const scope = value as Record<string, unknown>;
+  return (
+    typeof scope.accountKey === 'string' &&
+    typeof scope.accountId === 'number' &&
+    Number.isFinite(scope.accountId) &&
+    (typeof scope.routeUserId === 'string' || scope.routeUserId === null)
+  );
+}
 
 export function createStarredMessagesHandler(store: StarStore) {
   return (
@@ -67,6 +80,7 @@ export function createStarredMessagesHandler(store: StarStore) {
               : undefined,
           )
           .then((messages) => ({ ok: true, messages }));
+      case 'gv.starred.mergeSync':
       case 'gv.starred.mergeCloud':
         if (
           !sender ||
@@ -75,6 +89,17 @@ export function createStarredMessagesHandler(store: StarStore) {
           )
         ) {
           return Promise.reject(new Error('Untrusted starred messages restore sender'));
+        }
+        if (request.type === 'gv.starred.mergeSync') {
+          const scope = request.payload?.accountScope;
+          if (scope !== null && !isSyncAccountScope(scope)) {
+            return Promise.reject(new Error('Invalid starred messages restore scope'));
+          }
+          return store.mergeSync(request.payload, scope).then(({ data }) => ({
+            ok: true,
+            status: 'merged',
+            count: Object.values(data.messages).reduce((total, bucket) => total + bucket.length, 0),
+          }));
         }
         return store.mergeCloud(request.payload).then((result) => ({ ok: true, ...result }));
       default:

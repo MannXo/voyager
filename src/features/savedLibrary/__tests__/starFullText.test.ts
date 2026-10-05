@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { GoogleDriveSyncPayloads } from '@/core/services/GoogleDriveSyncPayloads';
+import { StarDriveSyncCoordinator } from '@/core/services/StarDriveSyncCoordinator';
 import { StorageKeys } from '@/core/types/common';
 import { createStarredMessagesHandler } from '@/pages/background/starredMessages';
 
@@ -261,7 +262,7 @@ describe('Saved Library full prompt text', () => {
   });
 
   it('the unchanged v1 cloud projection never uploads full prompt text', async () => {
-    const { store, values } = setup();
+    const { store } = setup();
     const item = {
       ...star('one', 'p'.repeat(80)),
       text: 'Private full prompt\nSecond line',
@@ -279,18 +280,17 @@ describe('Saved Library full prompt text', () => {
         (remote.get(name) as T) ?? null,
       prepareDownload: async () => {},
     });
-    await payloads.upload('token', {
-      folders: { folders: [], folderContents: {} },
-      prompts: [],
-      starred: values[neutral] as StarredMessagesData,
-      platform: 'gemini',
-      forks: null,
-      timelineHierarchy: null,
-      accountScope: null,
-      timelineHierarchyAccountScope: null,
-      settings: null,
-      plugins: null,
-    });
+    await new StarDriveSyncCoordinator().push(
+      store,
+      {
+        identity: 'test',
+        assertActive: () => {},
+        read: () => payloads.readStars('token', null),
+        writeV2: (payload) => payloads.writeStars('token', payload, null, true),
+        writeV1: (payload) => payloads.writeStars('token', payload, null, false),
+      },
+      null,
+    );
     const { text: _text, ...oldRecord } = item;
     expect(remote.get('gemini-voyager-starred.json')).toMatchObject({
       format: 'gemini-voyager.starred.v1',

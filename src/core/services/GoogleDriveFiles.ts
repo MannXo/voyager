@@ -266,7 +266,9 @@ export class GoogleDriveFiles {
           if (response.status === 404) return null;
           throw new Error(`Download failed: ${response.status}`);
         }
-        return await response.json();
+        const payload: unknown = await response.json();
+        if (payload === null) throw new Error('The cloud sync file contains invalid null data');
+        return payload as T;
       } catch (error) {
         if (this.markAuthLostIfNeeded(error)) throw error;
         if (attempt === MAX_RETRIES) throw error;

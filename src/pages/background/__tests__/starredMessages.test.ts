@@ -131,6 +131,52 @@ describe('starred messages owner', () => {
     ).resolves.toEqual({ ok: true, status: 'merged', count: 0 });
   });
 
+  it('an untrusted or malformed v2 restore cannot mutate the star library', async () => {
+    const { handle, area } = setup();
+    const payload = {
+      v2: {
+        format: 'gemini-voyager.stars.v2',
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        items: [],
+        tombstones: [],
+      },
+      accountScope: null,
+    };
+    const trusted = {
+      id: chrome.runtime.id,
+      url: chrome.runtime.getURL('src/pages/popup/index.html'),
+    };
+    await expect(handle({ type: 'gv.starred.mergeSync', payload })).rejects.toThrow('Untrusted');
+    await expect(
+      handle(
+        { type: 'gv.starred.mergeSync', payload },
+        {
+          id: chrome.runtime.id,
+          tab: { url: 'https://example.com' } as chrome.tabs.Tab,
+        },
+      ),
+    ).rejects.toThrow('Untrusted');
+    await expect(
+      handle(
+        {
+          type: 'gv.starred.mergeSync',
+          payload: {
+            ...payload,
+            accountScope: { accountKey: 'bad' },
+          },
+        },
+        trusted,
+      ),
+    ).rejects.toThrow('Invalid starred messages restore scope');
+    expect(area.set).not.toHaveBeenCalled();
+    await expect(handle({ type: 'gv.starred.mergeSync', payload }, trusted)).resolves.toEqual({
+      ok: true,
+      status: 'merged',
+      count: 0,
+    });
+  });
+
   it('serializes concurrent writes, deduplicates only per conversation, and keeps previews bounded', async () => {
     const { handle, area, stored } = setup();
     const first = { ...star('a', '1'), content: 'x'.repeat(80) };

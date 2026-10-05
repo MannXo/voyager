@@ -336,6 +336,18 @@ describe('cloud sync messages', () => {
     ).resolves.toEqual({ ok: false, error: 'unsupported_sync_platform' });
     expect(mocks.drive.download).not.toHaveBeenCalled();
   });
+  it('a failed star download is reported as a failure instead of an empty backup', async () => {
+    mocks.drive.download.mockResolvedValue(null);
+    mocks.drive.getState.mockResolvedValue({ ...state, error: 'Invalid stars v2 envelope' });
+    await expect(
+      createCloudSyncMessageHandler(readers())(
+        { type: 'gv.sync.download', payload: { platform: 'gemini' } },
+        sender(),
+      ),
+    ).resolves.toMatchObject({ ok: false, error: 'Invalid stars v2 envelope' });
+    expect(chrome.storage.local.set).not.toHaveBeenCalled();
+  });
+
   it('a fork restored on a device where the same account has another /u/ index opens under that index', async () => {
     const fork = (conversationId: string, route: string, forkIndex: number): ForkNode => ({
       conversationId,

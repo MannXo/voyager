@@ -20,15 +20,16 @@ import { hashString } from '@/core/utils/hash';
 import { EXTENSION_VERSION } from '@/core/utils/version';
 import { FOLDER_PLATFORMS, FOLDER_PLATFORM_IDS } from '@/features/folder/platforms';
 import type { PluginStateMap } from '@/features/plugins/storage/pluginState';
+import { decodeStarsV2, type StarsExportPayloadV2 } from '@/features/savedLibrary/starSyncPayload';
 
 import type { GoogleDriveFiles } from './GoogleDriveFiles';
 import { logger } from './LoggerService';
-import { legacyStarredExport } from './legacyStarredExport';
 
 const PROMPTS_FILE_NAME = 'gemini-voyager-prompts.json';
 const SETTINGS_FILE_NAME = 'gemini-voyager-settings.json';
 const PLUGINS_FILE_NAME = 'gemini-voyager-plugins.json';
 const STARRED_FILE_NAME = 'gemini-voyager-starred.json';
+const STARS_FILE_NAME = 'gemini-voyager-stars.json';
 const FORKS_FILE_NAME = 'gemini-voyager-forks.json';
 const TIMELINE_HIERARCHY_FILE_NAME = 'gemini-voyager-timeline-hierarchy.json';
 const HIGHLIGHTS_FILE_NAME = 'gemini-voyager-highlights.json';
@@ -39,6 +40,7 @@ export const BACKUP_FOLDER_RECOVERY_FILE_NAMES = [
   SETTINGS_FILE_NAME,
   PLUGINS_FILE_NAME,
   STARRED_FILE_NAME,
+  STARS_FILE_NAME,
 ] as const;
 
 export interface GoogleDriveUploadSnapshot {
@@ -60,6 +62,7 @@ export interface GoogleDriveDownload {
   settings: SettingsExportPayload | null;
   plugins: PluginStateExportPayload | null;
   starred: StarredExportPayload | null;
+  stars?: StarsExportPayloadV2 | null;
   forks: ForkExportPayload | null;
   timelineHierarchy: TimelineHierarchyExportPayload | null;
 }
@@ -96,7 +99,6 @@ export class GoogleDriveSyncPayloads {
   async upload(token: string, snapshot: GoogleDriveUploadSnapshot): Promise<number> {
     const {
       prompts,
-      starred,
       platform,
       forks,
       timelineHierarchy,
@@ -140,9 +142,6 @@ export class GoogleDriveSyncPayloads {
       await this.files.upload(token, pluginsFileId, pluginsPayload);
     }
 
-    if (platform === 'gemini' && starred) {
-      await this.uploadStarred(token, starred, accountScope, now);
-    }
     if (platform === 'gemini' && forks) {
       await this.uploadForks(token, forks, accountScope, now);
     }
@@ -160,7 +159,6 @@ export class GoogleDriveSyncPayloads {
       (prompts.length > 0 ? 1 : 0) +
       (settingsPayload ? 1 : 0) +
       (pluginsPayload ? 1 : 0) +
-      (platform === 'gemini' && starred ? 1 : 0) +
       (platform === 'gemini' && forks ? 1 : 0) +
       (platform === 'gemini' && timelineHierarchy ? 1 : 0);
     return fileCount;
@@ -208,13 +206,9 @@ export class GoogleDriveSyncPayloads {
     const plugins = await this.readFile<PluginStateExportPayload>(token, PLUGINS_FILE_NAME, null);
     let starred: StarredExportPayload | null = null;
     if (platform === 'gemini') {
-      starred = await this.readFile<StarredExportPayload>(
-        token,
-        STARRED_FILE_NAME,
-        accountScope,
-        '[GoogleDriveSyncService] Starred messages downloaded',
-      );
+      starred = await this.readStarred(token, accountScope);
     }
+    const stars = platform === 'gemini' ? await this.downloadStarsV2(token, accountScope) : null;
     let forks: ForkExportPayload | null = null;
     if (platform === 'gemini') {
       forks = await this.readFile<ForkExportPayload>(
@@ -234,12 +228,21 @@ export class GoogleDriveSyncPayloads {
       );
     }
 
-    if (!folders && !prompts && !settings && !plugins && !starred && !forks && !timelineHierarchy) {
+    if (
+      !folders &&
+      !prompts &&
+      !settings &&
+      !plugins &&
+      !starred &&
+      !stars &&
+      !forks &&
+      !timelineHierarchy
+    ) {
       logger.info(`[GoogleDriveSyncService] No sync files found for ${platform}`);
       return null;
     }
 
-    return { folders, prompts, settings, plugins, starred, forks, timelineHierarchy };
+    return { folders, prompts, settings, plugins, starred, stars, forks, timelineHierarchy };
   }
 
   async uploadPrompts(
@@ -331,22 +334,48 @@ export class GoogleDriveSyncPayloads {
     return { folderPayload, promptPayload, settingsPayload, pluginsPayload };
   }
 
-  private async uploadStarred(
+  private async readStarred(
     token: string,
-    starred: StarredMessagesDataSync,
-    accountScope: SyncAccountScope | null,
-    now: Date,
+    scope: SyncAccountScope | null,
+  ): Promise<StarredExportPayload | null> {
+    const name = this.getFileNameForScope(STARRED_FILE_NAME, scope);
+    const id = await this.files.find(token, name);
+    const payload = id ? await this.files.download<StarredExportPayload>(token, id) : null;
+    if (payload || !scope) return payload;
+    const legacy = await this.files.find(token, STARRED_FILE_NAME);
+    return legacy ? this.files.download<StarredExportPayload>(token, legacy) : null;
+  }
+
+  async readStars(
+    token: string,
+    scope: SyncAccountScope | null,
+  ): Promise<{ v1: unknown; v2: unknown }> {
+    await this.files.prepareDownload(token);
+    const v2 = await this.downloadStarsV2(token, scope);
+    const v1 = await this.readStarred(token, scope);
+    return { v1, v2 };
+  }
+
+  async writeStars(
+    token: string,
+    payload: unknown,
+    scope: SyncAccountScope | null,
+    v2: boolean,
   ): Promise<void> {
-    const starredPayload: StarredExportPayload = {
-      format: 'gemini-voyager.starred.v1',
-      exportedAt: now.toISOString(),
-      version: EXTENSION_VERSION,
-      data: legacyStarredExport(starred),
-    };
-    const starredFileName = this.getFileNameForScope(STARRED_FILE_NAME, accountScope);
-    const starredFileId = await this.files.ensure(token, starredFileName);
-    await this.files.upload(token, starredFileId, starredPayload);
-    logger.info('[GoogleDriveSyncService] Starred messages uploaded successfully');
+    const name = this.getFileNameForScope(v2 ? STARS_FILE_NAME : STARRED_FILE_NAME, scope);
+    const id = await this.files.ensure(token, name);
+    await this.files.upload(token, id, payload);
+  }
+
+  private async downloadStarsV2(
+    token: string,
+    scope: SyncAccountScope | null,
+  ): Promise<StarsExportPayloadV2 | null> {
+    const id = await this.files.find(token, this.getFileNameForScope(STARS_FILE_NAME, scope));
+    if (!id) return null;
+    const payload = await this.files.download<StarsExportPayloadV2>(token, id);
+    if (payload !== null) decodeStarsV2(payload, scope);
+    return payload;
   }
 
   private async uploadForks(

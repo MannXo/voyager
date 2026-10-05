@@ -4,6 +4,7 @@ import { StorageKeys } from '@/core/types/common';
 import { FolderImportExportService } from '@/features/folder/services/FolderImportExportService';
 import { createStarStore, type StarStore } from '@/features/savedLibrary/starStore';
 import { createForkMessagesOwner } from '@/pages/background/forkMessages';
+import { createStarredMessagesHandler } from '@/pages/background/starredMessages';
 import type { ForkNode } from '@/pages/content/fork/forkTypes';
 import { confirmDriver } from '@/tests/confirmDriver';
 
@@ -130,7 +131,13 @@ beforeEach(() => {
     message: { type: string; payload?: unknown },
     reply: (response: unknown) => void,
   ) => {
-    void (forkOwner.handle(message) ?? owner.mergeCloud(message.payload)).then(
+    void (
+      forkOwner.handle(message) ??
+      createStarredMessagesHandler(owner)(message, {
+        id: chrome.runtime.id,
+        tab: { url: 'https://gemini.google.com/app/abc' } as chrome.tabs.Tab,
+      })
+    )?.then(
       (result) => reply({ ok: true, ...result }),
       (error: Error) => reply({ ok: false, error: error.message }),
     );
@@ -493,6 +500,49 @@ describe('folder transfer commands', () => {
       expect.objectContaining({ turnId: 'turn2', starredAt: 3 }),
     ]);
     expect(h.refresh).toHaveBeenCalledOnce();
+    expect(h.notify).toHaveBeenLastCalledWith('downloadMergeSuccess', 'success');
+  });
+
+  it('a v2-only in-page download restores full text and applies cloud deletions', async () => {
+    const h = harness();
+    const deleted = {
+      conversationId: 'gemini:conv:old',
+      turnId: 'old',
+      content: 'Old',
+      conversationUrl: 'https://gemini.google.com/app/old',
+      starredAt: 5,
+    };
+    const cloud = {
+      ...deleted,
+      conversationId: 'gemini:conv:new',
+      turnId: 'new',
+      conversationUrl: 'https://gemini.google.com/app/new',
+      text: 'Full\ntext',
+    };
+    stored[StorageKeys.SAVED_LIBRARY_STARS] = { messages: { [deleted.conversationId]: [deleted] } };
+    sendMessage.mockResolvedValue({
+      ok: true,
+      data: {
+        folders: { data: importedData() },
+        stars: {
+          format: 'gemini-voyager.stars.v2',
+          version: '1.0',
+          exportedAt: new Date().toISOString(),
+          items: [cloud],
+          tombstones: [
+            {
+              conversationId: deleted.conversationId,
+              turnId: deleted.turnId,
+              conversationUrl: deleted.conversationUrl,
+              starredAt: deleted.starredAt,
+              deletedAt: Date.now(),
+            },
+          ],
+        },
+      },
+    });
+    await h.transfer.sync();
+    expect((await owner.getAll()).messages).toEqual({ [cloud.conversationId]: [cloud] });
     expect(h.notify).toHaveBeenLastCalledWith('downloadMergeSuccess', 'success');
   });
 

@@ -31,7 +31,7 @@ export function starDeletionConversationIds(conversationId: string, url: string)
 
 export function normalizeStarTombstones(value: unknown): StarTombstone[] {
   if (!Array.isArray(value)) return [];
-  const records: StarTombstone[] = [];
+  const records = new Map<string, StarTombstone>();
   for (const item of value) {
     if (
       !isRecord(item) ||
@@ -61,9 +61,19 @@ export function normalizeStarTombstones(value: unknown): StarTombstone[] {
     const ids = record.movedTo
       ? [record.conversationId]
       : starDeletionConversationIds(record.conversationId, record.conversationUrl);
-    records.push(...ids.map((conversationId) => ({ ...record, conversationId })));
+    for (const conversationId of ids) {
+      const key = identity(conversationId, record.turnId);
+      const existing = records.get(key);
+      if (
+        !existing ||
+        record.starredAt > existing.starredAt ||
+        (record.starredAt === existing.starredAt && record.deletedAt >= existing.deletedAt)
+      ) {
+        records.set(key, { ...record, conversationId });
+      }
+    }
   }
-  return records;
+  return Array.from(records.values());
 }
 
 export function mergeStarState(
@@ -71,18 +81,12 @@ export function mergeStarState(
   deletions: unknown,
   now: number,
 ): StarState {
-  const tombstones = new Map<string, StarTombstone>();
-  for (const item of normalizeStarTombstones(deletions)) {
-    const key = identity(item.conversationId, item.turnId);
-    const existing = tombstones.get(key);
-    if (
-      !existing ||
-      item.starredAt > existing.starredAt ||
-      (item.starredAt === existing.starredAt && item.deletedAt >= existing.deletedAt)
-    ) {
-      tombstones.set(key, item);
-    }
-  }
+  const tombstones = new Map(
+    normalizeStarTombstones(deletions).map((item) => [
+      identity(item.conversationId, item.turnId),
+      item,
+    ]),
+  );
   const data = sources.reduce(
     (merged, source) => mergeStarredMessages(merged, source),
     normalizeStarredMessages(undefined),

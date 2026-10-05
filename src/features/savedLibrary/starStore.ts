@@ -1,4 +1,5 @@
 import { StorageKeys } from '@/core/types/common';
+import type { SyncAccountScope } from '@/core/types/sync';
 
 import { mergeStarredMessages, normalizeStarredMessages } from './starData';
 import {
@@ -7,6 +8,11 @@ import {
   starDeletionConversationIds,
   type StarState,
 } from './starSyncData';
+import {
+  decodeStarSyncSources,
+  filterStarStateByScope,
+  type StarSyncSources,
+} from './starSyncPayload';
 import { getBackfillStarText, legacyStarProjection } from './starText';
 import type { StarredMessage, StarredMessagesData, StarTombstone } from './starTypes';
 
@@ -16,6 +22,8 @@ export interface StorageArea {
 }
 
 export interface StarStore {
+  getSyncSnapshot(scope: SyncAccountScope | null): Promise<StarState>;
+  mergeSync(sources: StarSyncSources, scope: SyncAccountScope | null): Promise<StarState>;
   getAll(): Promise<StarredMessagesData>;
   getForConversation(id: string): Promise<StarredMessage[]>;
   add(item: StarredMessage): Promise<boolean>;
@@ -45,7 +53,7 @@ export function createStarStore(area: StorageArea): StarStore {
       [StorageKeys.TIMELINE_STARRED_MESSAGES]: legacyStarProjection(data),
       [StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES]: tombstones,
     });
-  const read = async (sources: StarredMessagesData[] = []) => {
+  const read = async (sources: StarredMessagesData[] = [], deletions: StarTombstone[] = []) => {
     const values = await area.get(keys);
     const rawTombstones = normalizeStarTombstones(
       values[StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES],
@@ -56,7 +64,7 @@ export function createStarStore(area: StorageArea): StarStore {
         normalizeStarredMessages(values[StorageKeys.TIMELINE_STARRED_MESSAGES]),
         ...sources,
       ],
-      rawTombstones,
+      [...rawTombstones, ...deletions],
       Date.now(),
     );
     const serialized = JSON.stringify(state.data);
@@ -86,7 +94,19 @@ export function createStarStore(area: StorageArea): StarStore {
     ...(typeof item.account === 'string' ? { account: item.account } : {}),
   });
 
+  const mergeSync = (sources: StarSyncSources, scope: SyncAccountScope | null) => {
+    const capturedScope = scope ? { ...scope } : null;
+    return serialize(async () => {
+      const incoming = decodeStarSyncSources(sources, capturedScope);
+      const state = await read([incoming.data], incoming.tombstones);
+      if (sources.v1 != null || sources.v2 != null || state.dirty) await write(state);
+      return filterStarStateByScope(state, capturedScope);
+    });
+  };
+
   return {
+    mergeSync,
+    getSyncSnapshot: (scope) => mergeSync({}, scope),
     getAll: () => serialize(readReconciled),
     getForConversation: (id) => serialize(async () => (await readReconciled()).messages[id] || []),
     add: (item) =>
@@ -210,22 +230,24 @@ export function createStarStore(area: StorageArea): StarStore {
         await write(state);
         return state.data.messages[target] || [];
       }),
-    mergeCloud: (envelope) =>
-      serialize(async () => {
-        if (envelope === null || typeof envelope !== 'object') {
-          return { status: 'absent', count: 0 };
-        }
-        if ('format' in envelope && envelope.format !== 'gemini-voyager.starred.v1') {
-          throw new Error('Invalid starred messages envelope');
-        }
-        const cloud = normalizeStarredMessages('data' in envelope ? envelope.data : undefined);
-        const state = await read([cloud]);
-        await write(state);
-        const { data } = state;
-        return {
-          status: 'merged',
-          count: Object.values(data.messages).reduce((total, bucket) => total + bucket.length, 0),
-        };
-      }),
+    mergeCloud: async (envelope) => {
+      if (envelope === null || typeof envelope !== 'object') return { status: 'absent', count: 0 };
+      const state = await mergeSync(
+        {
+          v1: {
+            ...envelope,
+            data: normalizeStarredMessages('data' in envelope ? envelope.data : undefined),
+          },
+        },
+        null,
+      );
+      return {
+        status: 'merged',
+        count: Object.values(state.data.messages).reduce(
+          (total, bucket) => total + bucket.length,
+          0,
+        ),
+      };
+    },
   };
 }

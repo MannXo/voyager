@@ -21,6 +21,7 @@ import type {
 import { getPromptNameConflictIds } from '@/core/utils/promptName';
 import { FOLDER_PLATFORMS, supportsAccountIsolation } from '@/features/folder/platforms';
 import { loadPluginState } from '@/features/plugins/storage/pluginState';
+import type { StarStore } from '@/features/savedLibrary/starStore';
 import type { StarredMessagesData } from '@/features/savedLibrary/starTypes';
 import type { ForkNode, ForkNodesData } from '@/pages/content/fork/forkTypes';
 import {
@@ -248,6 +249,7 @@ type SyncPayload = {
 export function createCloudSyncMessageHandler(readers: {
   getAllStarredMessages(): Promise<StarredMessagesData>;
   getAllForkNodes(): Promise<ForkNodesData>;
+  starStore?: StarStore;
 }) {
   async function handle(
     message: { type: string; payload?: unknown },
@@ -352,6 +354,7 @@ export function createCloudSyncMessageHandler(readers: {
           timelineHierarchyAccountScope,
           settingsPayload?.data ?? null,
           pluginState,
+          ...(readers.starStore ? ([readers.starStore] as const) : []),
         );
         if (success && shouldSyncHighlights && highlightAccountScope) {
           const highlightResult = await highlightDriveSyncCoordinator.push(
@@ -414,6 +417,10 @@ export function createCloudSyncMessageHandler(readers: {
           accountScope,
           timelineHierarchyAccountScope,
         );
+        if (!data) {
+          const state = await googleDriveSyncService.getState();
+          if (state.error) return { ok: false, error: state.error, state };
+        }
         const routeUserId = accountScope?.routeUserId;
         if (data?.forks?.data?.nodes && routeUserId) {
           data.forks = {

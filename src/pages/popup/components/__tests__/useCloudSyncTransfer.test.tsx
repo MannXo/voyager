@@ -10,6 +10,7 @@ import {
 import { StorageKeys } from '@/core/types/common';
 import type { FolderData } from '@/core/types/folder';
 import type { SyncAccountScope, SyncPlatform } from '@/core/types/sync';
+import { hashString } from '@/core/utils/hash';
 import {
   handlePromptLibraryApplyMessage,
   isPromptLibraryApplyMessage,
@@ -20,6 +21,7 @@ import {
 } from '@/features/prompt/library/promptLibraryOwner';
 import { createStarStore, type StarStore } from '@/features/savedLibrary/starStore';
 import { createForkMessagesOwner } from '@/pages/background/forkMessages';
+import { createStarredMessagesHandler } from '@/pages/background/starredMessages';
 import type { ForkNode } from '@/pages/content/fork/forkTypes';
 import { getTimelineHierarchyStorageKey } from '@/pages/content/timeline/hierarchyStorage';
 
@@ -104,6 +106,7 @@ describe('popup cloud sync transfer operations', () => {
     vi.stubGlobal('chrome', {
       runtime: {
         id: 'test',
+        getURL: (path: string) => `chrome-extension://test/${path}`,
         sendMessage: (
           message: { type: string; payload?: unknown },
           reply?: (response: unknown) => void,
@@ -111,7 +114,13 @@ describe('popup cloud sync transfer operations', () => {
           if (isPromptLibraryApplyMessage(message)) {
             return handlePromptLibraryApplyMessage(message, promptOwner);
           }
-          void (forkOwner.handle(message) ?? starStore.mergeCloud(message.payload)).then(
+          void (
+            forkOwner.handle(message) ??
+            createStarredMessagesHandler(starStore)(message, {
+              id: 'test',
+              url: 'chrome-extension://test/src/pages/popup/index.html',
+            })
+          )?.then(
             (result) => reply?.({ ok: true, ...result }),
             (error: Error) => reply?.({ ok: false, error: error.message }),
           );
@@ -241,6 +250,154 @@ describe('popup cloud sync transfer operations', () => {
       expect(Object.keys((await starStore.getAll()).messages)).toHaveLength(3);
     },
   );
+
+  it.each(['merge', 'overwrite'] as const)(
+    'a cloud tombstone removes a local star in both restore modes (%s)',
+    async (mode) => {
+      const local = {
+        conversationId: 'gemini:conv:deleted',
+        turnId: 'turn',
+        content: 'Deleted',
+        conversationUrl: 'https://gemini.google.com/u/1/app/deleted',
+        starredAt: 5,
+      };
+      const other = {
+        ...local,
+        conversationId: 'gemini:conv:other',
+        conversationUrl: 'https://gemini.google.com/u/2/app/other',
+      };
+      stored[StorageKeys.SAVED_LIBRARY_STARS] = {
+        messages: { [local.conversationId]: [local], [other.conversationId]: [other] },
+      };
+      await render('gemini', false);
+      const download = await transfer.prepareDownload();
+      await download.restore(
+        {
+          folders: { data: folders },
+          stars: {
+            format: 'gemini-voyager.stars.v2',
+            version: '1.0',
+            exportedAt: new Date().toISOString(),
+            accountScope: { accountHash: hashString(pageScope.accountKey) },
+            items: [],
+            tombstones: [
+              {
+                conversationId: local.conversationId,
+                turnId: local.turnId,
+                conversationUrl: local.conversationUrl,
+                starredAt: 5,
+                deletedAt: Date.now(),
+              },
+            ],
+          },
+        },
+        mode,
+        false,
+      );
+      expect((await starStore.getAll()).messages).toEqual({ [other.conversationId]: [other] });
+    },
+  );
+
+  it('a v2-only download restores the full starred prompt without a legacy file', async () => {
+    const cloud = {
+      conversationId: 'gemini:conv:full',
+      turnId: 'turn',
+      content: 'First line',
+      text: 'First line\nFull second line',
+      conversationUrl: 'https://gemini.google.com/u/1/app/full',
+      starredAt: 5,
+    };
+    await render('gemini', false);
+    const download = await transfer.prepareDownload();
+    vi.mocked(accountIsolationService.resolveAccountScope).mockResolvedValue({
+      ...tabScope,
+      emailHash: null,
+    });
+    await download.restore(
+      {
+        folders: { data: folders },
+        stars: {
+          format: 'gemini-voyager.stars.v2',
+          version: '1.0',
+          exportedAt: new Date().toISOString(),
+          accountScope: { accountHash: hashString(pageScope.accountKey) },
+          items: [cloud],
+          tombstones: [],
+        },
+      },
+      'merge',
+      false,
+    );
+    expect((await starStore.getAll()).messages).toEqual({ [cloud.conversationId]: [cloud] });
+    expect(stored[StorageKeys.TIMELINE_STARRED_MESSAGES]).toEqual({
+      messages: {
+        [cloud.conversationId]: [
+          {
+            conversationId: cloud.conversationId,
+            turnId: cloud.turnId,
+            content: cloud.content,
+            conversationUrl: cloud.conversationUrl,
+            starredAt: cloud.starredAt,
+          },
+        ],
+      },
+    });
+  });
+
+  it('a failed v2 restore reports earlier writes and leaves later forks unrestored', async () => {
+    await render('gemini', false);
+    const download = await transfer.prepareDownload();
+    await expect(
+      download.restore(
+        {
+          folders: { data: folders },
+          stars: {
+            format: 'gemini-voyager.stars.v2',
+            version: '1.0',
+            exportedAt: new Date().toISOString(),
+            accountScope: { accountHash: 'wrong' },
+            items: [],
+            tombstones: [],
+          },
+          forks: { format: 'gemini-voyager.forks.v1', data: { nodes: {}, groups: {} } },
+        },
+        'merge',
+        false,
+      ),
+    ).rejects.toMatchObject({
+      restored: ['folders', 'prompts'],
+      failed: ['starred', 'forks'],
+    });
+    expect(stored[buildScopedStorageKey(StorageKeys.FOLDER_DATA, 'page')]).toEqual({
+      ...folders,
+      folderContents: { local: [] },
+    });
+    expect(stored[StorageKeys.PROMPT_ITEMS]).toEqual([]);
+    expect(stored[StorageKeys.FORK_NODES]).toBeUndefined();
+    expect(tabMessage).not.toHaveBeenCalledWith(7, { type: 'gv.folders.reload' });
+  });
+
+  it('overwrite refuses a v2-only backup missing folders before restoring anything', async () => {
+    await render('gemini', false);
+    const download = await transfer.prepareDownload();
+    await expect(
+      download.restore(
+        {
+          stars: {
+            format: 'gemini-voyager.stars.v2',
+            version: '1.0',
+            exportedAt: new Date().toISOString(),
+            items: [],
+            tombstones: [],
+            accountScope: { accountHash: hashString(pageScope.accountKey) },
+          },
+        },
+        'overwrite',
+        false,
+      ),
+    ).rejects.toMatchObject({ reason: 'syncOverwriteMissingFolders' });
+    expect(localSet).not.toHaveBeenCalled();
+  });
 
   it.each([undefined, null, 42])(
     'leaves stars untouched when the cloud star file is %s',

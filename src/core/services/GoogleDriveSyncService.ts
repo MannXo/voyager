@@ -16,6 +16,7 @@ import type {
 import { DEFAULT_SYNC_STATE } from '@/core/types/sync';
 import { FOLDER_PLATFORMS } from '@/features/folder/platforms';
 import type { PluginStateMap } from '@/features/plugins/storage/pluginState';
+import type { StarStore } from '@/features/savedLibrary/starStore';
 
 import { GoogleDriveAuth, isSafariRuntime } from './GoogleDriveAuth';
 import { GoogleDriveBackupFolder } from './GoogleDriveBackupFolder';
@@ -27,6 +28,8 @@ import {
   type GoogleDriveDownload,
 } from './GoogleDriveSyncPayloads';
 import { logger } from './LoggerService';
+import { StarDriveSyncCoordinator } from './StarDriveSyncCoordinator';
+import { createStarTransferSession } from './StarTransferSession';
 
 function getStringValue(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
@@ -37,6 +40,8 @@ function getNumberValue(value: unknown): number | null {
 }
 
 export class GoogleDriveSyncService {
+  private sessionRevision = 0;
+  private readonly starCoordinator = new StarDriveSyncCoordinator();
   private state: SyncState = { ...DEFAULT_SYNC_STATE };
   private stateChangeCallback: ((state: SyncState) => void) | null = null;
   private readonly stateLoadPromise: Promise<void>;
@@ -80,6 +85,7 @@ export class GoogleDriveSyncService {
     }
     if (provider === this.state.provider) return;
 
+    this.sessionRevision += 1;
     await this.auth.clear();
     this.state.provider = provider;
     this.state.isAuthenticated = false;
@@ -112,6 +118,7 @@ export class GoogleDriveSyncService {
   }
 
   async signOut(): Promise<void> {
+    this.sessionRevision += 1;
     if (this.state.provider === 'icloud') {
       this.updateState({ isAuthenticated: false, error: null });
       await this.saveState();
@@ -145,10 +152,17 @@ export class GoogleDriveSyncService {
     timelineHierarchyAccountScope: SyncAccountScope | null = null,
     settings: Record<string, unknown> | null = null,
     plugins: PluginStateMap | null = null,
+    starStore?: StarStore,
   ): Promise<boolean> {
+    const capturedScope = accountScope ? { ...accountScope } : null;
+    const capturedHierarchyScope = timelineHierarchyAccountScope
+      ? { ...timelineHierarchyAccountScope }
+      : null;
     try {
       this.updateState({ isSyncing: true, error: null });
 
+      await this.stateLoadPromise;
+      const session = this.sessionRevision;
       const token = await this.auth.getToken(interactive);
       if (!token) {
         if (!interactive) {
@@ -161,19 +175,26 @@ export class GoogleDriveSyncService {
         throw new Error('Not authenticated');
       }
 
-      const fileCount = await this.payloads.upload(token, {
+      const { payloads, port } = this.starSession(token, capturedScope, session);
+      if (platform === 'gemini' && starred && !starStore)
+        throw new Error('Star uploads require the queued store');
+      const fileCount = await payloads.upload(token, {
         folders,
         prompts,
         starred,
         platform,
         forks,
         timelineHierarchy,
-        accountScope,
-        timelineHierarchyAccountScope,
+        accountScope: capturedScope,
+        timelineHierarchyAccountScope: capturedHierarchyScope,
         settings,
         plugins,
       });
 
+      if (platform === 'gemini' && starStore) {
+        await this.starCoordinator.push(starStore, port, capturedScope);
+      }
+      port.assertActive();
       const uploadTime = Date.now();
       // Update platform-specific upload time
       const uploadTimePatch: Partial<SyncState> = { isSyncing: false, error: null };
@@ -182,7 +203,7 @@ export class GoogleDriveSyncService {
       await this.saveState();
 
       logger.info(
-        `[GoogleDriveSyncService] Upload successful - ${fileCount} file(s) for ${platform}`,
+        `[GoogleDriveSyncService] Upload successful - ${fileCount + (platform === 'gemini' && starStore ? 2 : 0)} file(s) for ${platform}`,
       );
       return true;
     } catch (error) {
@@ -346,9 +367,15 @@ export class GoogleDriveSyncService {
     accountScope: SyncAccountScope | null = null,
     timelineHierarchyAccountScope: SyncAccountScope | null = null,
   ): Promise<GoogleDriveDownload | null> {
+    const capturedScope = accountScope ? { ...accountScope } : null;
+    const capturedHierarchyScope = timelineHierarchyAccountScope
+      ? { ...timelineHierarchyAccountScope }
+      : null;
     try {
       this.updateState({ isSyncing: true, error: null });
 
+      await this.stateLoadPromise;
+      const session = this.sessionRevision;
       const token = await this.auth.getToken(interactive);
       if (!token) {
         if (!interactive) {
@@ -361,12 +388,8 @@ export class GoogleDriveSyncService {
         throw new Error('Not authenticated');
       }
 
-      const data = await this.payloads.download(
-        token,
-        platform,
-        accountScope,
-        timelineHierarchyAccountScope,
-      );
+      const { payloads } = this.starSession(token, capturedScope, session);
+      const data = await payloads.download(token, platform, capturedScope, capturedHierarchyScope);
       if (!data) {
         this.updateState({ isSyncing: false });
         return null;
@@ -386,6 +409,28 @@ export class GoogleDriveSyncService {
       this.updateState({ isSyncing: false, error: errorMessage });
       return null;
     }
+  }
+
+  private starSession(token: string, scope: SyncAccountScope | null, revision: number) {
+    const provider = this.state.provider;
+    const assertActive = () => {
+      if (revision !== this.sessionRevision || provider !== this.state.provider) {
+        throw new Error('Cloud session changed during transfer');
+      }
+    };
+    assertActive();
+    return createStarTransferSession(
+      token,
+      provider,
+      JSON.stringify([provider, revision, scope?.accountKey ?? null]),
+      scope,
+      assertActive,
+      () => {
+        if (revision !== this.sessionRevision || provider !== this.state.provider) return;
+        this.sessionRevision += 1;
+        this.updateState({ isAuthenticated: false });
+      },
+    );
   }
 
   private async loadState(): Promise<void> {

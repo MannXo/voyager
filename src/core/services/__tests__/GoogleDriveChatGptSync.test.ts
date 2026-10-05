@@ -4,6 +4,7 @@ import { StorageKeys } from '@/core/types/common';
 import type { FolderData } from '@/core/types/folder';
 import type { SyncAccountScope } from '@/core/types/sync';
 import { EXTENSION_VERSION } from '@/core/utils/version';
+import { createStarStore } from '@/features/savedLibrary/starStore';
 
 const EXPORTED_AT = '2026-10-03T12:00:00.000Z';
 const NOW = Date.parse(EXPORTED_AT);
@@ -372,6 +373,7 @@ describe('ChatGPT Drive folder isolation', () => {
           null,
           settings,
           plugins,
+          ...(platform === 'gemini' ? ([createStarStore(chrome.storage.local)] as const) : []),
         ),
       ).resolves.toBe(true);
 
@@ -392,6 +394,13 @@ describe('ChatGPT Drive folder isolation', () => {
         'gemini-voyager-plugins.json': exportBytes('gemini-voyager.plugins.v1', plugins),
         ...(platform === 'gemini'
           ? {
+              'gemini-voyager-stars.json': JSON.stringify({
+                format: 'gemini-voyager.stars.v2',
+                exportedAt: EXPORTED_AT,
+                version: EXTENSION_VERSION,
+                items: [],
+                tombstones: [],
+              }),
               'gemini-voyager-starred.json': exportBytes('gemini-voyager.starred.v1', starred),
               'gemini-voyager-forks.json': exportBytes('gemini-voyager.forks.v1', forks),
               'gemini-voyager-timeline-hierarchy.json': exportBytes(

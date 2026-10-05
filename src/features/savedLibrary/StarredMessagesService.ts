@@ -3,6 +3,7 @@
  * Uses message passing to background script to prevent race conditions
  */
 import { StorageKeys } from '@/core/types/common';
+import type { SyncAccountScope } from '@/core/types/sync';
 
 import { decodeStarredSnapshot, normalizeStarredMessages } from './starData';
 import type { StarredMessage, StarredMessagesData } from './starTypes';
@@ -93,6 +94,18 @@ export class StarredMessagesService {
       status: 'absent' | 'merged';
       count: number;
     }>('gv.starred.mergeCloud', envelope);
+    return { status: response.status, count: response.count };
+  }
+
+  static async mergeSync(
+    sources: { v1?: unknown; v2?: unknown },
+    accountScope: SyncAccountScope | null,
+  ): Promise<{ status: 'absent' | 'merged'; count: number }> {
+    const response = await this.sendMessage<{
+      ok: boolean;
+      status: 'absent' | 'merged';
+      count: number;
+    }>('gv.starred.mergeSync', { ...sources, accountScope });
     return { status: response.status, count: response.count };
   }
 

@@ -63,7 +63,7 @@ afterEach(() => {
 });
 
 describe('GoogleDriveSyncPayloads', () => {
-  it('uploads scoped Gemini files in order, with a separate hierarchy scope and shortened star copies', async () => {
+  it('uploads scoped Gemini files in order, with a separate hierarchy scope while stars use their coordinator', async () => {
     const { payloads, writes } = fixture();
     const long = {
       turnId: 'turn-long',
@@ -86,14 +86,13 @@ describe('GoogleDriveSyncPayloads', () => {
       plugins: {},
     });
 
-    await expect(payloads.upload('token', data)).resolves.toBe(7);
+    await expect(payloads.upload('token', data)).resolves.toBe(6);
 
     expect(writes.map(({ name }) => name)).toEqual([
       scoped('gemini-voyager-folders'),
       scoped('gemini-voyager-prompts'),
       'gemini-voyager-settings.json',
       'gemini-voyager-plugins.json',
-      scoped('gemini-voyager-starred'),
       scoped('gemini-voyager-forks'),
       scoped('gemini-voyager-timeline-hierarchy', hierarchyScope),
     ]);
@@ -106,14 +105,8 @@ describe('GoogleDriveSyncPayloads', () => {
       version: EXTENSION_VERSION,
       items: prompts,
     });
-    expect(writes[4].payload).toEqual({
-      format: 'gemini-voyager.starred.v1',
-      exportedAt,
-      version: EXTENSION_VERSION,
-      data: { messages: { conversation: [{ ...long, content: 'x'.repeat(60) + '...' }, short] } },
-    });
     expect(starred.messages.conversation[0].content).toBe('x'.repeat(61));
-    expect(writes[6].payload).toEqual(expect.objectContaining({ data: data.timelineHierarchy }));
+    expect(writes[5].payload).toEqual(expect.objectContaining({ data: data.timelineHierarchy }));
   });
 
   it('omits empty aggregate prompts and Gemini-only files on AI Studio, but writes a prompts-only clear', async () => {
@@ -172,6 +165,7 @@ describe('GoogleDriveSyncPayloads', () => {
       settings: null,
       plugins: null,
       starred: null,
+      stars: null,
       forks: null,
       timelineHierarchy: hierarchy,
     });
@@ -185,6 +179,7 @@ describe('GoogleDriveSyncPayloads', () => {
       'gemini-voyager-plugins.json',
       scoped('gemini-voyager-starred'),
       'gemini-voyager-starred.json',
+      scoped('gemini-voyager-stars'),
       scoped('gemini-voyager-forks'),
       'gemini-voyager-forks.json',
       scoped('gemini-voyager-timeline-hierarchy', hierarchyScope),

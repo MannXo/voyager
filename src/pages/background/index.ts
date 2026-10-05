@@ -70,6 +70,7 @@ const starStore = createStarStore(chrome.storage.local);
 const handleStarredMessage = createStarredMessagesHandler(starStore);
 const forkMessages = createForkMessagesOwner(chrome.storage.local);
 const handleCloudSyncMessage = createCloudSyncMessageHandler({
+  starStore,
   getAllStarredMessages: starStore.getAll,
   getAllForkNodes: forkMessages.getAllForkNodes,
 });

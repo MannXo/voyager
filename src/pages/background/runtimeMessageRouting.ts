@@ -134,6 +134,7 @@ const HANDLED_BACKGROUND_MESSAGE_TYPES = new Set([
   'gv.starred.isStarred',
   'gv.starred.reconcileConversationIds',
   'gv.starred.mergeCloud',
+  'gv.starred.mergeSync',
   'gv.fork.add',
   'gv.fork.remove',
   'gv.fork.getAll',
