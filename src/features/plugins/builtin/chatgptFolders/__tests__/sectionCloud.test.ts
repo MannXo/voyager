@@ -115,6 +115,18 @@ describe('ChatGPT folder section: cloud', () => {
     ]);
   });
 
+  it('pressing the cloud button again closes its menu instead of reopening it', () => {
+    const cloud = headerButton(t('folder_cloud'));
+    cloud.click();
+    expect(cloud.getAttribute('aria-expanded')).toBe('true');
+
+    cloud.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true }));
+    cloud.click();
+
+    expect(menuItems()).toEqual([]);
+    expect(cloud.getAttribute('aria-expanded')).toBe('false');
+  });
+
   it('uploads the ChatGPT folders through the popup’s sync message and confirms it', async () => {
     sendMessage.mockResolvedValue({ ok: true });
 
