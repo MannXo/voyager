@@ -2,6 +2,7 @@ import { extractRouteUserIdFromUrl } from '@/core/services/AccountIsolationServi
 import type { SyncAccountScope } from '@/core/types/sync';
 import { hashString } from '@/core/utils/hash';
 
+import { retargetImportedStarState } from './starAccountRoute';
 import { mergeStarredMessages, normalizeStarredMessages } from './starData';
 import { normalizeStarTombstones, type StarState } from './starSyncData';
 import type { StarredMessage, StarredMessagesData, StarTombstone } from './starTypes';
@@ -97,7 +98,8 @@ export function decodeStarsV2(value: unknown, scope: SyncAccountScope | null): S
     )
       throw new Error('Invalid stars v2 deletion');
   }
-  return filterStarStateByScope(
+  // A matching account hash authorizes the backup; /u/N is only this browser's navigation slot.
+  return retargetImportedStarState(
     {
       data: itemsToData(value.items as StarredMessage[]),
       tombstones: normalizeStarTombstones(value.tombstones),

@@ -75,7 +75,7 @@ describe('stars v2 owner boundary', () => {
     expect(values[StorageKeys.SAVED_LIBRARY_STAR_TOMBSTONES]).toEqual([deletion(own)]);
   });
 
-  it('scoped star transfers reject explicit route mismatches and keep URLs without an account slot', async () => {
+  it('local exports and unscoped legacy imports retain account route isolation', async () => {
     const own = star('own');
     const other = star('other', '3');
     const absent = star('absent', null);
@@ -83,10 +83,7 @@ describe('stars v2 owner boundary', () => {
     const result = await store.mergeSync(
       {
         v1: { data: { messages: { fromV1: [star('fromV1', '3')] } } },
-        v2: payload(
-          [own, other, absent],
-          [deletion(star('accepted')), deletion(star('rejected', '3'))],
-        ),
+        v2: payload([own, absent], [deletion(star('accepted'))]),
       },
       scope,
     );
@@ -101,6 +98,23 @@ describe('stars v2 owner boundary', () => {
     const exported = buildStarsV2(await store.getSyncSnapshot(null), scope, '1.9.0');
     expect(exported.items).toEqual([own, absent]);
     expect(exported.tombstones).toEqual([deletion(star('accepted'))]);
+    await store.mergeSync(
+      {
+        v1: {
+          data: {
+            messages: {
+              other: [{ ...other, conversationUrl: star('other').conversationUrl, starredAt: 49 }],
+            },
+          },
+        },
+      },
+      scope,
+    );
+    expect((await store.getAll()).messages.other).toEqual([other]);
+    expect((await store.getSyncSnapshot(scope)).data.messages).toEqual({
+      own: [own],
+      absent: [absent],
+    });
   });
 
   it('a queued star snapshot retains the requested account scope when the caller switches accounts', async () => {

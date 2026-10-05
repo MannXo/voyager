@@ -1,6 +1,7 @@
 import { StorageKeys } from '@/core/types/common';
 import type { SyncAccountScope } from '@/core/types/sync';
 
+import { retargetKnownStarState } from './starAccountRoute';
 import { mergeStarredMessages, normalizeStarredMessages } from './starData';
 import {
   mergeStarState,
@@ -10,6 +11,7 @@ import {
 } from './starSyncData';
 import {
   decodeStarSyncSources,
+  decodeStarsV2,
   filterStarStateByScope,
   type StarSyncSources,
 } from './starSyncPayload';
@@ -98,9 +100,12 @@ export function createStarStore(area: StorageArea): StarStore {
     const capturedScope = scope ? { ...scope } : null;
     return serialize(async () => {
       const incoming = decodeStarSyncSources(sources, capturedScope);
+      const matchedV2 = sources.v2 == null ? null : decodeStarsV2(sources.v2, capturedScope);
       const state = await read([incoming.data], incoming.tombstones);
-      if (sources.v1 != null || sources.v2 != null || state.dirty) await write(state);
-      return filterStarStateByScope(state, capturedScope);
+      const imported =
+        matchedV2 === null ? state : retargetKnownStarState(state, matchedV2, capturedScope);
+      if (sources.v1 != null || sources.v2 != null || state.dirty) await write(imported);
+      return filterStarStateByScope(imported, capturedScope);
     });
   };
 
