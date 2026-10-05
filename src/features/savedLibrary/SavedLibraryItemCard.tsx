@@ -103,7 +103,7 @@ export function SavedLibraryItemCard({
               aria-expanded={textExpanded}
               aria-controls={textId}
               onClick={() => setTextExpanded(!textExpanded)}
-              className="text-primary hover:bg-muted focus-visible:ring-ring min-h-8 rounded-md text-start text-xs font-medium focus-visible:ring-2"
+              className="text-primary hover:bg-muted focus-visible:ring-ring -ms-2 min-h-8 w-fit rounded-md px-2 text-start text-xs font-medium focus-visible:ring-2"
             >
               {t(textExpanded ? 'savedLibraryCollapseText' : 'savedLibraryExpandText')}
             </button>
