@@ -7,6 +7,7 @@ import type { TimelineMarker } from '../../types';
 import { createCatalogTimelineStoragePolicy } from './CatalogTimelineStorage';
 import { CatalogTurnOwnership } from './CatalogTurnOwnership';
 import type { CatalogTimelineConfig } from './config';
+import { turnSummary } from './turnHash';
 import { type Marker, type MountedTurn, mergeMountedTurns, rememberedMarkers } from './turnMerge';
 import { mountedOwnershipTurns } from './turnOwnership';
 import { renderedCheck, togglesVisibility } from './turnVisibility';
@@ -107,7 +108,7 @@ class CatalogTimelineTurnSource implements TimelineTurnSource {
       .filter(renderedCheck())
       .map((element) => ({
         element,
-        summary: (element.textContent ?? '').replace(/\s+/g, ' ').trim(),
+        summary: turnSummary(element),
       }));
     for (const turn of mounted)
       if (!this.originalStamps.has(turn.element))
@@ -177,7 +178,7 @@ class CatalogTimelineTurnSource implements TimelineTurnSource {
           !!(element.compareDocumentPosition(candidate) & Node.DOCUMENT_POSITION_FOLLOWING) &&
           (!next || !!(candidate.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING)),
       );
-      if (reply) result.set(element, (reply.textContent ?? '').replace(/\s+/g, ' ').trim());
+      if (reply) result.set(element, turnSummary(reply));
     });
     return result;
   }

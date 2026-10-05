@@ -173,6 +173,33 @@ describe('createExportRunner', () => {
     expect(selectionBar()).toBeNull();
   });
 
+  it('a failing build reports the error without writing a file', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const site = fakeSite(fakeCollector(renderMessages()));
+    const runner = createExportRunner({
+      site: {
+        ...site,
+        turns: {
+          ...site.turns,
+          build: async () => {
+            throw new Error('Build unavailable');
+          },
+        },
+      },
+    });
+    const running = runner.run({ format: ExportFormat.JSON }, { dict, lang: 'en' });
+    await until(() => selectionBar() !== null);
+    expect(mocks.exportPendingConversation).not.toHaveBeenCalled();
+    clickBarAction('selectAll');
+    clickBarAction('export');
+    await settle(running);
+    expect(selectionBar()).toBeNull();
+    expect(mocks.exportPendingConversation).not.toHaveBeenCalled();
+    expect(toastDriver.all()).toMatchObject([
+      { message: 'Export failed: Build unavailable', tone: 'error' },
+    ]);
+  });
+
   it('shows the export error instead of reporting success', async () => {
     mocks.exportPendingConversation.mockResolvedValue({
       success: false,

@@ -73,6 +73,8 @@ export interface ChatGptThreadMessage {
   readonly host: HTMLElement;
   /** The item's {@link readTurnFingerprint} when it was read. */
   readonly fingerprint: string;
+  /** Raw prompt bubble hash, captured while mounted and shared with its reply. */
+  readonly starHash?: string;
 }
 
 export function userMessageId(turnKey: string): string {

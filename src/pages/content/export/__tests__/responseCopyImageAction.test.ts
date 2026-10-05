@@ -1,11 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildConversationIdFromUrl } from '@/core/utils/conversationIdentity';
+import { hashString } from '@/core/utils/hash';
+import { chatgptAdapter } from '@/features/plugins/sites/adapters/chatgpt';
 import { createStarStore } from '@/features/savedLibrary/starStore';
+import { turnSummary } from '@/features/timeline/adapters/catalog/turnHash';
 import { createStarredMessagesHandler } from '@/pages/background/starredMessages';
 import { toastDriver } from '@/tests/toastDriver';
 
+import { mountThreadFixture } from '../adapter/__tests__/chatgptThreadFixture';
+import { buildChatGptAdapter } from '../adapter/platform/chatgpt';
 import type { ExportDictionaries } from '../exportLocale';
+import { createChatGptExportSite } from '../sites/chatgpt';
 
 const mocks = vi.hoisted(() => ({
   isSafari: vi.fn(() => false),
@@ -115,6 +121,7 @@ describe('startResponseCopyImageActions', () => {
   });
 
   afterEach(() => {
+    window.dispatchEvent(new Event('beforeunload'));
     vi.clearAllMocks();
     mocks.isSafari.mockReturnValue(false);
     document.body.innerHTML = '';
@@ -157,6 +164,69 @@ describe('startResponseCopyImageActions', () => {
     expect(turns).toMatchObject([{ user: '', assistant: 'answer', starred: true }]);
     expect(toastDriver.messages()).toEqual(['Response image copied']);
   });
+
+  it.each(['retained', 'thread'] as const)(
+    'copies a ChatGPT %s assistant-only response with its unselected prompt Library star',
+    async (kind) => {
+      const previousUrl = location.href;
+      history.replaceState({}, '', '/c/image-stars');
+      document.body.innerHTML = `<main>
+      <div data-turn-id-container="prompt"><section data-turn="user"><div data-message-author-role="user"><div data-user-message-bubble>Image prompt</div></div></section></div>
+      <div data-turn-id-container="reply"><section data-turn="assistant"><div data-message-author-role="assistant">
+        <p>Image answer</p><message-actions><div class="buttons-container-v2"></div></message-actions>
+      </div></section></div>
+    </main>`;
+      if (kind === 'thread') {
+        document.body.replaceChildren();
+        const fixture = mountThreadFixture({
+          turns: [{ key: 'image', height: 200, user: 'Image prompt', assistant: 'Image answer' }],
+        });
+        const reply = fixture.main.querySelector('[data-chatgpt-selection-message-id]')!;
+        reply.setAttribute('data-message-author-role', 'assistant');
+        reply.insertAdjacentHTML(
+          'beforeend',
+          '<message-actions><div class="buttons-container-v2"></div></message-actions>',
+        );
+      }
+      const bar = document.querySelector('.buttons-container-v2')!;
+      bar.append(
+        actionButton('copy-button', 'content_copy', 'Copy response'),
+        actionButton('more-menu-button', 'more_vert', 'Show more options'),
+      );
+      await library.add({
+        conversationId: 'chatgpt:conv:image-stars',
+        conversationUrl: location.href,
+        turnId: `c-${hashString(turnSummary(document.querySelector('[data-user-message-bubble]')!))}`,
+        content: 'Image prompt',
+        starredAt: 1,
+      });
+      mocks.copyImageBlobToClipboard.mockResolvedValue(undefined);
+      try {
+        startResponseCopyImageActions({
+          dict: emptyDict,
+          language: () => 'en',
+          site: createChatGptExportSite(buildChatGptAdapter(chatgptAdapter)),
+          assistantMessageIdFor: (trigger) =>
+            kind === 'thread'
+              ? `${trigger.closest('[data-turn-key]')?.getAttribute('data-turn-key')}:a`
+              : (trigger
+                  .closest('[data-turn-id-container]')
+                  ?.getAttribute('data-turn-id-container') ?? null),
+        });
+        document.querySelector<HTMLElement>('[data-test-id="gv-copy-image-button"]')!.click();
+        document.querySelector<HTMLElement>('.gv-response-image-menu-item')!.click();
+        await vi.waitFor(() => expect(mocks.renderResponseImageBlob).toHaveBeenCalled(), {
+          timeout: 4000,
+        });
+        expect(mocks.renderResponseImageBlob.mock.calls[0][0]).toMatchObject([
+          { user: '', assistant: 'Image answer', starred: true },
+        ]);
+        await vi.waitFor(() => expect(toastDriver.messages()).toEqual(['Response image copied']));
+      } finally {
+        history.replaceState({}, '', previousUrl);
+      }
+    },
+  );
 
   it('downloads the image on Safari when neither clipboard path works', async () => {
     mocks.isSafari.mockReturnValue(true);

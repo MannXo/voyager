@@ -43,6 +43,11 @@ Keep these less obvious boundaries intact:
   thread watch and the checkbox hosts) and stands in for the source until it is released after
   selection ends, including cancellation, teardown and failures. Starting a preparation releases
   the previous one, so an older run can never publish over a newer run.
+- Final builders read Saved Library stars once per build; selection needs no star input.
+  Gemini keeps its verified stored turn aliases. ChatGPT captures the timeline's normalized
+  user-bubble hash during the existing crawl or selected-prompt extraction; assistant-only
+  retained selections resolve only their paired prompt. Read failures reject; no page star
+  cache or mirror participates.
 - Fork and export share Gemini pairing (`conversationDom.ts`) but not ids: fork keeps `makeTurnId`
   (`fork/turnId.ts`); export keeps `resolveUniqueExportTurnIds` (`selectionIds.ts`).
 - Selection UI is removed (`takeSelection()`) before screenshots so it is not captured.

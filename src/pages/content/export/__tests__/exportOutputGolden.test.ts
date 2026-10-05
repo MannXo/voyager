@@ -116,6 +116,7 @@ let downloads: Blob[] = [];
 
 beforeEach(() => {
   downloads = [];
+  vi.spyOn(StarredMessagesService, 'getStarredMessagesForConversation').mockResolvedValue([]);
   URL.createObjectURL = vi.fn((blob: Blob) => {
     downloads.push(blob);
     return `blob:golden-${downloads.length}`;

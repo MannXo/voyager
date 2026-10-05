@@ -1,4 +1,5 @@
 import type { ChatTurn } from '@/features/export/types/export';
+import { loadChatGptStarHashes } from '@/features/savedLibrary/exportStars';
 
 import { chatgptCollectTurnContainers } from './chatgpt';
 import { type ChatGptCrawlOptions, crawlChatGptThread } from './chatgptCrawl';
@@ -161,8 +162,13 @@ function createThreadSession(
     },
     async build(selectedIds, options) {
       assertActive(options);
+      crawledMessages(selectedIds);
+      const hashes = await loadChatGptStarHashes(route);
+      assertActive(options);
+      // A branch switch or release during the Library read invalidates its result too.
       return turnsFromMessages(
         crawledMessages(selectedIds).filter((message) => selectedIds.has(message.id)),
+        hashes,
       );
     },
     async roles(selectedIds, options) {
@@ -203,13 +209,21 @@ export function uncrawledChatGptTurnContainers(): ChatGptTurnContainer[] {
   return hasRenderedThread() ? [] : chatgptCollectTurnContainers();
 }
 
-function turnsFromMessages(messages: readonly ChatGptThreadMessage[]): ChatTurn[] {
+function turnsFromMessages(
+  messages: readonly ChatGptThreadMessage[],
+  starHashes: ReadonlySet<string>,
+): ChatTurn[] {
   const turns: ChatTurn[] = [];
   const byKey = new Map<string, ChatTurn>();
   for (const message of messages) {
     let turn = byKey.get(message.turnKey);
     if (!turn) {
-      turn = { user: '', assistant: '', starred: false, omitEmptySections: true };
+      turn = {
+        user: '',
+        assistant: '',
+        starred: message.starHash !== undefined && starHashes.has(message.starHash),
+        omitEmptySections: true,
+      };
       byKey.set(message.turnKey, turn);
       turns.push(turn);
     }
@@ -232,17 +246,20 @@ function turnsFromMessages(messages: readonly ChatGptThreadMessage[]): ChatTurn[
  * when the thread changed by the time the crawl returned.
  */
 export async function readChatGptThreadTurns(options: ChatGptCrawlOptions): Promise<ChatTurn[]> {
+  const captured = { ...options, expectedUrl: options.expectedUrl ?? location.href };
   const versions = watchThreadVersions();
   try {
-    const messages = await crawlChatGptThread(options);
+    const messages = await crawlChatGptThread(captured);
     if (messages.at(-1)?.role === 'user') {
       throw new Error('chatgpt_export_response_still_generating');
     }
     versions.adopt(messages);
+    const starHashes = await loadChatGptStarHashes(captured.expectedUrl);
+    assertActive(captured);
     if (isChatGptThreadGenerating(resolveVisibleConversationRoot(document)) || versions.changed()) {
       throw new Error('chatgpt_export_conversation_changed');
     }
-    return turnsFromMessages(messages);
+    return turnsFromMessages(messages, starHashes);
   } finally {
     versions.stop();
   }

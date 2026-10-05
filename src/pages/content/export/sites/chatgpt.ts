@@ -50,8 +50,18 @@ export function createChatGptExportSite(adapter: ExportPlatformAdapter): ExportS
     turns: {
       scrollsWhileBuilding: true,
       messages: () => selectionMessages(uncrawledChatGptTurnContainers()),
-      build: (selectedIds, options) =>
-        buildChatGptTurnsForSelection(selectedIds, { ...options, extractor }),
+      build: async (selectedIds, options) => {
+        // Direct consumers also need a full crawl; they do not run the selection preparer.
+        const session = await createChatGptThreadPreparer().prepare({ ...options, extractor });
+        if (!session) {
+          return buildChatGptTurnsForSelection(selectedIds, { ...options, extractor });
+        }
+        try {
+          return await session.build(selectedIds, options);
+        } finally {
+          session.release();
+        }
+      },
       roles: resolveChatGptSelectionRoles,
       prepare: async (options) => {
         const session = await prepareChatGptExportWithProgress(preparer, { ...options, extractor });

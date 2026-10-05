@@ -1,3 +1,5 @@
+import { chatGptTurnHash } from '@/features/savedLibrary/exportStars';
+
 import { type ScrollView, createScrollView, findScrollContainer } from './chatgptScrollView';
 import { assertActive, wait } from './chatgptShared';
 import {
@@ -237,6 +239,7 @@ async function captureItem(context: CrawlContext, key: string): Promise<Captured
       }
       // A bubble or reply still empty after the wait is blank in ChatGPT too.
       const messages: ChatGptThreadMessage[] = [];
+      const starHash = bubble ? chatGptTurnHash(bubble) : undefined;
       if (bubble && hasRenderedContent(bubble)) {
         const content = extractUserMessage(item, bubble, options.extractor);
         if (!isEmptyContent(content)) {
@@ -247,6 +250,7 @@ async function captureItem(context: CrawlContext, key: string): Promise<Captured
             content,
             host: userSelectionHost(item, bubble),
             fingerprint,
+            starHash,
           });
         }
       }
@@ -260,6 +264,7 @@ async function captureItem(context: CrawlContext, key: string): Promise<Captured
             content,
             host: reply,
             fingerprint,
+            starHash,
           });
         }
       }

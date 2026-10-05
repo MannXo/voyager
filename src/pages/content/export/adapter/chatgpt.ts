@@ -3,9 +3,11 @@ import type {
   ExtractedContent,
 } from '@/features/export/services/DOMContentExtractor';
 import type { ChatTurn } from '@/features/export/types/export';
+import { chatGptTurnHash, loadChatGptStarHashes } from '@/features/savedLibrary/exportStars';
 
 import { computeConversationFingerprint } from '../topNodePreload';
 import { assertActive, mergeExtractedContent, wait } from './chatgptShared';
+import { USER_BUBBLE_SELECTOR } from './chatgptThread';
 import type {
   ChatGptReadOptions,
   ChatGptTurnContainer,
@@ -266,8 +268,8 @@ export async function materializeChatGptTurnContainer(
 
 function resolveSelectedContainers(
   selectedContainerIds: ReadonlySet<string>,
+  allContainers: ChatGptTurnContainer[],
 ): ChatGptTurnContainer[] {
-  const allContainers = chatgptCollectTurnContainers();
   const knownIds = new Set(allContainers.map((turn) => turn.id));
   const missingIds = Array.from(selectedContainerIds).filter((id) => !knownIds.has(id));
   if (missingIds.length > 0) {
@@ -313,7 +315,10 @@ export async function resolveChatGptSelectionRoles(
   options: ExportSelectionOptions = {},
 ): Promise<ReadonlyMap<string, ChatGptTurnRole>> {
   assertActive(options);
-  const selectedContainers = resolveSelectedContainers(selectedContainerIds);
+  const selectedContainers = resolveSelectedContainers(
+    selectedContainerIds,
+    chatgptCollectTurnContainers(),
+  );
   const scrollState = captureScrollState(selectedContainers[0]?.container);
   const roles = new Map<string, ChatGptTurnRole>();
   try {
@@ -329,6 +334,53 @@ export async function resolveChatGptSelectionRoles(
     return roles;
   } finally {
     restoreScrollState(scrollState);
+  }
+}
+
+function promptBubble(container: Element): Element | null {
+  const user = container.querySelector(USER_MESSAGE_SELECTOR);
+  // The timeline prefers the inner bubble; surrounding action text is not its identity.
+  return user?.querySelector(USER_BUBBLE_SELECTOR) ?? user;
+}
+
+function promptHash(container: Element): string | undefined {
+  const bubble = promptBubble(container);
+  return bubble ? chatGptTurnHash(bubble) : undefined;
+}
+
+interface RetainedThreadVersion {
+  readonly ids: string;
+  readonly promptIds: ReadonlySet<string>;
+  readonly prompts: Map<string, string>;
+}
+
+function retainedThreadVersion(
+  registry: readonly ChatGptTurnContainer[],
+  promptIds: ReadonlySet<string>,
+): RetainedThreadVersion {
+  const prompts = new Map<string, string>();
+  for (const turn of registry) {
+    if (!promptIds.has(turn.id)) continue;
+    const bubble = promptBubble(turn.container);
+    // Empty prompt roots are mounting placeholders, not a changed exchange.
+    if (bubble?.textContent?.trim()) prompts.set(turn.id, chatGptTurnHash(bubble));
+  }
+  return { ids: JSON.stringify(registry.map((turn) => turn.id)), promptIds, prompts };
+}
+
+function assertRetainedThreadVersion(version: RetainedThreadVersion): void {
+  const current = retainedThreadVersion(chatgptCollectTurnContainers(), version.promptIds);
+  // Replies may finish streaming; only ids and prompts determine exchange star identity.
+  if (
+    current.ids !== version.ids ||
+    Array.from(version.prompts).some(
+      ([id, hash]) => current.prompts.has(id) && current.prompts.get(id) !== hash,
+    )
+  ) {
+    throw new Error('chatgpt_export_thread_changed');
+  }
+  for (const [id, hash] of current.prompts) {
+    if (!version.prompts.has(id)) version.prompts.set(id, hash);
   }
 }
 
@@ -356,11 +408,21 @@ export async function buildChatGptTurnsForSelection(
   options: ChatGptReadOptions,
 ): Promise<ChatTurn[]> {
   const { extractor } = options;
+  const captured = { ...options, expectedUrl: options.expectedUrl ?? location.href };
   // querySelectorAll returns ChatGPT's retained virtual-list order. Filtering
   // this registry, rather than sorting visual coordinates, prevents image cards
   // and independently positioned DOM wrappers from changing export order.
-  assertActive(options);
-  const selectedContainers = resolveSelectedContainers(selectedContainerIds);
+  assertActive(captured);
+  const registry = chatgptCollectTurnContainers();
+  const selectedContainers = resolveSelectedContainers(selectedContainerIds, registry);
+  const promptIds = new Set(
+    selectedContainers
+      .flatMap((turn) =>
+        turn.role === 'user' ? [turn.id] : [turn.id, registry[turn.sequence - 1]?.id],
+      )
+      .filter((id): id is string => id !== undefined),
+  );
+  const version = retainedThreadVersion(registry, promptIds);
   const scrollState = captureScrollState(selectedContainers[0]?.container);
 
   const turns: ChatTurn[] = [];
@@ -368,18 +430,58 @@ export async function buildChatGptTurnsForSelection(
   const handledIds = new Set<string>();
 
   try {
+    const hashes = await loadChatGptStarHashes(captured.expectedUrl);
+    // A branch can change during prompt/return scrolling too, not just the Library read.
+    const assertThread = () => {
+      assertActive(captured);
+      if (hashes.size > 0) assertRetainedThreadVersion(version);
+    };
+    assertThread();
+    const promptHashes = new Map<string, string | undefined>();
     for (const turn of selectedContainers) {
-      assertActive(options);
-      const materialized = await materializeChatGptTurnContainer(turn, options);
+      let materialized = await materializeChatGptTurnContainer(turn, captured);
+      assertThread();
       if (materialized.empty) {
         // Nothing to export for this turn, but not a failure: ChatGPT itself
         // shows it blank. Pairing stays sequence-based, so a prompt followed by
         // a blank response exports as a user-only turn.
+        promptHashes.set(turn.id, undefined);
         handledIds.add(turn.id);
         continue;
       }
+      let starHash: string | undefined;
+      if (hashes.size > 0) {
+        if (materialized.role === 'user') {
+          starHash = promptHash(materialized.container);
+          promptHashes.set(turn.id, starHash);
+        } else if (materialized.role === 'assistant') {
+          const prompt = registry[turn.sequence - 1];
+          if (prompt && prompt.role !== 'assistant') {
+            if (!promptHashes.has(prompt.id)) {
+              // Only assistant-only selections need an extra prompt materialization.
+              const mounted = await materializeChatGptTurnContainer(prompt, captured);
+              assertThread();
+              promptHashes.set(
+                prompt.id,
+                mounted.role === 'user' && !mounted.empty
+                  ? promptHash(mounted.container)
+                  : undefined,
+              );
+              // Reading the unselected prompt may have unloaded the selected reply.
+              materialized = await materializeChatGptTurnContainer(turn, captured);
+              assertThread();
+              if (materialized.empty) {
+                handledIds.add(turn.id);
+                continue;
+              }
+            }
+            starHash = promptHashes.get(prompt.id);
+          }
+        }
+      }
       const { container, role } = materialized;
       const sequence = turn.sequence;
+      const starred = starHash !== undefined && hashes.has(starHash);
 
       if (role === 'user') {
         // A second user message closes an earlier selected user-only turn.
@@ -397,7 +499,7 @@ export async function buildChatGptTurnsForSelection(
           turn: {
             user: userContent.text,
             assistant: '',
-            starred: false,
+            starred,
             attachments: userContent.attachments,
             omitEmptySections: true,
             userContent,
@@ -436,7 +538,7 @@ export async function buildChatGptTurnsForSelection(
           turns.push({
             user: '',
             assistant: assistantContent.text,
-            starred: false,
+            starred,
             omitEmptySections: true,
             assistantContent,
           });

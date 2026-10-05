@@ -416,15 +416,15 @@ describe('ChatGPT temporary handoff plugin', () => {
 
   it('stops crawling a legacy chat as soon as the handoff is cancelled', async () => {
     const shell = legacyTurn('user-1');
+    const cancel = new AbortController();
     let scrolls = 0;
     shell.scrollIntoView = () => {
       scrolls += 1;
+      cancel.abort();
     };
     document.body.append(shell, legacyTurn('assistant-1', 'assistant', 'Answer'));
-    const cancel = new AbortController();
 
     const collection = collectTemporaryChatTurns(cancel.signal);
-    cancel.abort();
 
     await expect(collection).rejects.toMatchObject({ name: 'AbortError' });
     expect(scrolls).toBe(1);
