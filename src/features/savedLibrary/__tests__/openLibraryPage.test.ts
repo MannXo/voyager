@@ -1,23 +1,45 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { handlePageRuntimeMessage } from '@/pages/background/pageRuntimeMessages';
 import { isHandledBackgroundRuntimeMessage } from '@/pages/background/runtimeMessageRouting';
+import { registerBackgroundRuntimeMessages } from '@/pages/background/runtimeMessages';
 
 import { LIBRARY_OPEN_MESSAGE, LIBRARY_PAGE_PATH, openLibraryPage } from '../openLibraryPage';
 
 afterEach(() => vi.restoreAllMocks());
 
+function connectLauncherToBackground(): void {
+  registerBackgroundRuntimeMessages({
+    handlePluginMessage: () => null,
+    handleGeneratedUiMessage: () => null,
+    handleNotificationMessage: () => null,
+    handleStarredMessage: () => null,
+    handleForkMessage: () => null,
+    handleCloudSyncMessage: () => null,
+    announcements: {
+      getPendingAnnouncements: async () => [],
+      acknowledgeAnnouncement: async () => {},
+    },
+  });
+  const listener = vi.mocked(chrome.runtime.onMessage.addListener).mock.calls.at(-1)![0];
+  vi.mocked(chrome.runtime.sendMessage).mockImplementation(
+    (async (message: { type: string }) =>
+      new Promise<unknown>((resolve) => {
+        listener(
+          {
+            ...message,
+            url: 'https://untrusted.example/',
+            payload: { url: 'https://elsewhere.example/' },
+          },
+          { tab: { id: 7, url: 'https://gemini.google.com/app' } as chrome.tabs.Tab },
+          resolve,
+        );
+      })) as typeof chrome.runtime.sendMessage,
+  );
+}
+
 describe('saved library launcher', () => {
   it('opens only the bundled page even when a content script supplies another URL', async () => {
-    vi.mocked(chrome.runtime.sendMessage).mockImplementation((async (message: { type: string }) =>
-      handlePageRuntimeMessage(
-        {
-          ...message,
-          url: 'https://untrusted.example/',
-          payload: { url: 'https://elsewhere.example/' },
-        },
-        { tab: { id: 7, url: 'https://gemini.google.com/app' } as chrome.tabs.Tab },
-      )) as typeof chrome.runtime.sendMessage);
+    connectLauncherToBackground();
 
     await openLibraryPage();
 
@@ -34,8 +56,7 @@ describe('saved library launcher', () => {
 
   it('reports failure when the browser refuses to open the Library tab', async () => {
     vi.mocked(chrome.tabs.create).mockRejectedValueOnce(new Error('Tabs unavailable'));
-    vi.mocked(chrome.runtime.sendMessage).mockImplementation((async (message: { type: string }) =>
-      handlePageRuntimeMessage(message, {})) as typeof chrome.runtime.sendMessage);
+    connectLauncherToBackground();
     await expect(openLibraryPage()).rejects.toThrow('Failed to open saved library');
   });
 

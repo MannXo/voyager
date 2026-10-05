@@ -3,6 +3,10 @@ import { NATIVE_SITE_IDS, SiteRegistry } from '@/features/plugins/sites/registry
 
 import { type SavedLibraryFilter, type SavedLibraryItem, filterSavedLibraryItems } from './model';
 
+export const ALL_FILTER = 'all';
+export const UNKNOWN_SITE = 'unknown';
+export const UNASSIGNED_ACCOUNT = 'unassigned';
+
 export interface SavedLibrarySelection {
   kind: SavedLibraryFilter;
   query: string;
@@ -31,19 +35,19 @@ function itemSite(item: SavedLibraryItem, registry: SiteRegistry): string {
   if (item.kind === 'highlight' && item.platform) return item.platform;
   const prefix = item.conversationId.includes(':') ? item.conversationId.split(':')[0] : null;
   const site = registry.resolveByUrl(item.conversationUrl);
-  if (!site) return 'unknown';
+  if (!site) return UNKNOWN_SITE;
   return prefix
     ? prefix === site.id
       ? site.id
-      : 'unknown'
+      : UNKNOWN_SITE
     : NATIVE_SITE_IDS.has(site.id)
       ? site.id
-      : 'unknown';
+      : UNKNOWN_SITE;
 }
 
 function itemAccount(item: SavedLibraryItem, site: string): string {
   if (item.accountHash) return JSON.stringify([site, 'hash', item.accountHash]);
-  if (!item.account) return 'unassigned';
+  if (!item.account) return UNASSIGNED_ACCOUNT;
   // Gemini stars capture accountKey; highlightAnnotationData hashes that same key.
   const identity = site === 'gemini' ? ['hash', hashString(item.account)] : ['star', item.account];
   return JSON.stringify([site, ...identity]);
@@ -64,7 +68,7 @@ export function getSavedLibraryView(
     .all()
     .filter((site) => siteIds.has(site.id))
     .map(({ id, label }) => ({ id, label }));
-  if (siteIds.has('unknown')) sites.push({ id: 'unknown', label: '' });
+  if (siteIds.has(UNKNOWN_SITE)) sites.push({ id: UNKNOWN_SITE, label: '' });
 
   const firstSeenBySite = new Map<string, Map<string, number>>();
   for (const { item, site, account } of located) {
@@ -79,10 +83,10 @@ export function getSavedLibraryView(
   const accountsBySite = new Map(
     [...firstSeenBySite].map(([site, firstSeen]) => {
       const accounts = [...firstSeen]
-        .filter(([id]) => id !== 'unassigned')
+        .filter(([id]) => id !== UNASSIGNED_ACCOUNT)
         .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
         .map(([id], index) => ({ id, number: index + 1 }));
-      if (firstSeen.has('unassigned')) accounts.push({ id: 'unassigned', number: 0 });
+      if (firstSeen.has(UNASSIGNED_ACCOUNT)) accounts.push({ id: UNASSIGNED_ACCOUNT, number: 0 });
       return [site, accounts] as const;
     }),
   );
@@ -95,9 +99,9 @@ export function getSavedLibraryView(
   for (const { item, site, account } of located) {
     const id = JSON.stringify([site, account, item.conversationId]);
     if (!titles.has(id) && item.conversationTitle?.trim()) titles.set(id, item.conversationTitle);
-    if (!matches.has(item) || (selection.site !== 'all' && selection.site !== site)) continue;
+    if (!matches.has(item) || (selection.site !== ALL_FILTER && selection.site !== site)) continue;
     if (
-      selection.account !== 'all' &&
+      selection.account !== ALL_FILTER &&
       NATIVE_SITE_IDS.has(selection.site) &&
       selection.account !== account
     )

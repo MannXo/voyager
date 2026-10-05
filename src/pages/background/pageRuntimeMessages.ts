@@ -35,12 +35,8 @@ export function handlePageRuntimeMessage(
     return null;
   return (async () => {
     if (message.type === LIBRARY_OPEN_MESSAGE) {
-      try {
-        await chrome.tabs.create({ url: chrome.runtime.getURL(LIBRARY_PAGE_PATH) });
-        return { ok: true };
-      } catch (error) {
-        return { ok: false, error: error instanceof Error ? error.message : String(error) };
-      }
+      await chrome.tabs.create({ url: chrome.runtime.getURL(LIBRARY_PAGE_PATH) });
+      return { ok: true };
     }
 
     if (message?.type === 'gv.account.resolve') {

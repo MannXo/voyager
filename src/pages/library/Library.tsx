@@ -11,51 +11,39 @@ import {
   buildSavedLibraryItemUrl,
   savedLibraryItemKey,
 } from '@/features/savedLibrary/model';
+import {
+  formatSavedLibraryAccount,
+  savedLibraryEmptyKey,
+} from '@/features/savedLibrary/presentation';
 import { useSavedLibrary } from '@/features/savedLibrary/useSavedLibrary';
+import { ALL_FILTER, UNKNOWN_SITE } from '@/features/savedLibrary/viewModel';
 import { cn } from '@/lib/utils';
 
 /** The tab follows system appearance without changing the popup's saved preference. */
 function useLibraryAppearance(language: string, title: string): void {
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const wasDark = document.documentElement.classList.contains('dark');
-    const previousScheme = document.documentElement.dataset.gvScheme;
     const apply = () => {
       document.documentElement.classList.toggle('dark', media.matches);
       document.documentElement.dataset.gvScheme = media.matches ? 'dark' : 'light';
     };
     apply();
     media.addEventListener('change', apply);
-    return () => {
-      media.removeEventListener('change', apply);
-      document.documentElement.classList.toggle('dark', wasDark);
-      if (previousScheme === undefined) delete document.documentElement.dataset.gvScheme;
-      else document.documentElement.dataset.gvScheme = previousScheme;
-    };
+    return () => media.removeEventListener('change', apply);
   }, []);
 
   useEffect(() => {
-    const previousTitle = document.title;
-    const previousLanguage = document.documentElement.lang;
-    const previousDirection = document.documentElement.dir;
-    const wasRTL = document.body.classList.contains(GV_RTL_CLASS);
     document.title = title;
     document.documentElement.lang = language.replace('_', '-');
     const rtl = isRTLLanguage(language);
     document.documentElement.dir = rtl ? 'rtl' : 'ltr';
     document.body.classList.toggle(GV_RTL_CLASS, rtl);
-    return () => {
-      document.title = previousTitle;
-      document.documentElement.lang = previousLanguage;
-      document.documentElement.dir = previousDirection;
-      document.body.classList.toggle(GV_RTL_CLASS, wasRTL);
-    };
   }, [language, title]);
 }
 
 export function Library() {
   const { t, language } = useLanguage();
-  const library = useSavedLibrary({ highlightScope: 'all' });
+  const library = useSavedLibrary({ highlightScope: ALL_FILTER });
   const [openError, setOpenError] = useState(false);
   const [focusTarget, setFocusTarget] = useState<{ id?: string } | null>(null);
   const mainRef = useRef<HTMLElement>(null);
@@ -63,14 +51,15 @@ export function Library() {
 
   useEffect(() => {
     if (!focusTarget) return;
-    const cards = mainRef.current?.querySelectorAll<HTMLElement>('[data-library-item]');
-    const next = Array.from(cards ?? []).find(
-      (card) => card.dataset.libraryItem === focusTarget.id,
-    );
+    const next = focusTarget.id
+      ? mainRef.current?.querySelector<HTMLElement>(
+          `[data-library-item-id="${CSS.escape(focusTarget.id)}"] [data-library-open]`,
+        )
+      : null;
     const heading =
       mainRef.current?.querySelector<HTMLElement>('h2') ??
       mainRef.current?.querySelector<HTMLElement>('h1');
-    (next?.querySelector<HTMLElement>('[data-library-open]') ?? heading)?.focus();
+    (next ?? heading)?.focus();
     setFocusTarget(null);
   }, [focusTarget, library.groups]);
 
@@ -92,13 +81,7 @@ export function Library() {
       setFocusTarget({ id: neighbor ? savedLibraryItemKey(neighbor) : undefined });
   };
 
-  const emptyText = library.selection.query.trim()
-    ? t('pm_starred_no_results')
-    : library.selection.kind === 'highlights'
-      ? t('savedLibraryNoHighlights')
-      : library.selection.kind === 'starred'
-        ? t('noStarredMessages')
-        : t('savedLibraryEmpty');
+  const emptyText = t(savedLibraryEmptyKey(library.selection.kind, library.selection.query));
 
   return (
     <main ref={mainRef} className="gv-library min-h-screen">
@@ -111,12 +94,12 @@ export function Library() {
         </div>
         <Button variant="outline" disabled={library.loading} onClick={() => void library.reload()}>
           <RefreshCw className="h-4 w-4" aria-hidden="true" />
-          {t('usageStatusRefresh')}
+          {t('savedLibraryRefresh')}
         </Button>
       </header>
 
       <div className="gv-library-layout">
-        <aside className="gv-library-filters space-y-6" aria-label={t('starredHistory')}>
+        <aside className="gv-library-filters space-y-6" aria-label={t('savedLibraryFilters')}>
           <div>
             <label htmlFor="library-search" className="mb-2 block text-sm font-medium">
               {t('savedLibrarySearchPlaceholder')}
@@ -134,10 +117,14 @@ export function Library() {
             </div>
           </div>
 
-          <div role="group" aria-label={t('starredHistory')} className="flex flex-wrap gap-2">
+          <div
+            role="group"
+            aria-label={t('savedLibraryTypeFilter')}
+            className="flex flex-wrap gap-2"
+          >
             {(
               [
-                ['all', t('savedLibraryAll')],
+                [ALL_FILTER, t('savedLibraryAll')],
                 ['starred', t('savedLibraryStars')],
                 ['highlights', t('savedLibraryHighlights')],
               ] as const
@@ -169,10 +156,10 @@ export function Library() {
               onChange={(event) => library.setSelection({ site: event.target.value })}
               className="bg-card border-input w-full rounded-lg border px-3 text-sm"
             >
-              <option value="all">{t('savedLibraryAllSites')}</option>
+              <option value={ALL_FILTER}>{t('savedLibraryAllSites')}</option>
               {library.sites.map((site) => (
                 <option key={site.id} value={site.id}>
-                  {site.id === 'unknown' ? t('savedLibraryUnknownSite') : site.label}
+                  {site.id === UNKNOWN_SITE ? t('savedLibraryUnknownSite') : site.label}
                 </option>
               ))}
             </select>
@@ -188,12 +175,10 @@ export function Library() {
               onChange={(event) => library.setSelection({ account: event.target.value })}
               className="bg-card border-input w-full rounded-lg border px-3 text-sm"
             >
-              <option value="all">{t('savedLibraryAllAccounts')}</option>
+              <option value={ALL_FILTER}>{t('savedLibraryAllAccounts')}</option>
               {library.accounts.map((account) => (
                 <option key={account.id} value={account.id}>
-                  {account.number === 0
-                    ? t('savedLibraryUnassigned')
-                    : t('savedLibraryAccountNumber').replace('{number}', String(account.number))}
+                  {formatSavedLibraryAccount(t, account.number)}
                 </option>
               ))}
             </select>
@@ -214,7 +199,7 @@ export function Library() {
                 openError || library.notice?.error ? 'text-destructive' : '',
               )}
             >
-              {openError ? t('pm_starred_load_error') : library.notice?.text}
+              {openError ? t('savedLibraryConversationOpenFailed') : library.notice?.text}
             </p>
           )}
           {library.loading && library.items.length === 0 ? (
@@ -241,33 +226,22 @@ export function Library() {
                     {group.accountNumber !== undefined && (
                       <>
                         <span aria-hidden="true">·</span>
-                        <span>
-                          {group.accountNumber === 0
-                            ? t('savedLibraryUnassigned')
-                            : t('savedLibraryAccountNumber').replace(
-                                '{number}',
-                                String(group.accountNumber),
-                              )}
-                        </span>
+                        <span>{formatSavedLibraryAccount(t, group.accountNumber)}</span>
                       </>
                     )}
                   </p>
                 </div>
                 <div className="space-y-3">
                   {group.items.map((item) => (
-                    <div
+                    <SavedLibraryItemCard
                       key={savedLibraryItemKey(item)}
-                      data-library-item={savedLibraryItemKey(item)}
-                    >
-                      <SavedLibraryItemCard
-                        item={item}
-                        onOpen={(selected) => void openItem(selected)}
-                        onDelete={(selected) => void deleteItem(selected)}
-                        t={t}
-                        language={language}
-                        expanded
-                      />
-                    </div>
+                      item={item}
+                      onOpen={(selected) => void openItem(selected)}
+                      onDelete={(selected) => void deleteItem(selected)}
+                      t={t}
+                      language={language}
+                      expanded
+                    />
                   ))}
                 </div>
               </section>

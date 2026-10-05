@@ -35,7 +35,9 @@ import {
   toSavedLibraryItems,
 } from '@/features/savedLibrary/model';
 import { openLibraryPage } from '@/features/savedLibrary/openLibraryPage';
+import { savedLibraryEmptyKey } from '@/features/savedLibrary/presentation';
 import type { StarredMessage } from '@/features/savedLibrary/starTypes';
+import { ALL_FILTER } from '@/features/savedLibrary/viewModel';
 import type { TranslationKey } from '@/utils/translations';
 
 import { formatStarredMessageTime } from './starredLibrary';
@@ -95,17 +97,16 @@ export function createSavedLibraryView({
 }: SavedLibraryViewOptions): SavedLibraryView {
   let starredMessages: StarredMessage[] = [];
   let highlightRecords: HighlightRecordV1[] = [];
-  let filter: SavedLibraryFilter = 'all';
+  let filter: SavedLibraryFilter = ALL_FILTER;
   let loading = false;
   let loadError = false;
   let exportMenuOpen = false;
 
   const toolbar = createEl('div', 'gv-pm-saved-toolbar gv-hidden');
-  toolbar.style.gap = '8px';
   const filterGroup = createEl('div', 'gv-pm-saved-filters');
   filterGroup.setAttribute('role', 'group');
   const filterButtons = new Map<SavedLibraryFilter, HTMLButtonElement>();
-  for (const value of ['all', 'starred', 'highlights'] as const) {
+  for (const value of [ALL_FILTER, 'starred', 'highlights'] as const) {
     const button = createEl('button', 'gv-pm-saved-filter');
     button.setAttribute('type', 'button');
     button.addEventListener('click', () => {
@@ -120,7 +121,7 @@ export function createSavedLibraryView({
   const openFullButton = createEl('button', 'gv-pm-saved-footer-button gv-pm-saved-open-full');
   openFullButton.type = 'button';
   openFullButton.addEventListener('click', () => {
-    void openLibraryPage().catch(() => setNotice(t('pm_starred_load_error'), 'err'));
+    void openLibraryPage().catch(() => setNotice(t('savedLibraryOpenFailed'), 'err'));
   });
   toolbar.appendChild(openFullButton);
 
@@ -166,7 +167,7 @@ export function createSavedLibraryView({
       button.classList.toggle('active', value === filter);
       button.setAttribute('aria-pressed', value === filter ? 'true' : 'false');
     });
-    filterGroup.setAttribute('aria-label', t('pm_starred_library'));
+    filterGroup.setAttribute('aria-label', t('savedLibraryTypeFilter'));
     exportJsonBtn.title = `${t('pm_export')} JSON`;
     exportJsonBtn.setAttribute('aria-label', exportJsonBtn.title);
     exportMarkdownBtn.title = `${t('pm_export')} Markdown`;
@@ -231,14 +232,6 @@ export function createSavedLibraryView({
     }
   }
 
-  function getEmptyText(query: string): string {
-    if (loadError) return t('pm_starred_load_error');
-    if (query) return t('pm_starred_no_results');
-    if (filter === 'highlights') return t('savedLibraryNoHighlights');
-    if (filter === 'starred') return t('noStarredMessages');
-    return t('savedLibraryEmpty');
-  }
-
   function render(): void {
     beforeRender();
     const savedScrollTop = list.scrollTop;
@@ -259,7 +252,9 @@ export function createSavedLibraryView({
 
     if (loadError || filtered.length === 0) {
       const empty = createEl('div', 'gv-pm-empty gv-pm-starred-empty');
-      empty.textContent = getEmptyText(query);
+      empty.textContent = t(
+        loadError ? 'pm_starred_load_error' : savedLibraryEmptyKey(filter, query),
+      );
       list.appendChild(empty);
       return;
     }

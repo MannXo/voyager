@@ -2,13 +2,14 @@ import type { HighlightAccountScope, HighlightRecordV1 } from '@/core/types/high
 
 import { StarredMessagesService } from './StarredMessagesService';
 import type { SavedLibraryItem } from './model';
+import { ALL_FILTER } from './viewModel';
 
 export async function listLibraryHighlights(
-  scope: 'all' | HighlightAccountScope | null,
+  scope: typeof ALL_FILTER | HighlightAccountScope | null,
 ): Promise<HighlightRecordV1[]> {
   if (!scope) return [];
   const response = (await chrome.runtime.sendMessage(
-    scope === 'all'
+    scope === ALL_FILTER
       ? { type: 'gv.highlight.listAll', payload: { includeDeleted: false } }
       : { type: 'gv.highlight.list', payload: { scope, includeDeleted: false } },
   )) as { ok?: boolean; records?: HighlightRecordV1[]; error?: string } | undefined;

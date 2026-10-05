@@ -3934,5 +3934,20 @@
   },
   "savedLibraryDeleteHighlightConfirm": {
     "message": "删除这条高亮及其备注？"
+  },
+  "savedLibraryOpenFailed": {
+    "message": "无法打开收藏库"
+  },
+  "savedLibraryConversationOpenFailed": {
+    "message": "无法打开这段对话"
+  },
+  "savedLibraryFilters": {
+    "message": "收藏库筛选"
+  },
+  "savedLibraryTypeFilter": {
+    "message": "收藏内容类型"
+  },
+  "savedLibraryRefresh": {
+    "message": "刷新"
   }
 }

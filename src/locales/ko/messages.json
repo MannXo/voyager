@@ -3934,5 +3934,20 @@
   },
   "savedLibraryDeleteHighlightConfirm": {
     "message": "이 하이라이트와 메모를 삭제할까요?"
+  },
+  "savedLibraryOpenFailed": {
+    "message": "라이브러리를 열 수 없습니다"
+  },
+  "savedLibraryConversationOpenFailed": {
+    "message": "이 대화를 열 수 없습니다"
+  },
+  "savedLibraryFilters": {
+    "message": "라이브러리 필터"
+  },
+  "savedLibraryTypeFilter": {
+    "message": "저장한 항목 유형"
+  },
+  "savedLibraryRefresh": {
+    "message": "새로고침"
   }
 }

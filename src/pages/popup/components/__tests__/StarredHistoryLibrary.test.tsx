@@ -7,6 +7,7 @@ import { LanguageProvider } from '@/contexts/LanguageContext';
 import { accountIsolationService } from '@/core/services/AccountIsolationService';
 import { StorageKeys } from '@/core/types/common';
 import { StarredMessagesService } from '@/features/savedLibrary/StarredMessagesService';
+import { LIBRARY_OPEN_MESSAGE } from '@/features/savedLibrary/openLibraryPage';
 import { makeRecord } from '@/pages/content/highlight/__tests__/fixtures';
 import { TRANSLATIONS } from '@/utils/translations';
 
@@ -126,11 +127,40 @@ it('opens a saved Claude star in the current Claude tab', async () => {
 });
 
 it('keeps a starred row after a failed removal and allows retry', async () => {
-  const remove = vi
-    .spyOn(StarredMessagesService, 'removeStarredMessage')
-    .mockRejectedValueOnce(new Error('Storage unavailable'))
-    .mockResolvedValue(undefined);
-  vi.spyOn(console, 'error').mockImplementation(() => {});
+  let removed = false;
+  let attempts = 0;
+  vi.mocked(chrome.runtime.sendMessage).mockImplementation((async (
+    message: { type: string; payload?: { conversationId?: string; turnId?: string } },
+    callback?: (value: unknown) => void,
+  ) => {
+    if (message.type === 'gv.starred.getAll') {
+      callback?.({
+        ok: true,
+        data: {
+          messages: removed
+            ? {}
+            : {
+                'claude:conv:saved': [
+                  {
+                    conversationId: 'claude:conv:saved',
+                    conversationUrl: 'https://claude.ai/chat/saved',
+                    turnId: 'turn-one',
+                    content: 'Saved answer',
+                    starredAt: 100,
+                  },
+                ],
+              },
+        },
+      });
+      return;
+    }
+    if (message.type === 'gv.starred.remove') {
+      removed = ++attempts > 1;
+      callback?.({ ok: removed, error: removed ? undefined : 'Storage unavailable' });
+      return;
+    }
+    return { ok: false };
+  }) as typeof chrome.runtime.sendMessage);
   await mount();
   const button = container.querySelector<HTMLButtonElement>(
     `button[aria-label="${TRANSLATIONS.en.removeFromStarred}"]`,
@@ -141,12 +171,20 @@ it('keeps a starred row after a failed removal and allows retry', async () => {
   expect(container.querySelector('[role="alert"]')?.textContent).toBe(
     TRANSLATIONS.en.starredDeleteFailed,
   );
-  expect(button.isConnected).toBe(true);
+  expect(
+    container.querySelector(`button[aria-label="${button.getAttribute('aria-label')}"]`),
+  ).not.toBeNull();
 
   await act(async () => button.click());
   expect(container.textContent).not.toContain('Saved answer');
   expect(container.querySelector('[role="alert"]')).toBeNull();
-  expect(remove).toHaveBeenCalledWith('claude:conv:saved', 'turn-one');
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+    {
+      type: 'gv.starred.remove',
+      payload: { conversationId: 'claude:conv:saved', turnId: 'turn-one' },
+    },
+    expect.any(Function),
+  );
 });
 
 it('keeps a highlight row and reports highlight removal failure when the request throws', async () => {
@@ -177,7 +215,9 @@ it('keeps a highlight row and reports highlight removal failure when the request
     TRANSLATIONS.en.highlightDeleteFailed,
   );
   expect(container.textContent).toContain('Highlighted answer');
-  expect(button.isConnected).toBe(true);
+  expect(
+    container.querySelector(`button[aria-label="${button.getAttribute('aria-label')}"]`),
+  ).not.toBeNull();
 });
 
 it('opens the full library from the popup without navigating the source tab', async () => {
@@ -189,13 +229,98 @@ it('opens the full library from the popup without navigating the source tab', as
       callback?.({ ok: true, data: { messages: {} } });
       return;
     }
-    return { ok: message.type === 'gv.library.open' };
+    return { ok: message.type === LIBRARY_OPEN_MESSAGE };
   }) as typeof chrome.runtime.sendMessage);
   await mount();
   const button = container.querySelector<HTMLButtonElement>(
     `button[aria-label="${TRANSLATIONS.en.savedLibraryOpenFull}"]`,
   )!;
   await act(async () => button.click());
-  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'gv.library.open' });
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: LIBRARY_OPEN_MESSAGE });
   expect(chrome.tabs.update).not.toHaveBeenCalled();
+});
+
+it("a failed read after an account switch does not keep the previous account's highlights deletable", async () => {
+  pageUrl = 'https://gemini.google.com/u/1/app/current';
+  const listeners = new Set<Parameters<typeof chrome.storage.onChanged.addListener>[0]>();
+  vi.mocked(chrome.storage.onChanged.addListener).mockImplementation((listener) => {
+    listeners.add(listener);
+  });
+  vi.mocked(chrome.storage.onChanged.removeListener).mockImplementation((listener) => {
+    listeners.delete(listener);
+  });
+  const highlight = makeRecord({
+    quote: { exact: 'Account A highlighted answer', prefix: '', suffix: '' },
+    position: { start: 0, end: 28 },
+    sourceTextHash: 'hash',
+  });
+  vi.mocked(chrome.runtime.sendMessage).mockImplementation((async (
+    message: { type: string; payload?: { scope?: { accountKey: string } } },
+    callback?: (value: unknown) => void,
+  ) => {
+    if (message.type === 'gv.starred.getAll') {
+      callback?.({
+        ok: true,
+        data: {
+          messages: {
+            'claude:conv:saved': [
+              {
+                conversationId: 'claude:conv:saved',
+                conversationUrl: 'https://claude.ai/chat/saved',
+                turnId: 'saved',
+                content: 'Readable star',
+                starredAt: 1,
+              },
+            ],
+          },
+        },
+      });
+      return;
+    }
+    if (message.type === 'gv.highlight.list' && message.payload?.scope?.accountKey === 'route:1')
+      return { ok: true, records: [highlight] };
+    throw new Error('Account B temporarily unavailable');
+  }) as typeof chrome.runtime.sendMessage);
+  await mount();
+  expect(container.textContent).toContain('Account A highlighted answer');
+  expect(
+    container.querySelector(`button[aria-label="${TRANSLATIONS.en.pm_delete}"]`),
+  ).not.toBeNull();
+  pageUrl = 'https://gemini.google.com/u/2/app/current';
+  await act(async () => {
+    for (const listener of listeners)
+      listener({ [StorageKeys.SAVED_LIBRARY_STARS]: { newValue: { messages: {} } } }, 'local');
+  });
+  expect(container.textContent).toContain('Readable star');
+  expect(container.textContent).not.toContain('Account A highlighted answer');
+  expect(container.querySelector(`button[aria-label="${TRANSLATIONS.en.pm_delete}"]`)).toBeNull();
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+    TRANSLATIONS.en.pm_starred_load_error,
+  );
+  expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(
+    expect.objectContaining({ type: 'gv.highlight.deleteStored' }),
+  );
+});
+
+it('reports an accurate library-open failure without hiding readable stars', async () => {
+  const original = vi.mocked(chrome.runtime.sendMessage).getMockImplementation()!;
+  vi.mocked(chrome.runtime.sendMessage).mockImplementation((async (
+    message: { type: string },
+    callback?: unknown,
+  ) => {
+    if (message.type === LIBRARY_OPEN_MESSAGE) throw new Error('Tabs unavailable');
+    return Reflect.apply(original, chrome.runtime, [message, callback]);
+  }) as typeof chrome.runtime.sendMessage);
+  await mount();
+  await act(async () =>
+    container
+      .querySelector<HTMLButtonElement>(
+        `button[aria-label="${TRANSLATIONS.en.savedLibraryOpenFull}"]`,
+      )!
+      .click(),
+  );
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+    TRANSLATIONS.en.savedLibraryOpenFailed,
+  );
+  expect(container.textContent).toContain('Saved answer');
 });

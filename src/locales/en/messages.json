@@ -3934,5 +3934,20 @@
   },
   "savedLibraryDeleteHighlightConfirm": {
     "message": "Delete this highlight and its note?"
+  },
+  "savedLibraryOpenFailed": {
+    "message": "Couldn’t open the library"
+  },
+  "savedLibraryConversationOpenFailed": {
+    "message": "Couldn’t open this conversation"
+  },
+  "savedLibraryFilters": {
+    "message": "Library filters"
+  },
+  "savedLibraryTypeFilter": {
+    "message": "Saved item type"
+  },
+  "savedLibraryRefresh": {
+    "message": "Refresh"
   }
 }

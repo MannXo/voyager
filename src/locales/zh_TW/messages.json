@@ -3934,5 +3934,20 @@
   },
   "savedLibraryDeleteHighlightConfirm": {
     "message": "刪除這則螢光標記及其備註？"
+  },
+  "savedLibraryOpenFailed": {
+    "message": "無法開啟收藏庫"
+  },
+  "savedLibraryConversationOpenFailed": {
+    "message": "無法開啟這段對話"
+  },
+  "savedLibraryFilters": {
+    "message": "收藏庫篩選"
+  },
+  "savedLibraryTypeFilter": {
+    "message": "收藏內容類型"
+  },
+  "savedLibraryRefresh": {
+    "message": "重新整理"
   }
 }

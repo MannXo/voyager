@@ -3934,5 +3934,20 @@
   },
   "savedLibraryDeleteHighlightConfirm": {
     "message": "¿Eliminar este resaltado y su nota?"
+  },
+  "savedLibraryOpenFailed": {
+    "message": "No se pudo abrir la biblioteca"
+  },
+  "savedLibraryConversationOpenFailed": {
+    "message": "No se pudo abrir esta conversación"
+  },
+  "savedLibraryFilters": {
+    "message": "Filtros de la biblioteca"
+  },
+  "savedLibraryTypeFilter": {
+    "message": "Tipo de elemento guardado"
+  },
+  "savedLibraryRefresh": {
+    "message": "Actualizar"
   }
 }

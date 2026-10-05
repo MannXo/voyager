@@ -60,6 +60,6 @@ it('reports a refused full Library launch through the existing in-page notice', 
   const { button, notice } = createEntry();
   button.click();
   await vi.waitFor(() =>
-    expect(notice).toHaveBeenCalledWith(TRANSLATIONS.en.pm_starred_load_error, 'err'),
+    expect(notice).toHaveBeenCalledWith(TRANSLATIONS.en.savedLibraryOpenFailed, 'err'),
   );
 });

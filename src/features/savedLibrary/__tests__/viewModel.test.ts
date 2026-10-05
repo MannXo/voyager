@@ -160,7 +160,13 @@ describe('saved library conversation views', () => {
     });
     expect(filtered.accounts).toEqual(base.accounts);
     expect(filtered.items).toHaveLength(1);
-    expect(base.accounts[0].id).toContain(hashString('first'));
+    expect(
+      getSavedLibraryView(items, {
+        ...selection,
+        site: 'gemini',
+        account: base.accounts[0].id,
+      }).items.map((item) => item.kind),
+    ).toEqual(['highlight']);
     expect(getSavedLibraryView(items, selection).groups[0]).toMatchObject({
       siteLabel: 'Gemini',
       accountNumber: 1,

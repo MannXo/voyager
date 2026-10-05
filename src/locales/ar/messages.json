@@ -3934,5 +3934,20 @@
   },
   "savedLibraryDeleteHighlightConfirm": {
     "message": "حذف هذا التمييز وملاحظته؟"
+  },
+  "savedLibraryOpenFailed": {
+    "message": "تعذّر فتح المكتبة"
+  },
+  "savedLibraryConversationOpenFailed": {
+    "message": "تعذّر فتح هذه المحادثة"
+  },
+  "savedLibraryFilters": {
+    "message": "مرشحات المكتبة"
+  },
+  "savedLibraryTypeFilter": {
+    "message": "نوع العنصر المحفوظ"
+  },
+  "savedLibraryRefresh": {
+    "message": "تحديث"
   }
 }

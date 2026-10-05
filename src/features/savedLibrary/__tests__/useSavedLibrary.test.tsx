@@ -85,7 +85,19 @@ beforeEach(() => {
     listeners.delete(listener);
   });
   chrome.runtime.sendMessage = vi.fn(
-    (message: { type: string }, callback?: (response: unknown) => void) => {
+    (
+      message: {
+        type: string;
+        payload?: {
+          turnId?: string;
+          id?: string;
+          accountHash?: string;
+          platform?: string;
+          conversationId?: string;
+        };
+      },
+      callback?: (response: unknown) => void,
+    ) => {
       if (message.type === 'gv.starred.getAll') {
         if (holdRead) pendingRead = callback;
         else callback?.({ ok: true, data: snapshot(stars) });
@@ -98,10 +110,22 @@ beforeEach(() => {
       }
       if (message.type === 'gv.starred.remove') {
         if (holdRemoval) pendingRemoval = callback;
-        else callback?.({ ok: true });
+        else {
+          stars = stars.filter((star) => star.turnId !== message.payload?.turnId);
+          callback?.({ ok: true });
+        }
         return;
       }
-      if (message.type === 'gv.highlight.deleteStored') return Promise.resolve({ ok: true });
+      if (message.type === 'gv.highlight.deleteStored') {
+        highlights = highlights.filter(
+          (record) =>
+            record.id !== message.payload?.id ||
+            record.accountHash !== message.payload?.accountHash ||
+            record.platform !== message.payload?.platform ||
+            record.conversationId !== message.payload?.conversationId,
+        );
+        return Promise.resolve({ ok: true });
+      }
       throw new Error(`Unexpected ${message.type}`);
     },
   ) as unknown as typeof chrome.runtime.sendMessage;
@@ -127,11 +151,13 @@ it('a delayed refresh cannot reintroduce an acknowledged deleted star', async ()
   await act(async () => {
     read = view.reload();
   });
+  const staleRead = pendingRead;
+  holdRead = false;
   await act(async () => {
     expect(await view.remove(view.items.find((item) => item.kind === 'starred')!)).toBe(true);
   });
   await act(async () => {
-    pendingRead?.({ ok: true, data: snapshot(oldStars) });
+    staleRead?.({ ok: true, data: snapshot(oldStars) });
     await read;
   });
   expect(container.textContent).not.toContain('Saved star');
@@ -230,4 +256,37 @@ it('an external addition during removal remains visible after the removal is ack
   });
   expect(container.textContent).toContain('Added elsewhere');
   expect(container.textContent).not.toContain('Saved star');
+});
+
+it('a failed removal still shows an item another tab deleted meanwhile', async () => {
+  stars.push({ ...stars[0], turnId: 'deleted-elsewhere', content: 'Deleted elsewhere' });
+  await render();
+  expect(container.textContent).toContain('Deleted elsewhere');
+  stars = stars.filter((star) => star.turnId !== 'deleted-elsewhere');
+  holdRead = true;
+  await act(async () => {
+    for (const listener of listeners)
+      listener({ [StorageKeys.SAVED_LIBRARY_STARS]: { newValue: snapshot(stars) } }, 'local');
+  });
+  const externalRead = pendingRead;
+  const externalSnapshot = snapshot(stars);
+  holdRemoval = true;
+  let removing: Promise<boolean>;
+  await act(async () => {
+    removing = view.remove(
+      view.items.find((item) => item.kind === 'starred' && item.turnId === 'one')!,
+    );
+  });
+  holdRead = false;
+  await act(async () => {
+    pendingRemoval?.({ ok: false, error: 'Storage unavailable' });
+    expect(await removing).toBe(false);
+  });
+  await act(async () => {
+    externalRead?.({ ok: true, data: externalSnapshot });
+  });
+  expect(container.textContent).toContain('Saved star');
+  expect(container.textContent).not.toContain('Deleted elsewhere');
+  expect(view.notice?.error).toBe(true);
+  expect(view.loading).toBe(false);
 });

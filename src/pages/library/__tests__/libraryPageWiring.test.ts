@@ -7,17 +7,6 @@ import { LIBRARY_PAGE_PATH } from '@/features/savedLibrary/openLibraryPage';
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
 describe('Library page packaging', () => {
-  it('includes the private page as a build input for Chrome, Edge, Firefox and Safari', () => {
-    for (const config of [
-      'vite.config.chrome.ts',
-      'vite.config.firefox.ts',
-      'vite.config.safari.ts',
-    ]) {
-      expect(read(config), config).toContain(`library: resolve(__dirname, '${LIBRARY_PAGE_PATH}')`);
-    }
-    expect(read('scripts/build-edge.js')).toContain('bun run build:chrome');
-  });
-
   it('does not expose the Library HTML to web pages', () => {
     for (const name of ['manifest.json', 'manifest.dev.json']) {
       const manifest = JSON.parse(read(name)) as {

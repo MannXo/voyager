@@ -3934,5 +3934,20 @@
   },
   "savedLibraryDeleteHighlightConfirm": {
     "message": "このハイライトとメモを削除しますか？"
+  },
+  "savedLibraryOpenFailed": {
+    "message": "ライブラリを開けませんでした"
+  },
+  "savedLibraryConversationOpenFailed": {
+    "message": "この会話を開けませんでした"
+  },
+  "savedLibraryFilters": {
+    "message": "ライブラリの絞り込み"
+  },
+  "savedLibraryTypeFilter": {
+    "message": "保存した項目の種類"
+  },
+  "savedLibraryRefresh": {
+    "message": "更新"
   }
 }

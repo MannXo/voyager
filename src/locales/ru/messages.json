@@ -3934,5 +3934,20 @@
   },
   "savedLibraryDeleteHighlightConfirm": {
     "message": "Удалить это выделение и заметку к нему?"
+  },
+  "savedLibraryOpenFailed": {
+    "message": "Не удалось открыть библиотеку"
+  },
+  "savedLibraryConversationOpenFailed": {
+    "message": "Не удалось открыть этот разговор"
+  },
+  "savedLibraryFilters": {
+    "message": "Фильтры библиотеки"
+  },
+  "savedLibraryTypeFilter": {
+    "message": "Тип сохранённого элемента"
+  },
+  "savedLibraryRefresh": {
+    "message": "Обновить"
   }
 }

@@ -18,7 +18,9 @@ import {
   savedLibraryItemKey,
 } from '@/features/savedLibrary/model';
 import { openLibraryPage } from '@/features/savedLibrary/openLibraryPage';
+import { savedLibraryEmptyKey } from '@/features/savedLibrary/presentation';
 import { useSavedLibrary } from '@/features/savedLibrary/useSavedLibrary';
+import { ALL_FILTER } from '@/features/savedLibrary/viewModel';
 import { cn } from '@/lib/utils';
 
 interface StarredHistoryProps {
@@ -141,7 +143,7 @@ export function StarredHistory({ onClose, sourceTabId }: StarredHistoryProps) {
       await chrome.tabs.create({ url: targetUrl });
     } catch (openError) {
       console.error('[SavedLibrary] Blocked invalid saved item URL:', openError);
-      setTransferNotice({ text: t('pm_starred_load_error'), error: true });
+      setTransferNotice({ text: t('savedLibraryConversationOpenFailed'), error: true });
     }
   };
 
@@ -207,15 +209,7 @@ export function StarredHistory({ onClose, sourceTabId }: StarredHistoryProps) {
     }
   };
 
-  const emptyText = error
-    ? t('pm_starred_load_error')
-    : query.trim().length > 0
-      ? t('pm_starred_no_results')
-      : filter === 'highlights'
-        ? t('savedLibraryNoHighlights')
-        : filter === 'starred'
-          ? t('noStarredMessages')
-          : t('savedLibraryEmpty');
+  const emptyText = t(error ? 'pm_starred_load_error' : savedLibraryEmptyKey(filter, query));
 
   return (
     <div className="bg-background text-foreground flex h-[600px] w-[360px] flex-col">
@@ -231,7 +225,7 @@ export function StarredHistory({ onClose, sourceTabId }: StarredHistoryProps) {
             className="text-muted-foreground hover:text-foreground focus-visible:ring-ring ms-auto rounded-md p-1.5 focus-visible:ring-2"
             onClick={() =>
               void openLibraryPage().catch(() =>
-                setTransferNotice({ text: t('pm_starred_load_error'), error: true }),
+                setTransferNotice({ text: t('savedLibraryOpenFailed'), error: true }),
               )
             }
           >
@@ -263,11 +257,11 @@ export function StarredHistory({ onClose, sourceTabId }: StarredHistoryProps) {
         <div
           className="border-border/60 mt-1.5 grid grid-cols-3 border-b"
           role="group"
-          aria-label={t('starredHistory')}
+          aria-label={t('savedLibraryTypeFilter')}
         >
           {(
             [
-              ['all', t('savedLibraryAll')],
+              [ALL_FILTER, t('savedLibraryAll')],
               ['starred', t('savedLibraryStars')],
               ['highlights', t('savedLibraryHighlights')],
             ] as const
@@ -353,6 +347,11 @@ export function StarredHistory({ onClose, sourceTabId }: StarredHistoryProps) {
             }}
           />
         </div>
+        {error && (
+          <p className="text-destructive mt-1 pb-2.5 text-xs" role="alert">
+            {t('pm_starred_load_error')}
+          </p>
+        )}
         {shownNotice && (
           <p
             className={cn(
@@ -383,7 +382,7 @@ export function StarredHistory({ onClose, sourceTabId }: StarredHistoryProps) {
             <p className="text-muted-foreground text-sm">{emptyText}</p>
             {error && (
               <Button variant="outline" size="sm" onClick={() => void loadSavedItems()}>
-                {t('usageStatusRefresh')}
+                {t('savedLibraryRefresh')}
               </Button>
             )}
           </div>

@@ -117,6 +117,8 @@ async function answerConfirmation(label: string): Promise<void> {
 
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  // jsdom omits CSS.escape; the browser boundary escapes our quoted attribute values.
+  vi.stubGlobal('CSS', { escape: (value: string) => value.replace(/["\\]/g, '\\$&') });
   stars = [star()];
   highlights = [highlight()];
   highlightReadFails = false;
@@ -190,6 +192,8 @@ afterEach(async () => {
   delete document.documentElement.dataset.gvScheme;
   document.documentElement.dir = '';
   document.documentElement.lang = '';
+  document.body.classList.remove('gv-rtl');
+  document.title = '';
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -224,6 +228,10 @@ describe('Saved Library page', () => {
       payload: { includeDeleted: false },
     });
     expect(container.querySelector('button button')).toBeNull();
+    expect(container.querySelector('aside')?.getAttribute('aria-label')).toBe('Library filters');
+    expect(container.querySelector('[role="group"]')?.getAttribute('aria-label')).toBe(
+      'Saved item type',
+    );
     for (const input of container.querySelectorAll('input, select')) {
       expect(container.querySelector(`label[for="${input.id}"]`)).not.toBeNull();
     }
@@ -250,12 +258,12 @@ describe('Saved Library page', () => {
     expect(container.textContent).toContain('Annotation note');
     expect(container.textContent).not.toContain('Stored preview only');
     await query('absent text');
-    expect(container.querySelectorAll('[data-library-item]')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-library-item-id]')).toHaveLength(0);
   });
 
   it('opens a saved item in a new tab with its exact deep link', async () => {
     await mount();
-    const card = Array.from(container.querySelectorAll<HTMLElement>('[data-library-item]')).find(
+    const card = Array.from(container.querySelectorAll<HTMLElement>('[data-library-item-id]')).find(
       (item) => item.textContent?.includes('Stored preview only'),
     )!;
     await act(async () => card.querySelector<HTMLButtonElement>('[data-library-open]')!.click());
@@ -263,7 +271,7 @@ describe('Saved Library page', () => {
       url: 'https://gemini.google.com/app/one#gv-turn-turn-1',
     });
     const highlightCard = Array.from(
-      container.querySelectorAll<HTMLElement>('[data-library-item]'),
+      container.querySelectorAll<HTMLElement>('[data-library-item-id]'),
     ).find((item) => item.textContent?.includes('A saved quotation'))!;
     await act(async () =>
       highlightCard.querySelector<HTMLButtonElement>('[data-library-open]')!.click(),
@@ -271,6 +279,20 @@ describe('Saved Library page', () => {
     expect(chrome.tabs.create).toHaveBeenCalledWith({
       url: 'https://gemini.google.com/app/one#gv-highlight-highlight-one',
     });
+  });
+
+  it('reports a conversation open failure while keeping the readable saved items', async () => {
+    await mount();
+    vi.mocked(chrome.tabs.create).mockImplementationOnce(async () => {
+      throw new Error('Tab creation unavailable');
+    });
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[data-library-open]')!.click(),
+    );
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+      'Couldn’t open this conversation',
+    );
+    expect(container.querySelectorAll('[data-library-item-id]')).toHaveLength(2);
   });
 
   it('keeps canceled or failed deletions and focuses a neighboring item after acknowledged removal', async () => {
@@ -338,7 +360,7 @@ describe('Saved Library page', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(true);
     expect(document.documentElement.dataset.gvScheme).toBe('dark');
     const removeButton = container.querySelector<HTMLElement>(
-      '[data-library-item] button:last-child',
+      '[data-library-item-id] button:last-child',
     )!;
     await act(async () => removeButton.click());
     const host = document.querySelector<HTMLElement>('[data-gv-layer="popover"]')!;

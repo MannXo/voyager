@@ -3934,5 +3934,20 @@
   },
   "savedLibraryDeleteHighlightConfirm": {
     "message": "Supprimer ce surlignage et sa note ?"
+  },
+  "savedLibraryOpenFailed": {
+    "message": "Impossible d’ouvrir la bibliothèque"
+  },
+  "savedLibraryConversationOpenFailed": {
+    "message": "Impossible d’ouvrir cette conversation"
+  },
+  "savedLibraryFilters": {
+    "message": "Filtres de la bibliothèque"
+  },
+  "savedLibraryTypeFilter": {
+    "message": "Type d’élément enregistré"
+  },
+  "savedLibraryRefresh": {
+    "message": "Actualiser"
   }
 }

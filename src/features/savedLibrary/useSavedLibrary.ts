@@ -12,9 +12,9 @@ import { StarredMessagesService } from './StarredMessagesService';
 import { listLibraryHighlights, removeLibraryItem } from './libraryClient';
 import { type SavedLibraryItem, savedLibraryItemKey, toSavedLibraryItems } from './model';
 import type { StarredMessage } from './starTypes';
-import { type SavedLibrarySelection, getSavedLibraryView } from './viewModel';
+import { ALL_FILTER, type SavedLibrarySelection, getSavedLibraryView } from './viewModel';
 
-type HighlightSource = 'all' | (() => Promise<HighlightAccountScope | null>);
+type HighlightSource = typeof ALL_FILTER | (() => Promise<HighlightAccountScope | null>);
 
 /** Reads and mutations belong here; popup and full-page views only present the result. */
 export function useSavedLibrary({
@@ -28,19 +28,19 @@ export function useSavedLibrary({
   const [sources, setSources] = useState<{
     stars: StarredMessage[];
     highlights: HighlightRecordV1[];
-  }>({ stars: [], highlights: [] });
+    highlightScope: string | null;
+  }>({ stars: [], highlights: [], highlightScope: null });
   const [selection, updateSelection] = useState<SavedLibrarySelection>({
-    kind: 'all',
+    kind: ALL_FILTER,
     query: '',
-    site: 'all',
-    account: 'all',
+    site: ALL_FILTER,
+    account: ALL_FILTER,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);
-  const alive = useRef(false);
   const generation = useRef(0);
-  const lifetime = useRef<AbortController | null>(null);
+  const lifetime = useRef(new AbortController());
   const allItems = useMemo(() => toSavedLibraryItems(sources.stars, sources.highlights), [sources]);
   const currentItems = useRef(allItems);
   useEffect(() => {
@@ -49,28 +49,41 @@ export function useSavedLibrary({
   const view = useMemo(() => getSavedLibraryView(allItems, selection), [allItems, selection]);
 
   const reload = useCallback(async () => {
+    const session = lifetime.current;
+    if (session.signal.aborted) return;
     const request = ++generation.current;
+    let requestedScope: string | null = null;
     setLoading(true);
     const [stars, highlights] = await Promise.allSettled([
       StarredMessagesService.getAllStarredMessagesSorted(),
-      (async () =>
-        listLibraryHighlights(
-          typeof highlightScope === 'function' ? await highlightScope() : highlightScope,
-        ))(),
+      (async () => {
+        const scope =
+          typeof highlightScope === 'function' ? await highlightScope() : highlightScope;
+        requestedScope = JSON.stringify(
+          scope && scope !== ALL_FILTER ? [scope.platform, scope.accountKey] : scope,
+        );
+        return listLibraryHighlights(scope);
+      })(),
     ]);
-    if (!alive.current || request !== generation.current) return;
-    // A failed source keeps its last readable data instead of masquerading as an empty store.
+    if (session.signal.aborted || request !== generation.current) return;
     setSources((previous) => ({
       stars: stars.status === 'fulfilled' ? stars.value : previous.stars,
-      highlights: highlights.status === 'fulfilled' ? highlights.value : previous.highlights,
+      // Failed reads can retain data only when its resolved platform/account is unchanged.
+      highlights:
+        highlights.status === 'fulfilled'
+          ? highlights.value
+          : requestedScope !== null && requestedScope === previous.highlightScope
+            ? previous.highlights
+            : [],
+      highlightScope: requestedScope,
     }));
     setError(stars.status === 'rejected' || highlights.status === 'rejected');
     setLoading(false);
   }, [highlightScope]);
 
   useEffect(() => {
-    alive.current = true;
-    lifetime.current = new AbortController();
+    const session = new AbortController();
+    lifetime.current = session;
     const changed = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
       const stars = StarredMessagesService.decodeStorageChange(area, changes);
       const highlights =
@@ -81,9 +94,7 @@ export function useSavedLibrary({
     chrome.storage.onChanged.addListener(changed);
     void reload();
     return () => {
-      alive.current = false;
-      generation.current += 1;
-      lifetime.current?.abort();
+      session.abort();
       chrome.storage.onChanged.removeListener(changed);
     };
   }, [reload]);
@@ -92,7 +103,7 @@ export function useSavedLibrary({
     updateSelection((previous) => ({
       ...previous,
       ...next,
-      ...(next.site !== undefined && next.site !== previous.site ? { account: 'all' } : {}),
+      ...(next.site !== undefined && next.site !== previous.site ? { account: ALL_FILTER } : {}),
     }));
   }, []);
 
@@ -112,57 +123,32 @@ export function useSavedLibrary({
           choices: [
             { id: 'remove', label: t(item.kind === 'starred' ? 'removeFromStarred' : 'pm_delete') },
           ],
-          signal: session?.signal,
+          signal: session.signal,
         });
         if (answer !== 'remove') return false;
       }
       const key = savedLibraryItemKey(item);
       if (
-        !alive.current ||
-        session?.signal.aborted ||
+        session.signal.aborted ||
         !currentItems.current.some((candidate) => savedLibraryItemKey(candidate) === key)
       )
         return false;
-      const removalGeneration = ++generation.current;
+      let removed = false;
       try {
         await removeLibraryItem(item);
-        if (!alive.current || session?.signal.aborted) return false;
-        const refreshOverlapped = generation.current !== removalGeneration;
-        // A read issued before the removal settled must not reintroduce its deleted row.
-        generation.current += 1;
-        setSources((previous) => ({
-          stars:
-            item.kind === 'starred'
-              ? previous.stars.filter(
-                  (star) =>
-                    star.conversationId !== item.conversationId || star.turnId !== item.turnId,
-                )
-              : previous.stars,
-          highlights:
-            item.kind === 'highlight'
-              ? previous.highlights.filter(
-                  (record) =>
-                    record.id !== item.id ||
-                    record.platform !== item.platform ||
-                    record.accountHash !== item.accountHash ||
-                    record.conversationId !== item.conversationId,
-                )
-              : previous.highlights,
-        }));
-        setLoading(false);
-        // Replay an overlapping refresh so another tab's additions are not dropped with stale rows.
-        if (refreshOverlapped) void reload();
-        return true;
+        removed = true;
       } catch {
-        if (alive.current && !session?.signal.aborted) {
+        if (!session.signal.aborted) {
           setNotice({
             text: t(item.kind === 'highlight' ? 'highlightDeleteFailed' : 'starredDeleteFailed'),
             error: true,
           });
-          setLoading(false);
         }
-        return false;
+      } finally {
+        // Storage is authoritative after both committed and failed removals, including other tabs' edits.
+        if (!session.signal.aborted) await reload();
       }
+      return removed && !session.signal.aborted;
     },
     [confirmRemoval, reload, t],
   );

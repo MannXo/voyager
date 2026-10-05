@@ -39,12 +39,12 @@ body {
   min-block-size: 2.75rem;
 }
 
-.gv-library [data-library-item] {
+.gv-library [data-library-item-id] {
   min-inline-size: 0;
   overflow-wrap: anywhere;
 }
 
-.gv-library [data-library-item] button {
+.gv-library [data-library-item-id] button {
   min-block-size: 2.5rem;
   min-inline-size: 2.5rem;
 }
