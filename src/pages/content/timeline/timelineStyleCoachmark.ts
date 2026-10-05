@@ -16,7 +16,7 @@ import {
   type CoachmarkSequenceStep,
   showCoachmark,
 } from '../coachmark';
-import { mountTimelineStylePreview } from './timelineStylePreview';
+import { type TimelineStylePreview, mountTimelineStylePreview } from './timelineStylePreview';
 
 export const TIMELINE_STYLE_COACHMARK_ID = 'timeline-compact-style-intro-v2';
 export const TIMELINE_STYLE_COACHMARK_DEBUG_EVENT = 'gv:debug:timelineStyleCoachmark';
@@ -87,7 +87,7 @@ export async function showTimelineStyleCoachmark({
     /* fall back to literals */
   }
 
-  let preview: HTMLElement | null = null;
+  let preview: TimelineStylePreview | null = null;
   let hiddenTimelineElements: HTMLElement[] = [];
 
   return showCoachmark({
@@ -114,15 +114,18 @@ export async function showTimelineStyleCoachmark({
           document.querySelector<HTMLElement>('.gemini-timeline-bar'),
         );
         void Promise.resolve(onStyleChange(true)).catch(() => {});
-        return preview;
+        return preview.element;
       },
       unmount: (element) => {
+        if (preview?.element === element) {
+          preview.destroy();
+          preview = null;
+        }
+        element?.remove();
         hiddenTimelineElements.forEach((timelineElement) =>
           timelineElement.classList.remove('gv-coach-timeline-hidden'),
         );
         hiddenTimelineElements = [];
-        if (preview === element) preview = null;
-        element?.remove();
       },
     },
     anchor: () => null,
@@ -130,7 +133,7 @@ export async function showTimelineStyleCoachmark({
       label: t('timelineCoachmarkToggle', 'Use compact timeline'),
       initial: true,
       onChange: (on) => {
-        setPreviewStyle(preview, on);
+        setPreviewStyle(preview?.element ?? null, on);
         return onStyleChange(on);
       },
     },

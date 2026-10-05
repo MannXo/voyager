@@ -2,7 +2,7 @@ import type { TimelineStyle } from '@/core/types/common';
 
 import type { TimelineHierarchyGeometry } from './TimelineHierarchyGeometry';
 import { getTimelineSpringProfile } from './TimelineNavigation';
-import { denseMarkerOffsets } from './denseMarkerLayout';
+import { denseMarkerOffsets, rulerWaveTick } from './denseMarkerLayout';
 import type { DotElement, TimelineMarker } from './types';
 
 /** Owns measured marker positions, keyed dot rendering and the runner lifetime. */
@@ -369,7 +369,6 @@ export class TimelineDotLayer {
     }
 
     const focusIndex = this.getRulerFocusIndex();
-    const sigma = 1.2;
     const start = Math.max(0, this.visibleRange.start);
     const end =
       this.visibleRange.end >= start
@@ -380,12 +379,10 @@ export class TimelineDotLayer {
       if (!marker) continue;
       const dot = this.dots.get(marker.id);
       if (!dot) continue;
-      const level = this.geometry.getMarkerLevel(marker.id);
-      const baseScale = level === 3 ? 0.54 : level === 2 ? 0.42 : 0.29;
-      const distance = Math.abs(index - focusIndex);
-      const crest = Math.exp(-(distance * distance) / (2 * sigma * sigma));
-      const scale = baseScale + (1 - baseScale) * crest;
-      const opacity = 0.42 + 0.5 * crest;
+      const { scale, opacity } = rulerWaveTick(
+        Math.abs(index - focusIndex),
+        this.geometry.getMarkerLevel(marker.id),
+      );
       dot.style.setProperty('--gv-timeline-ruler-scale', scale.toFixed(3));
       dot.style.setProperty('--gv-timeline-ruler-opacity', opacity.toFixed(3));
     }

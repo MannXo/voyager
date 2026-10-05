@@ -31,28 +31,25 @@ function createTimelineStylePreview(
   return preview;
 }
 
-/**
- * Pin the replica to the live rail's box, width and side so the guide previews
- * the rail where the user placed it. Without a laid-out live rail the CSS
- * defaults (the rail's own default placement) apply.
- */
-function matchLiveTimelineGeometry(preview: HTMLElement, liveBar: HTMLElement | null): void {
-  if (liveBar) {
-    const barWidth = liveBar.style.getPropertyValue('--timeline-bar-width');
-    if (barWidth) preview.style.setProperty('--timeline-bar-width', barWidth);
-    preview.classList.toggle('gv-no-rail', liveBar.classList.contains('timeline-no-container'));
-  }
+const LIVE_PLACEMENT_PROPERTIES = ['top', 'left', 'right'] as const;
+const LIVE_INWARD_RIGHT_CLASS = 'gv-timeline-ruler-inward-right';
 
-  const rect = liveBar?.getBoundingClientRect();
-  if (!rect || rect.width <= 0 || rect.height <= 0) return;
-  preview.style.top = `${rect.top}px`;
-  preview.style.left = `${rect.left}px`;
-  preview.style.right = 'auto';
-  preview.style.bottom = 'auto';
-  preview.style.height = `${rect.height}px`;
+/**
+ * Mirror the live rail's placement, width, container visibility and tick
+ * direction. Both share the same CSS anchors (top, right/left, bottom), so only
+ * the rail's inline placement is copied and the viewport keeps both in step.
+ */
+function mirrorLiveRail(preview: HTMLElement, liveBar: HTMLElement): void {
+  for (const property of LIVE_PLACEMENT_PROPERTIES) {
+    preview.style.setProperty(property, liveBar.style.getPropertyValue(property));
+  }
+  const barWidth = liveBar.style.getPropertyValue('--timeline-bar-width');
+  preview.style.setProperty('--timeline-bar-width', barWidth);
+  preview.classList.toggle('gv-no-rail', liveBar.classList.contains('timeline-no-container'));
+  preview.classList.toggle('gv-inward-right', liveBar.classList.contains(LIVE_INWARD_RIGHT_CLASS));
 }
 
-/** Ticks grow toward the page content, like TimelineRailPlacement anchors the live rail. */
+/** Without a live rail the replica sits at the CSS default; point its ticks inward once. */
 function pointTicksInward(preview: HTMLElement): void {
   const rect = preview.getBoundingClientRect();
   if (rect.width <= 0) return;
@@ -60,14 +57,33 @@ function pointTicksInward(preview: HTMLElement): void {
   preview.classList.toggle('gv-inward-right', center < window.innerWidth / 2);
 }
 
+export interface TimelineStylePreview {
+  element: HTMLElement;
+  destroy: () => void;
+}
+
 export function mountTimelineStylePreview(
   styleClass: string,
   liveBar: HTMLElement | null,
   decorateMarker?: (marker: HTMLElement, index: number) => void,
-): HTMLElement {
-  const preview = createTimelineStylePreview(styleClass, decorateMarker);
-  matchLiveTimelineGeometry(preview, liveBar);
-  document.body.appendChild(preview);
-  pointTicksInward(preview);
-  return preview;
+): TimelineStylePreview {
+  const element = createTimelineStylePreview(styleClass, decorateMarker);
+  document.body.appendChild(element);
+  if (!liveBar) {
+    pointTicksInward(element);
+    return { element, destroy: () => element.remove() };
+  }
+
+  mirrorLiveRail(element, liveBar);
+  // The hidden live rail keeps re-placing itself on resize (debounced, via
+  // inline top/left); follow it so the guide's rail cannot be left offscreen.
+  const observer = new MutationObserver(() => mirrorLiveRail(element, liveBar));
+  observer.observe(liveBar, { attributes: true, attributeFilter: ['style', 'class'] });
+  return {
+    element,
+    destroy: () => {
+      observer.disconnect();
+      element.remove();
+    },
+  };
 }

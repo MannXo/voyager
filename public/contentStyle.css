@@ -259,6 +259,13 @@ html[data-gv-scheme] .gv-timeline-style-preview::before {
   background-color: var(--timeline-rail-film);
 }
 
+/* The live dense styles clip ticks to the rail's 24px column (their track is
+ * overflow: hidden), so the longest ticks stop at its edge here too. */
+.gv-timeline-style-preview.is-compact,
+.gv-timeline-style-preview.is-ruler {
+  overflow: hidden;
+}
+
 .gv-timeline-style-preview.is-compact::before,
 .gv-timeline-style-preview.gv-no-rail::before {
   opacity: 0;
@@ -320,12 +327,14 @@ html[data-gv-scheme] .gv-timeline-style-preview::before {
   width: 24px;
   height: 2px;
   border-radius: 9999px;
-  transform: translate(-100%, -50%) scaleX(var(--gv-coach-ruler-scale, 0.28));
+  opacity: var(--gv-coach-ruler-opacity, 0.42);
+  transform: translate(-100%, -50%) scaleX(var(--gv-coach-ruler-scale, 0.29));
   transform-origin: right center;
 }
 
 .gv-timeline-style-preview.is-ruler span.active {
   background-color: var(--timeline-dot-active-color);
+  opacity: 1;
 }
 
 body.gv-rtl .gv-timeline-style-preview {
@@ -339,7 +348,7 @@ body.gv-rtl .gv-timeline-style-preview {
 }
 
 .gv-timeline-style-preview.gv-inward-right.is-ruler span {
-  transform: translate(0, -50%) scaleX(var(--gv-coach-ruler-scale, 0.28));
+  transform: translate(0, -50%) scaleX(var(--gv-coach-ruler-scale, 0.29));
   transform-origin: left center;
 }
 

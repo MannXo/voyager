@@ -2,6 +2,7 @@
 import browser from 'webextension-polyfill';
 
 import { StorageKeys } from '@/core/types/common';
+import { rulerWaveTick } from '@/features/timeline/denseMarkerLayout';
 import { getTranslationSync, initI18n } from '@/utils/i18n';
 import type { TranslationKey } from '@/utils/translations';
 
@@ -13,6 +14,7 @@ import {
 } from '../coachmark';
 import {
   TIMELINE_STYLE_PREVIEW_ACTIVE_INDEX,
+  type TimelineStylePreview,
   mountTimelineStylePreview,
 } from './timelineStylePreview';
 
@@ -52,11 +54,11 @@ async function setRulerTimelineEnabled(on: boolean): Promise<void> {
   }
 }
 
-function buildRulerPreview(liveBar: HTMLElement | null): HTMLElement {
+function buildRulerPreview(liveBar: HTMLElement | null): TimelineStylePreview {
   return mountTimelineStylePreview('is-ruler', liveBar, (tick, index) => {
-    const distance = Math.abs(index - TIMELINE_STYLE_PREVIEW_ACTIVE_INDEX);
-    const crest = Math.exp(-(distance * distance) / (2 * 1.25 * 1.25));
-    tick.style.setProperty('--gv-coach-ruler-scale', (0.28 + 0.72 * crest).toFixed(3));
+    const { scale, opacity } = rulerWaveTick(Math.abs(index - TIMELINE_STYLE_PREVIEW_ACTIVE_INDEX));
+    tick.style.setProperty('--gv-coach-ruler-scale', scale.toFixed(3));
+    tick.style.setProperty('--gv-coach-ruler-opacity', opacity.toFixed(3));
   });
 }
 
@@ -79,7 +81,7 @@ export async function maybeShowRulerTimelineCoachmark(
     /* fall back to literals */
   }
 
-  let preview: HTMLElement | null = null;
+  let preview: TimelineStylePreview | null = null;
   let hiddenTimelineElements: HTMLElement[] = [];
 
   return showCoachmark({
@@ -103,15 +105,18 @@ export async function maybeShowRulerTimelineCoachmark(
         );
         preview = buildRulerPreview(document.querySelector<HTMLElement>('.gemini-timeline-bar'));
         void setRulerTimelineEnabled(true);
-        return preview;
+        return preview.element;
       },
       unmount: (element) => {
+        if (preview?.element === element) {
+          preview.destroy();
+          preview = null;
+        }
+        element?.remove();
         hiddenTimelineElements.forEach((timelineElement) =>
           timelineElement.classList.remove('gv-coach-timeline-hidden'),
         );
         hiddenTimelineElements = [];
-        if (preview === element) preview = null;
-        element?.remove();
       },
     },
     anchor: () => null,
@@ -119,7 +124,7 @@ export async function maybeShowRulerTimelineCoachmark(
       label: t('timelineRulerCoachmarkToggle', 'Use ruler timeline'),
       initial: true,
       onChange: (on) => {
-        setPreviewStyle(preview, on);
+        setPreviewStyle(preview?.element ?? null, on);
         return setRulerTimelineEnabled(on);
       },
     },
